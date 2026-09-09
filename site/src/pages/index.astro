@@ -17,30 +17,32 @@ const stats = [
 
 const tiers = [
   {
-    num: 0,
-    name: 'Autonomous',
-    color: 'text-red-400',
-    rule: 'bg-red-400',
+    num: 0, name: 'Autonomous', color: 'text-red-400', rule: 'bg-red-400',
     desc: 'The agent fixes things on its own: restarts, rollbacks, scaling. It stays inside your skill policy and only makes changes it can undo. Hard time limits apply.',
     note: 'For staging and sandboxes. Shown in red inside the product for a reason.',
   },
   {
-    num: 1,
-    name: 'Approval required',
-    color: 'text-amber-400',
-    rule: 'bg-amber-400',
+    num: 1, name: 'Approval required', color: 'text-amber-400', rule: 'bg-amber-400',
     desc: 'The agent investigates and proposes. Reads happen right away. Anything that writes waits for a person to approve it. Denied tools never run.',
     note: 'The right choice for production.',
   },
   {
-    num: 2,
-    name: 'Advisory',
-    color: 'text-ops-blue',
-    rule: 'bg-ops-blue',
+    num: 2, name: 'Advisory', color: 'text-ops-blue', rule: 'bg-ops-blue', isDefault: true,
     desc: 'The agent reads, explains, and recommends. It writes nothing. A person carries out every step.',
     note: 'The default for every new install.',
-    isDefault: true,
   },
+];
+
+const shots = [
+  { file: 'incident-detail.png',     title: 'Incident detail',        caption: 'An incident with its AI session, timeline, and alert evidence in one view.' },
+  { file: 'incidents-admin.png',     title: 'Incident board',         caption: 'Priority, status, owner, and whether an AI session is running, at a glance.' },
+  { file: 'live-session-detail.png', title: 'Live session',           caption: 'Watch the agent work: workflow state, approvals, tool activity, and chat.' },
+  { file: 'ai-session.png',          title: 'Tier 0 session',         caption: 'The agent restarted a deployment, confirmed recovery, and recorded how to undo it.' },
+  { file: 'tier-0.png',              title: 'Tier 0 outcome',         caption: 'Executed on its own, inside policy, with the compensating action recorded.' },
+  { file: 'tier-2.png',              title: 'Tier 2 session',         caption: 'Read only diagnosis and a change plan. Nothing was altered.' },
+  { file: 'mcp-skills.png',          title: 'Skill Studio',           caption: 'The policies that decide what the agent may run, per tool and per tier.' },
+  { file: 'people-rbac.png',         title: 'People and access',      caption: 'Admins, operators, and viewers, with SSO and TOTP when you want them.' },
+  { file: 'settings.png',            title: 'Settings',               caption: 'Session workflow, models, notifications, and workspace guardrails.' },
 ];
 
 const features = [
@@ -59,98 +61,144 @@ const features = [
 ];
 
 const whatsNew = [
-  ['Sessions without MCP',        'A service covered by native connectors no longer needs an MCP server. Its tools pass through the same gate, approvals, and audit log. If nothing provides tools, the session says so and stays advisory.'],
+  ['Sessions without MCP',          'A service covered by native connectors no longer needs an MCP server. Its tools pass through the same gate, approvals, and audit log. If nothing provides tools, the session says so and stays advisory.'],
   ['Skill Studio for both sources', 'Bind a skill to an MCP server or a native connector. Start from a template, pull in the available tools, validate before saving, and see exactly which permissions a change would widen.'],
-  ['Discord incident actions',    'Acknowledge, resolve, escalate, or start a session from a Discord message. Every press is signature verified, matched to a linked account, checked for replays, and audited.'],
-];
-
-const shots = [
-  { file: 'ai-session.png', caption: 'A session at Tier 0. The agent restarted a deployment, confirmed recovery, and recorded how to undo it.', alt: 'AI session view showing a completed autonomous restart with a rollback path' },
-  { file: 'mcp-skills.png', caption: 'Skill Studio. The policies that decide what the agent may run.',                                        alt: 'Skill list with per tier policies' },
-  { file: 'people-rbac.png', caption: 'People and access. Admins, operators, and viewers.',                                                  alt: 'User management with three roles' },
+  ['Discord incident actions',      'Acknowledge, resolve, escalate, or start a session from a Discord message. Every press is signature verified, matched to a linked account, checked for replays, and audited.'],
 ];
 ---
 
 <Layout>
-  <nav class="sticky top-0 z-50 border-b border-ops-border bg-ops-bg/90 backdrop-blur">
-    <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-8">
-      <a href="#top" class="text-[15px] font-semibold tracking-tight text-slate-50 focus-ring">
-        Ops<span class="text-ops-blue">Mender</span>
-      </a>
+  <style is:global>
+    .reveal { opacity: 0; transform: translateY(14px); animation: reveal 0.9s cubic-bezier(.2,.7,.2,1) forwards; }
+    .reveal-1 { animation-delay: .15s } .reveal-2 { animation-delay: .35s } .reveal-3 { animation-delay: .55s }
+    .reveal-4 { animation-delay: .8s }  .reveal-5 { animation-delay: 1s }
+    @keyframes reveal { to { opacity: 1; transform: none; } }
+    .cue { animation: cue 2.2s ease-in-out infinite; }
+    @keyframes cue { 0%,100% { transform: translateY(0); opacity:.5 } 50% { transform: translateY(6px); opacity:1 } }
+
+    /* Architecture map */
+    .arch-edge { fill: none; stroke: #263354; stroke-width: 1.4; transition: stroke .2s, opacity .2s; }
+    .arch-flow { fill: none; stroke: #3b82f6; stroke-width: 1.6; stroke-dasharray: 3 14; stroke-linecap: round; opacity: .55; animation: flow 1.6s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -17; } }
+    .arch-node { cursor: pointer; outline: none; }
+    .arch-node rect { fill: #0d1221; stroke: #1f2a47; stroke-width: 1; transition: stroke .2s, fill .2s; }
+    .arch-node text { fill: #e2e8f0; font: 500 13px 'Inter', system-ui, sans-serif; pointer-events: none; }
+    .arch-node .sub { fill: #64748b; font-size: 10.5px; font-weight: 400; }
+    .arch-node:hover rect, .arch-node:focus-visible rect { stroke: #3b82f6; fill: #101a30; }
+    .arch-node.active rect { stroke: #60a5fa; fill: #12203a; stroke-width: 1.5; filter: drop-shadow(0 0 10px rgba(59,130,246,.35)); }
+    .arch-node.dim { opacity: .35; }
+    .arch-edge.dim, .arch-flow.dim { opacity: .12; }
+    .arch-edge.lit { stroke: #60a5fa; }
+    .arch-flow.lit { opacity: 1; }
+
+    /* Dossier */
+    .dossier { transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.7,.2,1); }
+    .dossier.open { transform: none; }
+    @media (max-width: 1023px) {
+      .dossier { transform: translateY(105%); }
+      .dossier.open { transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { animation: none; opacity: 1; transform: none; }
+      .cue, .arch-flow { animation: none; }
+      .dossier { transition: none; }
+    }
+  </style>
+
+  <nav class="sticky top-0 z-50 border-b border-ops-border bg-ops-bg/85 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 sm:px-8">
+      <a href="#top" class="text-[15px] font-semibold tracking-tight text-slate-50 focus-ring">Ops<span class="text-ops-blue">Mender</span></a>
       <div class="flex items-center gap-1">
+        <a href="#map"      class="nav-link hidden sm:inline">How it works</a>
         <a href="#tiers"    class="nav-link hidden sm:inline">Autonomy</a>
-        <a href="#features" class="nav-link hidden sm:inline">Features</a>
-        <a href="#new"      class="nav-link hidden md:inline">What's new</a>
+        <a href="#screens"  class="nav-link hidden md:inline">Screens</a>
+        <a href="#features" class="nav-link hidden md:inline">Features</a>
         <a href="#install"  class="nav-link hidden sm:inline">Install</a>
-        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer"
-           class="ml-2 rounded-md border border-ops-border px-3 py-1.5 text-sm text-slate-200 transition-colors hover:border-slate-500 hover:text-white focus-ring">
-          GitHub
-        </a>
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="ml-2 rounded-md border border-ops-border px-3 py-1.5 text-sm text-slate-200 transition-colors hover:border-slate-500 hover:text-white focus-ring">GitHub</a>
       </div>
     </div>
   </nav>
 
-  <!-- HERO -->
-  <header id="top" class="mx-auto max-w-6xl px-5 pb-16 pt-20 sm:px-8 sm:pt-28">
-    <p class="mb-5 font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Open source · runs on your servers</p>
-    <h1 class="max-w-4xl text-[2.5rem] font-semibold leading-[1.08] tracking-tight text-slate-50 sm:text-6xl">
-      Page the right people.<br />
-      Let AI investigate.<br />
-      <span class="text-ops-subtle">You decide what runs.</span>
-    </h1>
-    <p class="mt-7 max-w-2xl text-lg leading-relaxed text-ops-subtle">
-      OpsMender is an incident response platform you host yourself. It tracks incidents,
-      pages the on call engineer, and can hand an AI agent the tools to investigate and fix
-      things. A gate in the backend decides what the agent may actually do, and the model
-      has no say in it.
-    </p>
-    <div class="mt-9 flex flex-wrap items-center gap-3">
-      <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer"
-         class="rounded-md bg-slate-50 px-5 py-2.5 text-sm font-medium text-ops-bg transition-colors hover:bg-white focus-ring">
-        View on GitHub
-      </a>
-      <a href="#install"
-         class="rounded-md border border-ops-border px-5 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 focus-ring">
-        Install in a few minutes
-      </a>
-    </div>
-
-    <figure class="mt-16">
-      <div class="overflow-hidden rounded-lg border border-ops-border bg-ops-surface">
-        <img
-          src={`${base}/screenshots/incident-detail.png`}
-          alt="Incident detail showing the AI session, timeline, and alert evidence"
-          width="3200" height="2000"
-          class="block w-full"
-          loading="eager"
-        />
+  <!-- OPENING -->
+  <header id="top" class="relative flex min-h-[92vh] items-center overflow-hidden">
+    <canvas id="field" class="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true"></canvas>
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_45%,rgba(59,130,246,0.14),transparent_70%)]" aria-hidden="true"></div>
+    <div class="relative mx-auto w-full max-w-7xl px-5 py-24 sm:px-8">
+      <p class="reveal reveal-1 font-mono text-xs uppercase tracking-[0.2em] text-ops-subtle">Open source · runs on your servers</p>
+      <h1 class="mt-6 max-w-4xl text-[2.75rem] font-semibold leading-[1.05] tracking-tight text-slate-50 sm:text-6xl lg:text-7xl">
+        <span class="reveal reveal-1 block">Page the right people.</span>
+        <span class="reveal reveal-2 block">Let AI investigate.</span>
+        <span class="reveal reveal-3 block text-ops-subtle">You decide what runs.</span>
+      </h1>
+      <p class="reveal reveal-4 mt-8 max-w-2xl text-lg leading-relaxed text-ops-subtle">
+        OpsMender is an incident response platform you host yourself. It tracks incidents, pages the
+        on call engineer, and can hand an AI agent the tools to investigate and fix things. A gate in
+        the backend decides what the agent may actually do, and the model has no say in it.
+      </p>
+      <div class="reveal reveal-5 mt-9 flex flex-wrap items-center gap-3">
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="rounded-md bg-slate-50 px-5 py-2.5 text-sm font-medium text-ops-bg transition-colors hover:bg-white focus-ring">View on GitHub</a>
+        <a href="#map" class="rounded-md border border-ops-border bg-ops-bg/40 px-5 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 focus-ring">See how it works</a>
       </div>
-      <figcaption class="mt-3 text-sm text-ops-muted">
-        An incident with its AI session, timeline, and alert evidence. Real screens, not mockups.
-      </figcaption>
-    </figure>
-
-    <dl class="mt-14 grid grid-cols-2 gap-8 border-t border-ops-border pt-8 sm:grid-cols-4">
-      {stats.map(([value, label]) => (
-        <div>
-          <dt class="text-2xl font-semibold tracking-tight text-slate-50">{value}</dt>
-          <dd class="mt-1 text-sm text-ops-muted">{label}</dd>
-        </div>
-      ))}
-    </dl>
+      <dl class="reveal reveal-5 mt-16 grid max-w-3xl grid-cols-2 gap-8 border-t border-ops-border/70 pt-8 sm:grid-cols-4">
+        {stats.map(([value, label]) => (
+          <div>
+            <dt class="text-2xl font-semibold tracking-tight text-slate-50">{value}</dt>
+            <dd class="mt-1 text-sm text-ops-muted">{label}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+    <a href="#map" class="cue absolute bottom-6 left-1/2 -translate-x-1/2 text-ops-muted focus-ring" aria-label="Scroll to how it works">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+    </a>
   </header>
+
+  <!-- ARCHITECTURE MAP -->
+  <section id="map" class="scroll-mt-20 border-t border-ops-border">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
+      <div class="flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">How it works</p>
+          <h2 class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">The whole system on one map</h2>
+          <p class="mt-4 max-w-2xl text-ops-subtle">Alerts come in on the top row. The agent and its tools sit in the middle. Everything it does is recorded at the bottom. Click any component to open its dossier.</p>
+        </div>
+        <p class="hidden font-mono text-[11px] text-ops-muted lg:block">click · explore &nbsp; ← → · move &nbsp; esc · close</p>
+      </div>
+
+      <div class="relative mt-10">
+        <div class="overflow-x-auto rounded-lg border border-ops-border bg-ops-surface/60">
+          <svg id="arch" viewBox="0 0 1200 600" class="block min-w-[880px] w-full" role="group" aria-label="OpsMender architecture map"></svg>
+        </div>
+
+        <aside id="dossier" class="dossier fixed inset-x-0 bottom-0 z-40 max-h-[80vh] overflow-y-auto border-t border-ops-border bg-ops-surface shadow-2xl lg:bottom-0 lg:left-auto lg:right-0 lg:top-[53px] lg:max-h-none lg:w-[400px] lg:border-l lg:border-t-0" aria-live="polite" aria-label="Component details" hidden>
+          <div class="sticky top-0 flex items-center justify-between border-b border-ops-border bg-ops-surface px-6 py-4">
+            <span id="d-kind" class="font-mono text-[11px] uppercase tracking-[0.18em] text-ops-blue"></span>
+            <button id="d-close" class="rounded p-1 text-ops-subtle hover:text-white focus-ring" aria-label="Close">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18 18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="px-6 py-6">
+            <h3 id="d-title" class="text-2xl font-semibold tracking-tight text-slate-50"></h3>
+            <p id="d-summary" class="mt-3 leading-relaxed text-ops-subtle"></p>
+            <h4 class="mt-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-ops-muted">What it does</h4>
+            <ul id="d-points" class="mt-3 space-y-2.5 text-sm leading-relaxed text-slate-300"></ul>
+            <h4 class="mt-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-ops-muted">In the code</h4>
+            <p id="d-code" class="mt-2 font-mono text-xs leading-relaxed text-ops-subtle"></p>
+            <h4 class="mt-7 text-[11px] font-semibold uppercase tracking-[0.16em] text-ops-muted">Connected to</h4>
+            <div id="d-links" class="mt-3 flex flex-wrap gap-2"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
 
   <!-- TIERS -->
   <section id="tiers" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
       <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Autonomy</p>
-      <h2 class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
-        Three tiers. One is picked per session.
-      </h2>
-      <p class="mt-4 max-w-2xl text-ops-subtle">
-        The tier is enforced in the backend before any tool call runs, so the agent cannot talk its way past it.
-      </p>
-
+      <h2 class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Three tiers. One is picked per session.</h2>
+      <p class="mt-4 max-w-2xl text-ops-subtle">The tier is enforced in the backend before any tool call runs, so the agent cannot talk its way past it.</p>
       <div class="mt-12 grid gap-px overflow-hidden rounded-lg border border-ops-border bg-ops-border md:grid-cols-3">
         {tiers.map((t) => (
           <div class="relative bg-ops-bg p-7">
@@ -165,40 +213,21 @@ const shots = [
           </div>
         ))}
       </div>
-    </div>
-  </section>
 
-  <!-- GATE -->
-  <section id="gate" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto grid max-w-6xl gap-12 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-2 lg:items-start">
-      <div>
-        <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">How it stays safe</p>
-        <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
-          Skills describe the job.<br />The gate enforces it.
-        </h2>
-        <div class="mt-6 space-y-4 text-ops-subtle">
-          <p>
-            Every operation in a skill file says what it may do at each tier. That policy is checked in code
-            before a tool call runs. If a prompt injection tells the agent to drop a database, the gate refuses
-            the call. The model never gets a vote.
-          </p>
-          <p>
-            Anything the skill does not name is denied. Policy you write can make a connector stricter than
-            its baseline but never looser. Malformed policy is rejected with the line that broke it.
-          </p>
-          <p>
-            Tools can come from MCP servers you run, from native connectors, or both. Either way they go
-            through the same gate, the same approvals, and the same audit log.
-          </p>
+      <div class="mt-10 grid gap-10 lg:grid-cols-2 lg:items-start">
+        <div>
+          <h3 class="text-xl font-semibold text-slate-50">Skills describe the job. The gate enforces it.</h3>
+          <div class="mt-4 space-y-4 text-ops-subtle">
+            <p>Every operation in a skill file says what it may do at each tier. That policy is checked in code before a tool call runs. If a prompt injection tells the agent to drop a database, the gate refuses the call. The model never gets a vote.</p>
+            <p>Anything the skill does not name is denied. Policy you write can make a connector stricter than its baseline but never looser. Malformed policy is rejected with the line that broke it.</p>
+          </div>
         </div>
-      </div>
-
-      <div class="overflow-hidden rounded-lg border border-ops-border bg-ops-surface lg:sticky lg:top-20">
-        <div class="flex items-center justify-between border-b border-ops-border px-4 py-2.5">
-          <span class="font-mono text-xs text-ops-subtle">SKILL.md</span>
-          <span class="font-mono text-[11px] text-ops-muted">excerpt</span>
-        </div>
-        <pre class="overflow-x-auto p-5 text-[12.5px] leading-relaxed"><code class="text-slate-300">{`tier_policies:
+        <div class="overflow-hidden rounded-lg border border-ops-border bg-ops-surface">
+          <div class="flex items-center justify-between border-b border-ops-border px-4 py-2.5">
+            <span class="font-mono text-xs text-ops-subtle">SKILL.md</span>
+            <span class="font-mono text-[11px] text-ops-muted">excerpt</span>
+          </div>
+          <pre class="overflow-x-auto p-5 text-[12.5px] leading-relaxed"><code class="text-slate-300">{`tier_policies:
   read: &read
     T0: {enabled: true,  mode: autonomous}
     T1: {enabled: true,  mode: autonomous}
@@ -212,39 +241,62 @@ operations:
   - tool: get_pod_logs
     classification: safe
     tiers: *read
-
   - tool: scale_deployment
     classification: caution
     reversible: true
     tiers: *reversible_write
-
   - tool: exec_*
     deny: true`}</code></pre>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- SCREENSHOTS -->
+  <!-- SCREENS -->
   <section id="screens" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
       <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Product</p>
       <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">What it looks like</h2>
-      <div class="mt-10 grid gap-8 md:grid-cols-3">
-        {shots.map((s) => (
-          <figure>
-            <a href={`${base}/screenshots/${s.file}`} target="_blank" rel="noopener" class="block overflow-hidden rounded-lg border border-ops-border bg-ops-surface transition-colors hover:border-slate-500 focus-ring">
-              <img src={`${base}/screenshots/${s.file}`} alt={s.alt} width="3200" height="2000" class="block aspect-[16/10] w-full object-cover object-top" loading="lazy" />
-            </a>
-            <figcaption class="mt-3 text-sm leading-relaxed text-ops-subtle">{s.caption}</figcaption>
-          </figure>
-        ))}
+      <p class="mt-4 max-w-2xl text-ops-subtle">Real screens from a seeded workspace. Pick one below, or click the large image to see it at full size.</p>
+
+      <div id="viewer" data-base={base} class="mt-10">
+        <button id="v-open" class="block w-full overflow-hidden rounded-lg border border-ops-border bg-ops-surface text-left transition-colors hover:border-slate-500 focus-ring" aria-label="Open screenshot at full size">
+          <img id="v-img" src={`${base}/screenshots/${shots[0].file}`} alt={shots[0].title} width="3200" height="2000" class="block w-full" loading="eager" />
+        </button>
+        <div class="mt-4 flex items-start justify-between gap-6">
+          <div>
+            <p id="v-title" class="text-base font-semibold text-slate-50">{shots[0].title}</p>
+            <p id="v-cap" class="mt-1 text-sm text-ops-subtle">{shots[0].caption}</p>
+          </div>
+          <p id="v-count" class="shrink-0 font-mono text-xs text-ops-muted">1 / {shots.length}</p>
+        </div>
+        <div id="v-thumbs" class="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9" role="tablist" aria-label="Screenshots">
+          {shots.map((s, i) => (
+            <button role="tab" aria-selected={i === 0 ? 'true' : 'false'} data-i={i} data-file={s.file} data-title={s.title} data-cap={s.caption}
+              class={`overflow-hidden rounded-md border transition-colors focus-ring ${i === 0 ? 'border-ops-blue' : 'border-ops-border hover:border-slate-500'}`} aria-label={s.title}>
+              <img src={`${base}/screenshots/${s.file}`} alt="" width="640" height="400" class="block aspect-[16/10] w-full object-cover object-top" loading="lazy" />
+            </button>
+          ))}
+        </div>
       </div>
+    </div>
+
+    <div id="lightbox" class="fixed inset-0 z-[60] hidden items-center justify-center bg-ops-bg/95 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Screenshot">
+      <button id="lb-close" class="absolute right-4 top-4 rounded p-2 text-ops-subtle hover:text-white focus-ring" aria-label="Close">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+      <button id="lb-prev" class="absolute left-3 top-1/2 -translate-y-1/2 rounded p-2 text-ops-subtle hover:text-white focus-ring" aria-label="Previous"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m15 6-6 6 6 6"/></svg></button>
+      <button id="lb-next" class="absolute right-3 top-1/2 -translate-y-1/2 rounded p-2 text-ops-subtle hover:text-white focus-ring" aria-label="Next"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg></button>
+      <figure class="max-h-full max-w-[1600px]">
+        <img id="lb-img" src="" alt="" class="max-h-[85vh] w-auto rounded-md border border-ops-border" />
+        <figcaption id="lb-cap" class="mt-3 text-center text-sm text-ops-subtle"></figcaption>
+      </figure>
     </div>
   </section>
 
   <!-- FEATURES -->
   <section id="features" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
       <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Features</p>
       <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">What comes in the box</h2>
       <p class="mt-4 max-w-2xl text-ops-subtle">Alert intake through to the postmortem. No subscription, and no part of it you cannot read.</p>
@@ -261,12 +313,10 @@ operations:
 
   <!-- WHAT'S NEW -->
   <section id="new" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
       <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Version 1.1.0</p>
       <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">What's new</h2>
-      <p class="mt-4 max-w-2xl text-ops-subtle">
-        Three things worth knowing about. The <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="text-slate-200 underline underline-offset-4 decoration-ops-border hover:decoration-slate-400 focus-ring">changelog</a> has the rest.
-      </p>
+      <p class="mt-4 max-w-2xl text-ops-subtle">Three things worth knowing about. The <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="text-slate-200 underline decoration-ops-border underline-offset-4 hover:decoration-slate-400 focus-ring">changelog</a> has the rest.</p>
       <ol class="mt-12 grid gap-10 md:grid-cols-3">
         {whatsNew.map(([title, desc], i) => (
           <li>
@@ -281,11 +331,10 @@ operations:
 
   <!-- INSTALL -->
   <section id="install" class="scroll-mt-20 border-t border-ops-border">
-    <div class="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
       <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Install</p>
       <h2 class="mt-3 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Running in a few minutes</h2>
       <p class="mt-4 max-w-2xl text-ops-subtle">One compose file. Backend and frontend in a single container, with Postgres alongside it.</p>
-
       <div class="mt-10 overflow-hidden rounded-lg border border-ops-border bg-ops-surface">
         <pre class="overflow-x-auto p-6 font-mono text-[13px] leading-7"><code><span class="text-ops-muted"># Clone it</span>
 <span class="text-slate-200">git clone https://github.com/SpicyDaemon/OpsMender-AI</span>
@@ -299,17 +348,29 @@ operations:
 
 <span class="text-ops-muted"># Open http://localhost:8000 and sign in with the admin from your .env</span></code></pre>
       </div>
-
       <p class="mt-6 text-sm text-ops-muted">
         Production mode requires a real JWT secret and real bootstrap credentials. Weak defaults are refused at startup.
         Prefer a binary? Linux and Windows builds are on the
-        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer" class="text-slate-300 underline underline-offset-4 decoration-ops-border hover:decoration-slate-400 focus-ring">releases page</a>.
+        <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer" class="text-slate-300 underline decoration-ops-border underline-offset-4 hover:decoration-slate-400 focus-ring">releases page</a>.
       </p>
     </div>
   </section>
 
+  <!-- CLOSE -->
+  <section class="border-t border-ops-border">
+    <div class="relative mx-auto max-w-7xl overflow-hidden px-5 py-24 text-center sm:px-8">
+      <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_60%_at_50%_100%,rgba(59,130,246,0.12),transparent_70%)]" aria-hidden="true"></div>
+      <h2 class="relative text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Try it on a laptop this afternoon.</h2>
+      <p class="relative mx-auto mt-4 max-w-xl text-ops-subtle">Start at Tier 2, where the agent can only advise. Turn the dial up when you trust it. Everything it does is in the audit log either way.</p>
+      <div class="relative mt-8 flex flex-wrap items-center justify-center gap-3">
+        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="rounded-md bg-slate-50 px-5 py-2.5 text-sm font-medium text-ops-bg transition-colors hover:bg-white focus-ring">View on GitHub</a>
+        <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" class="rounded-md border border-ops-border px-5 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 focus-ring">Read the docs</a>
+      </div>
+    </div>
+  </section>
+
   <footer class="border-t border-ops-border">
-    <div class="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center sm:px-8">
+    <div class="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center sm:px-8">
       <div>
         <span class="text-[15px] font-semibold tracking-tight text-slate-200">Ops<span class="text-ops-blue">Mender</span></span>
         <p class="mt-1 text-sm text-ops-muted">Incident response you run yourself.</p>
@@ -323,4 +384,244 @@ operations:
       </nav>
     </div>
   </footer>
+
+  <script>
+    // ---------- Opening: particle field ----------
+    (() => {
+      const c = document.getElementById('field') as HTMLCanvasElement | null;
+      if (!c) return;
+      const ctx = c.getContext('2d')!;
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let w = 0, h = 0, dpr = 1, raf = 0, visible = true;
+      type P = { x: number; y: number; vx: number; vy: number; r: number; a: number };
+      let pts: P[] = [];
+      const mouse = { x: -1e4, y: -1e4 };
+
+      function size() {
+        dpr = Math.min(devicePixelRatio || 1, 2);
+        w = c.clientWidth; h = c.clientHeight;
+        c.width = w * dpr; c.height = h * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const n = Math.round(Math.min(220, (w * h) / 9000));
+        pts = Array.from({ length: n }, () => ({
+          x: Math.random() * w, y: Math.random() * h,
+          vx: (Math.random() - .5) * .12, vy: (Math.random() - .5) * .12,
+          r: Math.random() * 1.3 + .3, a: Math.random() * .5 + .25,
+        }));
+      }
+      function frame() {
+        ctx.clearRect(0, 0, w, h);
+        for (const p of pts) {
+          if (!reduce) {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < -5) p.x = w + 5; else if (p.x > w + 5) p.x = -5;
+            if (p.y < -5) p.y = h + 5; else if (p.y > h + 5) p.y = -5;
+          }
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(148,163,184,${p.a})`; ctx.fill();
+        }
+        // faint links near the cursor, the constellation touch
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          const dm = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+          if (dm > 160) continue;
+          for (let j = i + 1; j < pts.length; j++) {
+            const q = pts[j];
+            const d = Math.hypot(p.x - q.x, p.y - q.y);
+            if (d < 110) {
+              ctx.strokeStyle = `rgba(59,130,246,${(1 - d / 110) * .35 * (1 - dm / 160)})`;
+              ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+            }
+          }
+        }
+        if (!reduce && visible) raf = requestAnimationFrame(frame);
+      }
+      size(); frame();
+      addEventListener('resize', () => { size(); if (reduce) frame(); });
+      c.parentElement!.addEventListener('mousemove', (e) => { const r = c.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; });
+      c.parentElement!.addEventListener('mouseleave', () => { mouse.x = mouse.y = -1e4; });
+      new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible && !reduce && !raf) raf = requestAnimationFrame(frame); if (!visible) { cancelAnimationFrame(raf); raf = 0; } }).observe(c);
+    })();
+
+    // ---------- Architecture map ----------
+    (() => {
+      const svg = document.getElementById('arch');
+      if (!svg) return;
+      type Node = { id: string; x: number; y: number; label: string; sub: string; kind: string; summary: string; points: string[]; code: string };
+      const W = 172, H = 58;
+      const nodes: Node[] = [
+        { id: 'alerts', x: 110, y: 90, label: 'Alert sources', sub: 'monitoring, webhooks, API', kind: 'Intake',
+          summary: 'Anything that can send an HTTP request can open an incident.',
+          points: ['Per service intake URLs, so an alert lands on the right team without encoding the service in the payload.', 'Provider adapters normalise payloads from cloud and monitoring tools into one shape.', 'Named, revocable API tokens for scripts and CI, scoped by role.'],
+          code: 'backend/ingest/ · backend/api/routes/ingest.py' },
+        { id: 'ingest', x: 330, y: 90, label: 'Ingest', sub: 'dedup, grouping, quiet hours', kind: 'Intake',
+          summary: 'Decides whether an alert becomes a new incident, joins an open one, or stays quiet.',
+          points: ['Fingerprint deduplication, so a re firing alert updates the incident it already opened.', 'Similar alert grouping per service folds related alerts into the open incident instead of paging again.', 'Flapping detection suppresses repeat pages during fire and clear storms. P0 always pages.', 'Maintenance windows silence matching alerts for their duration.'],
+          code: 'backend/ingest/service.py · backend/ingest/noise.py' },
+        { id: 'incident', x: 560, y: 90, label: 'Incident', sub: 'P0 to P3, timeline, merge', kind: 'Core',
+          summary: 'The record everything else hangs off.',
+          points: ['Priority P0 to P3, status, owner, and a timeline of every action by people and by the agent.', 'Combine duplicates into one primary. The merged row is kept so its audit trail and fingerprint survive.', 'Comments, assignment, and a link to every session that ran on it.'],
+          code: 'backend/db/models.py · backend/db/repos.py' },
+        { id: 'paging', x: 790, y: 90, label: 'Paging engine', sub: 'rosters, chains, calendar', kind: 'Response',
+          summary: 'Works out who is on call right now and keeps escalating until someone acknowledges.',
+          points: ['Rosters with rotations, overnight windows, and one click coverage overrides.', 'Escalation chains define who is next when nobody acknowledges.', 'An acknowledgement locks the incident to that responder. If they go quiet for fifteen minutes, the chain resumes.', 'An on call calendar with time zone aware shifts.'],
+          code: 'backend/paging/on_call.py' },
+        { id: 'notify', x: 1030, y: 90, label: 'Notifications', sub: '20 platforms, SMS, voice', kind: 'Response',
+          summary: 'Reaches people where they already are.',
+          points: ['Twenty platforms including Slack, Teams, Discord, Telegram, Matrix, Google Chat, and email.', 'Slack, Teams, and Discord get buttons: acknowledge, resolve, escalate, start a session. Every press is verified and audited.', 'SMS and voice calls through Twilio. The voice menu is 1 acknowledge, 2 escalate, 3 resolve.', 'Every message carries an authenticated link back to the incident.'],
+          code: 'backend/bots/ · backend/bots/capabilities.py' },
+        { id: 'models', x: 110, y: 300, label: 'Models', sub: 'bring your own', kind: 'AI',
+          summary: 'Seven providers, and the keys never leave your deployment.',
+          points: ['Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex AI, Ollama, or any OpenAI compatible endpoint.', 'A per service model list narrows what an operator can pick for a session. The workspace default is always available.', 'Test the connection from the settings page before anyone depends on it.'],
+          code: 'backend/llm/factory.py · backend/llm/registry.py' },
+        { id: 'session', x: 330, y: 300, label: 'AI session', sub: 'observe, diagnose, plan, act', kind: 'AI',
+          summary: 'A structured workflow, not a free running chat.',
+          points: ['Observe, diagnose, plan, gate, act, report. The same graph for every session in the workspace.', 'Operators watch it live, chat with it, approve or reject proposals, and stop it at any time.', 'Sessions are capacity aware. A priority queue decides which incident gets a slot first.', 'A session can be taken over at a different tier without losing its history.'],
+          code: 'backend/agent/graph.py · backend/agent/nodes.py · backend/api/session_runner.py' },
+        { id: 'gate', x: 560, y: 300, label: 'Tier gate', sub: 'enforced in code', kind: 'Safety',
+          summary: 'The part the model cannot argue with.',
+          points: ['Checks every tool call, in this order: the deny list, the general purpose command guard, the explicit per tier policy, then the Tier 0 reversibility floor.', 'No policy for an operation means it is denied. Malformed policy fails closed.', 'Tier 0 adds a sandbox floor, hard time limits, and a recorded way to undo each change.', 'The gate is a node in the workflow graph, not a prompt. Model output cannot skip it.'],
+          code: 'backend/tiers/enforcement.py · backend/tiers/sandbox.py' },
+        { id: 'mcp', x: 790, y: 240, label: 'MCP servers', sub: 'yours, local or remote', kind: 'Tools',
+          summary: 'The general purpose way to give the agent hands.',
+          points: ['Run any MCP server: local over stdio, or remote over HTTP with OAuth 2.1.', 'Each service has a strict allowlist of servers. Empty means none.', 'Import server definitions from the config files of tools you already use.'],
+          code: 'backend/mcp/' },
+        { id: 'connectors', x: 790, y: 360, label: 'Native connectors', sub: '26 kinds', kind: 'Tools',
+          summary: 'Built in integrations that need no MCP server at all.',
+          points: ['GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD, Terraform Cloud, and more. Twenty six kinds.', 'Credentials are encrypted at rest. Each service allowlists which connectors it may use.', 'Every capability carries an explicit tier policy and passes through the same gate as an MCP tool.', 'Two way ticket sync with Jira and ServiceNow.'],
+          code: 'backend/integrations/registry.py · backend/integrations/tools.py' },
+        { id: 'skills', x: 330, y: 510, label: 'Skills', sub: 'SKILL.md, your policy', kind: 'Safety',
+          summary: 'A file you own that says what each tool may do at each tier.',
+          points: ['Bind a skill to an MCP server or a native connector.', 'Every operation declares its behaviour at Tier 0, 1, and 2. Free form instructions per tier guide the model but cannot widen permissions.', 'Skill Studio discovers the tools a source offers, validates the file, and shows a policy diff before you save.', 'Skill policy can only make a connector stricter than its baseline.'],
+          code: 'backend/skills/parser.py · examples/SKILL.md' },
+        { id: 'people', x: 110, y: 510, label: 'People and access', sub: 'admin, operator, viewer', kind: 'Access',
+          summary: 'Three roles that actually mean something.',
+          points: ['Admins configure. Operators respond and run sessions. Viewers read and cannot write.', 'Email and password to start. OIDC, SAML, and TOTP when you need them.', 'Every approval, override, and session start is attributed to a person.'],
+          code: 'backend/auth/' },
+        { id: 'memory', x: 560, y: 510, label: 'Memory', sub: 'what past incidents taught', kind: 'Knowledge',
+          summary: 'The agent remembers what worked last time.',
+          points: ['Findings from earlier incidents are recalled into new sessions on the same service.', 'Memory is bounded and tagged by severity so recall stays relevant.', 'Operators can add, edit, or remove memories by hand.'],
+          code: 'backend/memory/' },
+        { id: 'postmortem', x: 790, y: 510, label: 'Postmortem', sub: 'drafted from the record', kind: 'Knowledge',
+          summary: 'A structured draft, ready to edit, before anyone has to start from a blank page.',
+          points: ['Built from the incident timeline and the session history.', 'Edit it in place, save it, and export it as Markdown.', 'Nothing in it is invented. Every section points back at what happened.'],
+          code: 'backend/api/routes/incidents.py · backend/db/repos.py' },
+        { id: 'audit', x: 1030, y: 400, label: 'Audit log', sub: 'every decision, every call', kind: 'Record',
+          summary: 'If it happened, it is here.',
+          points: ['Every tool call, gate decision, approval, and session event, with who or what caused it.', 'Stored in Postgres. Retention policy with archival to S3 compatible storage.', 'Filter by session, tier, type, or time. Group by session to read an incident as a story.'],
+          code: 'backend/audit/' },
+      ];
+      const edges: [string, string][] = [
+        ['alerts','ingest'], ['ingest','incident'], ['incident','paging'], ['paging','notify'],
+        ['incident','session'], ['models','session'], ['session','gate'], ['gate','mcp'], ['gate','connectors'],
+        ['skills','gate'], ['people','session'], ['session','memory'], ['memory','postmortem'], ['gate','audit'], ['notify','audit'],
+      ];
+      const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+      const NS = 'http://www.w3.org/2000/svg';
+      const el = (t: string, a: Record<string, string> = {}) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+      function anchor(a: Node, b: Node) {
+        // leave from the side that faces the other node
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.abs(dx) > Math.abs(dy)) return { x: a.x + Math.sign(dx) * W / 2, y: a.y };
+        return { x: a.x, y: a.y + Math.sign(dy) * H / 2 };
+      }
+      function path(a: Node, b: Node) {
+        const p = anchor(a, b), q = anchor(b, a);
+        const horiz = Math.abs(b.x - a.x) > Math.abs(b.y - a.y);
+        const c1 = horiz ? { x: (p.x + q.x) / 2, y: p.y } : { x: p.x, y: (p.y + q.y) / 2 };
+        const c2 = horiz ? { x: (p.x + q.x) / 2, y: q.y } : { x: q.x, y: (p.y + q.y) / 2 };
+        return `M${p.x},${p.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${q.x},${q.y}`;
+      }
+
+      const gE = el('g'), gF = el('g'), gN = el('g');
+      const edgeEls: { a: string; b: string; base: SVGElement; flow: SVGElement }[] = [];
+      for (const [a, b] of edges) {
+        const d = path(byId[a], byId[b]);
+        const base = el('path', { d, class: 'arch-edge' });
+        const flow = el('path', { d, class: 'arch-flow' });
+        gE.appendChild(base); gF.appendChild(flow);
+        edgeEls.push({ a, b, base, flow });
+      }
+      const nodeEls: Record<string, SVGGElement> = {};
+      for (const n of nodes) {
+        const g = el('g', { class: 'arch-node', role: 'button', tabindex: '0', 'data-id': n.id, 'aria-label': `${n.label}: ${n.sub}` }) as SVGGElement;
+        g.appendChild(el('rect', { x: String(n.x - W / 2), y: String(n.y - H / 2), width: String(W), height: String(H), rx: '8' }));
+        const t = el('text', { x: String(n.x - W / 2 + 14), y: String(n.y - 4) }); t.textContent = n.label;
+        const s = el('text', { x: String(n.x - W / 2 + 14), y: String(n.y + 14), class: 'sub' }); s.textContent = n.sub;
+        g.appendChild(t); g.appendChild(s);
+        gN.appendChild(g); nodeEls[n.id] = g;
+      }
+      svg.append(gE, gF, gN);
+
+      const dossier = document.getElementById('dossier')!;
+      const set = (id: string, v: string) => { document.getElementById(id)!.textContent = v; };
+      let active: string | null = null;
+
+      function open(id: string) {
+        const n = byId[id]; active = id;
+        set('d-kind', n.kind); set('d-title', n.label); set('d-summary', n.summary); set('d-code', n.code);
+        const ul = document.getElementById('d-points')!; ul.innerHTML = '';
+        for (const p of n.points) { const li = document.createElement('li'); li.className = 'flex gap-2.5'; li.innerHTML = `<span class="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ops-blue"></span><span>${p}</span>`; ul.appendChild(li); }
+        const links = document.getElementById('d-links')!; links.innerHTML = '';
+        const nb = new Set<string>(); for (const e of edges) { if (e[0] === id) nb.add(e[1]); if (e[1] === id) nb.add(e[0]); }
+        for (const m of nb) { const b = document.createElement('button'); b.className = 'rounded-md border border-ops-border px-2.5 py-1 text-xs text-slate-200 hover:border-ops-blue focus-ring'; b.textContent = byId[m].label; b.onclick = () => open(m); links.appendChild(b); }
+        for (const k in nodeEls) nodeEls[k].classList.toggle('active', k === id), nodeEls[k].classList.toggle('dim', k !== id && !nb.has(k));
+        for (const e of edgeEls) { const lit = e.a === id || e.b === id; e.base.classList.toggle('lit', lit); e.base.classList.toggle('dim', !lit); e.flow.classList.toggle('lit', lit); e.flow.classList.toggle('dim', !lit); }
+        dossier.hidden = false; requestAnimationFrame(() => dossier.classList.add('open'));
+      }
+      function close() {
+        active = null; dossier.classList.remove('open');
+        setTimeout(() => { if (!active) dossier.hidden = true; }, 350);
+        for (const k in nodeEls) nodeEls[k].classList.remove('active', 'dim');
+        for (const e of edgeEls) { e.base.classList.remove('lit', 'dim'); e.flow.classList.remove('lit', 'dim'); }
+      }
+      gN.addEventListener('click', (ev) => { const g = (ev.target as Element).closest('.arch-node') as HTMLElement | null; if (g) open(g.dataset.id!); });
+      gN.addEventListener('keydown', (ev) => {
+        const g = (ev.target as Element).closest('.arch-node') as HTMLElement | null; if (!g) return;
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(g.dataset.id!); }
+      });
+      document.getElementById('d-close')!.addEventListener('click', close);
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && active) { close(); nodeEls[active!]?.focus(); return; }
+        if (!active || !['ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
+        ev.preventDefault();
+        const i = nodes.findIndex(n => n.id === active);
+        const j = (i + (ev.key === 'ArrowRight' ? 1 : nodes.length - 1)) % nodes.length;
+        open(nodes[j].id); nodeEls[nodes[j].id].focus();
+      });
+      document.addEventListener('click', (ev) => { if (active && !dossier.contains(ev.target as Node) && !svg.contains(ev.target as Node)) close(); });
+    })();
+
+    // ---------- Screenshot viewer + lightbox ----------
+    (() => {
+      const root = document.getElementById('viewer'); if (!root) return;
+      const base = root.dataset.base || '';
+      const thumbs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role=tab]'));
+      const img = document.getElementById('v-img') as HTMLImageElement;
+      const lb = document.getElementById('lightbox')!, lbImg = document.getElementById('lb-img') as HTMLImageElement;
+      let i = 0;
+      function show(n: number) {
+        i = (n + thumbs.length) % thumbs.length; const t = thumbs[i];
+        img.src = `${base}/screenshots/${t.dataset.file}`; img.alt = t.dataset.title || '';
+        document.getElementById('v-title')!.textContent = t.dataset.title || '';
+        document.getElementById('v-cap')!.textContent = t.dataset.cap || '';
+        document.getElementById('v-count')!.textContent = `${i + 1} / ${thumbs.length}`;
+        thumbs.forEach((b, k) => { b.setAttribute('aria-selected', String(k === i)); b.classList.toggle('border-ops-blue', k === i); b.classList.toggle('border-ops-border', k !== i); });
+        if (!lb.classList.contains('hidden')) { lbImg.src = img.src; lbImg.alt = img.alt; document.getElementById('lb-cap')!.textContent = `${t.dataset.title}. ${t.dataset.cap}`; }
+      }
+      thumbs.forEach((b, k) => b.addEventListener('click', () => show(k)));
+      function openLb() { lb.classList.remove('hidden'); lb.classList.add('flex'); show(i); document.body.style.overflow = 'hidden'; (document.getElementById('lb-close') as HTMLElement).focus(); }
+      function closeLb() { lb.classList.add('hidden'); lb.classList.remove('flex'); document.body.style.overflow = ''; (document.getElementById('v-open') as HTMLElement).focus(); }
+      document.getElementById('v-open')!.addEventListener('click', openLb);
+      document.getElementById('lb-close')!.addEventListener('click', closeLb);
+      document.getElementById('lb-prev')!.addEventListener('click', () => show(i - 1));
+      document.getElementById('lb-next')!.addEventListener('click', () => show(i + 1));
+      lb.addEventListener('click', (e) => { if (e.target === lb) closeLb(); });
+      document.addEventListener('keydown', (e) => {
+        if (lb.classList.contains('hidden')) return;
+        if (e.key === 'Escape') closeLb(); else if (e.key === 'ArrowLeft') show(i - 1); else if (e.key === 'ArrowRight') show(i + 1);
+      });
+    })();
+  </script>
 </Layout>

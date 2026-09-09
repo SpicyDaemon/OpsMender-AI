@@ -366,16 +366,16 @@ operations:
 
       <h3 class="mt-14 text-xl font-semibold text-slate-50">Pages out to where you already are</h3>
       <p class="mt-2 max-w-2xl text-sm text-ops-subtle">
-        Twenty ways to reach people, each with a link straight to the incident. The three outlined in blue get buttons,
-        so you can acknowledge, escalate, or start a session without leaving the chat.
+        Twenty ways to reach people, each with a link straight to the incident. Slack, Teams, and Discord get a rich card
+        with buttons, so you can acknowledge, escalate, or start a session without leaving the chat.
       </p>
       <ul class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="Notification platforms">
         {platforms.map((p) => (
-          <li class={`flex items-start gap-3.5 rounded-lg border bg-ops-surface/60 p-4 transition-colors ${p.buttons ? 'border-ops-blue/50 hover:border-ops-blue' : 'border-ops-border hover:border-slate-500'}`}>
+          <li class="flex items-start gap-3.5 rounded-lg border border-ops-border bg-ops-surface/60 p-4 transition-colors hover:border-slate-500">
             <span class="mt-0.5 shrink-0 text-slate-200" set:html={p.svg} />
             <span class="min-w-0">
               <span class="block text-sm font-semibold text-slate-50">{p.name}</span>
-              <span class={`mt-0.5 block text-xs leading-relaxed ${p.buttons ? 'text-ops-blue' : 'text-ops-muted'}`}>{p.note}</span>
+              <span class="mt-0.5 block text-xs leading-relaxed text-ops-muted">{p.note}</span>
             </span>
           </li>
         ))}

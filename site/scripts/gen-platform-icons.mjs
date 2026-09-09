@@ -31,9 +31,9 @@ const LARK = `<svg width="28" height="28" viewBox="0 0 32 25.37" aria-hidden="tr
 // Order is the order on the page. `buttons` marks platforms with verified
 // interactive actions (see backend/bots/capabilities.py).
 const platforms = [
-  { id: 'slack',        name: 'Slack',            note: 'Buttons to act on',           svg: SLACK, buttons: true },
-  { id: 'teams',        name: 'Microsoft Teams',  note: 'Buttons to act on',           svg: render(bi.BiLogoMicrosoftTeams, '#6264A7'), buttons: true },
-  { id: 'discord',      name: 'Discord',          note: 'Buttons to act on',           svg: render(si.SiDiscord, '#5865F2'), buttons: true },
+  { id: 'slack',        name: 'Slack',            note: 'Rich card with buttons to act on',           svg: SLACK, buttons: true },
+  { id: 'teams',        name: 'Microsoft Teams',  note: 'Rich card with buttons to act on',           svg: render(bi.BiLogoMicrosoftTeams, '#6264A7'), buttons: true },
+  { id: 'discord',      name: 'Discord',          note: 'Rich card with buttons to act on',           svg: render(si.SiDiscord, '#5865F2'), buttons: true },
   { id: 'telegram',     name: 'Telegram',         note: 'Channel or direct message',   svg: render(si.SiTelegram, '#26A5E4') },
   { id: 'signal',       name: 'Signal',           note: 'Direct message',              svg: render(si.SiSignal, '#3A76F0') },
   { id: 'whatsapp',     name: 'WhatsApp',         note: 'Direct message',              svg: render(si.SiWhatsapp, '#25D366') },
@@ -76,7 +76,7 @@ const sources = [
   { id: 'bugsnag',         name: 'Bugsnag',                 note: 'Errors',                    svg: glyph('Bug') },
   { id: 'rollbar',         name: 'Rollbar',                 note: 'Occurrences',               svg: render(si.SiRollbar) },
   { id: 'generic',         name: 'Generic webhook',         note: 'Any JSON payload',          svg: glyph('Webhook') },
-  { id: 'auto',            name: 'Auto detect',             note: 'Send anything, the shape is worked out for you', svg: glyph('Radar') },
+  { id: 'auto',            name: 'Auto detect',             note: 'Any webhook. Fields are learned once, then cached', svg: glyph('Radar') },
 ];
 
 

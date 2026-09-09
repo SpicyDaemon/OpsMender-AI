@@ -73,23 +73,40 @@ const whatsNew = [
     .reveal-1 { animation-delay: .15s } .reveal-2 { animation-delay: .35s } .reveal-3 { animation-delay: .55s }
     .reveal-4 { animation-delay: .8s }  .reveal-5 { animation-delay: 1s }
     @keyframes reveal { to { opacity: 1; transform: none; } }
+    /* The page holds still until the intro hands over. */
+    .reveal { animation-play-state: paused; }
+    html.ready .reveal { animation-play-state: running; }
+
+    /* Intro: the wordmark arrives, breathes, then widens and dissolves. */
+    #intro { transition: opacity .9s ease; }
+    #intro.gone { opacity: 0; pointer-events: none; }
+    #intro-mark { opacity: 0; transform: scale(.94); filter: blur(6px);
+      transition: opacity 1.5s ease, transform 1.5s cubic-bezier(.2,.7,.2,1), filter 1.5s ease; }
+    #intro.in #intro-mark { opacity: 1; transform: none; filter: none; animation: breathe 4.5s ease-in-out 1.5s infinite; }
+    #intro.out #intro-mark { opacity: 0; transform: scale(1.08); filter: blur(10px); transition-duration: 1s; animation: none; }
+    #intro-line { opacity: 0; letter-spacing: .5em; text-indent: .5em;
+      transition: opacity 1.3s ease .7s, letter-spacing 1.3s ease .7s; }
+    #intro.in #intro-line { opacity: 1; }
+    #intro.out #intro-line { opacity: 0; letter-spacing: .95em; transition: opacity .9s ease, letter-spacing .9s ease; }
+    @keyframes breathe { 0%,100% { opacity: .78 } 50% { opacity: 1 } }
     .cue { animation: cue 2.2s ease-in-out infinite; }
     @keyframes cue { 0%,100% { transform: translateY(0); opacity:.5 } 50% { transform: translateY(6px); opacity:1 } }
 
-    /* Architecture map */
+    /* Architecture map. Each node carries its family colour in --c. */
     .arch-edge { fill: none; stroke: #263354; stroke-width: 1.4; transition: stroke .2s, opacity .2s; }
-    .arch-flow { fill: none; stroke: #3b82f6; stroke-width: 1.6; stroke-dasharray: 3 14; stroke-linecap: round; opacity: .55; animation: flow 1.6s linear infinite; }
+    .arch-flow { fill: none; stroke-width: 1.6; stroke-dasharray: 3 14; stroke-linecap: round; opacity: .5; animation: flow 1.6s linear infinite; transition: opacity .2s; }
     @keyframes flow { to { stroke-dashoffset: -17; } }
     .arch-node { cursor: pointer; outline: none; }
-    .arch-node rect { fill: #0d1221; stroke: #1f2a47; stroke-width: 1; transition: stroke .2s, fill .2s; }
+    .arch-node .box { fill: #0d1221; stroke: #1f2a47; stroke-width: 1; transition: stroke .2s, fill .2s, filter .2s; }
+    .arch-node .bar { fill: var(--c); opacity: .9; }
     .arch-node text { fill: #e2e8f0; font: 500 13px 'Inter', system-ui, sans-serif; pointer-events: none; }
     .arch-node .sub { fill: #64748b; font-size: 10.5px; font-weight: 400; }
-    .arch-node:hover rect, .arch-node:focus-visible rect { stroke: #3b82f6; fill: #101a30; }
-    .arch-node.active rect { stroke: #60a5fa; fill: #12203a; stroke-width: 1.5; filter: drop-shadow(0 0 10px rgba(59,130,246,.35)); }
-    .arch-node.dim { opacity: .35; }
-    .arch-edge.dim, .arch-flow.dim { opacity: .12; }
-    .arch-edge.lit { stroke: #60a5fa; }
+    .arch-node:hover .box, .arch-node:focus-visible .box { stroke: var(--c); fill: #101a30; }
+    .arch-node.active .box { stroke: var(--c); fill: #12203a; stroke-width: 1.5; filter: drop-shadow(0 0 10px var(--c)); }
+    .arch-node.dim { opacity: .3; }
+    .arch-edge.dim, .arch-flow.dim { opacity: .1; }
     .arch-flow.lit { opacity: 1; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 9999px; background: var(--c); }
 
     /* Dossier */
     .dossier { transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.7,.2,1); }
@@ -105,6 +122,11 @@ const whatsNew = [
       .dossier { transition: none; }
     }
   </style>
+
+  <div id="intro" class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-ops-bg" aria-hidden="true">
+    <img id="intro-mark" src={`${base}/wordmark.png`} alt="" width="577" height="117" class="w-[min(66vw,520px)]" decoding="async" />
+    <p id="intro-line" class="mt-7 text-[clamp(10px,1.3vw,13px)] font-light uppercase text-slate-400">Detect. Mend. Prevail.</p>
+  </div>
 
   <nav class="sticky top-0 z-50 border-b border-ops-border bg-ops-bg/85 backdrop-blur">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 sm:px-8">
@@ -170,6 +192,7 @@ const whatsNew = [
         <div class="overflow-x-auto rounded-lg border border-ops-border bg-ops-surface/60">
           <svg id="arch" viewBox="0 0 1200 600" class="block min-w-[880px] w-full" role="group" aria-label="OpsMender architecture map"></svg>
         </div>
+        <div id="legend" class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ops-subtle" aria-label="Component families"></div>
 
         <aside id="dossier" class="dossier fixed inset-x-0 bottom-0 z-40 max-h-[80vh] overflow-y-auto border-t border-ops-border bg-ops-surface shadow-2xl lg:bottom-0 lg:left-auto lg:right-0 lg:top-[53px] lg:max-h-none lg:w-[400px] lg:border-l lg:border-t-0" aria-live="polite" aria-label="Component details" hidden>
           <div class="sticky top-0 flex items-center justify-between border-b border-ops-border bg-ops-surface px-6 py-4">
@@ -360,7 +383,7 @@ operations:
   <section class="border-t border-ops-border">
     <div class="relative mx-auto max-w-7xl overflow-hidden px-5 py-24 text-center sm:px-8">
       <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_60%_at_50%_100%,rgba(59,130,246,0.12),transparent_70%)]" aria-hidden="true"></div>
-      <h2 class="relative text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Try it on a laptop this afternoon.</h2>
+      <h2 class="relative text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Try it today.</h2>
       <p class="relative mx-auto mt-4 max-w-xl text-ops-subtle">Start at Tier 2, where the agent can only advise. Turn the dial up when you trust it. Everything it does is in the audit log either way.</p>
       <div class="relative mt-8 flex flex-wrap items-center justify-center gap-3">
         <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="rounded-md bg-slate-50 px-5 py-2.5 text-sm font-medium text-ops-bg transition-colors hover:bg-white focus-ring">View on GitHub</a>
@@ -386,6 +409,29 @@ operations:
   </footer>
 
   <script>
+    // ---------- Intro: wordmark, then hand over to the page ----------
+    (() => {
+      const el = document.getElementById('intro');
+      const html = document.documentElement;
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let seen = false; try { seen = sessionStorage.getItem('om-intro') === '1'; } catch {}
+      if (!el || reduce || seen) { el?.remove(); html.classList.add('ready'); return; }
+      document.body.style.overflow = 'hidden';
+      let done = false;
+      const finish = () => {
+        if (done) return; done = true;
+        html.classList.add('ready');
+        el.classList.remove('in'); el.classList.add('out');
+        setTimeout(() => { el.classList.add('gone'); document.body.style.overflow = ''; }, 300);
+        setTimeout(() => el.remove(), 1400);
+        try { sessionStorage.setItem('om-intro', '1'); } catch {}
+      };
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+      const timer = setTimeout(finish, 3300);
+      const skip = () => { clearTimeout(timer); finish(); };
+      for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(ev, skip, { once: true, passive: true });
+    })();
+
     // ---------- Opening: particle field ----------
     (() => {
       const c = document.getElementById('field') as HTMLCanvasElement | null;
@@ -449,6 +495,10 @@ operations:
       if (!svg) return;
       type Node = { id: string; x: number; y: number; label: string; sub: string; kind: string; summary: string; points: string[]; code: string };
       const W = 172, H = 58;
+      const KIND: Record<string, string> = {
+        Intake: '#22d3ee', Core: '#60a5fa', Response: '#fbbf24', AI: '#a78bfa', Safety: '#fb7185',
+        Tools: '#34d399', Access: '#94a3b8', Knowledge: '#f472b6', Record: '#818cf8',
+      };
       const nodes: Node[] = [
         { id: 'alerts', x: 110, y: 90, label: 'Alert sources', sub: 'monitoring, webhooks, API', kind: 'Intake',
           summary: 'Anything that can send an HTTP request can open an incident.',
@@ -539,20 +589,23 @@ operations:
       for (const [a, b] of edges) {
         const d = path(byId[a], byId[b]);
         const base = el('path', { d, class: 'arch-edge' });
-        const flow = el('path', { d, class: 'arch-flow' });
+        const flow = el('path', { d, class: 'arch-flow', style: `stroke:${KIND[byId[a].kind]}` });
         gE.appendChild(base); gF.appendChild(flow);
         edgeEls.push({ a, b, base, flow });
       }
       const nodeEls: Record<string, SVGGElement> = {};
       for (const n of nodes) {
-        const g = el('g', { class: 'arch-node', role: 'button', tabindex: '0', 'data-id': n.id, 'aria-label': `${n.label}: ${n.sub}` }) as SVGGElement;
-        g.appendChild(el('rect', { x: String(n.x - W / 2), y: String(n.y - H / 2), width: String(W), height: String(H), rx: '8' }));
+        const g = el('g', { class: 'arch-node', role: 'button', tabindex: '0', 'data-id': n.id, 'aria-label': `${n.label}: ${n.sub}`, style: `--c:${KIND[n.kind]}` }) as SVGGElement;
+        g.appendChild(el('rect', { class: 'box', x: String(n.x - W / 2), y: String(n.y - H / 2), width: String(W), height: String(H), rx: '8' }));
+        g.appendChild(el('rect', { class: 'bar', x: String(n.x - W / 2), y: String(n.y - H / 2 + 12), width: '3', height: String(H - 24), rx: '1.5' }));
         const t = el('text', { x: String(n.x - W / 2 + 14), y: String(n.y - 4) }); t.textContent = n.label;
         const s = el('text', { x: String(n.x - W / 2 + 14), y: String(n.y + 14), class: 'sub' }); s.textContent = n.sub;
         g.appendChild(t); g.appendChild(s);
         gN.appendChild(g); nodeEls[n.id] = g;
       }
       svg.append(gE, gF, gN);
+      const legend = document.getElementById('legend');
+      if (legend) for (const k in KIND) { const s = document.createElement('span'); s.className = 'inline-flex items-center gap-1.5'; s.style.setProperty('--c', KIND[k]); s.innerHTML = `<span class="dot"></span>${k}`; legend.appendChild(s); }
 
       const dossier = document.getElementById('dossier')!;
       const set = (id: string, v: string) => { document.getElementById(id)!.textContent = v; };
@@ -561,20 +614,21 @@ operations:
       function open(id: string) {
         const n = byId[id]; active = id;
         set('d-kind', n.kind); set('d-title', n.label); set('d-summary', n.summary); set('d-code', n.code);
+        const c = KIND[n.kind]; dossier.style.setProperty('--c', c); document.getElementById('d-kind')!.style.color = c;
         const ul = document.getElementById('d-points')!; ul.innerHTML = '';
-        for (const p of n.points) { const li = document.createElement('li'); li.className = 'flex gap-2.5'; li.innerHTML = `<span class="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-ops-blue"></span><span>${p}</span>`; ul.appendChild(li); }
+        for (const p of n.points) { const li = document.createElement('li'); li.className = 'flex gap-2.5'; li.innerHTML = `<span class="dot mt-[7px] shrink-0"></span><span>${p}</span>`; ul.appendChild(li); }
         const links = document.getElementById('d-links')!; links.innerHTML = '';
         const nb = new Set<string>(); for (const e of edges) { if (e[0] === id) nb.add(e[1]); if (e[1] === id) nb.add(e[0]); }
         for (const m of nb) { const b = document.createElement('button'); b.className = 'rounded-md border border-ops-border px-2.5 py-1 text-xs text-slate-200 hover:border-ops-blue focus-ring'; b.textContent = byId[m].label; b.onclick = () => open(m); links.appendChild(b); }
         for (const k in nodeEls) nodeEls[k].classList.toggle('active', k === id), nodeEls[k].classList.toggle('dim', k !== id && !nb.has(k));
-        for (const e of edgeEls) { const lit = e.a === id || e.b === id; e.base.classList.toggle('lit', lit); e.base.classList.toggle('dim', !lit); e.flow.classList.toggle('lit', lit); e.flow.classList.toggle('dim', !lit); }
+        for (const e of edgeEls) { const lit = e.a === id || e.b === id; e.base.style.stroke = lit ? KIND[byId[e.a].kind] : ''; e.base.classList.toggle('dim', !lit); e.flow.classList.toggle('lit', lit); e.flow.classList.toggle('dim', !lit); }
         dossier.hidden = false; requestAnimationFrame(() => dossier.classList.add('open'));
       }
       function close() {
         active = null; dossier.classList.remove('open');
         setTimeout(() => { if (!active) dossier.hidden = true; }, 350);
         for (const k in nodeEls) nodeEls[k].classList.remove('active', 'dim');
-        for (const e of edgeEls) { e.base.classList.remove('lit', 'dim'); e.flow.classList.remove('lit', 'dim'); }
+        for (const e of edgeEls) { e.base.style.stroke = ''; e.base.classList.remove('dim'); e.flow.classList.remove('lit', 'dim'); }
       }
       gN.addEventListener('click', (ev) => { const g = (ev.target as Element).closest('.arch-node') as HTMLElement | null; if (g) open(g.dataset.id!); });
       gN.addEventListener('keydown', (ev) => {

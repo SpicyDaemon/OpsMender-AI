@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import platforms from '../data/platforms.json';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -136,6 +137,7 @@ const whatsNew = [
         <a href="#tiers"    class="nav-link hidden sm:inline">Autonomy</a>
         <a href="#screens"  class="nav-link hidden md:inline">Screens</a>
         <a href="#features" class="nav-link hidden md:inline">Features</a>
+        <a href="#bring"    class="nav-link hidden lg:inline">Bring your own</a>
         <a href="#install"  class="nav-link hidden sm:inline">Install</a>
         <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" class="ml-2 rounded-md border border-ops-border px-3 py-1.5 text-sm text-slate-200 transition-colors hover:border-slate-500 hover:text-white focus-ring">GitHub</a>
       </div>
@@ -331,6 +333,36 @@ operations:
           </div>
         ))}
       </dl>
+    </div>
+  </section>
+
+  <!-- BRING YOUR OWN -->
+  <section id="bring" class="scroll-mt-20 border-t border-ops-border">
+    <div class="mx-auto max-w-7xl px-5 py-20 sm:px-8 sm:py-24">
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-ops-muted">Bring your own</p>
+      <h2 class="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">Get paged where you already are</h2>
+      <p class="mt-4 max-w-2xl text-ops-subtle">
+        OpsMender does not ask your team to install another app. Connect the tools you already use and the page goes there,
+        with a link straight to the incident. Three of them get buttons, so you can acknowledge, escalate, or start a session
+        without leaving the chat.
+      </p>
+
+      <ul class="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="Notification platforms">
+        {platforms.map((p) => (
+          <li class={`flex items-start gap-3.5 rounded-lg border bg-ops-surface/60 p-4 transition-colors ${p.buttons ? 'border-ops-blue/50 hover:border-ops-blue' : 'border-ops-border hover:border-slate-500'}`}>
+            <span class="mt-0.5 shrink-0 text-slate-200" set:html={p.svg} />
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold text-slate-50">{p.name}</span>
+              <span class={`mt-0.5 block text-xs leading-relaxed ${p.buttons ? 'text-ops-blue' : 'text-ops-muted'}`}>{p.note}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <p class="mt-8 max-w-2xl text-sm text-ops-muted">
+        The same idea runs through the rest of the product. Seven model providers, twenty six connectors, and any MCP server
+        you care to run. Your tools, your keys, your servers.
+      </p>
     </div>
   </section>
 

@@ -80,8 +80,21 @@ const sources = [
 ];
 
 
+// Model providers, from backend/llm/factory.py. Icons mirror PROVIDER_ICONS
+// in frontend/lib/brand-icons.tsx.
+const providers = [
+  { id: 'anthropic',         name: 'Anthropic',    note: 'Claude',                       svg: render(si.SiAnthropic, '#D97757') },
+  { id: 'openai',            name: 'OpenAI',       note: 'GPT',                          svg: render(si.SiOpenai) },
+  { id: 'azure_openai',      name: 'Azure OpenAI', note: 'Your Azure deployment',        svg: render(vsc.VscAzure, '#0078D4') },
+  { id: 'bedrock',           name: 'AWS Bedrock',  note: 'Models in your AWS account',   svg: render(fa.FaAws, '#FF9900') },
+  { id: 'vertex_ai',         name: 'Vertex AI',    note: 'Google Cloud',                 svg: render(si.SiGooglecloud, '#4285F4') },
+  { id: 'ollama',            name: 'Ollama',       note: 'Local, nothing leaves the box', svg: render(si.SiOllama) },
+  { id: 'openai_compatible', name: 'Any OpenAI compatible endpoint', note: 'vLLM, LM Studio, your own gateway', svg: glyph('Boxes') },
+];
+
 const dataDir = resolve(here, '../src/data');
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(resolve(dataDir, 'platforms.json'), JSON.stringify(platforms, null, 2) + '\n');
 writeFileSync(resolve(dataDir, 'sources.json'), JSON.stringify(sources, null, 2) + '\n');
-console.log(`wrote ${platforms.length} platforms and ${sources.length} sources to ${dataDir}`);
+writeFileSync(resolve(dataDir, 'providers.json'), JSON.stringify(providers, null, 2) + '\n');
+console.log(`wrote ${platforms.length} platforms, ${sources.length} sources, ${providers.length} providers to ${dataDir}`);

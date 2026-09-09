@@ -17,6 +17,11 @@ OpsMender is an open source incident response platform for engineering teams.
 You install it on your own infrastructure, invite your on call operators,
 connect a model, and point your monitoring at it.
 
+You bring the model. There is no OpsMender model and no inference bill from us:
+you connect an account you already have, the key stays in your deployment, and
+prompts go from your server straight to the provider you picked. Run Ollama and
+nothing leaves the machine. See [bring your own model](#bring-your-own-model).
+
 When an incident comes in, OpsMender pages the right people through escalation
 chains and rosters. An operator can start an AI session on the incident. The
 agent reaches your systems through [MCP](https://modelcontextprotocol.io)
@@ -59,6 +64,10 @@ and TOTP are there when you need them.
 - **MCP-first + native integrations** — operator-provided MCP servers remain the
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
+- **[Bring your own model](#bring-your-own-model)** — Anthropic, OpenAI, Azure
+  OpenAI, Bedrock, Vertex AI, Ollama, or any OpenAI compatible endpoint. Keys
+  are encrypted in your database and requests go straight from your server to
+  the provider. No OpsMender model, no inference bill from us.
 - **Org-owned skills** — bind `SKILL.md` policy to an MCP server or native
   integration connector so every discovered operation has explicit T0/T1/T2
   behavior plus active-tier operating instructions. Unknown operations fail
@@ -352,6 +361,23 @@ field identifies a configured workspace domain.
 Local accounts can enable TOTP from **Profile & Settings**. Admins can require
 MFA for the active organization; recovery codes are shown once and stored only
 as bcrypt hashes.
+
+## Bring your own model
+
+OpsMender does not ship a model and does not resell inference. Point it at an
+account you already have. The API key is stored encrypted in your own database,
+requests go directly from your server to the provider, and nothing routes
+through us.
+
+![Anthropic](https://img.shields.io/badge/Anthropic-D97757?style=for-the-badge&logo=anthropic&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge) ![Azure OpenAI](https://img.shields.io/badge/Azure%20OpenAI-0078D7?style=for-the-badge) ![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-FF9900?style=for-the-badge) ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white) ![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white) ![OpenAI compatible](https://img.shields.io/badge/OpenAI%20compatible-475569?style=for-the-badge)
+
+Ollama runs the model on your own hardware, so with a local model plus local MCP
+servers no part of an incident ever leaves your network.
+
+Each service can narrow the list an operator may pick from for a session, and
+the workspace default is always available. Provider keys are the only model
+configuration in `.env`; everything else is set in the admin UI and can be
+changed without a restart.
 
 ## Native integration connectors
 

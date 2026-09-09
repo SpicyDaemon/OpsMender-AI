@@ -18,6 +18,7 @@ const si = req('react-icons/si');
 const bi = req('react-icons/bi');
 const ai = req('react-icons/ai');
 const fa = req('react-icons/fa6');
+const vsc = req('react-icons/vsc');
 const lucide = req('lucide-react');
 
 const render = (Icon, color) =>
@@ -52,7 +53,35 @@ const platforms = [
   { id: 'custom',       name: 'Any webhook',      note: 'Bring something we have not met', svg: render(lucide.Puzzle) },
 ];
 
-const out = resolve(here, '../src/data/platforms.json');
-mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, JSON.stringify(platforms, null, 2) + '\n');
-console.log(`wrote ${platforms.length} platforms to ${out}`);
+// Inbound alert sources: one entry per adapter in backend/ingest/adapters.
+// Simple Icons does not ship Oracle, AppDynamics, Honeycomb, or Bugsnag, so
+// Oracle gets a hand drawn pill and the other three get neutral glyphs, the
+// same fallback rule the app registry uses.
+const ORACLE = `<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="5" fill="none" stroke="#C74634" stroke-width="2.6"/></svg>`;
+const glyph = (name, color) => (lucide[name] ? render(lucide[name], color) : render(lucide.Globe, color));
+
+const sources = [
+  { id: 'cloudwatch',      name: 'AWS CloudWatch',          note: 'Alarms',                    svg: render(fa.FaAws, '#FF9900') },
+  { id: 'azure_monitor',   name: 'Azure Monitor',           note: 'Alerts',                    svg: render(vsc.VscAzure, '#0078D4') },
+  { id: 'gcp_monitoring',  name: 'Google Cloud Monitoring', note: 'Alerting policies',         svg: render(si.SiGooglecloud, '#4285F4') },
+  { id: 'oci_monitoring',  name: 'OCI Monitoring',          note: 'Alarms',                    svg: ORACLE },
+  { id: 'sentry',          name: 'Sentry',                  note: 'Issues',                    svg: render(si.SiSentry, '#8C5CF4') },
+  { id: 'newrelic',        name: 'New Relic',               note: 'Alerts',                    svg: render(si.SiNewrelic, '#00AC69') },
+  { id: 'dynatrace',       name: 'Dynatrace',               note: 'Problems',                  svg: render(si.SiDynatrace, '#1496FF') },
+  { id: 'splunk',          name: 'Splunk',                  note: 'Alert actions',             svg: render(si.SiSplunk) },
+  { id: 'loki',            name: 'Grafana Loki',            note: 'Ruler alerts',              svg: render(si.SiGrafana, '#F46800') },
+  { id: 'elastic_watcher', name: 'Elastic Watcher',         note: 'Watch actions',             svg: render(si.SiElastic, '#00BFB3') },
+  { id: 'appdynamics',     name: 'AppDynamics',             note: 'Health rule violations',    svg: glyph('Activity') },
+  { id: 'honeycomb',       name: 'Honeycomb',               note: 'Triggers',                  svg: glyph('Hexagon') },
+  { id: 'bugsnag',         name: 'Bugsnag',                 note: 'Errors',                    svg: glyph('Bug') },
+  { id: 'rollbar',         name: 'Rollbar',                 note: 'Occurrences',               svg: render(si.SiRollbar) },
+  { id: 'generic',         name: 'Generic webhook',         note: 'Any JSON payload',          svg: glyph('Webhook') },
+  { id: 'auto',            name: 'Auto detect',             note: 'Send anything, the shape is worked out for you', svg: glyph('Radar') },
+];
+
+
+const dataDir = resolve(here, '../src/data');
+mkdirSync(dataDir, { recursive: true });
+writeFileSync(resolve(dataDir, 'platforms.json'), JSON.stringify(platforms, null, 2) + '\n');
+writeFileSync(resolve(dataDir, 'sources.json'), JSON.stringify(sources, null, 2) + '\n');
+console.log(`wrote ${platforms.length} platforms and ${sources.length} sources to ${dataDir}`);

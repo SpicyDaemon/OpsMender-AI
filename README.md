@@ -20,8 +20,8 @@ connect a model, and point your monitoring at it.
 When an incident comes in, OpsMender pages the right people through escalation
 chains and rosters. An operator can start an AI session on the incident. The
 agent reaches your systems through [MCP](https://modelcontextprotocol.io)
-servers you provide or through native integration connectors, and it can only
-do what a skill file and a three tier autonomy policy allow.
+servers you provide or through [native integration connectors](#native-integration-connectors),
+and it can only do what a skill file and a three tier autonomy policy allow.
 
 The tier gate lives in the backend. It checks every tool call before it runs.
 The model cannot reason its way past it, and anything the skill does not name
@@ -76,12 +76,11 @@ and TOTP are there when you need them.
 - **Operational analytics** — read-only **Noise** (alert volume, reduction ratio,
   noisiest services) and **Response** (MTTA/MTTR trends by service and priority)
   dashboards, each with CSV export.
-- **Native work-system integrations** — GitHub, GitLab, Bitbucket, Azure
-  DevOps, Gitea, Jira, Confluence, ServiceNow, Linear, Notion, Google Docs, and
-  Statuspage provide typed
-  repository, PR, ticket, record, and document capabilities with encrypted
-  auth, guided per-provider setup fields plus additional variables, self-hosted
-  API URLs where applicable, and approval-locked merges.
+- **[Native integration connectors](#native-integration-connectors)** — 26 kinds
+  covering source control, tickets, docs, CI/CD, infrastructure, and
+  observability. Typed capabilities rather than raw API access, encrypted auth,
+  guided per-provider setup fields, self-hosted API URLs where applicable, and
+  approval-locked merges.
 - **Bi-directional ticket state** — linked Jira and ServiceNow tickets mirror
   mapped incident status in both directions through non-blocking outbound jobs
   and signed inbound webhooks.
@@ -353,6 +352,48 @@ field identifies a configured workspace domain.
 Local accounts can enable TOTP from **Profile & Settings**. Admins can require
 MFA for the active organization; recovery codes are shown once and stored only
 as bcrypt hashes.
+
+## Native integration connectors
+
+Twenty six connector kinds ship with OpsMender. Each one exposes typed,
+capability-scoped tools rather than a raw API, stores its credentials
+encrypted, and is allowlisted per service. Every call passes the same tier
+gate, approval flow, and audit log as an MCP tool, so a connector is never a
+way around policy.
+
+An MCP server is optional. If your connectors already cover what a service
+needs, sessions run on connectors alone.
+
+**Source control**
+
+![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white) ![GitLab](https://img.shields.io/badge/GitLab-FC6D26?style=for-the-badge&logo=gitlab&logoColor=white) ![Gitea](https://img.shields.io/badge/Gitea-609926?style=for-the-badge&logo=gitea&logoColor=white) ![Bitbucket](https://img.shields.io/badge/Bitbucket-0052CC?style=for-the-badge&logo=bitbucket&logoColor=white) ![Azure DevOps](https://img.shields.io/badge/Azure%20DevOps-0078D7?style=for-the-badge)
+
+**Tickets, docs, and support**
+
+![Jira](https://img.shields.io/badge/Jira-0052CC?style=for-the-badge&logo=jira&logoColor=white) ![Confluence](https://img.shields.io/badge/Confluence-172B4D?style=for-the-badge&logo=confluence&logoColor=white) ![ServiceNow](https://img.shields.io/badge/ServiceNow-62D84E?style=for-the-badge) ![Linear](https://img.shields.io/badge/Linear-5E6AD2?style=for-the-badge&logo=linear&logoColor=white) ![Notion](https://img.shields.io/badge/Notion-000000?style=for-the-badge&logo=notion&logoColor=white) ![Google Docs](https://img.shields.io/badge/Google%20Docs-4285F4?style=for-the-badge&logo=googledocs&logoColor=white) ![Asana](https://img.shields.io/badge/Asana-F06A6A?style=for-the-badge&logo=asana&logoColor=white) ![Zendesk](https://img.shields.io/badge/Zendesk-03363D?style=for-the-badge&logo=zendesk&logoColor=white) ![Freshservice](https://img.shields.io/badge/Freshservice-06AED4?style=for-the-badge)
+
+**CI/CD**
+
+![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=for-the-badge&logo=jenkins&logoColor=white) ![CircleCI](https://img.shields.io/badge/CircleCI-343434?style=for-the-badge&logo=circleci&logoColor=white) ![Azure Pipelines](https://img.shields.io/badge/Azure%20Pipelines-2560E0?style=for-the-badge)
+
+**Infrastructure**
+
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white) ![Terraform Cloud](https://img.shields.io/badge/Terraform%20Cloud-7B42BC?style=for-the-badge&logo=terraform&logoColor=white) ![Argo CD](https://img.shields.io/badge/Argo%20CD-EF7B4D?style=for-the-badge&logo=argo&logoColor=white) ![Ansible Automation](https://img.shields.io/badge/Ansible%20Automation-EE0000?style=for-the-badge&logo=ansible&logoColor=white)
+
+**Observability and status**
+
+![Sentry](https://img.shields.io/badge/Sentry-362D59?style=for-the-badge&logo=sentry&logoColor=white) ![New Relic](https://img.shields.io/badge/New%20Relic-1CE783?style=for-the-badge&logo=newrelic&logoColor=white) ![Splunk](https://img.shields.io/badge/Splunk-000000?style=for-the-badge&logo=splunk&logoColor=white) ![Statuspage](https://img.shields.io/badge/Statuspage-172B4D?style=for-the-badge&logo=statuspage&logoColor=white)
+
+**Anything else**
+
+![Custom HTTP](https://img.shields.io/badge/Custom%20HTTP-475569?style=for-the-badge)
+
+Jira and ServiceNow additionally keep ticket state in sync with the incident in
+both directions. Self-hosted URLs are supported where the provider allows them,
+and merges stay approval locked at every tier.
+
+See the [Skills & MCP guide](docs/wiki/skills-guide.md) for binding a skill to a
+connector, and the [Admin guide](docs/wiki/admin-guide.md) for credential setup.
 
 ## Project layout
 

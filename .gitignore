@@ -96,3 +96,6 @@ screenshots/
 # Helm chart dependencies (downloaded by `helm dependency update`)
 deploy/helm/opsmender/charts/
 deploy/helm/opsmender/Chart.lock
+
+# Astro writes this on every build; generated, not source.
+site/.astro/

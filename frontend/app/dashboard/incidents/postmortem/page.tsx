@@ -141,11 +141,16 @@ function sectionBody(md: string, heading: string): string {
   return body.join("\n");
 }
 
+/** Strip HTML comments, including ones that span several lines. */
+function stripComments(s: string): string {
+  return s.replace(/<!--[\s\S]*?-->/g, "");
+}
+
 /** Normalize a section body for comparison: strip comments, trim, drop blanks. */
 function normalizeBody(body: string): string {
-  return body
+  return stripComments(body)
     .split("\n")
-    .map((l) => l.replace(/<!--.*?-->/g, "").trim())
+    .map((l) => l.trim())
     .filter(Boolean)
     .join("\n");
 }
@@ -163,8 +168,8 @@ function isSectionFilled(md: string, heading: string, templateMd?: string): bool
     const templateBody = normalizeBody(sectionBody(templateMd, heading));
     if (templateBody && normalizeBody(body) === templateBody) return false;
   }
-  for (const raw of body.split("\n")) {
-    const line = raw.replace(/<!--.*?-->/g, "").trim();
+  for (const raw of stripComments(body).split("\n")) {
+    const line = raw.trim();
     if (!line) continue;
     if (/^_.*_$/.test(line)) continue; // italic placeholder
     if (/^[-*]\s*$/.test(line)) continue; // empty bullet
@@ -180,12 +185,11 @@ function parseMemoryCandidates(md: string): string[] {
   const body = sectionBody(md, "Memory candidates");
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const raw of body.split("\n")) {
+  for (const raw of stripComments(body).split("\n")) {
     const m = raw.match(/^\s*[-*]\s+(.*)$/);
     if (!m) continue;
-    const text = m[1].replace(/\s*<!--.*?-->\s*$/, "").trim();
+    const text = m[1].trim();
     if (!text) continue;
-    if (/^<!--.*-->$/.test(text)) continue;
     if (/^_.*_$/.test(text)) continue;
     if (["...", "…", "-", "—"].includes(text)) continue;
     const key = text.toLowerCase();

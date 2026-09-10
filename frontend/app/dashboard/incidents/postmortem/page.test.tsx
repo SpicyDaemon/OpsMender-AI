@@ -79,6 +79,49 @@ describe("Postmortem page Phase 2 polish", () => {
     expect(screen.getAllByLabelText("filled").length).toBeGreaterThan(0);
   });
 
+  it("does not count a section whose only content is a multi-line comment", async () => {
+    // A comment spanning several lines used to leave stray "<!--" and "-->"
+    // lines behind, because comments were stripped per line after splitting.
+    // Those stray lines then read as authored content and the section counted
+    // as filled. Summary is genuinely filled here; Impact is not.
+    apiMocks.getIncidentPostmortem.mockResolvedValue({
+      incident_id: "inc-1",
+      postmortem_md: [
+        "## Summary",
+        "Postgres ran out of disk.",
+        "## Impact",
+        "<!--",
+        "Describe customer or system impact.",
+        "-->",
+      ].join("\n"),
+      postmortem_updated_at: "2026-06-14T02:00:00Z",
+      template: "## Summary\n",
+    });
+    await renderPage();
+    await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());
+    expect(screen.getByText(/Recommended sections \(1\/7\)/)).toBeTruthy();
+  });
+
+  it("drops a memory-candidate bullet that is only a multi-line comment", async () => {
+    apiMocks.getIncidentPostmortem.mockResolvedValue({
+      incident_id: "inc-1",
+      postmortem_md: [
+        "## Summary",
+        "Postgres ran out of disk.",
+        "## Memory candidates",
+        "- Alert on disk > 80% for the primary.",
+        "- <!--",
+        "  a commented out candidate",
+        "  -->",
+      ].join("\n"),
+      postmortem_updated_at: "2026-06-14T02:00:00Z",
+      template: "## Summary\n",
+    });
+    await renderPage();
+    // Only the real bullet counts; the commented-out one is dropped.
+    expect(await screen.findByRole("button", { name: /Save 1 to memory/i })).toBeTruthy();
+  });
+
   it("drafts from AI sessions via the backend and loads it into the editor", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     apiMocks.draftIncidentPostmortemFromSessions.mockResolvedValue({

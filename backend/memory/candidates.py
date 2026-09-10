@@ -15,7 +15,7 @@ import re
 _HEADING_RE = re.compile(r"^#{1,6}\s*memory\s+candidates\s*$", re.IGNORECASE)
 _ANY_HEADING_RE = re.compile(r"^#{1,6}\s+")
 _BULLET_RE = re.compile(r"^\s*[-*]\s+(.*)$")
-_COMMENT_RE = re.compile(r"^<!--.*-->$")
+_COMMENT_RE = re.compile(r"^<!--.*-->$", re.DOTALL)
 # Italic-only placeholder, e.g. "_..._" or "_Add a memory here_".
 _ITALIC_PLACEHOLDER_RE = re.compile(r"^_.*_$")
 
@@ -64,7 +64,7 @@ def extract_memory_candidates(postmortem_md: str | None) -> list[str]:
             continue
         text = match.group(1).strip()
         # Strip a trailing inline comment, then re-check.
-        text = re.sub(r"\s*<!--.*-->\s*$", "", text).strip()
+        text = re.sub(r"\s*<!--.*-->\s*$", "", text, flags=re.DOTALL).strip()
         if _is_placeholder(text):
             continue
         key = text.lower()

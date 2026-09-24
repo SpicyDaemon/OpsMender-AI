@@ -82,7 +82,7 @@ class GCPMonitoringAdapter(IngestAdapter):
             status = "resolved"
         elif state == "acknowledged":
             severity = "medium"
-            status = "investigating"
+            status = "open"
         else:
             severity = "high"
             status = "open"

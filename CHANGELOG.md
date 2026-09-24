@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cross-service alert collision notice.** When a provider-scoped alert is
+  absorbed by another service's active incident, the receiving service's
+  responders get one Inbox notice, and its team-scoped Respond channels get an
+  informational message. The ingest log records the owner and receiving
+  services. This does not start a second Escalation Chain.
+
+### Fixed
+
+- SNS-wrapped CloudWatch alarms now use the inner alarm identity and state.
+  Clearing alerts resolve only live incidents; a later firing alert opens a
+  new incident. Ingested firing and acknowledgment aliases use the supported
+  `open` status, and orphan recoveries do not page.
+
 - **Tool-source overlap warning.** When a Service allowlists an MCP server and
   a native connector that appear to reach the same system (an Atlassian MCP
   server and a Jira connector, say), the Services table marks it

@@ -3065,6 +3065,22 @@ class IngestTokenRepo:
         return result.scalars().first()
 
     @staticmethod
+    async def get_active_for_service_token(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        service_id: uuid.UUID,
+        token_hash: str,
+    ) -> IngestToken | None:
+        """Resolve the token embedded in a service URL, regardless of other tokens."""
+        stmt = select(IngestToken).where(
+            IngestToken.org_id == org_id,
+            IngestToken.service_id == service_id,
+            IngestToken.token_hash == token_hash,
+            IngestToken.is_active,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
     async def list_all(
         db: AsyncSession, org_id: uuid.UUID, *, active_only: bool = False
     ) -> Sequence[IngestToken]:

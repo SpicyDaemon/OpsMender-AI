@@ -10,6 +10,7 @@ GET  /ingest-providers       — list available provider adapters
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -70,6 +71,41 @@ async def _dispatch_created(app, *, org_id: uuid.UUID, result) -> None:
             "incident.created publication failed incident=%s",
             result.incident_id,
         )
+
+
+async def _dispatch_collision(app, *, org_id: uuid.UUID, result) -> None:
+    if result.collision_notice is None:
+        return
+    from backend.bots.notifier import deliver_incident_text
+
+    team_id, text = result.collision_notice
+
+    async def deliver() -> None:
+        try:
+            await deliver_incident_text(
+                app.state.session_factory,
+                org_id=org_id,
+                text=text,
+                event_type="ingest_collision",
+                team_id=team_id,
+                incident_id=result.incident_id,
+                preserve_team=True,
+                respond_only=True,
+                strict_team_scope=True,
+                informational_only=True,
+            )
+        except Exception:  # noqa: BLE001 - committed intake must remain successful
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "ingest collision notification failed incident=%s",
+                result.incident_id,
+            )
+
+    task = asyncio.create_task(deliver())
+    registry = app.state.background_tasks
+    registry.add(task)
+    task.add_done_callback(registry.discard)
 
 
 async def _stop_sessions_on_resolve(
@@ -136,7 +172,9 @@ async def service_intake_webhook(
             detail="Service intake endpoint not found",
         )
 
-    token = await IngestTokenRepo.get_active_for_service(db, service.org_id, service.id)
+    token = await IngestTokenRepo.get_active_for_service_token(
+        db, service.org_id, service.id, hash_token(service_token)
+    )
     if token is None:
         token = await IngestTokenRepo.create(
             db,
@@ -198,6 +236,7 @@ async def service_intake_webhook(
         request.app, db, org_id=service.org_id, result=result
     )
     await _dispatch_created(request.app, org_id=service.org_id, result=result)
+    await _dispatch_collision(request.app, org_id=service.org_id, result=result)
     return IngestResponse(
         success=result.success,
         incident_id=result.incident_id,
@@ -297,6 +336,7 @@ async def ingest_webhook(
     await db.commit()
     await _stop_sessions_on_resolve(request.app, db, org_id=token.org_id, result=result)
     await _dispatch_created(request.app, org_id=token.org_id, result=result)
+    await _dispatch_collision(request.app, org_id=token.org_id, result=result)
     return IngestResponse(
         success=result.success,
         incident_id=result.incident_id,
@@ -354,22 +394,26 @@ async def create_ingest_token(
     # Pre-train the token on a sample payload when provided — so the
     # first real webhook of this shape doesn't pay the LLM tax.
     if body.sample_payload and body.provider == "auto":
-        from backend.ingest.adapters.universal import UniversalAdapter
+        from backend.ingest.adapters.universal import (
+            UniversalAdapter,
+            normalize_payload,
+        )
         from backend.ingest.llm_extractor import extract_paths_via_llm
 
-        parsed = UniversalAdapter().parse(body.sample_payload)
+        normalized_sample = normalize_payload(body.sample_payload)
+        parsed = UniversalAdapter().parse(normalized_sample)
         paths = parsed.extracted_paths or {}
         if parsed.needs_llm:
             llm_paths = await extract_paths_via_llm(
                 db,
                 org_id,
-                payload=body.sample_payload,
+                payload=normalized_sample,
                 config=request.app.state.config,
             )
             if llm_paths:
                 paths = llm_paths
         if paths:
-            shape = compute_shape_hash(body.sample_payload)
+            shape = compute_shape_hash(normalized_sample)
             shape_cache = {shape: paths}
 
     if body.service_id is not None:
@@ -431,11 +475,15 @@ async def learn_ingest_token_shape(
             detail="Shape learning only applies to tokens with provider='auto'",
         )
 
+    from backend.ingest.adapters.universal import normalize_payload
+
+    normalized_sample = normalize_payload(body.payload)
+
     paths, cache_hit = await apply_shape_cache(
         db,
         org_id,
         token=tok,
-        payload=body.payload,
+        payload=normalized_sample,
         config=request.app.state.config,
     )
     # apply_shape_cache persists paths on LLM success; it does not persist when the
@@ -443,19 +491,19 @@ async def learn_ingest_token_shape(
     if not paths:
         from backend.ingest.adapters.universal import UniversalAdapter
 
-        adapter_parsed = UniversalAdapter().parse(body.payload)
+        adapter_parsed = UniversalAdapter().parse(normalized_sample)
         paths = adapter_parsed.extracted_paths or {}
         if paths:
-            shape = compute_shape_hash(body.payload)
+            shape = compute_shape_hash(normalized_sample)
             next_cache = dict(tok.shape_cache or {})
             next_cache[shape] = paths
             await IngestTokenRepo.update_shape_cache(db, org_id, tok.id, next_cache)
             tok.shape_cache = next_cache
 
     # Build a preview of what the incident would look like
-    parsed_preview = parse_with_paths(body.payload, paths)
+    parsed_preview = parse_with_paths(normalized_sample, paths)
     return IngestTokenLearnShapeResponse(
-        shape_hash=compute_shape_hash(body.payload),
+        shape_hash=compute_shape_hash(normalized_sample),
         paths=paths or {},
         cache_hit=cache_hit,
         preview=IngestLearnPreview(

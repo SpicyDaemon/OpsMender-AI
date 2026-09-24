@@ -1596,7 +1596,7 @@ class TestUniversalAdapterUnit:
         assert result.description == "Node01 at 98%"
         assert result.severity == "critical"
         assert result.external_id == "alert-xyz"
-        assert result.status == "investigating"
+        assert result.status == "open"
         assert result.needs_llm is False
         assert result.extracted_paths == {
             "title": "title",
@@ -1649,7 +1649,7 @@ class TestUniversalAdapterUnit:
         assert result.description == "Connection pool is saturated"
         assert result.severity == "high"
         assert result.external_id == "abc123"
-        assert result.status == "investigating"
+        assert result.status == "open"
         assert result.needs_llm is False
 
     def test_severity_mapping(self):
@@ -1681,11 +1681,11 @@ class TestUniversalAdapterUnit:
         )
         assert (
             UniversalAdapter().parse({"title": "x", "status": "firing"}).status
-            == "investigating"
+            == "open"
         )
         assert (
             UniversalAdapter().parse({"title": "x", "state": "acknowledged"}).status
-            == "investigating"
+            == "open"
         )
 
     def test_unknown_shape_signals_llm_fallback(self):

@@ -855,6 +855,10 @@ async def deliver_incident_text(
     team_id: uuid.UUID | None = None,
     incident_id: uuid.UUID | None = None,
     rendered_status: str | None = None,
+    preserve_team: bool = False,
+    respond_only: bool = False,
+    strict_team_scope: bool = False,
+    informational_only: bool = False,
 ) -> None:
     """Fan out a *pre-built* incident message to enabled Notification Channels
     with the ``notifications`` capability.
@@ -876,14 +880,22 @@ async def deliver_incident_text(
         team_name = None
         service_name = None
         if incident is not None:
-            resolved_team_id, team_name, service_name = await _resolve_incident_team(
+            owner_team_id, team_name, service_name = await _resolve_incident_team(
                 db, org_id, incident
             )
+            if not preserve_team:
+                resolved_team_id = owner_team_id
+            elif resolved_team_id is not None:
+                receiving_team = await TeamRepo.get_by_id(db, org_id, resolved_team_id)
+                team_name = receiving_team.name if receiving_team is not None else None
+                service_name = None
 
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
             continue
-        is_track = _has_lane(connector, "track")
+        is_track = _has_lane(connector, "track") and not respond_only
+        if respond_only and not _has_lane(connector, "respond"):
+            continue
         if is_track and connector.platform not in {
             "slack",
             "teams",
@@ -898,6 +910,10 @@ async def deliver_incident_text(
             continue
         if not _connector_matches_team(connector, resolved_team_id):
             continue
+        if strict_team_scope:
+            scope, team_ids = _connector_team_scope(connector)
+            if scope != "teams" or resolved_team_id not in team_ids:
+                continue
         chat_ids = _allowed_chat_ids(connector)
         if is_track:
             chat_ids = chat_ids[:1]
@@ -911,9 +927,13 @@ async def deliver_incident_text(
                 command_label=f"notify:{event_type}",
                 session_id=None,
                 incident_id=incident_id,
-                lifecycle_event=event_type if incident_id is not None else None,
+                lifecycle_event=(
+                    event_type
+                    if incident_id is not None and not informational_only
+                    else None
+                ),
                 rendered_status=rendered_status,
-                incident=incident,
+                incident=None if informational_only else incident,
                 delivery_lane="track" if is_track else "respond",
                 service_name=service_name,
                 team_name=team_name,

@@ -24,6 +24,7 @@ workflow actually works against a running instance.
 | Roster calendar | open calendar · navigate range |
 | Notifications | page loads · open Add-Channel form · *(optional)* send live test |
 | Incidents | page loads · create (fire-test) · open detail · acknowledge · resolve |
+| Intake correctness | SNS alarm/duplicate/recovery/re-fire through the service URL · browser acknowledgment · cross-service Inbox link · simultaneous collision delivery |
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
 | Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
@@ -34,6 +35,11 @@ Each step uses **soft assertions**: a failure is recorded with a full-page
 screenshot and the run keeps going, so one report shows everything that is or
 isn't working. Steps that can't run (missing precondition, opt-in disabled)
 are marked **skipped**, not failed.
+
+The intake correctness feature creates two services and sends synthetic
+webhooks through their intake tokens. Run it only against a disposable instance
+with local notification sinks. It is included in the complete walkthrough, or
+can be selected with `QA_FEATURES=auth,intake_correctness`.
 
 ## Prerequisites
 

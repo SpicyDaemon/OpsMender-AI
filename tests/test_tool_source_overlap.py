@@ -19,12 +19,13 @@ import bcrypt
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
-from mcp.types import CallToolResult, TextContent
+from mcp.types import CallToolResult, TextContent, Tool
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
+from backend.api import session_runner
 from backend.api.session_runner import build_combined_tool_caller
 from backend.config_loader import set_env_path
 from backend.db.models import (
@@ -38,6 +39,7 @@ from backend.db.repos import (
     IntegrationConnectorRepo,
     MCPServerRepo,
     ServiceRepo,
+    SessionRepo,
     SkillRepo,
     TeamRepo,
     UserRepo,
@@ -57,6 +59,7 @@ from backend.integrations.tools import (
 )
 from backend.skills.parser import OperationClassification, loads
 from backend.tiers.enforcement import check
+from backend.tiers.sandbox import Tier0SandboxViolation
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
@@ -748,3 +751,187 @@ async def test_doctor_is_ok_when_nothing_overlaps(integration_db):
     factory, _org_id = integration_db
     (result,) = await check_tool_source_overlaps(factory)
     assert (result.status, result.name) == ("ok", "Tool-source overlap")
+
+
+# ---------------------------------------------------------------------------
+# Session runner wiring: the real runner, for a Service with an MCP server and
+# a native connector, hands the graph one combined caller. At Tier 0 the MCP
+# half of that caller is still the sandbox.
+# ---------------------------------------------------------------------------
+
+
+class _FakeMCPSession:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def list_tools(self):
+        return SimpleNamespace(
+            tools=[
+                Tool(
+                    name="jira_search",
+                    description="Search Jira",
+                    inputSchema={"type": "object"},
+                ),
+                Tool(
+                    name="jira_create_issue",
+                    description="Create a Jira issue",
+                    inputSchema={"type": "object"},
+                ),
+            ]
+        )
+
+    async def call_tool(self, name, arguments=None):
+        self.calls.append(name)
+        return CallToolResult(
+            isError=False, content=[TextContent(type="text", text="ok")]
+        )
+
+
+class _FakePool:
+    def __init__(self, session: _FakeMCPSession, server_name: str) -> None:
+        self._session = session
+        self._server_name = server_name
+
+    async def list_servers(self, active_only: bool = True):
+        return [SimpleNamespace(name=self._server_name, transport="stdio")]
+
+    async def get_server(self, *args, **kwargs):
+        return object()
+
+    @asynccontextmanager
+    async def connect(self, name):
+        assert name == self._server_name
+        yield self._session
+
+
+async def _run_overlap_session(app, monkeypatch, *, tier: int):
+    suffix = f"t{tier}"
+    async with app.state.session_factory() as db:
+        team = await TeamRepo.create(
+            db, TEST_ORG_ID, name=f"Team {suffix}", slug=f"team-{suffix}"
+        )
+        mcp = await MCPServerRepo.create(
+            db,
+            TEST_ORG_ID,
+            name=f"atlassian-{suffix}",
+            transport="stdio",
+            command="npx",
+        )
+        await SkillRepo.create(
+            db,
+            TEST_ORG_ID,
+            name=f"MCP policy {suffix}",
+            content_md=MCP_SKILL,
+            mcp_server_id=mcp.id,
+        )
+        jira = await IntegrationConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            kind="jira",
+            name=f"Jira {suffix}",
+            base_url="https://jira.example.test",
+            auth_type="pat",
+            auth={"token": "x"},
+            config={"project_key": "DOT"},
+            is_enabled=True,
+        )
+        service = await ServiceRepo.create(
+            db,
+            TEST_ORG_ID,
+            team_id=team.id,
+            name=f"svc-{suffix}",
+            slug=f"svc-{suffix}",
+            mcp_server_ids=[str(mcp.id)],
+            allowed_integration_connector_ids=[str(jira.id)],
+        )
+        incident = await IncidentRepo.create(
+            db,
+            TEST_ORG_ID,
+            title="Checkout 500s",
+            description="d",
+            service_id=service.id,
+        )
+        session = await SessionRepo.create(
+            db, TEST_ORG_ID, tier=tier, incident_id=incident.id
+        )
+        await db.commit()
+        session_id, connector_id, server_name = session.id, jira.id, mcp.name
+
+    async def jira_api(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json={"id": "10001", "key": "DOT-1"})
+
+    adapter = JiraAdapter(
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.MockTransport(jira_api)
+        )
+    )
+    monkeypatch.setattr(
+        integration_tools,
+        "get_adapter",
+        lambda kind: adapter if kind == "jira" else None,
+    )
+
+    async def _no_llm(factory, session):
+        return SimpleNamespace()
+
+    captured: dict = {}
+
+    class _FakeGraph:
+        async def ainvoke(self, state):
+            return {"status": "completed", "summary": "ok"}
+
+    def _capture_graph(**kwargs):
+        captured.update(kwargs)
+        return _FakeGraph()
+
+    monkeypatch.setattr(session_runner, "_resolve_llm", _no_llm)
+    monkeypatch.setattr(session_runner, "build_graph", _capture_graph)
+    fake_session = _FakeMCPSession()
+    app.state.mcp_pool = _FakePool(fake_session, server_name)
+    app.state.workflow_start_delay_seconds = 0
+
+    await session_runner._run_session_workflow_inner(app, session_id=session_id)
+
+    async with app.state.session_factory() as db:
+        stored = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
+    assert stored.status == "completed", stored.status
+    return captured, fake_session, connector_id
+
+
+async def test_session_runner_wires_one_caller_for_both_sources(app, monkeypatch):
+    captured, fake_session, connector_id = await _run_overlap_session(
+        app, monkeypatch, tier=1
+    )
+    native_create = f"integration__jira__create_issue__{connector_id.hex}"
+    names = captured["plan_tool_names"]
+    assert "jira_create_issue" in names and "jira_search" in names
+    assert native_create in names
+    assert names == sorted(names)  # one flat, sorted list: no precedence
+
+    caller = captured["tool_caller"]
+    native = await caller(fake_session, native_create, {"summary": "Checkout 500s"})
+    assert native.isError is False
+    assert fake_session.calls == []  # the native call never touched MCP
+    await caller(fake_session, "jira_create_issue", {"summary": "Checkout 500s"})
+    assert fake_session.calls == ["jira_create_issue"]
+
+
+async def test_tier0_session_still_routes_mcp_calls_through_the_sandbox(
+    app, monkeypatch
+):
+    captured, fake_session, connector_id = await _run_overlap_session(
+        app, monkeypatch, tier=0
+    )
+    names = captured["plan_tool_names"]
+    # The sandbox exposes only Tier 0-permitted MCP tools, and the native
+    # mutating tool is filtered out at Tier 0.
+    assert "jira_search" in names
+    assert "jira_create_issue" not in names
+    assert f"integration__jira__create_issue__{connector_id.hex}" not in names
+
+    caller = captured["tool_caller"]
+    with pytest.raises(Tier0SandboxViolation):
+        await caller(fake_session, "jira_create_issue", {})
+    assert fake_session.calls == []
+    await caller(fake_session, "jira_search", {"query": "DOT"})
+    assert fake_session.calls == ["jira_search"]

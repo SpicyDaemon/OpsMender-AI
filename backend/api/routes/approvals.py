@@ -150,6 +150,14 @@ async def _resolve_request(
         )
 
     await SessionRepo.set_status(db, org_id, request.session_id, status="active")
+    session = await SessionRepo.get_by_id(db, org_id, request.session_id)
+    if session is not None and session.incident_id is not None:
+        from backend.paging.escalation import record_assignee_activity
+
+        # An approval decision by the incident's owner is activity on the lock.
+        await record_assignee_activity(
+            db, org_id, incident_id=session.incident_id, actor_id=resolver.id
+        )
     await db.commit()
 
     resolved = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)

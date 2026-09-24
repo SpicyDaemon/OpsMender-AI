@@ -29,6 +29,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Owning or closing an incident now stops paging, everywhere.**
+  - Resolving through the web page, the incident list, phone keypad `3`, an
+    alert recovery, a chat button, Slack `/resolve`, or combining incidents
+    stops the Escalation Chain and staged notifications, including snoozed
+    and acknowledged chains. Before, only chat and Slack resolves did.
+  - Every way of taking ownership acknowledges the incident and stops paging:
+    **Take**, bulk acknowledge and reassign, phone keypad `1`, chat
+    Acknowledge, and taking over an AI session.
+  - Acknowledging holds the incident under a lock (D-021). The owner's own
+    recorded actions keep it; 15 minutes without any of them, or a release,
+    pages the next level (never level 1 again).
+  - Slack `/snooze` resumes the next level when the snooze ends (it used to
+    stay paused forever), and extends an owner's lock instead of dropping it.
+    Escalate now also works on snoozed and acknowledged chains. A snooze can last
+    up to seven days.
+  - Only the current owner can confirm a takeover request (an admin can still
+    force one), and an unanswered request expires without a transfer.
+  - Changing the service of a resolved incident no longer restarts paging.
+  - Phone keypad `1` checks the current owner, so a responder paged after a
+    release can take the incident.
+  - Inbox links for assignments, mentions and combined incidents open the
+    incident page instead of a missing page.
+- **API.** `POST /incidents/{id}/ack`, `/assign`, `/take` and the bulk
+  acknowledge/reassign actions return 409 for a resolved or merged incident.
+  `/ack` returns 409 while someone else holds the lock (use Take over or a
+  takeover request). Assigning an inactive user, or one outside the
+  workspace, returns 422. Confirming someone else's takeover returns 403, and
+  an expired request 409. The chain panel adds `paused_until` and
+  `last_activity_at`.
+  *Upgrade note:* chains acknowledged before the upgrade stay finished, and
+  Slack snoozes set before it stay paused; neither re-pages on upgrade.
+
 - SNS-wrapped CloudWatch alarms sent to a service intake URL now use the inner
   alarm identity and state, so they dedup, and an OK resolves the incident.
   Plain-text SNS messages still open an incident titled from the Subject or

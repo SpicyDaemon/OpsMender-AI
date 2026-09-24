@@ -1,29 +1,32 @@
-"""Chain execution engine (Sprint 34).
+"""Chain execution engine (Sprint 34; acknowledgement lock per D-021).
 
 State machine for ``incident_chain_states``:
 
 ```
 [no row]
-   │  start_chain(incident_id, chain_id)
+   │  start_chain(incident_id, chain_id) — fires step 0
    ▼
-[running, step=-1]
-   │  tick()  — fires step 0 immediately
-   ▼
-[running, step=N]
-   │
-   ├─ handle_ack(incident_id, user_id, via)  ─►  [acked, finished]
-   │
-   ├─ tick()  ─►  next_step_due_at passed?
-   │     │
-   │     ├─ step N+1 exists:  fires step N+1 (additive — step N stays paged)
-   │     │
-   │     └─ no more steps:    [exhausted, finished]
-   │
-   ├─ handle_takeover_request(requester) ─► sets pending_takeover_*
-   ├─ handle_takeover_confirm() (within 5 min) ─► assignment swapped
-   ├─ handle_force_takeover(admin) ─► assignment swapped, audit-logged
-   └─ cancel_chain(incident_id) ─► [cancelled, finished]
+[running, step=N] ──tick: level timeout──► fires step N+1 (additive)
+   │                                        └─ no step N+1: [exhausted]
+   ├─ snooze(until) ──► [paused] ──tick: snooze ends──► fires step N+1
+   ├─ acknowledge / Take / keypad 1 / chat ack ──► [acked] (live lock)
+   │     ├─ assignee write ──► lock extended to last write + 15 min
+   │     ├─ snooze(until) ──► lock lasts at least until the snooze ends
+   │     ├─ release ──► fires step N+1
+   │     └─ tick: 15 min without assignee activity ──► releases, fires N+1
+   ├─ escalate_now (running, paused or acked) ──► fires step N+1
+   └─ resolve or merge (any live state) ──► [cancelled]
+
+handle_takeover_request ─► pending for five minutes; only the current
+owner can confirm (handle_takeover_confirm); an admin can force it; an
+unanswered request expires on the next tick without a transfer.
 ```
+
+``acked`` is a live lock, not a finished chain: ``finished_at`` stays empty
+until the chain is cancelled or exhausted. While a chain is live,
+``next_step_due_at`` is when the next level fires unless someone intervenes.
+A chain acknowledged before the lock existed kept its ``finished_at`` and
+stays finished.
 
 Additive page semantics (D-021 #5): once a user has been paged on step N,
 they stay paged for the rest of the chain. ``IncidentPage.already_paged``
@@ -31,9 +34,11 @@ keys on ``(incident_id, user_id, step_index)`` so a re-fire of the same
 step is idempotent. Pages from earlier steps are NOT re-issued for higher
 steps; the audit log records every fire-event uniquely.
 
-Hard inactivity timeout (15 min) is tracked on
-``incident_chain_states.hard_deadline_at``. When ticked past it, the chain
-moves to ``exhausted`` even if a step is mid-timeout.
+The start-time cap (``hard_deadline_at``, 15 min from the first page) still
+exhausts a chain nobody has touched (KI-010; removed in X1b). Acknowledging,
+snoozing or resuming clears it, so it never defeats a lock or a resume. The
+acknowledgement lock's inactivity deadline is separate: it is kept in
+``next_step_due_at`` and measured from the assignee's last write.
 
 The engine never blocks on real notification delivery — it writes
 ``incident_pages`` rows with ``channel='recorded'`` and Sprint 35 wires the
@@ -52,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.repos import (
     BotConnectorRepo,
+    chain_is_live,
     EscalationStepRepo,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
@@ -76,7 +82,11 @@ _log = logging.getLogger(__name__)
 
 
 SOFT_TAKEOVER_WINDOW_SECONDS = 5 * 60
+# Start-time cap on a chain nobody has touched (KI-010; removed in X1b).
 HARD_INACTIVITY_TIMEOUT_SECONDS = 15 * 60
+# D-021: an acknowledgement lock lapses 15 min after the assignee's last write.
+ACK_LOCK_INACTIVITY_SECONDS = 15 * 60
+CLOSED_INCIDENT_STATUSES = ("resolved", "merged")
 
 
 @dataclasses.dataclass(slots=True)
@@ -409,6 +419,8 @@ async def restart_chain_for_handoff(
     state.status = "running"
     state.current_step_index = -1
     state.next_step_due_at = None
+    state.paused_until = None
+    state.last_activity_at = None
     state.pending_takeover_user_id = None
     state.pending_takeover_expires_at = None
     state.started_at = now
@@ -456,41 +468,54 @@ async def restart_chain_for_handoff(
     return result
 
 
-async def tick(
+def _closed(incident) -> bool:
+    return incident is None or incident.status in CLOSED_INCIDENT_STATUSES
+
+
+def _lock_deadline(state, last_activity: datetime) -> datetime:
+    """When an acknowledgement lock lapses: 15 min after the assignee's last
+    write, or the end of a snooze, whichever is later."""
+    deadline = last_activity + timedelta(seconds=ACK_LOCK_INACTIVITY_SECONDS)
+    paused_until = _aware(state.paused_until)
+    if paused_until is not None and paused_until > deadline:
+        return paused_until
+    return deadline
+
+
+async def is_eligible_owner(
+    db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """An active, non-deleted member of the workspace can own an incident."""
+
+    user = await UserRepo.get_by_id(db, user_id)
+    if user is None or not user.is_active or user.deleted_at is not None:
+        return False
+    # The workspace is the user's primary org (see ``get_current_org``).
+    return user.primary_org_id == org_id or await UserRepo.is_member(
+        db, user_id, org_id
+    )
+
+
+async def _username(db: AsyncSession, user_id: uuid.UUID) -> str:
+    user = await UserRepo.get_by_id(db, user_id)
+    return user.username if user is not None else "another responder"
+
+
+async def _fire_next_level(
     db: AsyncSession,
     org_id: uuid.UUID,
+    state,
     *,
-    incident_id: uuid.UUID,
-    at: datetime | None = None,
-    channel_factory: ChannelFactory | None = None,
+    now: datetime,
+    channel_factory: ChannelFactory | None,
 ) -> StepFireResult | None:
-    """Advance the chain for ``incident_id`` if its timer has expired.
-
-    Idempotent — safe to call repeatedly. Returns the fire result of the
-    newly-fired step, or None if nothing happened.
-    """
-
-    now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
-    if state is None or state.status != "running":
-        return None
-
-    hard_deadline = _aware(state.hard_deadline_at)
-    next_due = _aware(state.next_step_due_at)
-    # Hard inactivity timeout.
-    if hard_deadline is not None and now >= hard_deadline:
-        state.status = "exhausted"
-        state.finished_at = now
-        state.next_step_due_at = None
-        await db.flush()
-        return None
-
-    if next_due is None or now < next_due:
-        return None
+    """Fire the level after ``current_step_index`` and leave the chain
+    running, or mark it exhausted when there is none."""
 
     steps = list(await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id))
     next_idx = state.current_step_index + 1
     next_step = next((s for s in steps if s.step_index == next_idx), None)
+    state.paused_until = None
     if next_step is None:
         state.status = "exhausted"
         state.finished_at = now
@@ -501,18 +526,18 @@ async def tick(
     result = await _fire_step(
         db,
         org_id,
-        incident_id=incident_id,
+        incident_id=state.incident_id,
         chain_id=state.chain_id,
         step=next_step,
         at=now,
         channel_factory=channel_factory,
     )
+    state.status = "running"
     state.current_step_index = next_step.step_index
     has_more = any(s.step_index > next_step.step_index for s in steps)
-    if has_more:
-        state.next_step_due_at = now + timedelta(seconds=next_step.timeout_seconds)
-    else:
-        state.next_step_due_at = None
+    state.next_step_due_at = (
+        now + timedelta(seconds=next_step.timeout_seconds) if has_more else None
+    )
     await db.flush()
     # An advanced step (index >= 1) is an escalation to a higher level — notify
     # configured Notification Channels. Best-effort; never blocks the engine.
@@ -520,10 +545,166 @@ async def tick(
         await record_lifecycle_comment(
             db,
             org_id,
-            incident_id=incident_id,
+            incident_id=state.incident_id,
             body=f"Escalated to step {result.step_index + 1}.",
         )
-        await _notify_escalation(db, org_id, incident_id)
+        await _notify_escalation(db, org_id, state.incident_id)
+    return result
+
+
+async def _tick_state(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    now: datetime,
+    channel_factory: ChannelFactory | None,
+) -> tuple[StepFireResult | None, bool]:
+    """Advance one chain if anything about it is due.
+
+    Returns the fired level (if any) and whether the state changed.
+    """
+
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
+    if state is None:
+        return None, False
+
+    changed = False
+    takeover_expires = _aware(state.pending_takeover_expires_at)
+    if takeover_expires is not None and now >= takeover_expires:
+        # An unanswered takeover request expires; ownership is unchanged.
+        state.pending_takeover_user_id = None
+        state.pending_takeover_expires_at = None
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body="The takeover request expired; ownership is unchanged.",
+        )
+        changed = True
+
+    if not chain_is_live(state):
+        if changed:
+            await db.flush()
+        return None, changed
+
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        # Every close path cancels the chain; this catches anything older.
+        await IncidentChainStateRepo.cancel_live(db, org_id, incident_id, at=now)
+        return None, True
+
+    due = _aware(state.next_step_due_at)
+    if state.status == "running":
+        # The start-time cap applies only while nobody has touched the chain
+        # (KI-010; removed in X1b). Acknowledging, snoozing, or resuming
+        # clears it, so it can never defeat a lock or a resume.
+        hard_deadline = _aware(state.hard_deadline_at)
+        if hard_deadline is not None and now >= hard_deadline:
+            state.status = "exhausted"
+            state.finished_at = now
+            state.next_step_due_at = None
+            await db.flush()
+            return None, True
+        if due is None or now < due:
+            if changed:
+                await db.flush()
+            return None, changed
+        return (
+            await _fire_next_level(
+                db, org_id, state, now=now, channel_factory=channel_factory
+            ),
+            True,
+        )
+
+    if due is None or now < due:
+        if changed:
+            await db.flush()
+        return None, changed
+
+    if state.status == "paused":
+        if state.paused_until is None:
+            # A pre-upgrade snooze has no end time and stays paused.
+            return None, changed
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body="The snooze ended; escalation resumed.",
+        )
+        return (
+            await _fire_next_level(
+                db, org_id, state, now=now, channel_factory=channel_factory
+            ),
+            True,
+        )
+
+    # Acknowledged, and the assignee has been inactive past the lock.
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    owner = (
+        await _username(db, active.assigned_to) if active is not None else "the owner"
+    )
+    steps = await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id)
+    has_next = any(s.step_index == state.current_step_index + 1 for s in steps)
+    if not has_next:
+        # Nobody left to escalate to: the owner keeps the incident.
+        state.status = "exhausted"
+        state.finished_at = now
+        state.next_step_due_at = None
+        state.paused_until = None
+        await db.flush()
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body=(
+                f"No activity from {owner} for 15 minutes, and there is no "
+                "further level to escalate to."
+            ),
+        )
+        return None, True
+    if active is not None:
+        await IncidentAssignmentRepo.release(db, org_id, incident_id)
+    await record_lifecycle_comment(
+        db,
+        org_id,
+        incident_id=incident_id,
+        body=(
+            f"No activity from {owner} for 15 minutes; released the incident "
+            "and resumed escalation."
+        ),
+    )
+    return (
+        await _fire_next_level(
+            db, org_id, state, now=now, channel_factory=channel_factory
+        ),
+        True,
+    )
+
+
+async def tick(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
+) -> StepFireResult | None:
+    """Advance the chain for ``incident_id`` if anything about it is due.
+
+    Idempotent — safe to call repeatedly. Returns the fire result of the
+    newly-fired step, or None if nothing fired.
+    """
+
+    result, _ = await _tick_state(
+        db,
+        org_id,
+        incident_id=incident_id,
+        now=at or _utcnow(),
+        channel_factory=channel_factory,
+    )
     return result
 
 
@@ -535,47 +716,135 @@ async def escalate_now(
     at: datetime | None = None,
     channel_factory: ChannelFactory | None = None,
 ) -> StepFireResult | None:
-    """Immediately fire the next configured step for an active chain."""
+    """Immediately fire the next level of a live chain.
+
+    Clears a snooze or an acknowledgement lock first. It does not change who
+    owns the incident or its status.
+    """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
-    if state is None or state.status != "running":
-        return None
-
-    steps = list(await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id))
-    next_idx = state.current_step_index + 1
-    next_step = next((step for step in steps if step.step_index == next_idx), None)
-    if next_step is None:
-        state.status = "exhausted"
-        state.finished_at = now
-        state.next_step_due_at = None
-        await db.flush()
-        return None
-
-    result = await _fire_step(
-        db,
-        org_id,
-        incident_id=incident_id,
-        chain_id=state.chain_id,
-        step=next_step,
-        at=now,
-        channel_factory=channel_factory,
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
     )
-    state.current_step_index = next_step.step_index
-    has_more = any(step.step_index > next_step.step_index for step in steps)
-    state.next_step_due_at = (
-        now + timedelta(seconds=next_step.timeout_seconds) if has_more else None
+    if not chain_is_live(state):
+        return None
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        return None
+    if state.status != "running":
+        state.hard_deadline_at = None
+    return await _fire_next_level(
+        db, org_id, state, now=now, channel_factory=channel_factory
     )
-    await db.flush()
-    if result.step_index >= 1 and result.users_paged:
+
+
+@dataclasses.dataclass(slots=True)
+class AckOutcome:
+    # acknowledged | refreshed | owned_by_other | closed
+    status: str
+    # True when a live chain is now held by the assignee's acknowledgement lock.
+    chain_locked: bool = False
+
+
+async def acknowledge(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    assignee_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+    via: str = "web_ui",
+    assigned_by: str = "self_ack",
+    replace_owner: bool = False,
+    note: str | None = None,
+    at: datetime | None = None,
+) -> AckOutcome:
+    """Make ``assignee_id`` the owner and hold the chain under their lock.
+
+    The one path for every ownership change: acknowledge, Take/assign, bulk
+    acknowledge, phone keypad 1, chat actions, session takeover, soft
+    takeover and admin force. ``actor_id`` is who acted (defaults to the
+    assignee), so an operator assigning someone else never assigns
+    themselves.
+
+    Someone holding a live acknowledgement lock keeps it unless
+    ``replace_owner`` is set (Take, a confirmed takeover, admin force).
+    Resolved and merged incidents are never re-owned.
+    """
+
+    now = at or _utcnow()
+    actor_id = actor_id or assignee_id
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        return AckOutcome("closed")
+
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    locked_by_other = (
+        active is not None
+        and active.assigned_to != assignee_id
+        and chain_is_live(state)
+        and state.status == "acked"
+    )
+    if locked_by_other and not replace_owner:
+        return AckOutcome("owned_by_other")
+
+    new_owner = active is None or active.assigned_to != assignee_id
+    await IncidentPageRepo.ack_all_unacked(
+        db, org_id, incident_id=incident_id, user_id=assignee_id, via=via
+    )
+    if new_owner:
+        await IncidentAssignmentRepo.assign(
+            db,
+            org_id,
+            incident_id=incident_id,
+            user_id=assignee_id,
+            assigned_by=assigned_by,
+        )
+        if note is None:
+            if actor_id == assignee_id:
+                note = f"Acknowledged the incident (via {via})."
+            else:
+                note = (
+                    f"Assigned the incident to {await _username(db, assignee_id)} "
+                    f"(via {via})."
+                )
         await record_lifecycle_comment(
             db,
             org_id,
             incident_id=incident_id,
-            body=f"Escalated to step {result.step_index + 1}.",
+            body=note,
+            author_user_id=actor_id,
         )
-        await _notify_escalation(db, org_id, incident_id)
-    return result
+
+    chain_locked = False
+    if chain_is_live(state):
+        if new_owner or state.status != "acked":
+            # A new owner, or the first acknowledgement of a running or
+            # snoozed chain, starts a fresh lock. The same owner acknowledging
+            # again keeps their snooze and any pending takeover request.
+            state.paused_until = None
+            state.pending_takeover_user_id = None
+            state.pending_takeover_expires_at = None
+        state.status = "acked"
+        state.finished_at = None
+        state.last_activity_at = now
+        state.hard_deadline_at = None
+        state.next_step_due_at = _lock_deadline(state, now)
+        chain_locked = True
+
+    # Acknowledgement stops any staged notification escalation for this incident.
+    from backend.paging import notification_escalation as _ne
+
+    await _ne.stop_escalation(
+        db, org_id, incident_id=incident_id, status="acked", at=now
+    )
+    await db.flush()
+    return AckOutcome(
+        "acknowledged" if new_owner else "refreshed", chain_locked=chain_locked
+    )
 
 
 async def handle_ack(
@@ -587,71 +856,133 @@ async def handle_ack(
     via: str = "web_ui",
     at: datetime | None = None,
 ) -> bool:
-    """Ack the chain for ``user_id``. Pauses the chain and makes the acker
-    the active assignee.
+    """Acknowledge as ``user_id``. Returns True if this took the chain under
+    the user's acknowledgement lock."""
 
-    Returns True if the chain transitioned to ``acked``.
+    outcome = await acknowledge(
+        db, org_id, incident_id=incident_id, assignee_id=user_id, via=via, at=at
+    )
+    return outcome.status == "acknowledged" and outcome.chain_locked
+
+
+async def record_assignee_activity(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    at: datetime | None = None,
+) -> bool:
+    """Extend the acknowledgement lock after the assignee's own write.
+
+    Call it only after an authorized, successful, incident-scoped write, in
+    the same transaction. Writes by anyone else never count.
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
-    if state is None:
-        # No chain running — still record the ack on any unacked pages.
-        await IncidentPageRepo.ack_all_unacked(
-            db, org_id, incident_id=incident_id, user_id=user_id, via=via
-        )
-        await IncidentAssignmentRepo.assign(
-            db,
-            org_id,
-            incident_id=incident_id,
-            user_id=user_id,
-            assigned_by="self_ack",
-        )
-        await record_lifecycle_comment(
-            db,
-            org_id,
-            incident_id=incident_id,
-            body=f"Acknowledged the incident (via {via}).",
-            author_user_id=user_id,
-        )
-        from backend.paging import notification_escalation as _ne
-
-        await _ne.stop_escalation(
-            db, org_id, incident_id=incident_id, status="acked", at=now
-        )
-        return False
-
-    if state.status not in ("running", "paused"):
-        return False
-
-    await IncidentPageRepo.ack_all_unacked(
-        db, org_id, incident_id=incident_id, user_id=user_id, via=via
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
     )
-    await IncidentAssignmentRepo.assign(
-        db,
-        org_id,
-        incident_id=incident_id,
-        user_id=user_id,
-        assigned_by="self_ack",
+    if not chain_is_live(state) or state.status != "acked":
+        return False
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    if active is None or active.assigned_to != actor_id:
+        return False
+    state.last_activity_at = now
+    state.next_step_due_at = _lock_deadline(state, now)
+    await db.flush()
+    return True
+
+
+async def release_ownership(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    at: datetime | None = None,
+    channel_factory: ChannelFactory | None = None,
+) -> bool:
+    """Release the owner. Under a live acknowledgement lock, escalation
+    resumes at the next level (never level zero). Returns False if nobody
+    owned the incident."""
+
+    now = at or _utcnow()
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
     )
+    if not await IncidentAssignmentRepo.release(db, org_id, incident_id):
+        return False
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    resume = chain_is_live(state) and state.status == "acked" and not _closed(incident)
     await record_lifecycle_comment(
         db,
         org_id,
         incident_id=incident_id,
-        body=f"Acknowledged the incident (via {via}).",
-        author_user_id=user_id,
+        body=(
+            "Released the incident; escalation resumed."
+            if resume
+            else "Released the incident."
+        ),
+        author_user_id=actor_id,
     )
-    state.status = "acked"
-    state.finished_at = now
-    state.next_step_due_at = None
-    # Acknowledgement stops any staged notification escalation for this incident.
-    from backend.paging import notification_escalation as _ne
-
-    await _ne.stop_escalation(
-        db, org_id, incident_id=incident_id, status="acked", at=now
-    )
-    await db.flush()
+    if resume:
+        state.last_activity_at = None
+        await _fire_next_level(
+            db, org_id, state, now=now, channel_factory=channel_factory
+        )
     return True
+
+
+async def snooze(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    until: datetime,
+    at: datetime | None = None,
+) -> datetime | None:
+    """Pause escalation until ``until``.
+
+    Unacknowledged: the next level fires when the snooze ends.
+    Acknowledged: the owner keeps the incident and the lock lasts at least
+    until the snooze ends. Returns when escalation resumes, or None if there
+    is no live chain to snooze.
+    """
+
+    now = at or _utcnow()
+    if until <= now:
+        raise ValueError("A snooze must end in the future")
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
+    if not chain_is_live(state):
+        return None
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        return None
+
+    state.paused_until = until
+    state.hard_deadline_at = None
+    if state.status == "acked":
+        active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+        if active is not None and active.assigned_to == actor_id:
+            state.last_activity_at = now
+        last = _aware(state.last_activity_at) or now
+        state.next_step_due_at = _lock_deadline(state, last)
+    else:
+        state.status = "paused"
+        state.next_step_due_at = until
+    await db.flush()
+    await record_lifecycle_comment(
+        db,
+        org_id,
+        incident_id=incident_id,
+        body=f"Snoozed escalation until {until.strftime('%Y-%m-%d %H:%M UTC')}.",
+        author_user_id=actor_id,
+    )
+    return _aware(state.next_step_due_at)
 
 
 async def handle_takeover_request(
@@ -662,33 +993,47 @@ async def handle_takeover_request(
     requester_id: uuid.UUID,
     at: datetime | None = None,
 ) -> str:
-    """Start the soft-takeover window. The current assignee has
-    ``SOFT_TAKEOVER_WINDOW_SECONDS`` to confirm — auto-release on timeout."""
+    """Ask the current owner to hand over the incident.
+
+    Returns ``assigned`` (nobody owned it), ``noop`` (already yours),
+    ``pending`` (the owner has five minutes to confirm), ``requires_admin``
+    (no chain to hold the request), or ``closed``.
+    """
 
     now = at or _utcnow()
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        return "closed"
     active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     if active is None:
-        # No current owner — straight-up assign the requester.
-        await IncidentAssignmentRepo.assign(
+        await acknowledge(
             db,
             org_id,
             incident_id=incident_id,
-            user_id=requester_id,
-            assigned_by="self_ack",
+            assignee_id=requester_id,
+            via="take",
+            at=now,
         )
         return "assigned"
     if active.assigned_to == requester_id:
         return "noop"
-
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is None:
-        # Chain ended — but ownership still exists. Defer to admin force.
         return "requires_admin"
     state.pending_takeover_user_id = requester_id
     state.pending_takeover_expires_at = now + timedelta(
         seconds=SOFT_TAKEOVER_WINDOW_SECONDS
     )
     await db.flush()
+    await record_lifecycle_comment(
+        db,
+        org_id,
+        incident_id=incident_id,
+        body="Requested to take over the incident.",
+        author_user_id=requester_id,
+    )
     return "pending"
 
 
@@ -697,32 +1042,50 @@ async def handle_takeover_confirm(
     org_id: uuid.UUID,
     *,
     incident_id: uuid.UUID,
+    actor_id: uuid.UUID,
     at: datetime | None = None,
-) -> bool:
-    """Confirm a soft-takeover. Called by the current owner OR on auto-expiry
-    by the scheduler.
+) -> str:
+    """The current owner hands the incident to the pending requester.
+
+    Returns ``confirmed``, ``none`` (no pending request), ``expired``,
+    ``not_owner`` (only the current owner can confirm), ``ineligible`` (the
+    requester can no longer own incidents), or ``closed``.
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
     if state is None or state.pending_takeover_user_id is None:
-        return False
+        return "none"
     expires = _aware(state.pending_takeover_expires_at)
-    if expires is not None and now > expires:
-        # Window expired — auto-confirm per spec.
-        pass
+    if expires is not None and now >= expires:
+        state.pending_takeover_user_id = None
+        state.pending_takeover_expires_at = None
+        await db.flush()
+        return "expired"
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    if active is None or active.assigned_to != actor_id:
+        return "not_owner"
     new_owner = state.pending_takeover_user_id
-    await IncidentAssignmentRepo.assign(
+    state.pending_takeover_user_id = None
+    state.pending_takeover_expires_at = None
+    if not await is_eligible_owner(db, org_id, new_owner):
+        await db.flush()
+        return "ineligible"
+    outcome = await acknowledge(
         db,
         org_id,
         incident_id=incident_id,
-        user_id=new_owner,
+        assignee_id=new_owner,
+        actor_id=actor_id,
+        via="takeover",
         assigned_by="manual",
+        replace_owner=True,
+        note=f"Handed the incident to {await _username(db, new_owner)}.",
+        at=now,
     )
-    state.pending_takeover_user_id = None
-    state.pending_takeover_expires_at = None
-    await db.flush()
-    return True
+    return "closed" if outcome.status == "closed" else "confirmed"
 
 
 async def handle_force_takeover(
@@ -733,15 +1096,23 @@ async def handle_force_takeover(
     admin_id: uuid.UUID,
     at: datetime | None = None,
 ) -> bool:
-    """Admin force-takeover. Always succeeds. Recorded as ``admin_force``."""
+    """Admin force-takeover, recorded as ``admin_force`` on the assignment and
+    on the incident timeline. Returns False for a resolved or merged
+    incident."""
 
-    await IncidentAssignmentRepo.assign(
+    outcome = await acknowledge(
         db,
         org_id,
         incident_id=incident_id,
-        user_id=admin_id,
+        assignee_id=admin_id,
+        via="admin_force",
         assigned_by="admin_force",
+        replace_owner=True,
+        note="Took over the incident (admin force).",
+        at=at,
     )
+    if outcome.status == "closed":
+        return False
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is not None:
         state.pending_takeover_user_id = None
@@ -757,17 +1128,11 @@ async def cancel_chain(
     incident_id: uuid.UUID,
     at: datetime | None = None,
 ) -> bool:
-    """Cancel a running chain (e.g., incident resolved before ack)."""
+    """Cancel a live chain (running, snoozed, or acknowledged)."""
 
-    now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
-    if state is None or state.status not in ("running", "paused"):
-        return False
-    state.status = "cancelled"
-    state.finished_at = now
-    state.next_step_due_at = None
-    await db.flush()
-    return True
+    return await IncidentChainStateRepo.cancel_live(
+        db, org_id, incident_id, at=at or _utcnow()
+    )
 
 
 async def tick_all_due(
@@ -776,22 +1141,22 @@ async def tick_all_due(
     at: datetime | None = None,
     channel_factory: ChannelFactory | None = None,
 ) -> int:
-    """Scheduler entry point — advance every chain whose timer has expired.
+    """Scheduler entry point — act on every chain with something due.
 
-    Returns the number of state rows that advanced.
+    Returns the number of state rows that changed.
     """
 
     now = at or _utcnow()
     due = await IncidentChainStateRepo.list_due(db, now=now)
-    advanced = 0
+    changed_rows = 0
     for state in due:
-        result = await tick(
+        _, changed = await _tick_state(
             db,
             state.org_id,
             incident_id=state.incident_id,
-            at=now,
+            now=now,
             channel_factory=channel_factory,
         )
-        if result is not None or state.status != "running":
-            advanced += 1
-    return advanced
+        if changed:
+            changed_rows += 1
+    return changed_rows

@@ -2858,6 +2858,8 @@ class IncidentChainStateResponse(BaseModel):
     hard_deadline_at: Optional[datetime]
     pending_takeover_user_id: Optional[uuid.UUID]
     pending_takeover_expires_at: Optional[datetime]
+    paused_until: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
     started_at: datetime
     finished_at: Optional[datetime]
 

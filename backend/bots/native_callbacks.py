@@ -38,6 +38,7 @@ ERROR_MESSAGES = {
 RESULT_MESSAGES = {
     "acknowledged": "acknowledged",
     "already_acknowledged": "already acknowledged",
+    "already_owned": "found another responder already owns",
     "resolved": "resolved",
     "already_resolved": "already resolved",
     "escalated": "escalated",

@@ -234,12 +234,18 @@ async def create_session(
             cancel_session_workflow(request.app, session_id=session.id)
             await _expire_pending_approvals(db, org_id, session.id)
         if incident is not None and session.status != "queued":
-            await IncidentAssignmentRepo.assign(
+            from backend.paging.escalation import acknowledge
+
+            # Taking over the AI session takes ownership: paging stops and the
+            # user holds the acknowledgement lock.
+            await acknowledge(
                 db,
                 org_id,
                 incident_id=incident.id,
-                user_id=user.id,
+                assignee_id=user.id,
+                via="session",
                 assigned_by="session_takeover",
+                replace_owner=True,
             )
         await AuditEntryRepo.create(
             db,
@@ -264,6 +270,12 @@ async def create_session(
         )
         briefing_message_id = msg.id
 
+    if incident is not None:
+        from backend.paging.escalation import record_assignee_activity
+
+        await record_assignee_activity(
+            db, org_id, incident_id=incident.id, actor_id=user.id
+        )
     await db.commit()
     await db.refresh(session)
     # ``refresh`` opens a new read transaction. Close it before returning so
@@ -741,12 +753,16 @@ async def override_session(
     # A human is now in control — record them as the incident assignee so the
     # incident is acknowledged/owned (mirrors the Tier 1/2 ack-then-start gate).
     if session.incident_id is not None:
-        await IncidentAssignmentRepo.assign(
+        from backend.paging.escalation import acknowledge
+
+        await acknowledge(
             db,
             org_id,
             incident_id=session.incident_id,
-            user_id=user.id,
+            assignee_id=user.id,
+            via="session",
             assigned_by="override",
+            replace_owner=True,
         )
     await db.commit()
 
@@ -824,6 +840,13 @@ async def create_session_message(
         role="user",
         content=body.content,
     )
+    if session.incident_id is not None:
+        from backend.paging.escalation import record_assignee_activity
+
+        # Working the incident with its AI session is activity on the lock.
+        await record_assignee_activity(
+            db, org_id, incident_id=session.incident_id, actor_id=user.id
+        )
     await db.commit()
     persisted_message = await SessionMessageRepo.get_by_id(db, org_id, message.id)
     if persisted_message is None:

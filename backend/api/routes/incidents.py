@@ -898,7 +898,9 @@ async def update_incident(
             detail="Incident not found",
         )
 
-    if service_changed:
+    # A service handoff re-routes a live incident only. A resolved or merged
+    # incident just records the new service (KI-037).
+    if service_changed and updated.status not in _CLOSED_STATUSES:
         await IncidentAssignmentRepo.release(db, org_id, incident_id)
         if updated.response_mode in ("page", "escalate_immediate"):
             link = await _esc.select_chain_for_incident(
@@ -919,6 +921,10 @@ async def update_incident(
                     channel_factory=build_channel_factory(),
                 )
 
+    if body.status != "resolved" and not service_changed:
+        await _esc.record_assignee_activity(
+            db, org_id, incident_id=incident_id, actor_id=user.id
+        )
     if body.status == "resolved" and prior_status != "resolved":
         # Resolving an incident stops any AI sessions still working it.
         await stop_incident_sessions(
@@ -1203,9 +1209,12 @@ async def create_incident_comment(
                 category=CATEGORY_MENTION,
                 title=f"{user.username} mentioned you",
                 body=comment.body[:200],
-                link=f"/dashboard/incidents/{incident_id}",
+                link=_incident_link(incident_id),
                 incident_id=incident_id,
             )
+    await _esc.record_assignee_activity(
+        db, org_id, incident_id=incident_id, actor_id=user.id
+    )
     await db.commit()
     await db.refresh(comment)
     return await _comment_to_response(db, comment)
@@ -1616,6 +1625,31 @@ async def get_incident_timeline(
 # ---------------------------------------------------------------------------
 
 
+def _incident_link(incident_id: uuid.UUID) -> str:
+    """In-app link to the incident page (the static export has no
+    ``/dashboard/incidents/<id>`` route)."""
+    return f"/dashboard/incidents/detail?id={incident_id}"
+
+
+_CLOSED_STATUSES = ("resolved", "merged")
+
+
+def _ensure_open(incident) -> None:
+    if incident.status in _CLOSED_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"The incident is {incident.status}.",
+        )
+
+
+async def _ensure_eligible_owner(db, org_id, user_id: uuid.UUID) -> None:
+    if not await _esc.is_eligible_owner(db, org_id, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="That user can't own incidents (inactive or not a member).",
+        )
+
+
 async def _ensure_can_act_on_incident(db, org_id, user, incident) -> None:
     """Allow admins/operators globally OR the active assignee (D-021 #9)."""
 
@@ -1697,14 +1731,24 @@ async def assign_incident(
             detail="Only admin/operator can assign other users",
         )
 
-    assigned_by = "self_ack" if target_user_id == user.id else "manual"
-    assignment = await IncidentAssignmentRepo.assign(
+    _ensure_open(incident)
+    if target_user_id != user.id:
+        await _ensure_eligible_owner(db, org_id, target_user_id)
+
+    # Taking or assigning ownership acknowledges the incident: paging stops
+    # and the owner holds the D-021 lock (KI-021).
+    await _esc.acknowledge(
         db,
         org_id,
         incident_id=incident_id,
-        user_id=target_user_id,
-        assigned_by=assigned_by,
+        assignee_id=target_user_id,
+        actor_id=user.id,
+        via="web_ui",
+        assigned_by="self_ack" if target_user_id == user.id else "manual",
+        replace_owner=True,
     )
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    assert assignment is not None
     # Notify the assignee when someone else assigns them (self-ack is silent).
     if target_user_id != user.id:
         await emit_notification(
@@ -1715,7 +1759,7 @@ async def assign_incident(
             category=CATEGORY_INCIDENT,
             title=f"You were assigned: {incident.title}",
             body=f"{user.username} assigned this incident to you.",
-            link=f"/dashboard/incidents/{incident_id}",
+            link=_incident_link(incident_id),
             incident_id=incident_id,
         )
     await db.commit()
@@ -1738,7 +1782,15 @@ async def release_incident(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     await _ensure_can_act_on_incident(db, org_id, user, incident)
-    released = await IncidentAssignmentRepo.release(db, org_id, incident_id)
+    from backend.paging.channel_factory import build_channel_factory
+
+    released = await _esc.release_ownership(
+        db,
+        org_id,
+        incident_id=incident_id,
+        actor_id=user.id,
+        channel_factory=build_channel_factory(),
+    )
     if not released:
         raise HTTPException(status_code=404, detail="No active assignment")
     await db.commit()
@@ -1765,10 +1817,11 @@ async def bulk_incident_action(
     actions retain per-row result reporting. Self-only enforcement on reassign
     matches the per-incident `/assign` route.
 
-    Acknowledge = assign the current user (or ``user_id``) AND advance status
-    from ``open`` → ``in_progress`` if it's still ``open``. The ack payload
-    is incident-local; we don't poke the chain engine here (that path is
-    via ``/incidents/{id}/ack`` for chain-driven sessions).
+    Acknowledge = acknowledge for the current user (or ``user_id``) through
+    the same path as ``/incidents/{id}/ack`` — paging stops and the owner
+    holds the lock — AND advance status from ``open`` → ``in_progress``.
+    Reassign changes the owner the same way. Resolved and merged incidents
+    are reported as failures.
 
     Resolve/reopen/delete are validated atomically before any row is changed.
     Admins may run them across services. Operators may resolve or reopen only
@@ -1884,6 +1937,11 @@ async def bulk_incident_action(
                 status_code=403,
                 detail="Only admin/operator can reassign other users",
             )
+    if action in {"acknowledge", "reassign"} and body.user_id not in (
+        None,
+        user.id,
+    ):
+        await _ensure_eligible_owner(db, org_id, body.user_id)
 
     items: list[IncidentBulkActionResult] = []
     succeeded = 0
@@ -1912,12 +1970,16 @@ async def bulk_incident_action(
                     )
                     failed += 1
                     continue
-                await IncidentAssignmentRepo.assign(
+                _ensure_open(incident)
+                await _esc.acknowledge(
                     db,
                     org_id,
                     incident_id=incident_id,
-                    user_id=target,
+                    assignee_id=target,
+                    actor_id=user.id,
+                    via="web_ui",
                     assigned_by="self_ack" if target == user.id else "manual",
+                    replace_owner=True,
                 )
                 if target != user.id:
                     await emit_notification(
@@ -1928,7 +1990,7 @@ async def bulk_incident_action(
                         category=CATEGORY_INCIDENT,
                         title=f"You were assigned: {incident.title}",
                         body=f"{user.username} assigned this incident to you.",
-                        link=f"/dashboard/incidents/{incident_id}",
+                        link=_incident_link(incident_id),
                         incident_id=incident_id,
                     )
                 if incident.status == "open":
@@ -1936,12 +1998,16 @@ async def bulk_incident_action(
                         db, org_id, incident_id, "in_progress"
                     )
             elif action == "reassign":
-                await IncidentAssignmentRepo.assign(
+                _ensure_open(incident)
+                await _esc.acknowledge(
                     db,
                     org_id,
                     incident_id=incident_id,
-                    user_id=body.user_id,  # already validated above
+                    assignee_id=body.user_id,  # already validated above
+                    actor_id=user.id,
+                    via="web_ui",
                     assigned_by="manual",
+                    replace_owner=True,
                 )
                 if body.user_id != user.id:
                     await emit_notification(
@@ -1952,7 +2018,7 @@ async def bulk_incident_action(
                         category=CATEGORY_INCIDENT,
                         title=f"You were assigned: {incident.title}",
                         body=f"{user.username} assigned this incident to you.",
-                        link=f"/dashboard/incidents/{incident_id}",
+                        link=_incident_link(incident_id),
                         incident_id=incident_id,
                     )
             items.append(IncidentBulkActionResult(incident_id=incident_id, ok=True))
@@ -2063,7 +2129,7 @@ async def combine_incidents(
                 body=(
                     f"{user.username} combined this incident into “{primary.title}”."
                 ),
-                link=f"/dashboard/incidents/{primary_id}",
+                link=_incident_link(primary_id),
                 incident_id=primary_id,
             )
         await IncidentCommentRepo.create(
@@ -2169,19 +2235,29 @@ async def ack_incident(
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
+    _ensure_open(incident)
     cancelled_queued = await SessionRepo.cancel_queued_for_incident(
         db,
         org_id,
         incident_id,
         reason="Incident was acknowledged before AI capacity became available.",
     )
-    await _esc.handle_ack(
+    outcome = await _esc.acknowledge(
         db,
         org_id,
         incident_id=incident_id,
-        user_id=user.id,
+        assignee_id=user.id,
         via=body.via,
     )
+    if outcome.status == "owned_by_other":
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Someone else owns this incident. Ask them to release it, or "
+                "request a takeover."
+            ),
+        )
     await db.commit()
     for session in cancelled_queued:
         schedule_session_chat_event(
@@ -2243,6 +2319,7 @@ async def take_incident(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
 
+    _ensure_open(incident)
     if body.force:
         if user.role != "admin":
             raise HTTPException(
@@ -2253,7 +2330,27 @@ async def take_incident(
             db, org_id, incident_id=incident_id, admin_id=user.id
         )
     elif body.confirm:
-        await _esc.handle_takeover_confirm(db, org_id, incident_id=incident_id)
+        # Only the current owner can hand the incident over (KI-032).
+        result = await _esc.handle_takeover_confirm(
+            db, org_id, incident_id=incident_id, actor_id=user.id
+        )
+        if result == "not_owner":
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the current owner can confirm a takeover.",
+            )
+        if result in {"none", "expired", "ineligible"}:
+            # An expired or ineligible request is cleared; keep that.
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "none": "There is no pending takeover request.",
+                    "expired": "The takeover request expired.",
+                    "ineligible": "The requester can no longer own incidents.",
+                }[result],
+            )
     else:
         await _esc.handle_takeover_request(
             db, org_id, incident_id=incident_id, requester_id=user.id

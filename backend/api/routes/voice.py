@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config
 from backend.api.deps import get_db
-from backend.db.repos import IncidentAssignmentRepo, IncidentRepo
+from backend.db.repos import IncidentRepo
 
 router = APIRouter(prefix="/paging/voice", tags=["voice"])
 
@@ -114,12 +114,22 @@ async def voice_ack(
         return _twiml("That incident could not be found. Goodbye.")
 
     if digit == "1":
-        if incident.acknowledged_at is not None:
-            return _twiml("This incident was already acknowledged. Goodbye.")
-        await IncidentAssignmentRepo.assign(
-            db, org_id, incident_id=incident_id, user_id=user_id, assigned_by="self_ack"
+        from backend.paging.escalation import acknowledge
+
+        # Same path as every other acknowledgement: paging stops and the
+        # caller holds the lock (KI-021). Ownership is checked now, not by
+        # whether anyone ever acknowledged, so a responder paged after a
+        # release or an expired lock can take it.
+        outcome = await acknowledge(
+            db, org_id, incident_id=incident_id, assignee_id=user_id, via="voice"
         )
+        if outcome.status == "closed":
+            return _twiml("This incident is already resolved. Goodbye.")
+        if outcome.status == "owned_by_other":
+            return _twiml("Someone else already owns this incident. Goodbye.")
         await db.commit()
+        if outcome.status == "refreshed":
+            return _twiml("You already own this incident. Goodbye.")
         return _twiml("Incident acknowledged. You are now the owner. Goodbye.")
 
     if digit == "2":
@@ -138,13 +148,14 @@ async def voice_ack(
         return _twiml("Escalating to the next responder. Goodbye.")
 
     if digit == "3":
-        if incident.status == "resolved":
+        if incident.status in ("resolved", "merged"):
             return _twiml("This incident was already resolved. Goodbye.")
         from backend.api.session_runner import stop_incident_sessions
         from backend.services.incident_timeline import record_lifecycle_comment
 
-        incident.status = "resolved"
-        await db.flush()
+        # The shared status write also stops the Escalation Chain and any
+        # staged notifications (KI-011).
+        await IncidentRepo.update_status(db, org_id, incident_id, "resolved")
         # Stop any AI sessions still working a now-resolved incident.
         await stop_incident_sessions(
             request.app,

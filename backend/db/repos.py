@@ -802,6 +802,12 @@ class IncidentRepo:
             values["service_id"] = service_id
         if not values:
             return await IncidentRepo.get_by_id(db, org_id, incident_id)
+        if status == "resolved":
+            # Lock the chain row before the incident row: every chain
+            # transition takes the same order, so they serialize cleanly.
+            await IncidentChainStateRepo.get_for_incident(
+                db, org_id, incident_id, for_update=True
+            )
         values["updated_at"] = datetime.now(timezone.utc)
         stmt = (
             update(Incident)
@@ -811,13 +817,36 @@ class IncidentRepo:
         result = await db.execute(stmt)
         if not result.rowcount:
             return None
+        if status == "resolved":
+            await IncidentRepo._stop_paging(db, org_id, incident_id)
         await db.flush()
         return await IncidentRepo.get_by_id(db, org_id, incident_id)
+
+    @staticmethod
+    async def _stop_paging(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> None:
+        """Closing an incident ends all paging for it: the Escalation Chain
+        (running, snoozed, or acknowledged) and any staged notifications.
+
+        This is the single chokepoint every resolve and merge path goes
+        through, so no close can leave a chain paging behind it.
+        """
+        from backend.paging import notification_escalation as _ne
+
+        await IncidentChainStateRepo.cancel_live(db, org_id, incident_id)
+        await _ne.stop_escalation(
+            db, org_id, incident_id=incident_id, status="resolved"
+        )
 
     @staticmethod
     async def update_status(
         db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID, status: str
     ) -> None:
+        if status == "resolved":
+            await IncidentChainStateRepo.get_for_incident(
+                db, org_id, incident_id, for_update=True
+            )
         stmt = (
             update(Incident)
             .where(Incident.org_id == org_id)
@@ -827,14 +856,10 @@ class IncidentRepo:
             .values(status=status, updated_at=datetime.now(timezone.utc))
         )
         await db.execute(stmt)
-        # Resolving an incident stops any staged notification
-        # escalation still in flight (single chokepoint for every resolve path).
+        # Resolving stops the chain and staged notifications (single
+        # chokepoint for every resolve path).
         if status == "resolved":
-            from backend.paging import notification_escalation as _ne
-
-            await _ne.stop_escalation(
-                db, org_id, incident_id=incident_id, status="resolved"
-            )
+            await IncidentRepo._stop_paging(db, org_id, incident_id)
 
     @staticmethod
     async def combine_into(
@@ -847,9 +872,12 @@ class IncidentRepo:
         """Fold *secondary_id* into *primary_id*: status→``merged`` + pointer.
 
         The row is kept (never deleted) so the audit trail and external
-        fingerprint survive. Also stops any staged notification escalation, the
-        same as resolve/close.
+        fingerprint survive. Also stops the Escalation Chain and any staged
+        notification escalation, the same as resolve.
         """
+        await IncidentChainStateRepo.get_for_incident(
+            db, org_id, secondary_id, for_update=True
+        )
         stmt = (
             update(Incident)
             .where(Incident.org_id == org_id)
@@ -861,11 +889,7 @@ class IncidentRepo:
             )
         )
         await db.execute(stmt)
-        from backend.paging import notification_escalation as _ne
-
-        await _ne.stop_escalation(
-            db, org_id, incident_id=secondary_id, status="resolved"
-        )
+        await IncidentRepo._stop_paging(db, org_id, secondary_id)
 
     @staticmethod
     async def list_merged_into(
@@ -7041,19 +7065,67 @@ class IncidentPageRepo:
         return result.rowcount or 0
 
 
+LIVE_CHAIN_STATUSES = ("running", "paused", "acked")
+
+
+def chain_is_live(state: IncidentChainState | None) -> bool:
+    """A chain that can still page: running, snoozed, or under a live
+    acknowledgement lock. A chain acknowledged before the lock existed kept
+    its ``finished_at`` and stays finished."""
+    return (
+        state is not None
+        and state.status in LIVE_CHAIN_STATUSES
+        and state.finished_at is None
+    )
+
+
 class IncidentChainStateRepo:
     @staticmethod
     async def get_for_incident(
-        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> IncidentChainState | None:
-        return (
-            await db.execute(
-                select(IncidentChainState).where(
-                    IncidentChainState.org_id == org_id,
-                    IncidentChainState.incident_id == incident_id,
-                )
-            )
-        ).scalar_one_or_none()
+        """Return the incident's chain state.
+
+        ``for_update`` takes a row lock (Postgres) and refreshes the loaded
+        row, so a transition reads the committed state it will change.
+        """
+        stmt = select(IncidentChainState).where(
+            IncidentChainState.org_id == org_id,
+            IncidentChainState.incident_id == incident_id,
+        )
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def cancel_live(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        at: datetime | None = None,
+    ) -> bool:
+        """End a live chain: no further level fires, and no pending snooze,
+        lock or takeover can bring it back. Returns True if one was live."""
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, org_id, incident_id, for_update=True
+        )
+        if state is None:
+            return False
+        was_live = chain_is_live(state)
+        if was_live:
+            state.status = "cancelled"
+            state.finished_at = at or datetime.now(timezone.utc)
+        state.next_step_due_at = None
+        state.paused_until = None
+        state.pending_takeover_user_id = None
+        state.pending_takeover_expires_at = None
+        await db.flush()
+        return was_live
 
     @staticmethod
     async def create(
@@ -7074,13 +7146,34 @@ class IncidentChainStateRepo:
     async def list_due(
         db: AsyncSession, *, now: datetime
     ) -> Sequence[IncidentChainState]:
-        """Return states whose next_step_due_at has passed (any org)."""
+        """States the scheduler must act on now (any org): a running level
+        timeout, a snooze that ended, an acknowledgement lock that expired,
+        or a takeover request that expired."""
 
-        stmt = (
-            select(IncidentChainState)
-            .where(IncidentChainState.status == "running")
-            .where(IncidentChainState.next_step_due_at.is_not(None))
-            .where(IncidentChainState.next_step_due_at <= now)
+        from sqlalchemy import and_, or_
+
+        due = and_(
+            IncidentChainState.next_step_due_at.is_not(None),
+            IncidentChainState.next_step_due_at <= now,
+        )
+        stmt = select(IncidentChainState).where(
+            or_(
+                and_(IncidentChainState.status == "running", due),
+                and_(
+                    IncidentChainState.status == "paused",
+                    IncidentChainState.paused_until.is_not(None),
+                    due,
+                ),
+                and_(
+                    IncidentChainState.status == "acked",
+                    IncidentChainState.finished_at.is_(None),
+                    due,
+                ),
+                and_(
+                    IncidentChainState.pending_takeover_expires_at.is_not(None),
+                    IncidentChainState.pending_takeover_expires_at <= now,
+                ),
+            )
         )
         return (await db.execute(stmt)).scalars().all()
 

@@ -1,5 +1,5 @@
 // Browser proof for webhook recovery and cross-service collision handling.
-// Guarded by QA_INTAKE_PAGING because its Escalation Chains page the QA user.
+// Guarded by QA_LIVE_PAGING because its Escalation Chains page the QA user.
 // Run it against a disposable instance with local notification sinks.
 
 import assert from "node:assert/strict";
@@ -101,9 +101,9 @@ export default {
   id: "intake_correctness",
   title: "Intake — recovery and collision",
   async run(h) {
-    if (!config.intakePaging) {
+    if (!config.livePaging) {
       await h.step("intake recovery and collision checks", async () => {
-        throw Harness.skip("QA_INTAKE_PAGING not enabled");
+        throw Harness.skip("QA_LIVE_PAGING not enabled");
       });
       return;
     }

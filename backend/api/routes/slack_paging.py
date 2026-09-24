@@ -242,9 +242,14 @@ _UUID_RE = re.compile(
 _DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhd])\s*$", re.IGNORECASE)
 
 
+# A snooze longer than a week is not a pause any more; resolve instead. The cap
+# also keeps the resume time inside the representable date range.
+_MAX_SNOOZE_SECONDS = 7 * 86400
+
+
 def _parse_duration(text: str) -> int | None:
     """Parse '30m' / '2h' / '90s' / '1d' → seconds. Returns ``None`` on
-    failure or non-positive values."""
+    failure, non-positive values, or anything over seven days."""
 
     m = _DURATION_RE.match(text or "")
     if not m:
@@ -253,7 +258,8 @@ def _parse_duration(text: str) -> int | None:
     unit = m.group(2).lower()
     if value <= 0:
         return None
-    return value * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+    seconds = value * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+    return seconds if seconds <= _MAX_SNOOZE_SECONDS else None
 
 
 def _extract_incident_id(text: str) -> uuid.UUID | None:
@@ -382,19 +388,33 @@ async def _handle_slash(
             )
         elif result == "noop":
             msg = f"You already own *{incident.title}*."
+        elif result == "closed":
+            msg = f"*{incident.title}* is already {incident.status}."
         else:
             msg = f"Take-over for *{incident.title}* requires an admin (chain ended)."
         return _ephemeral(msg)
 
     if command == "/release":
-        released = await IncidentAssignmentRepo.release(
+        from backend.paging.channel_factory import build_channel_factory
+
+        state = await IncidentChainStateRepo.get_for_incident(
             db, connector.org_id, incident_id
+        )
+        was_locked = state is not None and state.status == "acked"
+        released = await _esc.release_ownership(
+            db,
+            connector.org_id,
+            incident_id=incident_id,
+            actor_id=actor.id,
+            channel_factory=build_channel_factory(),
         )
         if not released:
             return _ephemeral(f"*{incident.title}* has no active assignee.")
-        return _ephemeral(
-            f"Released *{incident.title}*. Escalation may resume on the next tick."
-        )
+        if was_locked and state.finished_at is None:
+            return _ephemeral(
+                f"Released *{incident.title}*. Escalation resumed at the next level."
+            )
+        return _ephemeral(f"Released *{incident.title}*.")
 
     if command == "/resolve":
         await _esc.cancel_chain(db, connector.org_id, incident_id=incident_id)
@@ -407,22 +427,27 @@ async def _handle_slash(
         seconds = _parse_duration(remainder)
         if seconds is None:
             return _ephemeral(
-                "Usage: `/snooze <duration>` — examples: `30m`, `2h`, `1d`."
+                "Usage: `/snooze <duration>` — examples: `30m`, `2h`, `1d` (up to `7d`)."
             )
-        state = await IncidentChainStateRepo.get_for_incident(
-            db, connector.org_id, incident_id
-        )
-        if state is None or state.status not in ("running", "paused"):
-            return _ephemeral(f"No active chain to snooze for *{incident.title}*.")
         now = datetime.now(timezone.utc)
-        new_due = now + timedelta(seconds=seconds)
-        state.next_step_due_at = new_due
-        state.status = "paused"
-        await db.flush()
+        # One snooze path for Slack and (later) the web: an unacknowledged
+        # chain resumes at the next level when the snooze ends; an
+        # acknowledged one keeps its owner (KI-013).
+        resumes_at = await _esc.snooze(
+            db,
+            connector.org_id,
+            incident_id=incident_id,
+            actor_id=actor.id,
+            until=now + timedelta(seconds=seconds),
+            at=now,
+        )
+        if resumes_at is None:
+            return _ephemeral(f"No active chain to snooze for *{incident.title}*.")
         # Human-readable duration: re-render from the input.
         return _ephemeral(
             f"Snoozed *{incident.title}* for {remainder}. "
-            f"Next step due {new_due.strftime('%Y-%m-%d %H:%M UTC')}."
+            f"Escalation resumes {resumes_at.strftime('%Y-%m-%d %H:%M UTC')} "
+            "unless someone acts."
         )
 
     if command == "/status":

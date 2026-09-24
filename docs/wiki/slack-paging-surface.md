@@ -46,10 +46,10 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | Command | Behavior |
 |---------|----------|
 | `/ack [incident-id]` | Acknowledge. With no id, OpsMender resolves your most recently paged active incident. |
-| `/take [incident-id]` | Request take-over. |
-| `/release [incident-id]` | Drop your active assignment so the chain can resume. |
+| `/take [incident-id]` | Take an unowned incident, or ask the owner to hand it over (they have five minutes to confirm). |
+| `/release [incident-id]` | Release the incident. If you held it under an acknowledgement, the next level is paged straight away. |
 | `/resolve [incident-id]` | Cancel chain and mark the incident resolved. |
-| `/snooze <duration> [incident-id]` | Pause the chain and push `next_step_due_at` forward. Durations: `30m`, `2h`, `1d`. |
+| `/snooze <duration> [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
 | `/status [incident-id]` | Without an id, lists the org's active chains. With an id, prints status / step index / next-due-at / current owner. |
 
 A paged operator can usually just type `/ack` after receiving the DM — the implicit fallback to "your most recently paged incident" works in 95% of cases.
@@ -120,7 +120,7 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 | 403 `invalid_signature` in OpsMender logs | The Slack `signing_secret` on the `bot_connectors` row doesn't match the app's signing secret. |
 | Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs. |
 | Buttons + cards show up but per-incident channels don't | `slack_incident_channels_enabled` is off on the org, or the Slack app is missing `channels:manage`. The OpsMender logs will say `slack channel mirror create failed: missing_scope`. |
-| Snoozed incident never re-fires | The chain went to `paused`. `tick()` only advances `running` chains by design — un-snooze via `/take` or via the web UI to resume escalation. |
+| Snoozed incident never re-fires | A snooze set before v1.1.1 has no end time and stays paused. Acknowledge and release the incident, or use Escalate now, to resume it. Snoozes set since then resume on their own. |
 
 ---
 

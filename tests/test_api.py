@@ -2085,6 +2085,10 @@ class TestIncidents:
             old = await SessionRepo.create(
                 db, TEST_ORG_ID, tier=0, incident_id=incident_id
             )
+            # Make "earlier" explicit: two sessions created back to back can
+            # share a timestamp on a coarse clock (Windows), which made the
+            # newest-first order, and this test, a coin flip.
+            old.started_at = datetime.now(timezone.utc) - timedelta(minutes=1)
             await SessionRepo.set_status(db, TEST_ORG_ID, old.id, status="failed")
             active = await SessionRepo.create(
                 db, TEST_ORG_ID, tier=0, incident_id=incident_id
@@ -8400,7 +8404,7 @@ class TestNotificationEventHooks:
         item = body["items"][0]
         assert item["event_type"] == "incident.assigned"
         assert item["category"] == "incident"
-        assert item["link"] == f"/dashboard/incidents/{inc_id}"
+        assert item["link"] == f"/dashboard/incidents/detail?id={inc_id}"
         assert item["incident_id"] == str(inc_id)
 
     async def test_self_ack_is_silent(self, client: AsyncClient, app, auth_headers):
@@ -8440,7 +8444,7 @@ class TestNotificationEventHooks:
         items = nr.json()["items"]
         assert len(items) == 1
         assert items[0]["event_type"] == "incident.combined"
-        assert items[0]["link"] == f"/dashboard/incidents/{primary}"
+        assert items[0]["link"] == f"/dashboard/incidents/detail?id={primary}"
 
 
 class TestNotificationMentions:
@@ -8469,7 +8473,7 @@ class TestNotificationMentions:
         assert len(items) == 1
         assert items[0]["event_type"] == "mention.comment"
         assert items[0]["category"] == "mention"
-        assert items[0]["link"] == f"/dashboard/incidents/{inc_id}"
+        assert items[0]["link"] == f"/dashboard/incidents/detail?id={inc_id}"
 
     async def test_no_self_mention(self, client: AsyncClient, app, auth_headers):
         from backend.db.repos import IncidentRepo

@@ -131,6 +131,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input, Label, Select, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/MultiSelect";
+import {
+  ServiceToolsetCell,
+  ToolSourceOverlapNote,
+} from "@/components/paging/ToolSourceOverlap";
 import { displayName } from "@/lib/users";
 import { timeZoneOptionsWithOffset, tzOffsetLabel } from "@/lib/timezones";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -1136,19 +1140,7 @@ function ServicesPanel({
           : r.service.allowed_integration_connector_ids.length > 0
             ? "Integrations"
             : "Advisory only",
-      cell: (r) => {
-        if (r.service.mcp_server_ids.length > 0) {
-          return <span className="text-xs text-fg-secondary">MCP covered</span>;
-        }
-        if (r.service.allowed_integration_connector_ids.length > 0) {
-          return (
-            <span className="text-xs text-fg-secondary">
-              Integrations are covering this service&apos;s toolset
-            </span>
-          );
-        }
-        return <span className="text-xs text-fg-muted">Advisory only</span>;
-      },
+      cell: (r) => <ServiceToolsetCell service={r.service} />,
       sortable: true,
     },
     {
@@ -1528,6 +1520,11 @@ function ServicesPanel({
               available for the service. Configure integrations under{" "}
               <span className="text-fg-secondary">Integrations</span>.
             </p>
+            <ToolSourceOverlapNote
+              overlaps={editing?.tool_source_overlaps}
+              selectedMcpServerIds={form.mcp_server_ids}
+              selectedConnectorIds={form.allowed_integration_connector_ids}
+            />
             {form.allowed_integration_connector_ids.length > 0 && (
               <div className="mt-3 space-y-2">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">

@@ -198,6 +198,74 @@ async def check_mcp_servers(factory: async_sessionmaker | None) -> list[CheckRes
     return results
 
 
+async def check_tool_source_overlaps(
+    factory: async_sessionmaker | None,
+) -> list[CheckResult]:
+    """Warn about services whose MCP servers and native connectors appear to
+    reach the same system.
+
+    Advisory only: the status is ``warn`` or ``ok``, never ``fail``, because
+    matching is heuristic and a false positive must never fail the run.
+    """
+    name = "Tool-source overlap"
+    if factory is None:
+        return [CheckResult(name, "warn", "No DB connection; overlap check skipped.")]
+    try:
+        from backend.db.models import Service
+        from backend.integrations.overlap import (
+            describe_overlap,
+            load_tool_source_index,
+            overlaps_for_service,
+        )
+
+        findings: list[tuple[str, list]] = []
+        async with factory() as db:
+            services = (
+                (
+                    await db.execute(
+                        select(Service)
+                        .where(Service.is_active.is_(True))
+                        .order_by(Service.name)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            indexes: dict = {}
+            for service in services:
+                if service.org_id not in indexes:
+                    indexes[service.org_id] = await load_tool_source_index(
+                        db, service.org_id
+                    )
+                mcp_by_id, connectors_by_id = indexes[service.org_id]
+                overlaps = overlaps_for_service(service, mcp_by_id, connectors_by_id)
+                if overlaps:
+                    findings.append((service.name, overlaps))
+    except Exception as exc:  # noqa: BLE001 - advisory check never fails the run
+        return [CheckResult(name, "warn", f"Overlap check skipped: {exc}")]
+
+    if not findings:
+        return [
+            CheckResult(
+                name,
+                "ok",
+                "No service has an MCP server and a native connector covering "
+                "the same system.",
+            )
+        ]
+    return [
+        CheckResult(
+            f"{name}: {service_name}",
+            "warn",
+            "; ".join(describe_overlap(item) for item in overlaps)
+            + ". The model picks between them by description, and only the "
+            "native connector links tickets to the incident. Keep one source "
+            "per capability (see docs/wiki/integrations-guide.md).",
+        )
+        for service_name, overlaps in findings
+    ]
+
+
 async def check_paging_chain_age(
     factory: async_sessionmaker | None, *, max_age: timedelta = timedelta(hours=24)
 ) -> CheckResult:
@@ -242,6 +310,7 @@ async def run_all_checks(
         await check_database(factory),
     ]
     results.extend(await check_mcp_servers(factory))
+    results.extend(await check_tool_source_overlaps(factory))
     results.append(await check_paging_chain_age(factory))
     return results
 

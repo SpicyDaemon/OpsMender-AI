@@ -2370,6 +2370,19 @@ class ServiceUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class ToolSourceOverlapResponse(BaseModel):
+    """An MCP server and a native connector on one service that appear to reach
+    the same system. Advisory only: it never changes which tools a session
+    gets."""
+
+    kind: str
+    connector_id: uuid.UUID
+    connector_name: str
+    mcp_server_id: uuid.UUID
+    mcp_server_name: str
+    matched_term: str
+
+
 class ServiceResponse(BaseModel):
     id: uuid.UUID
     team_id: uuid.UUID
@@ -2389,6 +2402,8 @@ class ServiceResponse(BaseModel):
     external_refs: Optional[dict[str, Any]]
     is_active: bool
     created_at: datetime
+    # Filled for admins and operators only; always empty for viewers.
+    tool_source_overlaps: list[ToolSourceOverlapResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tool-source overlap warning.** When a Service allowlists an MCP server and
+  a native connector that appear to reach the same system (an Atlassian MCP
+  server and a Jira connector, say), the Services table marks it
+  **Overlapping tool sources**, the service editor explains why, and
+  `opsmender doctor` reports a warning. Both tool sets still reach the AI,
+  which picks by description, and only the native connector links tickets to
+  the incident. The check is a heuristic and advisory only: it never changes
+  which tools a session gets and never blocks a session. Overlap details are
+  shown to admins and operators only.
+
+### Documentation
+
+- The integrations guide explains how to keep one source per capability
+  (including the connector-skill deny that keeps only the MCP route), that a
+  connector's `project_key` is a default rather than a limit, and why
+  connector names should carry the project or space key.
+
 ## [1.1.0] - 2026-07-26
 
 ### Added

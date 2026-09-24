@@ -9,6 +9,7 @@ incident operations together.
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 import secrets
 from datetime import date, datetime, time, timedelta, timezone
@@ -78,6 +79,7 @@ from backend.api.schemas import (
     TeamMemberResponse,
     TeamResponse,
     TeamUpdate,
+    ToolSourceOverlapResponse,
 )
 from backend.db.models import User
 from backend.db.repos import (
@@ -98,6 +100,10 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.ingest.service import hash_token
+from backend.integrations.overlap import (
+    load_tool_source_index,
+    overlaps_for_service,
+)
 from backend.paging.on_call import (
     OnCallContext,
     OnCallMember,
@@ -367,6 +373,29 @@ async def remove_team_member(
 # Services
 # ---------------------------------------------------------------------------
 
+_TOOL_SOURCE_ROLES = frozenset({"admin", "operator"})
+
+
+async def _service_responses(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    services,
+    *,
+    include_tool_source_overlaps: bool,
+) -> list[ServiceResponse]:
+    """Build service responses, attaching the advisory tool-source overlap
+    warning when the caller may see MCP server and connector names."""
+    responses = [ServiceResponse.model_validate(svc) for svc in services]
+    if not include_tool_source_overlaps or not responses:
+        return responses
+    mcp_by_id, connectors_by_id = await load_tool_source_index(db, org_id)
+    for svc, response in zip(services, responses):
+        response.tool_source_overlaps = [
+            ToolSourceOverlapResponse(**dataclasses.asdict(overlap))
+            for overlap in overlaps_for_service(svc, mcp_by_id, connectors_by_id)
+        ]
+    return responses
+
 
 @router.get(
     "/services",
@@ -402,8 +431,14 @@ async def list_services(
     if changed:
         await db.commit()
         items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
+    effective_role = getattr(user, "effective_role", user.role)
     return ServiceListResponse(
-        items=[ServiceResponse.model_validate(s) for s in items],
+        items=await _service_responses(
+            db,
+            org_id,
+            items,
+            include_tool_source_overlaps=effective_role in _TOOL_SOURCE_ROLES,
+        ),
         total=len(items),
     )
 
@@ -457,7 +492,10 @@ async def create_service(
         )
         await db.commit()
         await db.refresh(svc)
-        return ServiceResponse.model_validate(svc)
+        (response,) = await _service_responses(
+            db, org_id, [svc], include_tool_source_overlaps=True
+        )
+        return response
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
@@ -539,7 +577,10 @@ async def update_service(
     if updated is None:
         raise HTTPException(status_code=404, detail="Service not found")
     await db.commit()
-    return ServiceResponse.model_validate(updated)
+    (response,) = await _service_responses(
+        db, org_id, [updated], include_tool_source_overlaps=True
+    )
+    return response
 
 
 @router.delete(

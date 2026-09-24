@@ -318,6 +318,34 @@ class LiveAuditLogger:
             )
 
 
+def build_combined_tool_caller(
+    integration_runtime: IntegrationToolRuntime,
+    mcp_caller: Callable[..., Awaitable[Any]],
+) -> Callable[..., Awaitable[Any]]:
+    """Route each tool call to the runtime that implements it.
+
+    This is dispatch by name, not priority: ``integration_runtime.owns`` only
+    matches native ``integration__*`` names, and every other name goes to the
+    MCP caller. When an MCP server and a native connector cover the same
+    system, both tool surfaces reach the model and it chooses by description
+    (see ``backend/integrations/overlap.py``). Only the native route links
+    tickets to the incident. Do not turn this into an arbitration hook.
+    """
+
+    async def _combined_tool_caller(
+        active_session,
+        tool_name: str,
+        params: dict[str, Any],
+    ):
+        if integration_runtime.owns(tool_name):
+            return await integration_runtime.call_tool(
+                active_session, tool_name, params
+            )
+        return await mcp_caller(active_session, tool_name, params)
+
+    return _combined_tool_caller
+
+
 async def _await_maybe(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
@@ -904,17 +932,6 @@ async def _run_session_workflow_inner(
                     ]
                     mcp_caller = sandbox.call_tool
 
-                async def _combined_tool_caller(
-                    active_session,
-                    tool_name: str,
-                    params: dict[str, Any],
-                ):
-                    if integration_runtime.owns(tool_name):
-                        return await integration_runtime.call_tool(
-                            active_session, tool_name, params
-                        )
-                    return await mcp_caller(active_session, tool_name, params)
-
                 graph_kwargs["plan_tool_names"] = sorted(
                     [*mcp_tool_names, *integration_tool_names]
                 )
@@ -922,7 +939,9 @@ async def _run_session_workflow_inner(
                     **mcp_descriptions,
                     **integration_runtime.descriptions,
                 }
-                graph_kwargs["tool_caller"] = _combined_tool_caller
+                graph_kwargs["tool_caller"] = build_combined_tool_caller(
+                    integration_runtime, mcp_caller
+                )
                 graph_kwargs["mcp_session"] = mcp_session
                 graph_kwargs["audit_logger"] = audit_logger
 

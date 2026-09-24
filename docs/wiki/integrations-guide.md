@@ -46,6 +46,51 @@ The safety model does not change:
 In **MCP Skill Studio**, choose the connector under **Integration connectors**
 to discover its capabilities, generate a draft, or bind an existing Skill.
 
+### One source per capability
+
+A Service can allowlist an MCP server and a native connector that reach the
+same system, for example an Atlassian MCP server and a Jira connector.
+OpsMender does not choose between them: both sets of tools reach the AI, and it
+picks one by its description. The two routes are not equivalent:
+
+- A ticket filed through the **native connector** is linked to the incident,
+  and with bi-directional ticket sync on, it follows the incident's status.
+- A ticket filed through the **MCP server** is not linked and never syncs.
+
+When this happens, the Services table marks the Service **Overlapping tool
+sources**, the service editor explains it, and `opsmender doctor` reports a
+warning. The check is a heuristic: it matches the connector's kind, plus a few
+vendor names such as "atlassian" for Jira and Confluence, against the MCP
+server's name, command, arguments, and URL. It never reads the server's
+environment variables or token. It is advisory only and never stops a session.
+
+Keep one source per capability:
+
+- **To keep the native connector,** remove the MCP server from the Service's MCP
+  allowlist, or deny its overlapping tools in the MCP server's Skill.
+- **To keep the MCP server,** deny the connector's tools in the Skill bound to
+  the connector. Authored policy can only restrict, so the deny always holds:
+
+  ```yaml
+  operations:
+    - tool: "integration__jira__create_issue__*"
+      classification: destructive
+      deny: true
+  ```
+
+  Use `integration__jira__*` to deny every tool from Jira connectors.
+
+**Connector settings are defaults, not limits.** A connector's `project_key`
+(and the equivalent scope on other kinds, such as a Confluence `space_id`) is
+only the default. The AI can pass a different project, and the connector files
+the issue there. The real boundary is what the provider API token can reach, so
+scope the token itself.
+
+**Name connectors by what they cover.** The AI sees a connector only as
+"Create an issue. Connector: <name> (jira)." and never sees its `project_key`.
+With two connectors of the same kind, the name is the only way it can tell them
+apart, so put the project or space key in the name, for example "Jira DOT".
+
 ### GitHub
 
 - Hosted base URL: leave blank (`https://api.github.com`).

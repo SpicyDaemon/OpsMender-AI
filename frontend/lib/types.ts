@@ -1839,6 +1839,20 @@ export interface ServiceResponse {
   external_refs: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
+  /** Advisory only; filled for admins and operators, empty for viewers. */
+  tool_source_overlaps?: ToolSourceOverlap[];
+}
+
+/** An MCP server and a native connector on one service that appear to reach
+ * the same system. The model sees both and picks by description; only the
+ * native connector links tickets to the incident. */
+export interface ToolSourceOverlap {
+  kind: string;
+  connector_id: string;
+  connector_name: string;
+  mcp_server_id: string;
+  mcp_server_name: string;
+  matched_term: string;
 }
 
 export interface ServiceListResponse {

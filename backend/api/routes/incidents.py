@@ -101,6 +101,7 @@ from backend.ingest.autostart import (
     load_auto_start_policy,
     schedule_auto_started_session,
 )
+from backend.ingest.collision import ingest_note_text
 from backend.services.incident_events import dispatch_incident_created
 from backend.services.incident_timeline import record_lifecycle_comment
 from backend.services.postmortem_draft import draft_postmortem
@@ -1504,6 +1505,9 @@ async def get_incident_timeline(
             )
 
     for log in ingest_logs:
+        # A skipped delivery can carry an explanatory note (a cross-service
+        # collision, a repeated recovery). That is not a failure.
+        skipped_note = log.dedup_action == "skipped" and bool(log.error)
         items.append(
             IncidentTimelineItemResponse(
                 id=f"ingest:{log.id}",
@@ -1512,11 +1516,17 @@ async def get_incident_timeline(
                 event_type="alert_evidence",
                 title=f"{log.provider} payload received",
                 body=(
-                    f"Dedup action: {log.dedup_action}."
+                    f"Dedup action: skipped. {ingest_note_text(log.error)}"
+                    if skipped_note
+                    else f"Dedup action: {log.dedup_action}."
                     if log.dedup_action
                     else "Inbound payload captured."
                 ),
-                status=log.error and "error" or log.dedup_action,
+                status=(
+                    log.dedup_action
+                    if skipped_note
+                    else log.error and "error" or log.dedup_action
+                ),
                 metadata={"error": log.error},
                 json_payload=log.raw_payload,
             )

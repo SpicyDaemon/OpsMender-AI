@@ -89,8 +89,8 @@ class GenericAdapter(IngestAdapter):
             status_lower = status_raw.lower()
             if status_lower in ("resolved", "closed", "ok", "recovery"):
                 status = "resolved"
-            elif status_lower in ("investigating", "acknowledged"):
-                status = "investigating"
+            elif status_lower in ("investigating", "acknowledged", "ack"):
+                status = "open"
 
         return ParsedIncident(
             title=str(title),

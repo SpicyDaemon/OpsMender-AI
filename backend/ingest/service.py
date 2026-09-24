@@ -29,6 +29,7 @@ from backend.ingest.autostart import (
     auto_start_skip_reason,
     load_auto_start_policy,
 )
+from backend.ingest.collision import record_collision
 from backend.ingest.llm_extractor import apply_shape_cache, parse_with_paths
 from backend.ingest.noise import (
     alert_grouping_enabled,
@@ -38,6 +39,7 @@ from backend.ingest.noise import (
     record_existing_transition,
 )
 from backend.ingest.registry import get_adapter
+from backend.ingest.adapters.universal import normalize_payload
 from backend.llm.selection import choose_model_for_incident_service
 
 logger = logging.getLogger(__name__)
@@ -71,6 +73,7 @@ class IngestResult:
     # (a clearing alert). The route uses it to stop the incident's AI sessions.
     resolved_existing: bool = False
     error: str | None = None
+    collision_notice: tuple[uuid.UUID, str] | None = None
 
 
 async def authenticate_token(
@@ -101,6 +104,20 @@ async def ingest_incident(
     """
     org_id = token.org_id
     provider = token.provider
+    raw_payload = payload
+    if provider == "auto":
+        try:
+            payload = normalize_payload(payload)
+        except ValueError as exc:
+            await IngestLogRepo.create(
+                db,
+                org_id,
+                ingest_token_id=token.id,
+                provider=provider,
+                raw_payload=raw_payload,
+                error=str(exc),
+            )
+            return IngestResult(success=False, error=str(exc))
     selected_model = await choose_model_for_incident_service(
         db,
         org_id,
@@ -123,20 +140,19 @@ async def ingest_incident(
 
         # Special case: SNS subscription confirmation
         if error_msg.startswith("SNS_SUBSCRIPTION_CONFIRMATION:"):
-            subscribe_url = error_msg.split(":", 1)[1]
             await IngestLogRepo.create(
                 db,
                 org_id,
                 ingest_token_id=token.id,
                 provider=provider,
-                raw_payload=payload,
+                raw_payload=raw_payload,
                 dedup_action="skipped",
-                error=f"SNS subscription confirmation: {subscribe_url}",
+                error="SNS subscription confirmation: SubscribeURL not followed",
             )
             return IngestResult(
                 success=True,
                 dedup_action="skipped",
-                error=f"SNS subscription confirmation — SubscribeURL: {subscribe_url}",
+                error="SNS subscription confirmation — SubscribeURL not followed",
             )
 
         # Parsing error
@@ -145,7 +161,7 @@ async def ingest_incident(
             org_id,
             ingest_token_id=token.id,
             provider=provider,
-            raw_payload=payload,
+            raw_payload=raw_payload,
             error=error_msg,
         )
         return IngestResult(success=False, error=error_msg)
@@ -168,6 +184,10 @@ async def ingest_incident(
                 token.id,
             )
             parsed = parse_with_paths(payload, learned_paths)
+
+    # Provider acknowledgments do not assign an OpsMender responder.
+    if parsed.status != "resolved":
+        parsed.status = "open"
 
     # Namespace auto-provider dedup per-token so two tools sharing an
     # external_id but coming through different tokens don't collide.
@@ -201,7 +221,7 @@ async def ingest_incident(
                     org_id,
                     ingest_token_id=token.id,
                     provider=provider,
-                    raw_payload=payload,
+                    raw_payload=raw_payload,
                     dedup_action="skipped",
                     error=f"Suppressed by maintenance window: {window.name}",
                 )
@@ -210,7 +230,11 @@ async def ingest_incident(
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"
     resolved_existing = False
+    collision_notice: tuple[uuid.UUID, str] | None = None
+    collision_error: str | None = None
     incident: Incident | None = None
+    fingerprint_existing: Incident | None = None
+    flap_suppressed = False
     grouping_enabled = await alert_grouping_enabled(db, org_id, service)
     service_is_p0 = service is not None and service.priority == "P0"
 
@@ -222,11 +246,16 @@ async def ingest_incident(
             external_id=parsed.external_id,
         )
         if existing is not None:
+            fingerprint_existing = existing
             # Update existing incident if status changed
-            if parsed.status == "resolved" and existing.status != "resolved":
+            if parsed.status == "resolved" and existing.status in (
+                "open",
+                "in_progress",
+            ):
                 await IncidentRepo.update_status(db, org_id, existing.id, "resolved")
                 dedup_action = "updated"
                 resolved_existing = True
+                incident = existing
                 if grouping_enabled:
                     await record_existing_transition(
                         db,
@@ -248,10 +277,8 @@ async def ingest_incident(
                         parsed,
                     )
                 )
-                if (
-                    grouping_enabled
-                    and parsed.status != "resolved"
-                    and (existing.status == "resolved" or p0_flapping_refire)
+                if parsed.status != "resolved" and (
+                    existing.status == "resolved" or p0_flapping_refire
                 ):
                     incident = None
                 else:
@@ -269,8 +296,30 @@ async def ingest_incident(
                         )
                         if suppressed:
                             dedup_action = "updated"
+                            flap_suppressed = True
             if incident is None and parsed.status == "resolved":
                 incident = existing
+
+    if parsed.status == "resolved" and (
+        not resolved_existing
+        and (incident is None or incident.status in ("resolved", "merged"))
+    ):
+        await IngestLogRepo.create(
+            db,
+            org_id,
+            ingest_token_id=token.id,
+            provider=provider,
+            raw_payload=raw_payload,
+            incident_id=incident.id if incident else None,
+            dedup_action="skipped",
+            error="Recovery without an active incident",
+        )
+        await _record_availability(db, org_id, parsed, incident)
+        return IngestResult(
+            success=True,
+            incident_id=incident.id if incident else None,
+            dedup_action="skipped",
+        )
 
     if incident is None:
         p0_flapping_refire = (
@@ -290,6 +339,30 @@ async def ingest_incident(
             if noise_decision.incident is not None:
                 incident = noise_decision.incident
                 dedup_action = noise_decision.dedup_action or "updated"
+
+    if (
+        provider != "auto"
+        and parsed.status != "resolved"
+        and incident is not None
+        and incident.status in ("open", "in_progress")
+        and service is not None
+        and incident.service_id != service.id
+        and incident is fingerprint_existing
+        and not flap_suppressed
+    ):
+        collision_error, notice_text = await record_collision(
+            db,
+            org_id,
+            incident=incident,
+            losing_service=service,
+            fingerprint=f"{parsed.external_source}:{parsed.external_id}",
+        )
+        if notice_text is not None:
+            collision_notice = (service.team_id, notice_text)
+        if not collision_error and incident.status == "resolved":
+            # The owner closed the incident while this delivery waited for its
+            # row lock. Treat the firing alert as a new incident.
+            incident = None
 
     if incident is None:
         # Create a new incident. If the token is service-scoped, pre-fill
@@ -361,9 +434,10 @@ async def ingest_incident(
         org_id,
         ingest_token_id=token.id,
         provider=provider,
-        raw_payload=payload,
+        raw_payload=raw_payload,
         incident_id=incident.id,
         dedup_action=dedup_action,
+        error=collision_error,
     )
 
     logger.info(
@@ -375,31 +449,7 @@ async def ingest_incident(
     )
 
     # ── Write uptime sample if availability signal present ──────────
-    if parsed.availability is not None:
-        avail = parsed.availability
-        sla_target = await SLATargetRepo.get_by_name(db, org_id, avail.target_name)
-        if sla_target is not None:
-            incident.target_id = sla_target.id
-            await UptimeSampleRepo.create(
-                db,
-                org_id,
-                target_id=sla_target.id,
-                up=avail.up,
-                latency_ms=avail.latency_ms,
-                source=avail.source,
-            )
-            logger.info(
-                "ingest.availability: target=%s up=%s latency_ms=%s source=%s",
-                avail.target_name,
-                avail.up,
-                avail.latency_ms,
-                avail.source,
-            )
-        else:
-            logger.debug(
-                "ingest.availability: no SLA target matched for name=%r",
-                avail.target_name,
-            )
+    await _record_availability(db, org_id, parsed, incident)
 
     policy = await load_auto_start_policy(db, org_id, config, incident=incident)
     auto_start_skip = auto_start_skip_reason(
@@ -429,4 +479,27 @@ async def ingest_incident(
         auto_start_tier=policy.session_tier if auto_start_skip is None else None,
         dedup_action=dedup_action,
         resolved_existing=resolved_existing,
+        collision_notice=collision_notice,
+    )
+
+
+async def _record_availability(db, org_id, parsed, incident):
+    if parsed.availability is None:
+        return
+    avail = parsed.availability
+    target = await SLATargetRepo.get_by_name(db, org_id, avail.target_name)
+    if target is None:
+        logger.debug(
+            "ingest.availability: no SLA target matched for name=%r", avail.target_name
+        )
+        return
+    if incident is not None:
+        incident.target_id = target.id
+    await UptimeSampleRepo.create(
+        db,
+        org_id,
+        target_id=target.id,
+        up=avail.up,
+        latency_ms=avail.latency_ms,
+        source=avail.source,
     )

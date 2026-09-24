@@ -104,7 +104,9 @@ and TOTP are there when you need them.
 - **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
 - **Universal alert ingest** — native Sentry, New Relic, Splunk, Rollbar,
   BugSnag, Elastic/OpenSearch, Honeycomb, Dynatrace, AppDynamics, Loki, and
-  cloud-monitor parsing plus auto-learned JSON webhooks.
+  cloud-monitor parsing plus auto-learned JSON webhooks. SNS-wrapped CloudWatch
+  alarms follow the same alarm/recovery lifecycle, and cross-service provider
+  collisions surface an informational notice to the receiving team.
 - **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, workspace-scoped, operator-curated.
 - **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
 - **Audit everything** — every tool call, approval, rollback, and state transition recorded.

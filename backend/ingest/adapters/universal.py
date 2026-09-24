@@ -23,6 +23,7 @@ heuristic walk when the payload shape has been seen before.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from backend.ingest.adapters.base import (
@@ -214,6 +215,78 @@ _INVESTIGATING_STATUS_TERMS = {
     "firing",
 }
 
+_JSON_ENVELOPES = frozenset((*ENVELOPE_KEYS, "Message"))
+# Real alert payloads are a handful of levels deep. The bound keeps a hostile
+# payload from exhausting the recursion limit in the parser or shape hashing.
+_MAX_JSON_DEPTH = 64
+
+
+def _exceeds_depth(value: Any, limit: int) -> bool:
+    """True when dicts/lists nest deeper than ``limit`` (checked iteratively)."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict):
+            children = list(current.values())
+        elif isinstance(current, list):
+            children = current
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def _is_plain_text(value: Any) -> bool:
+    """A non-empty string that is not itself JSON (an SNS plain-text message)."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        json.loads(value)
+    except RecursionError:
+        return False
+    except ValueError:
+        return True
+    return False
+
+
+def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Decode bounded, recognized JSON envelopes without changing the audit input."""
+    if not isinstance(payload, dict):
+        raise ValueError("Universal adapter requires a JSON object payload")
+
+    def decode(current: dict[str, Any], depth: int) -> dict[str, Any]:
+        if depth >= 2:
+            return current
+        updated = dict(current)
+        for key, value in current.items():
+            if not isinstance(key, str) or key.lower() not in _JSON_ENVELOPES:
+                continue
+            if isinstance(value, str) and value.lstrip().startswith("{"):
+                if len(value) > 65536:
+                    raise ValueError("JSON envelope exceeds the supported size")
+                try:
+                    value = json.loads(value)
+                except RecursionError:
+                    raise ValueError(
+                        "JSON envelope nesting exceeds the supported depth"
+                    ) from None
+                except json.JSONDecodeError:
+                    if key == "Message" and current.get("Type") == "Notification":
+                        raise ValueError(
+                            "Invalid SNS notification Message JSON"
+                        ) from None
+                    continue
+            if isinstance(value, dict):
+                updated[key] = decode(value, depth + 1)
+        return updated
+
+    normalized = decode(payload, 0)
+    if _exceeds_depth(normalized, _MAX_JSON_DEPTH):
+        raise ValueError("Payload nesting exceeds the supported depth")
+    return normalized
+
 
 def _resolve_path(data: Any, path: str) -> Any | None:
     """Resolve a dot-separated path in a nested dict / list payload."""
@@ -253,41 +326,63 @@ def _to_text(value: Any) -> str | None:
 def _find_first(
     payload: dict[str, Any],
     keys: tuple[str, ...],
+    *,
+    scalar_only: bool = False,
 ) -> tuple[str, Any] | None:
     """Find the first present key, searching top-level then under common envelopes.
 
     Returns the (path, value) pair for the first hit.
     """
+
+    def usable(value: Any) -> bool:
+        return value not in (None, "", [], {}) and (
+            not scalar_only or isinstance(value, (str, int, float, bool))
+        )
+
     # Top-level first — preferred
     for key in keys:
-        if key in payload and payload[key] not in (None, "", [], {}):
+        if key in payload and usable(payload[key]):
             return key, payload[key]
 
     # Case-insensitive top-level match (payloads like "AlertName", "Severity")
     lowered = {k.lower(): k for k in payload.keys() if isinstance(k, str)}
     for key in keys:
         actual = lowered.get(key.lower())
-        if actual is not None and payload[actual] not in (None, "", [], {}):
+        if actual is not None and usable(payload[actual]):
             return actual, payload[actual]
 
     # One-level-deep inside common envelopes
     for envelope in ENVELOPE_KEYS:
-        inner = payload.get(envelope)
+        actual_envelope = lowered.get(envelope.lower(), envelope)
+        inner = payload.get(actual_envelope)
         if isinstance(inner, dict):
             for key in keys:
-                if key in inner and inner[key] not in (None, "", [], {}):
-                    return f"{envelope}.{key}", inner[key]
+                if key in inner and usable(inner[key]):
+                    return f"{actual_envelope}.{key}", inner[key]
             inner_lower = {k.lower(): k for k in inner.keys() if isinstance(k, str)}
             for key in keys:
                 actual = inner_lower.get(key.lower())
-                if actual is not None and inner[actual] not in (None, "", [], {}):
-                    return f"{envelope}.{actual}", inner[actual]
+                if actual is not None and usable(inner[actual]):
+                    return f"{actual_envelope}.{actual}", inner[actual]
+            for nested_envelope in ENVELOPE_KEYS:
+                nested_key = inner_lower.get(nested_envelope.lower())
+                if nested_key is None or not isinstance(inner[nested_key], dict):
+                    continue
+                nested = inner[nested_key]
+                nested_lower = {k.lower(): k for k in nested if isinstance(k, str)}
+                for key in keys:
+                    actual = nested_lower.get(key.lower())
+                    if actual is not None and usable(nested[actual]):
+                        return (
+                            f"{actual_envelope}.{nested_key}.{actual}",
+                            nested[actual],
+                        )
         elif isinstance(inner, list) and inner and isinstance(inner[0], dict):
             # Treat the first array element as the envelope for list-wrapped payloads.
             first = inner[0]
             for key in keys:
-                if key in first and first[key] not in (None, "", [], {}):
-                    return f"{envelope}.0.{key}", first[key]
+                if key in first and usable(first[key]):
+                    return f"{actual_envelope}.0.{key}", first[key]
 
     return None
 
@@ -322,7 +417,7 @@ def _normalize_status(raw: Any) -> str:
     if text in _RESOLVED_STATUS_TERMS:
         return "resolved"
     if text in _INVESTIGATING_STATUS_TERMS:
-        return "investigating"
+        return "open"
     return "open"
 
 
@@ -341,8 +436,26 @@ class UniversalAdapter(IngestAdapter):
         self._mapping = field_mapping or {}
 
     def parse(self, payload: dict[str, Any]) -> ParsedIncident:
-        if not isinstance(payload, dict):
-            raise ValueError("Universal adapter requires a JSON object payload")
+        payload = normalize_payload(payload)
+
+        if payload.get("Type") == "SubscriptionConfirmation":
+            raise ValueError("SNS_SUBSCRIPTION_CONFIRMATION:")
+        if payload.get("Type") == "UnsubscribeConfirmation":
+            raise ValueError("Unsupported SNS message type")
+        if payload.get("Type") == "Notification":
+            message = payload.get("Message")
+            if isinstance(message, dict):
+                if "AlarmName" in message or "NewStateValue" in message:
+                    from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
+
+                    return CloudWatchAdapter().parse(payload)
+            elif not _is_plain_text(message):
+                # A plain-text message falls through to the heuristics below
+                # (Subject, then Message). A JSON scalar/list/null, or no
+                # message at all, is not a usable alert.
+                raise ValueError(
+                    "SNS notification Message must be a JSON object or plain text"
+                )
 
         extracted: dict[str, str] = {}
 
@@ -354,11 +467,13 @@ class UniversalAdapter(IngestAdapter):
             path = self._mapping.get(field)
             if path:
                 value = _resolve_path(payload, path)
-                if value not in (None, "", [], {}):
+                if value not in (None, "", [], {}) and (
+                    field != "title" or isinstance(value, (str, int, float, bool))
+                ):
                     extracted[field] = path
                     return value
             # 2) Heuristic discovery
-            hit = _find_first(payload, keys)
+            hit = _find_first(payload, keys, scalar_only=field == "title")
             if hit is None:
                 return None
             resolved_path, value = hit
@@ -371,7 +486,7 @@ class UniversalAdapter(IngestAdapter):
         external_id_raw = resolve_field("external_id", EXTERNAL_ID_KEYS)
         status_raw = resolve_field("status", STATUS_KEYS)
 
-        title = _to_text(title_raw)
+        title = _to_text(title_raw) if not isinstance(title_raw, (dict, list)) else None
         description = _to_text(description_raw)
         severity = _normalize_severity(severity_raw)
         external_id = _to_text(external_id_raw)

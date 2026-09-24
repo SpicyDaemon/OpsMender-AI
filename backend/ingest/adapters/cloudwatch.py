@@ -51,6 +51,12 @@ class CloudWatchAdapter(IngestAdapter):
             raise ValueError(
                 f"Invalid CloudWatch alarm JSON in Message: {exc}"
             ) from exc
+        if not isinstance(message, dict):
+            raise ValueError("CloudWatch alarm Message must be a JSON object")
+        if not isinstance(message.get("AlarmName"), str) or not isinstance(
+            message.get("NewStateValue"), str
+        ):
+            raise ValueError("CloudWatch alarm needs a name and state")
 
         alarm_name = message.get("AlarmName", "Unknown Alarm")
         new_state = message.get("NewStateValue", "ALARM")

@@ -354,7 +354,7 @@ class TestIngestServiceAvailability:
         await db.commit()
 
         assert result.success is True
-        # Should have created an incident but no uptime sample
+        # An orphan recovery has no matching incident or uptime target.
         stmt = select(UptimeSample)
         all_samples = (await db.execute(stmt)).scalars().all()
         assert len(all_samples) == 0

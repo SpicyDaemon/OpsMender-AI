@@ -36,10 +36,11 @@ screenshot and the run keeps going, so one report shows everything that is or
 isn't working. Steps that can't run (missing precondition, opt-in disabled)
 are marked **skipped**, not failed.
 
-The intake correctness feature creates two services and sends synthetic
-webhooks through their intake tokens. Run it only against a disposable instance
-with local notification sinks. It is included in the complete walkthrough, or
-can be selected with `QA_FEATURES=auth,intake_correctness`.
+The intake correctness feature creates two services whose Escalation Chains
+page the QA user, then sends synthetic webhooks through their intake tokens.
+It is skipped unless `QA_INTAKE_PAGING=true`. Enable it only against a
+disposable instance with local notification sinks. Select it alone with
+`QA_FEATURES=auth,intake_correctness`.
 
 ## Prerequisites
 
@@ -97,6 +98,7 @@ All configuration is via environment variables (or a gitignored
 | `QA_CLEANUP` | `false` | Best-effort delete of this run's QA-prefixed entities at the end. |
 | `QA_FIRE_TEST_INCIDENT` | `true` | Use the synthetic Fire-Test-Incident flow (vs a real incident). |
 | `QA_SEND_TEST_NOTIFICATION` | `false` | Actually send a live test notification (**may page real people**). |
+| `QA_INTAKE_PAGING` | `false` | Run the intake recovery and collision checks, whose Escalation Chains page the QA user (**disposable instance only**). |
 | `QA_CREATE_MODEL` | `false` | Create a model config during the run (needs the `QA_MODEL_*` params). |
 | `QA_TEST_MODEL_CONNECTION` | `true` | Click "Test" on the first saved model config. |
 | `QA_MODEL_PROVIDER` / `QA_MODEL_ID` / `QA_MODEL_KEY_ENV` / `QA_MODEL_BASE_URL` | openai / gpt-4o-mini / OPENAI_API_KEY / — | Params for `QA_CREATE_MODEL`. |

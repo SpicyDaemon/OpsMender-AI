@@ -216,6 +216,39 @@ _INVESTIGATING_STATUS_TERMS = {
 }
 
 _JSON_ENVELOPES = frozenset((*ENVELOPE_KEYS, "Message"))
+# Real alert payloads are a handful of levels deep. The bound keeps a hostile
+# payload from exhausting the recursion limit in the parser or shape hashing.
+_MAX_JSON_DEPTH = 64
+
+
+def _exceeds_depth(value: Any, limit: int) -> bool:
+    """True when dicts/lists nest deeper than ``limit`` (checked iteratively)."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if isinstance(current, dict):
+            children = list(current.values())
+        elif isinstance(current, list):
+            children = current
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def _is_plain_text(value: Any) -> bool:
+    """A non-empty string that is not itself JSON (an SNS plain-text message)."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        json.loads(value)
+    except RecursionError:
+        return False
+    except ValueError:
+        return True
+    return False
 
 
 def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -235,6 +268,10 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
                     raise ValueError("JSON envelope exceeds the supported size")
                 try:
                     value = json.loads(value)
+                except RecursionError:
+                    raise ValueError(
+                        "JSON envelope nesting exceeds the supported depth"
+                    ) from None
                 except json.JSONDecodeError:
                     if key == "Message" and current.get("Type") == "Notification":
                         raise ValueError(
@@ -245,7 +282,10 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 updated[key] = decode(value, depth + 1)
         return updated
 
-    return decode(payload, 0)
+    normalized = decode(payload, 0)
+    if _exceeds_depth(normalized, _MAX_JSON_DEPTH):
+        raise ValueError("Payload nesting exceeds the supported depth")
+    return normalized
 
 
 def _resolve_path(data: Any, path: str) -> Any | None:
@@ -404,12 +444,18 @@ class UniversalAdapter(IngestAdapter):
             raise ValueError("Unsupported SNS message type")
         if payload.get("Type") == "Notification":
             message = payload.get("Message")
-            if not isinstance(message, dict):
-                raise ValueError("SNS notification Message must be a JSON object")
-            if "AlarmName" in message or "NewStateValue" in message:
-                from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
+            if isinstance(message, dict):
+                if "AlarmName" in message or "NewStateValue" in message:
+                    from backend.ingest.adapters.cloudwatch import CloudWatchAdapter
 
-                return CloudWatchAdapter().parse(payload)
+                    return CloudWatchAdapter().parse(payload)
+            elif not _is_plain_text(message):
+                # A plain-text message falls through to the heuristics below
+                # (Subject, then Message). A JSON scalar/list/null, or no
+                # message at all, is not a usable alert.
+                raise ValueError(
+                    "SNS notification Message must be a JSON object or plain text"
+                )
 
         extracted: dict[str, str] = {}
 

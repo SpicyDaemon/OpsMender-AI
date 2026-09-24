@@ -11,16 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cross-service alert collision notice.** When a provider-scoped alert is
   absorbed by another service's active incident, the receiving service's
-  responders get one Inbox notice, and its team-scoped Respond channels get an
-  informational message. The ingest log records the owner and receiving
-  services. This does not start a second Escalation Chain.
-
-### Fixed
-
-- SNS-wrapped CloudWatch alarms now use the inner alarm identity and state.
-  Clearing alerts resolve only live incidents; a later firing alert opens a
-  new incident. Ingested firing and acknowledgment aliases use the supported
-  `open` status, and orphan recoveries do not page.
+  Escalation Chain responders get one Inbox notice (their Inbox mute
+  applies), and Respond channels scoped to the receiving team get one
+  informational message. The ingest log and the incident timeline record
+  both services. The incident's owner doesn't change, and nobody on the
+  receiving service is paged.
 
 - **Tool-source overlap warning.** When a Service allowlists an MCP server and
   a native connector that appear to reach the same system (an Atlassian MCP
@@ -31,6 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the incident. The check is a heuristic and advisory only: it never changes
   which tools a session gets and never blocks a session. Overlap details are
   shown to admins and operators only.
+
+### Fixed
+
+- SNS-wrapped CloudWatch alarms sent to a service intake URL now use the inner
+  alarm identity and state, so they dedup, and an OK resolves the incident.
+  Plain-text SNS messages still open an incident titled from the Subject or
+  message. Clearing alerts resolve only live incidents, and a firing alert
+  after resolution opens a new incident whether or not alert grouping is on.
+  A recovery with no live incident is logged and skipped instead of creating
+  a resolved incident that pages. Ingested firing and acknowledgment states
+  map to `open` (the undefined `investigating` status is gone). A service
+  intake URL always uses its own token, even when other tokens are bound to
+  the service. JSON nested more than 64 levels deep is rejected with a 422.
+  *Upgrade note:* if a service's intake URL previously resolved to another
+  token bound to the same service, incidents it opened before the upgrade
+  won't match later deliveries; resolve those by hand.
 
 ### Security
 

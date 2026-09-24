@@ -1,9 +1,11 @@
 // Browser proof for webhook recovery and cross-service collision handling.
-// Run with QA_FEATURES=auth,intake_correctness against a disposable instance.
+// Guarded by QA_INTAKE_PAGING because its Escalation Chains page the QA user.
+// Run it against a disposable instance with local notification sinks.
 
 import assert from "node:assert/strict";
 import path from "node:path";
 import { config, qaName, qaSlug } from "../lib/config.mjs";
+import { Harness } from "../lib/harness.mjs";
 
 async function checked(request, method, path, { auth, data } = {}) {
   const response = await request[method](`${config.baseUrl}${path}`, {
@@ -99,6 +101,12 @@ export default {
   id: "intake_correctness",
   title: "Intake — recovery and collision",
   async run(h) {
+    if (!config.intakePaging) {
+      await h.step("intake recovery and collision checks", async () => {
+        throw Harness.skip("QA_INTAKE_PAGING not enabled");
+      });
+      return;
+    }
     const state = {};
     await h.step("prepare isolated service and webhook fixtures", async () => {
       const me = await checked(h.request, "get", "/auth/me", { auth: h.auth });
@@ -170,7 +178,7 @@ export default {
       assert.equal(replay.incident_id, state.owned.incident_id);
       assert.equal(folded.dedup_action, "skipped");
       const after = await checked(h.request, "get", "/notifications", { auth: h.auth });
-      const notices = after.items.filter((item) => item.event_type === "ingest_collision" && item.incident_id === state.owned.incident_id);
+      const notices = after.items.filter((item) => item.event_type === "incident.collision" && item.incident_id === state.owned.incident_id);
       assert.equal(notices.length, 1);
       assert.equal(notices[0].link, `/dashboard/incidents/detail?id=${state.owned.incident_id}`);
       assert.equal(after.total, before.total + 1);
@@ -194,7 +202,35 @@ export default {
       assert.equal(one.incident_id, owner.incident_id);
       assert.equal(two.incident_id, owner.incident_id);
       const inbox = await checked(h.request, "get", "/notifications", { auth: h.auth });
-      assert.equal(inbox.items.filter((item) => item.event_type === "ingest_collision" && item.incident_id === owner.incident_id).length, 1);
+      assert.equal(inbox.items.filter((item) => item.event_type === "incident.collision" && item.incident_id === owner.incident_id).length, 1);
     });
+
+    // The run-prefix sweep can't find the CloudWatch-titled incidents or the
+    // ingest tokens, so remove them here. Tokens with deliveries can't be
+    // deleted, only revoked; a revoked token no longer accepts alerts.
+    if (config.cleanup) {
+      await h.step("clean up intake fixtures", async () => {
+        for (const id of [state.first?.incident_id, state.refire?.incident_id]) {
+          if (id) await checked(h.request, "delete", `/incidents/${id}`, { auth: h.auth });
+        }
+        const serviceIds = [state.owner?.id, state.loser?.id].filter(Boolean);
+        const tokens = await checked(h.request, "get", "/ingest-tokens", { auth: h.auth });
+        const mine = tokens.items.filter(
+          (token) =>
+            token.is_active &&
+            (token.id === state.ownerToken?.id ||
+              token.id === state.loserToken?.id ||
+              serviceIds.some((id) => token.name === `service:${id}`)),
+        );
+        for (const token of mine) {
+          await checked(h.request, "post", `/ingest-tokens/${token.id}/revoke`, { auth: h.auth });
+        }
+        // Two provider tokens plus the owner's intake-URL token.
+        assert.ok(mine.length >= 3);
+        const after = await checked(h.request, "get", "/ingest-tokens", { auth: h.auth });
+        const ids = new Set(mine.map((token) => token.id));
+        assert.equal(after.items.filter((token) => ids.has(token.id) && token.is_active).length, 0);
+      });
+    }
   },
 };

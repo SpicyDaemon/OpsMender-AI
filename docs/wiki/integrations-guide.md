@@ -291,17 +291,22 @@ If your tool is not listed above, OpsMender provides an `auto` provider option. 
 Service intake URLs use this adapter. It recognizes CloudWatch alarms in an
 SNS `Message` envelope, uses the stable alarm identity across ALARM and OK
 notifications, and treats an OK without an active incident as a logged
-recovery. A new ALARM after resolution creates a new incident. External
-`acknowledged` states remain open until an OpsMender responder takes ownership.
+recovery. A new ALARM after resolution creates a new incident. A plain-text
+SNS message still opens an incident titled from its Subject or message.
+External `acknowledged` states remain open until an OpsMender responder takes
+ownership.
 
 For provider-scoped ingest tokens, the same external fingerprint can refer to
 an incident already owned by another service. The first incident keeps its
-owner and paging policy. The receiving service's active Escalation Chain
-responders receive an Inbox notice; team-scoped Respond Notification Channels
-receive one informational notice. The ingest log names both services. The
-receiving chain is not started and no page is sent. Repeated deliveries for
-the same incident and receiving service do not repeat the notice. Auto intake
-tokens are isolated per token and do not share fingerprints across services.
+owner and paging policy. The people on the Escalation Chain the receiving
+service would have paged (its chain for the service's priority, else its
+unfiltered chain) each get one Inbox notice, unless they muted incident
+notifications. Respond Notification Channels scoped to the receiving team
+get one informational message; workspace-wide channels don't. The ingest log
+and the incident timeline name both services. The receiving chain is not
+started and no page is sent. Repeated deliveries for the same incident and
+receiving service do not repeat the notice. Auto intake tokens are isolated
+per token and do not share fingerprints across services.
 
 ## 3. Notification Channels
 

@@ -8,6 +8,7 @@
   "cleanup": false,
   "fireTestIncident": true,
   "sendTestNotification": false,
+  "intakePaging": false,
   "createModel": false,
   "testModelConnection": true,
   "modelProvider": "openai",

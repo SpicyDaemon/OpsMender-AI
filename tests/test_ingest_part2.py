@@ -381,7 +381,7 @@ async def test_same_service_refire_keeps_in_progress_without_collision(
                 await db.execute(
                     select(InAppNotification).where(
                         InAppNotification.incident_id == incident_id,
-                        InAppNotification.event_type == "ingest_collision",
+                        InAppNotification.event_type == "incident.collision",
                     )
                 )
             )
@@ -464,7 +464,7 @@ async def test_collision_notifies_losing_service_once(
     viewer_inbox = await client.get("/notifications", headers=viewer_headers)
     assert viewer_inbox.status_code == 200
     assert all(
-        item["event_type"] != "ingest_collision"
+        item["event_type"] != "incident.collision"
         for item in viewer_inbox.json()["items"]
     )
     async with app.state.session_factory() as db:
@@ -567,7 +567,7 @@ async def test_collision_delivery_uses_losing_respond_lane(
         app.state.session_factory,
         org_id=TEST_ORG_ID,
         text="Alert absorbed",
-        event_type="ingest_collision",
+        event_type="incident.collision",
         team_id=uuid.UUID(loser["team_id"]),
         incident_id=incident_id,
         preserve_team=True,
@@ -691,7 +691,7 @@ async def test_collision_rollback_sends_nothing_and_persists_no_marker(
                 await db.execute(
                     select(InAppNotification).where(
                         InAppNotification.incident_id == incident_id,
-                        InAppNotification.event_type == "ingest_collision",
+                        InAppNotification.event_type == "incident.collision",
                     )
                 )
             )
@@ -824,7 +824,7 @@ async def test_collision_deduplicates_repeated_responder_across_chain_steps(
                 await db.execute(
                     select(InAppNotification).where(
                         InAppNotification.incident_id == incident_id,
-                        InAppNotification.event_type == "ingest_collision",
+                        InAppNotification.event_type == "incident.collision",
                     )
                 )
             )
@@ -888,7 +888,7 @@ async def test_collision_with_inactive_responder_warns_without_inbox(
                 await db.execute(
                     select(InAppNotification).where(
                         InAppNotification.incident_id == incident_id,
-                        InAppNotification.event_type == "ingest_collision",
+                        InAppNotification.event_type == "incident.collision",
                     )
                 )
             )
@@ -896,3 +896,320 @@ async def test_collision_with_inactive_responder_warns_without_inbox(
             .all()
         )
         assert inbox == []
+
+
+# ── Review follow-ups ───────────────────────────────────────────────────────
+
+
+async def _provider_tokens(app, *services: dict) -> list[str]:
+    raws = []
+    async with app.state.session_factory() as db:
+        for service in services:
+            raw = generate_token()
+            await IngestTokenRepo.create(
+                db,
+                TEST_ORG_ID,
+                name=f"provider-{uuid.uuid4().hex[:8]}",
+                provider="generic",
+                token_hash=hash_token(raw),
+                service_id=uuid.UUID(service["id"]),
+            )
+            raws.append(raw)
+        await db.commit()
+    return raws
+
+
+async def _first_target(app, service: dict):
+    async with app.state.session_factory() as db:
+        link = (
+            await ServiceEscalationChainRepo.list_for_service(
+                db, TEST_ORG_ID, uuid.UUID(service["id"])
+            )
+        )[0]
+        steps = await EscalationStepRepo.list_for_chain(db, TEST_ORG_ID, link.chain_id)
+        return link.chain_id, steps[0].target_id
+
+
+async def _unlink_all(app, service: dict) -> None:
+    async with app.state.session_factory() as db:
+        for link in await ServiceEscalationChainRepo.list_for_service(
+            db, TEST_ORG_ID, uuid.UUID(service["id"])
+        ):
+            await ServiceEscalationChainRepo.unlink(
+                db,
+                TEST_ORG_ID,
+                service_id=uuid.UUID(service["id"]),
+                chain_id=link.chain_id,
+            )
+        await db.commit()
+
+
+async def _collision_inbox(app, incident_id: uuid.UUID) -> list:
+    async with app.state.session_factory() as db:
+        return list(
+            (
+                await db.execute(
+                    select(InAppNotification).where(
+                        InAppNotification.incident_id == incident_id,
+                        InAppNotification.event_type == "incident.collision",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+
+async def _fold(client, raw_owner: str, raw_loser: str, payload: dict):
+    created = await client.post(
+        "/incidents/ingest", headers={"X-OpsMender-Token": raw_owner}, json=payload
+    )
+    folded = await client.post(
+        "/incidents/ingest", headers={"X-OpsMender-Token": raw_loser}, json=payload
+    )
+    assert created.status_code == folded.status_code == 200
+    assert folded.json()["incident_id"] == created.json()["incident_id"]
+    assert folded.json()["dedup_action"] == "skipped"
+    return uuid.UUID(created.json()["incident_id"])
+
+
+async def _noop_delivery(*args, **kwargs):
+    return None
+
+
+async def test_collision_selects_receiving_chain_by_receiving_service_priority(
+    client: AsyncClient, app, admin_headers, monkeypatch
+):
+    # The owner is P2, so its incident is P2. The receiving service is P1 and
+    # its only chain applies to P1: that is the chain it would have paged.
+    owner = await _create_paged_service(
+        client, app, admin_headers, name="PrioOwner", priority="P2"
+    )
+    loser = await _create_paged_service(
+        client, app, admin_headers, name="PrioLoser", priority="P1"
+    )
+    chain_id, target = await _first_target(app, loser)
+    await _unlink_all(app, loser)
+    relinked = await client.post(
+        f"/services/{loser['id']}/escalation-chains",
+        json={"chain_id": str(chain_id), "applies_when": {"priorities": ["P1"]}},
+        headers=admin_headers,
+    )
+    assert relinked.status_code == 201, relinked.text
+    raw_owner, raw_loser = await _provider_tokens(app, owner, loser)
+    monkeypatch.setattr("backend.bots.notifier.deliver_incident_text", _noop_delivery)
+
+    incident_id = await _fold(
+        client, raw_owner, raw_loser, {"title": "Priority split", "id": "prio-1"}
+    )
+
+    async with app.state.session_factory() as db:
+        incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        assert incident.priority == "P2"
+    inbox = await _collision_inbox(app, incident_id)
+    assert [row.user_id for row in inbox] == [target]
+
+
+async def test_collision_notifies_shared_chain_owned_by_another_team(
+    client: AsyncClient, app, admin_headers, monkeypatch
+):
+    owner = await _create_paged_service(client, app, admin_headers, name="ShareOwner")
+    loser = await _create_paged_service(client, app, admin_headers, name="ShareLoser")
+    platform = await _create_paged_service(
+        client, app, admin_headers, name="SharePlatform"
+    )
+    platform_chain, platform_target = await _first_target(app, platform)
+    await _unlink_all(app, loser)
+    linked = await client.post(
+        f"/services/{loser['id']}/escalation-chains",
+        json={"chain_id": str(platform_chain)},
+        headers=admin_headers,
+    )
+    assert linked.status_code == 201, linked.text
+    raw_owner, raw_loser = await _provider_tokens(app, owner, loser)
+    deliveries = []
+
+    async def fake_delivery(*args, **kwargs):
+        deliveries.append(kwargs)
+
+    monkeypatch.setattr("backend.bots.notifier.deliver_incident_text", fake_delivery)
+
+    incident_id = await _fold(
+        client, raw_owner, raw_loser, {"title": "Shared chain", "id": "shared-chain-1"}
+    )
+    await asyncio.gather(*list(app.state.background_tasks))
+
+    inbox = await _collision_inbox(app, incident_id)
+    assert [row.user_id for row in inbox] == [platform_target]
+    # The channel notice still goes to the receiving service's own team.
+    assert len(deliveries) == 1
+    assert deliveries[0]["team_id"] == uuid.UUID(loser["team_id"])
+
+
+async def test_collision_inbox_respects_muted_incident_category(
+    client: AsyncClient, app, admin_headers, monkeypatch
+):
+    from backend.db.repos import UserNotificationPrefRepo
+
+    owner = await _create_paged_service(client, app, admin_headers, name="MuteOwner")
+    loser = await _create_paged_service(client, app, admin_headers, name="MuteLoser")
+    _, target = await _first_target(app, loser)
+    async with app.state.session_factory() as db:
+        await UserNotificationPrefRepo.upsert(
+            db,
+            TEST_ORG_ID,
+            target,
+            routing={"in_app": {"muted_categories": ["incident"]}},
+        )
+        await db.commit()
+    raw_owner, raw_loser = await _provider_tokens(app, owner, loser)
+    deliveries = []
+
+    async def fake_delivery(*args, **kwargs):
+        deliveries.append(kwargs)
+
+    monkeypatch.setattr("backend.bots.notifier.deliver_incident_text", fake_delivery)
+
+    incident_id = await _fold(
+        client, raw_owner, raw_loser, {"title": "Muted", "id": "muted-1"}
+    )
+    await asyncio.gather(*list(app.state.background_tasks))
+
+    assert await _collision_inbox(app, incident_id) == []
+    # The mute is personal: the durable marker and the team notice still happen.
+    assert len(deliveries) == 1
+    async with app.state.session_factory() as db:
+        logs = await IngestLogRepo.list_for_incident(db, TEST_ORG_ID, incident_id)
+        assert any(row.error and row.error.startswith("collision:v1:") for row in logs)
+
+
+async def test_timeline_shows_skipped_notes_without_error_status(
+    client: AsyncClient, app, admin_headers, monkeypatch
+):
+    owner = await _create_paged_service(client, app, admin_headers, name="TlOwner")
+    loser = await _create_paged_service(client, app, admin_headers, name="TlLoser")
+    raw_owner, raw_loser = await _provider_tokens(app, owner, loser)
+    monkeypatch.setattr("backend.bots.notifier.deliver_incident_text", _noop_delivery)
+
+    incident_id = await _fold(
+        client, raw_owner, raw_loser, {"title": "Timeline", "id": "timeline-1"}
+    )
+
+    timeline = await client.get(
+        f"/incidents/{incident_id}/timeline", headers=admin_headers
+    )
+    assert timeline.status_code == 200, timeline.text
+    evidence = [
+        item
+        for item in timeline.json()["items"]
+        if item["event_type"] == "alert_evidence"
+    ]
+    assert len(evidence) == 2
+    assert all(item["status"] != "error" for item in evidence)
+    notes = [item for item in evidence if item["status"] == "skipped"]
+    assert len(notes) == 1
+    assert "TlLoser" in notes[0]["body"]
+    assert "TlOwner" in notes[0]["body"]
+    assert "collision:v1:" not in notes[0]["body"]
+
+
+async def test_plain_text_sns_notification_still_opens_incident(
+    client: AsyncClient, app
+):
+    raw, _ = await _create_token(
+        app, provider="auto", name=f"plain-sns-{uuid.uuid4().hex[:6]}"
+    )
+    for subject, expected in (("Disk alert", "Disk alert"), (None, "Disk full")):
+        response = await client.post(
+            "/incidents/ingest",
+            headers={"X-OpsMender-Token": raw},
+            json={
+                "Type": "Notification",
+                "MessageId": uuid.uuid4().hex,
+                "Subject": subject,
+                "Message": "Disk full",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["dedup_action"] == "created"
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(response.json()["incident_id"])
+            )
+            assert incident.title == expected
+            assert incident.status == "open"
+
+
+async def test_excessive_nesting_is_rejected_with_422_not_500(client: AsyncClient, app):
+    raw, token = await _create_token(
+        app, provider="auto", name=f"deep-{uuid.uuid4().hex[:6]}"
+    )
+
+    def nested(depth: int) -> dict:
+        root: dict = {}
+        current = root
+        for _ in range(depth):
+            current["x"] = {}
+            current = current["x"]
+        return root
+
+    deep_string = '{"a":' + "[" * 5000 + "]" * 5000 + "}"
+    in_string = await client.post(
+        "/incidents/ingest",
+        headers={"X-OpsMender-Token": raw},
+        json={"title": "Deep string", "data": deep_string},
+    )
+    outer = await client.post(
+        "/incidents/ingest",
+        headers={"X-OpsMender-Token": raw},
+        json={"title": "Deep body", "details": nested(100)},
+    )
+    fine = await client.post(
+        "/incidents/ingest",
+        headers={"X-OpsMender-Token": raw},
+        json={"title": "Normal depth", "details": nested(40)},
+    )
+    assert in_string.status_code == 422
+    assert "nesting" in in_string.json()["error"]
+    assert outer.status_code == 422
+    assert "nesting" in outer.json()["error"]
+    assert fine.status_code == 200
+    assert fine.json()["dedup_action"] == "created"
+    async with app.state.session_factory() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(IngestLog).where(IngestLog.ingest_token_id == token.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 3
+        assert sum(bool(row.error and "nesting" in row.error) for row in rows) == 2
+
+
+async def test_unparseable_token_sample_returns_422(client: AsyncClient, admin_headers):
+    bad_sample = {"Type": "Notification", "Message": "[]"}
+    name = f"bad-sample-{uuid.uuid4().hex[:6]}"
+    created = await client.post(
+        "/ingest-tokens",
+        json={"name": name, "provider": "auto", "sample_payload": bad_sample},
+        headers=admin_headers,
+    )
+    assert created.status_code == 422, created.text
+    tokens = await client.get("/ingest-tokens", headers=admin_headers)
+    assert all(item["name"] != name for item in tokens.json()["items"])
+
+    target = await client.post(
+        "/ingest-tokens",
+        json={"name": f"learn-{uuid.uuid4().hex[:6]}", "provider": "auto"},
+        headers=admin_headers,
+    )
+    assert target.status_code == 201, target.text
+    learned = await client.post(
+        f"/ingest-tokens/{target.json()['id']}/learn-shape",
+        json={"payload": bad_sample},
+        headers=admin_headers,
+    )
+    assert learned.status_code == 422, learned.text

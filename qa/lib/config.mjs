@@ -82,6 +82,9 @@ export const config = {
   testModelConnection: bool("QA_TEST_MODEL_CONNECTION", "testModelConnection", true),
   // Actually send a live test notification (MAY page real people).
   sendTestNotification: bool("QA_SEND_TEST_NOTIFICATION", "sendTestNotification", false),
+  // Send real webhooks through intake with paging Escalation Chains that
+  // target the QA user (MAY page that account). Use a disposable instance.
+  intakePaging: bool("QA_INTAKE_PAGING", "intakePaging", false),
   // Use the synthetic Fire Test Incident flow rather than a real incident.
   fireTestIncident: bool("QA_FIRE_TEST_INCIDENT", "fireTestIncident", true),
 

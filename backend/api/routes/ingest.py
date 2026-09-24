@@ -86,7 +86,7 @@ async def _dispatch_collision(app, *, org_id: uuid.UUID, result) -> None:
                 app.state.session_factory,
                 org_id=org_id,
                 text=text,
-                event_type="ingest_collision",
+                event_type="incident.collision",
                 team_id=team_id,
                 incident_id=result.incident_id,
                 preserve_team=True,
@@ -127,6 +127,21 @@ async def _stop_sessions_on_resolve(
     )
     if stopped:
         await db.commit()
+
+
+def _normalized_sample(payload: dict[str, Any]) -> dict[str, Any]:
+    """Decode a sample payload the way intake does, or reject it with a 422."""
+    from backend.ingest.adapters.universal import UniversalAdapter, normalize_payload
+
+    try:
+        normalized = normalize_payload(payload)
+        UniversalAdapter().parse(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Sample payload is not a usable alert: {exc}",
+        ) from exc
+    return normalized
 
 
 def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
@@ -394,13 +409,10 @@ async def create_ingest_token(
     # Pre-train the token on a sample payload when provided — so the
     # first real webhook of this shape doesn't pay the LLM tax.
     if body.sample_payload and body.provider == "auto":
-        from backend.ingest.adapters.universal import (
-            UniversalAdapter,
-            normalize_payload,
-        )
+        from backend.ingest.adapters.universal import UniversalAdapter
         from backend.ingest.llm_extractor import extract_paths_via_llm
 
-        normalized_sample = normalize_payload(body.sample_payload)
+        normalized_sample = _normalized_sample(body.sample_payload)
         parsed = UniversalAdapter().parse(normalized_sample)
         paths = parsed.extracted_paths or {}
         if parsed.needs_llm:
@@ -475,9 +487,7 @@ async def learn_ingest_token_shape(
             detail="Shape learning only applies to tokens with provider='auto'",
         )
 
-    from backend.ingest.adapters.universal import normalize_payload
-
-    normalized_sample = normalize_payload(body.payload)
+    normalized_sample = _normalized_sample(body.payload)
 
     paths, cache_hit = await apply_shape_cache(
         db,

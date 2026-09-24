@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -13,14 +14,22 @@ from backend.db.models import Incident, IngestLog, Service
 from backend.db.repos import (
     EscalationChainRepo,
     EscalationStepRepo,
-    InAppNotificationRepo,
     ServiceEscalationChainRepo,
     ServiceRepo,
     UserRepo,
 )
+from backend.notifications import CATEGORY_INCIDENT, emit_to_users
 from backend.paging.escalation import _resolve_step_targets
 
 log = logging.getLogger(__name__)
+
+COLLISION_EVENT = "incident.collision"
+_MARKER_RE = re.compile(r"^collision:v1:[0-9a-fA-F-]{36}:\s*")
+
+
+def ingest_note_text(error: str) -> str:
+    """Readable form of an ingest-log note, without the collision marker."""
+    return _MARKER_RE.sub("", error)
 
 
 def _safe(value: str) -> str:
@@ -96,7 +105,9 @@ async def record_collision(
         ),
         key=lambda link: str(link.id),
     )
-    priority = locked.priority
+    # Priority comes from the service, so pick the chain the receiving service
+    # would have paged for an incident of its own, not the owner's priority.
+    priority = losing_service.priority or "P2"
     matching = []
     defaults = []
     for link in links:
@@ -116,11 +127,9 @@ async def record_collision(
         )
     if selected is not None:
         chain = await EscalationChainRepo.get_by_id(db, org_id, selected.chain_id)
-        if (
-            chain is not None
-            and chain.is_active
-            and chain.team_id == losing_service.team_id
-        ):
+        # A service may link a chain owned by another team (a shared on-call
+        # chain); its responders are the people this alert would have paged.
+        if chain is not None and chain.is_active:
             for step in await EscalationStepRepo.list_for_chain(db, org_id, chain.id):
                 try:
                     targets = await _resolve_step_targets(
@@ -157,16 +166,17 @@ async def record_collision(
         f"Alert for {loser_name} was absorbed into incident {locked.id} "
         f"owned by {owner_name}. {path}"
     )
-    for user_id in sorted(responders, key=str):
-        await InAppNotificationRepo.create(
-            db,
-            org_id,
-            user_id,
-            event_type="ingest_collision",
-            category="incident",
-            title="Alert assigned to another service",
-            body=text,
-            link=path,
-            incident_id=locked.id,
-        )
+    # Same path as every other Inbox producer: honours per-category mute and
+    # quiet hours (live push only), and persists in the intake transaction.
+    await emit_to_users(
+        db,
+        org_id,
+        sorted(responders, key=str),
+        event_type=COLLISION_EVENT,
+        category=CATEGORY_INCIDENT,
+        title="Alert assigned to another service",
+        body=text,
+        link=path,
+        incident_id=locked.id,
+    )
     return explanation, text if selected is not None else None

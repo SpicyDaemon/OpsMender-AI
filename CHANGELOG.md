@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which tools a session gets and never blocks a session. Overlap details are
   shown to admins and operators only.
 
+### Security
+
+- Upgraded `anyio` from 4.13.0 to 4.14.2 (4.15.1 on Python 3.15+) to fix
+  CVE-2026-63374 (critical). `anyio` is a transitive dependency of `httpx`,
+  FastAPI, and the model SDKs; no application code changed.
+
 ### Documentation
 
 - The integrations guide explains how to keep one source per capability

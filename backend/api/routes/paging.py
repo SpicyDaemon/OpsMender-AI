@@ -966,11 +966,11 @@ async def resolve_on_call(
     roster = await RosterRepo.get_by_id(db, org_id, roster_id)
     if roster is None:
         raise HTTPException(status_code=404, detail="Roster not found")
+    # A naive time is read in the Roster's zone, so "now" must carry its zone.
+    when = at or datetime.now(timezone.utc)
     if not roster.is_active:
-        when = at or datetime.now()
         return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=None)
     ctx = await load_on_call_context(db, org_id, roster)
-    when = at or datetime.now()
     user_id = on_call_at(ctx, when)
     return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=user_id)
 

@@ -96,6 +96,8 @@ jobs:
       # live database, so the main backend run deselects them.
       - name: Postgres concurrency tests
         shell: bash
+        # A failed interleaving can leave a lock held through teardown.
+        timeout-minutes: 5
         run: >-
           PART4_PG_URL="$OPSMENDER_DATABASE_URL"
           uv run pytest -m integration --run-integration

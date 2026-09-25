@@ -1502,7 +1502,10 @@ async def get_incident_timeline(
                 event_type="escalation_step_fired",
                 title=f"Escalation step {(page.step_index or 0) + 1} fired",
                 body=(
-                    f"Paged {actor_label or str(page.user_id)[:8]} via {page.channel}."
+                    f"Did not page {actor_label or str(page.user_id)[:8]}: "
+                    f"{_SKIP_REASONS.get(page.delivery_error or '', (page.delivery_error or 'skipped').replace('_', ' '))}."
+                    if page.delivery_status == "skipped"
+                    else f"Paged {actor_label or str(page.user_id)[:8]} via {page.channel}."
                 ),
                 actor_user_id=page.user_id,
                 actor_label=actor_label,
@@ -1642,6 +1645,16 @@ async def get_incident_timeline(
 # ---------------------------------------------------------------------------
 # Paging panel + incident assignment (Sprint 33)
 # ---------------------------------------------------------------------------
+
+
+# Why a page was recorded as skipped, in words for the incident timeline.
+_SKIP_REASONS = {
+    "dedup": "already paged on this channel recently",
+    "no_recipient": "no address for this channel",
+    "channel_unconfigured": "this channel isn't set up",
+    "quiet_hours": "quiet hours",
+    "maintenance_window": "maintenance window",
+}
 
 
 def _incident_link(incident_id: uuid.UUID) -> str:

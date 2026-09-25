@@ -257,14 +257,36 @@ async def dispatch_page(
     page: IncidentPage,
     channel_factory: ChannelFactory,
     at: datetime | None = None,
+    roster_on_call: bool = False,
 ) -> DispatchResult:
     """Fan out a recorded incident_pages row across the channels configured
     for this user. Each delivery attempt becomes a new incident_pages row
     keyed by channel.
+
+    ``roster_on_call`` means this user is paged as the on-call person of a
+    Roster level: quiet hours never block that page (D-4). A page that is
+    suppressed is still recorded as a ``skipped`` row with the reason.
     """
 
     now = at or _utcnow()
     result = DispatchResult(user_id=user.id, incident_id=incident.id)
+
+    async def record_suppression(reason: str) -> DispatchResult:
+        result.suppressed = True
+        result.suppression_reason = reason
+        await IncidentPageRepo.create(
+            db,
+            org_id,
+            incident_id=incident.id,
+            user_id=user.id,
+            chain_id=page.chain_id,
+            step_index=page.step_index,
+            round=page.round,
+            channel="suppressed",
+            delivery_status="skipped",
+            delivery_error=reason,
+        )
+        return result
 
     response_mode = incident.response_mode or "notify"
 
@@ -272,13 +294,11 @@ async def dispatch_page(
     if response_mode != "escalate_immediate":
         mw = await evaluate_maintenance_window(db, org_id, incident=incident, at=now)
         if mw is not None:
-            result.suppressed = True
-            result.suppression_reason = "maintenance_window"
             result.suppressed_by_window_id = mw.id
             if incident.suppressed_by_maintenance_window_id is None:
                 incident.suppressed_by_maintenance_window_id = mw.id
                 await db.flush()
-            return result
+            return await record_suppression("maintenance_window")
 
     # 2. Prefs + channels
     prefs = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
@@ -286,10 +306,10 @@ async def dispatch_page(
     dedup_window = org.notification_dedup_window_minutes if org is not None else 10
 
     quiet_hours = prefs.quiet_hours if prefs is not None else None
-    if quiet_hours_block(quiet_hours, priority=incident.priority, at=now):
-        result.suppressed = True
-        result.suppression_reason = "quiet_hours"
-        return result
+    if not roster_on_call and quiet_hours_block(
+        quiet_hours, priority=incident.priority, at=now
+    ):
+        return await record_suppression("quiet_hours")
 
     routing = prefs.routing if prefs is not None else None
 

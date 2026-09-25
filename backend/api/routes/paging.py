@@ -104,12 +104,8 @@ from backend.integrations.overlap import (
     load_tool_source_index,
     overlaps_for_service,
 )
-from backend.paging.on_call import (
-    OnCallContext,
-    OnCallMember,
-    OnCallOverride,
-    on_call_at,
-)
+from backend.paging.on_call import on_call_at
+from backend.paging.on_call_context import load_on_call_context
 
 
 router = APIRouter(tags=["paging"])
@@ -973,30 +969,7 @@ async def resolve_on_call(
     if not roster.is_active:
         when = at or datetime.now()
         return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=None)
-    # On-call resolution excludes deactivated/soft-deleted users.
-    members = await RosterRepo.list_members(db, org_id, roster_id, active_only=True)
-    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
-    ctx = OnCallContext(
-        members=[
-            OnCallMember(user_id=m.user_id, position_index=m.position_index)
-            for m in members
-        ],
-        overrides=[
-            OnCallOverride(
-                covering_user_id=o.covering_user_id,
-                starts_at=o.starts_at,
-                ends_at=o.ends_at,
-            )
-            for o in overrides
-        ],
-        time_zone=roster.time_zone,
-        pattern=roster.pattern,
-        pattern_length=roster.pattern_length,
-        coverage_start_time=roster.coverage_start_time,
-        coverage_end_time=roster.coverage_end_time,
-        handoff_time=roster.handoff_time,
-        anchor_date=roster.anchor_date,
-    )
+    ctx = await load_on_call_context(db, org_id, roster)
     when = at or datetime.now()
     user_id = on_call_at(ctx, when)
     return OnCallResolveResponse(roster_id=roster_id, at=when, user_id=user_id)
@@ -1052,30 +1025,8 @@ async def resolve_on_call_range(
             step_hours=step_hours,
             items=[],
         )
-    # On-call resolution excludes deactivated/soft-deleted users.
-    members = await RosterRepo.list_members(db, org_id, roster_id, active_only=True)
-    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
-    ctx = OnCallContext(
-        members=[
-            OnCallMember(user_id=m.user_id, position_index=m.position_index)
-            for m in members
-        ],
-        overrides=[
-            OnCallOverride(
-                covering_user_id=o.covering_user_id,
-                starts_at=_aware(o.starts_at),
-                ends_at=_aware(o.ends_at),
-            )
-            for o in overrides
-        ],
-        time_zone=roster.time_zone,
-        pattern=roster.pattern,
-        pattern_length=roster.pattern_length,
-        coverage_start_time=roster.coverage_start_time,
-        coverage_end_time=roster.coverage_end_time,
-        handoff_time=roster.handoff_time,
-        anchor_date=roster.anchor_date,
-    )
+    ctx = await load_on_call_context(db, org_id, roster)
+    override_rows = await RosterOverrideRepo.list_for_roster(db, org_id, roster_id)
 
     items: list[OnCallRangeItem] = []
     cursor = (
@@ -1098,8 +1049,15 @@ async def resolve_on_call_range(
             else cursor
         )
         user_id = on_call_at(ctx, sample)
+        # Flag only an Override that actually decided this sample (one for a
+        # deactivated user is ignored by the resolver, so it isn't flagged).
         active = next(
-            (o for o in overrides if _aware(o.starts_at) <= sample < _aware(o.ends_at)),
+            (
+                o
+                for o in override_rows
+                if o.covering_user_id == user_id
+                and _aware(o.starts_at) <= sample < _aware(o.ends_at)
+            ),
             None,
         )
         items.append(
@@ -1263,6 +1221,7 @@ async def _resolve_roster_calendar_level(
     step,
     day: date,
     level: int,
+    at: datetime | None = None,
 ) -> EscalationCalendarLevel:
     roster = await RosterRepo.get_by_id(db, org_id, step.target_id)
     if roster is None:
@@ -1309,29 +1268,10 @@ async def _resolve_roster_calendar_level(
             warnings=["Roster has no active members."],
         )
 
-    overrides = await RosterOverrideRepo.list_for_roster(db, org_id, roster.id)
-    ctx = OnCallContext(
-        members=[
-            OnCallMember(user_id=m.user_id, position_index=m.position_index)
-            for m in active_members
-        ],
-        overrides=[
-            OnCallOverride(
-                covering_user_id=o.covering_user_id,
-                starts_at=_aware_utc(o.starts_at),
-                ends_at=_aware_utc(o.ends_at),
-            )
-            for o in overrides
-        ],
-        time_zone=roster.time_zone,
-        pattern=roster.pattern,
-        pattern_length=roster.pattern_length,
-        coverage_start_time=roster.coverage_start_time,
-        coverage_end_time=roster.coverage_end_time,
-        handoff_time=roster.handoff_time,
-        anchor_date=roster.anchor_date,
-    )
-    sample_at = _calendar_sample_at(roster, day)
+    ctx = await load_on_call_context(db, org_id, roster)
+    # ``at`` asks "who is on call right now"; otherwise sample inside the day's
+    # coverage window for the calendar cell.
+    sample_at = at or _calendar_sample_at(roster, day)
     resolved_user_id = on_call_at(ctx, sample_at)
     if resolved_user_id is None:
         return EscalationCalendarLevel(
@@ -1659,7 +1599,18 @@ async def escalation_chain_calendar(
     user: User = Depends(require_role("admin", "operator")),
     range_: str = Query(default="7d", alias="range", pattern="^(today|7d|30d|90d)$"),
     start: date | None = Query(default=None),
+    at: datetime | None = Query(default=None),
 ):
+    """``at`` resolves each level at that instant ("who is on call now", as the
+    Services table asks) instead of sampling the day's coverage window. It
+    applies to a single day, so it needs ``range=today``."""
+    if at is not None and range_ != "today":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="`at` can only be used with range=today",
+        )
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
     chain = await EscalationChainRepo.get_by_id(db, org_id, chain_id)
     if chain is None:
         raise HTTPException(status_code=404, detail="Chain not found")
@@ -1683,6 +1634,7 @@ async def escalation_chain_calendar(
                         step=step,
                         day=day,
                         level=idx,
+                        at=at,
                     )
                 )
             elif step.target_type == "user":
@@ -1976,12 +1928,20 @@ async def update_my_notification_preferences(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(reject_api_tokens),
 ):
+    routing = body.routing
+    if routing is not None and "in_app" not in routing:
+        # The paging form sends only P0-P3. Keep the Inbox mutes, which the
+        # Inbox preferences page stores under routing.in_app.
+        existing = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
+        in_app = (existing.routing or {}).get("in_app") if existing else None
+        if in_app is not None:
+            routing = {**routing, "in_app": in_app}
     pref = await UserNotificationPrefRepo.upsert(
         db,
         org_id,
         user.id,
         channels=body.channels,
-        routing=body.routing,
+        routing=routing,
         quiet_hours=body.quiet_hours,
         quiet_hours_provided="quiet_hours" in body.model_fields_set,
     )

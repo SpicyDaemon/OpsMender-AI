@@ -57,7 +57,6 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     EscalationChainRepo,
-    RosterOverrideRepo,
     RosterRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
@@ -65,12 +64,8 @@ from backend.db.repos import (
 )
 from backend.notifications import CATEGORY_INCIDENT, emit_to_users
 from backend.paging.dispatch import ChannelFactory, dispatch_page
-from backend.paging.on_call import (
-    OnCallContext,
-    OnCallMember,
-    OnCallOverride,
-    on_call_at,
-)
+from backend.paging.on_call import on_call_at
+from backend.paging.on_call_context import load_on_call_context
 from backend.services.incident_timeline import record_lifecycle_comment
 
 _log = logging.getLogger(__name__)
@@ -90,6 +85,9 @@ class StepFireResult:
     users_paged: list[uuid.UUID]
     eligible_targets: int = 0
     delivery_recorded: bool = True
+    # "username: reason" for each page that was suppressed (quiet hours, a
+    # Maintenance Window), so the timeline can say why nobody was reached.
+    suppressed: list[str] = dataclasses.field(default_factory=list)
 
 
 def _utcnow() -> datetime:
@@ -138,37 +136,9 @@ async def _resolve_step_targets(
         roster = await RosterRepo.get_by_id(db, org_id, target_id)
         if roster is None or not roster.is_active:
             return []
-        # Deactivated/soft-deleted users are never paged.
-        members = await RosterRepo.list_members(db, org_id, target_id, active_only=True)
-        overrides = await RosterOverrideRepo.list_for_roster(db, org_id, target_id)
-        active_overrides = []
-        for override in overrides:
-            covering = await UserRepo.get_by_id(db, override.covering_user_id)
-            if (
-                covering is not None
-                and covering.is_active
-                and covering.deleted_at is None
-            ):
-                active_overrides.append(override)
-        ctx = OnCallContext(
-            members=[
-                OnCallMember(user_id=m.user_id, position_index=m.position_index)
-                for m in members
-            ],
-            overrides=[
-                OnCallOverride(
-                    covering_user_id=o.covering_user_id,
-                    starts_at=o.starts_at,
-                    ends_at=o.ends_at,
-                )
-                for o in active_overrides
-            ],
-            time_zone=roster.time_zone,
-            pattern=roster.pattern,
-            pattern_length=roster.pattern_length,
-            handoff_time=roster.handoff_time,
-            anchor_date=roster.anchor_date,
-        )
+        # Same context as the API and calendars: the Roster's real coverage
+        # window, active members only (KI-017).
+        ctx = await load_on_call_context(db, org_id, roster)
         user_id = on_call_at(ctx, at)
         return [user_id] if user_id is not None else []
     return []
@@ -206,6 +176,7 @@ async def _fire_step(
     )
     fired: list[uuid.UUID] = []
     delivered = False
+    reasons: list[str] = []
     incident = None
     for uid in user_ids:
         if await IncidentPageRepo.already_paged(
@@ -246,12 +217,20 @@ async def _fire_step(
                     page=page,
                     channel_factory=channel_factory,
                     at=at,
+                    roster_on_call=step.target_type == "roster",
                 )
                 delivered = (
                     delivered
                     or getattr(dispatch, "staged", False)
                     or any(a.status == "sent" for a in dispatch.attempts)
                 )
+                if (
+                    getattr(dispatch, "suppressed", False)
+                    and dispatch.suppression_reason
+                ):
+                    reasons.append(
+                        f"{user.username}: {dispatch.suppression_reason.replace('_', ' ')}"
+                    )
         else:
             delivered = True
     return StepFireResult(
@@ -259,6 +238,7 @@ async def _fire_step(
         users_paged=fired,
         eligible_targets=len(user_ids),
         delivery_recorded=delivered,
+        suppressed=reasons,
     )
 
 
@@ -599,7 +579,15 @@ async def _fire_next_level(
                 db,
                 org_id,
                 incident_id=state.incident_id,
-                body=f"Escalation step {step.step_index + 1} has eligible responders, but delivery was suppressed or unavailable; its timeout remains active.",
+                body=(
+                    f"Escalation step {step.step_index + 1} reached nobody"
+                    + (
+                        f" ({'; '.join(result.suppressed)})"
+                        if result.suppressed
+                        else " (no delivery channel succeeded)"
+                    )
+                    + "; its timeout still applies."
+                ),
             )
         if result.step_index >= 1 and result.users_paged:
             await record_lifecycle_comment(

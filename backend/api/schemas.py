@@ -1778,10 +1778,108 @@ class UserNotificationPrefResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+_CLOCK_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
+_ROUTING_PRIORITIES = {"P0", "P1", "P2", "P3"}
+
+
 class UserNotificationPrefUpdate(BaseModel):
     channels: Optional[dict] = None
     routing: Optional[dict] = None
     quiet_hours: Optional[dict] = None
+
+    @field_validator("quiet_hours")
+    @classmethod
+    def valid_quiet_hours(cls, value: dict | None) -> dict | None:
+        """The shape the paging engine reads (KI-041); anything else would
+        fail silently at page time."""
+        if value is None:
+            return value
+        allowed = {
+            "weekday_start",
+            "weekday_end",
+            "days",
+            "min_priority_to_break",
+            "time_zone",
+        }
+        unknown = set(value) - allowed
+        if unknown:
+            raise ValueError(f"Unknown quiet_hours fields: {sorted(unknown)}")
+        for key in ("weekday_start", "weekday_end"):
+            if not isinstance(value.get(key), str) or not _CLOCK_RE.fullmatch(
+                value[key]
+            ):
+                raise ValueError(
+                    f"quiet_hours.{key} must be a time from 00:00 to 23:59"
+                )
+        days = value.get("days")
+        if days is not None and (
+            not isinstance(days, list)
+            or any(isinstance(d, bool) or not isinstance(d, int) for d in days)
+            or any(not 0 <= d <= 6 for d in days)
+        ):
+            raise ValueError(
+                "quiet_hours.days must be weekday numbers 0 (Mon) to 6 (Sun)"
+            )
+        priority = value.get("min_priority_to_break")
+        if priority is not None and priority not in _ROUTING_PRIORITIES:
+            raise ValueError("quiet_hours.min_priority_to_break must be P0 to P3")
+        zone = value.get("time_zone")
+        if zone is not None:
+            try:
+                ZoneInfo(zone)
+            except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+                raise ValueError(
+                    "quiet_hours.time_zone must be a valid IANA time zone"
+                ) from exc
+        return value
+
+    @field_validator("routing")
+    @classmethod
+    def valid_routing(cls, value: dict | None) -> dict | None:
+        """Per-priority stages (``{channel_id, delay_seconds}``) or the legacy
+        list of channel keys, up to three per priority; plus the Inbox
+        ``in_app`` settings."""
+        if value is None:
+            return value
+        for key, entry in value.items():
+            if key == "in_app":
+                muted = (
+                    entry.get("muted_categories") if isinstance(entry, dict) else None
+                )
+                if not isinstance(entry, dict) or (
+                    muted is not None
+                    and (
+                        not isinstance(muted, list)
+                        or not all(isinstance(c, str) for c in muted)
+                    )
+                ):
+                    raise ValueError("routing.in_app must be {muted_categories: [..]}")
+                continue
+            if key not in _ROUTING_PRIORITIES:
+                raise ValueError(f"routing key {key!r} must be P0 to P3 or in_app")
+            if not isinstance(entry, list) or len(entry) > 3:
+                raise ValueError(f"routing.{key} must be a list of up to 3 stages")
+            for stage in entry:
+                if isinstance(stage, str) and stage.strip():
+                    continue  # legacy channel key
+                if not isinstance(stage, dict) or set(stage) - {
+                    "channel_id",
+                    "delay_seconds",
+                }:
+                    raise ValueError(f"routing.{key} has an invalid stage")
+                channel_id = stage.get("channel_id")
+                delay = stage.get("delay_seconds", 0)
+                if (
+                    not isinstance(channel_id, str)
+                    or not channel_id.strip()
+                    or isinstance(delay, bool)
+                    or not isinstance(delay, int)
+                    or not 0 <= delay <= 86400
+                ):
+                    raise ValueError(
+                        f"routing.{key} stages need a channel_id and a delay of 0-86400 seconds"
+                    )
+        return value
 
 
 # ---------------------------------------------------------------------------

@@ -2405,8 +2405,11 @@ class TestNotificationPreferencesAPI:
         body = {
             "channels": {"slack_dm": {"handle": "@me"}, "email": {"address": "x@y"}},
             "routing": {"P0": ["slack_dm", "email"], "P1": ["slack_dm"]},
+            # The shape the paging engine reads (an older nested
+            # {"weekday": {...}} form was never read and is now rejected).
             "quiet_hours": {
-                "weekday": {"start": "22:00", "end": "07:00"},
+                "weekday_start": "22:00",
+                "weekday_end": "07:00",
                 "min_priority_to_break": "P1",
             },
         }

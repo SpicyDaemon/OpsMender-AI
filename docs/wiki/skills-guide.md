@@ -33,8 +33,10 @@ A Skill may be:
 - **Unassigned** — saved and downloadable, but never used by a session.
 - **Global fallback** — applies to MCP servers without a server-specific Skill.
 - **MCP server** — governs that server's exact discovered tools.
-- **Integration connector** — adds connector-specific instructions and may
-  restrict its capability policy.
+- **Integration connector** — adds connector-specific Custom Instructions
+  (shown to the AI after the MCP Skill's, labelled with the connector) and may
+  restrict its capability policy. Its AI Action Workflow isn't used; sessions
+  follow the MCP Skill's workflow.
 
 An integration-bound Skill cannot relax the connector's built-in capability
 baseline. The more restrictive policy wins, mutating operations keep their

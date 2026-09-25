@@ -42,6 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Connector Skill instructions reach the AI.** A Skill bound to an
+  integration connector could restrict the connector's tools, but its written
+  Custom Instructions never reached the model; for a service with only
+  integrations, the AI got no instructions at all. A session now receives the
+  active tier's instructions from each allowlisted connector's Skill, after
+  the MCP Skill's and labelled with the connector, at every stage. They are
+  guidance only and can't lift an approval or a deny. Connector AI Action
+  Workflows are still not used; sessions follow the MCP Skill's workflow.
 - **SLO burn-rate incidents page.** They take their service's priority and
   page its Escalation Chain like any other incident; before, they never
   paged. A violation after the previous one resolved opens a new incident

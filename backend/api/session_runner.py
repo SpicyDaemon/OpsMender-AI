@@ -780,7 +780,11 @@ async def _run_session_workflow_inner(
         integration_runtime = await IntegrationToolRuntime.create(
             factory, org_id, allowed_connector_ids=allowed_integration_ids
         )
-        skill_def = merge_integration_skill(skill_def, integration_runtime.descriptors)
+        skill_def = merge_integration_skill(
+            skill_def,
+            integration_runtime.descriptors,
+            integration_runtime.connector_instructions,
+        )
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
         if (
             mcp_server_ids is not None

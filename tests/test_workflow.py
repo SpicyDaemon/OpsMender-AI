@@ -356,7 +356,7 @@ class TestCustomInstructionsAcrossWorkflow:
         llm = StubLLM(response="[]")
         node = _build_observe(llm, _skill_def(), 2)
         node(_base_state())
-        assert "MCP SKILL INSTRUCTIONS" not in llm.calls[0]
+        assert "SKILL INSTRUCTIONS" not in llm.calls[0]
 
 
 class TestVerifyWithLLM:

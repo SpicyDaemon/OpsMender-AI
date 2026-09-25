@@ -36,8 +36,11 @@ start an AI session and use those integration tools directly.
 The safety model does not change:
 
 - every connector capability has a conservative built-in tier policy;
-- a Skill bound to that connector can make the policy more restrictive or add
-  workflow instructions, but cannot widen it past the capability baseline;
+- a Skill bound to that connector can make the policy more restrictive and add
+  written Custom Instructions, but cannot widen it past the capability
+  baseline. Its active-tier instructions reach the AI after the MCP Skill's,
+  labelled with the connector's name. Its AI Action Workflow steps are not
+  used: sessions follow the MCP Skill's workflow only;
 - mutating capabilities are never autonomous merely because authored Markdown
   says they are;
 - malformed or unclassified policies fail closed, and every decision is

@@ -33,6 +33,16 @@ class IntegrationToolDescriptor:
     authored_operation: OperationClassification | None = None
 
 
+@dataclasses.dataclass(frozen=True)
+class ConnectorInstructions:
+    """Written per-tier guidance from one connector's bound skill."""
+
+    connector_id: uuid.UUID
+    name: str
+    kind: str
+    by_tier: dict[int, str]
+
+
 def _tool_name(kind: str, action: str, connector_id: uuid.UUID) -> str:
     return f"integration__{kind}__{action}__{connector_id.hex}"
 
@@ -137,9 +147,34 @@ def _restrict_operation(
     )
 
 
+def _merge_instructions(
+    base: dict[int, str], connectors: list[ConnectorInstructions]
+) -> dict[int, str]:
+    """Base guidance first, then one labelled section per connector, per tier.
+
+    Guidance never changes policy: tools, tiers and approvals come from the
+    merged operations, not from this text.
+    """
+    merged = dict(base)
+    ordered = sorted(connectors, key=lambda c: (c.name, str(c.connector_id)))
+    for tier in (0, 1, 2):
+        sections = [
+            f'Connector "{c.name}" ({c.kind}, {c.connector_id.hex[:8]}):\n'
+            f"{c.by_tier[tier]}"
+            for c in ordered
+            if c.by_tier.get(tier)
+        ]
+        if sections:
+            merged[tier] = "\n\n".join(
+                [*([merged[tier]] if merged.get(tier) else []), *sections]
+            )
+    return merged
+
+
 def merge_integration_skill(
     base: SkillDefinition,
     descriptors: list[IntegrationToolDescriptor],
+    connector_instructions: list[ConnectorInstructions] | None = None,
 ) -> SkillDefinition:
     descriptor_names = {descriptor.name for descriptor in descriptors}
     base_operations = [
@@ -160,7 +195,9 @@ def merge_integration_skill(
         default_tier=base.default_tier,
         focus_areas=list(base.focus_areas),
         workflow=list(base.workflow),
-        custom_instructions=dict(base.custom_instructions),
+        custom_instructions=_merge_instructions(
+            base.custom_instructions, connector_instructions or []
+        ),
     )
 
 
@@ -171,10 +208,12 @@ class IntegrationToolRuntime:
         *,
         org_id: uuid.UUID,
         descriptors: list[IntegrationToolDescriptor],
+        connector_instructions: list[ConnectorInstructions] | None = None,
     ) -> None:
         self._factory = factory
         self._org_id = org_id
         self.descriptors = descriptors
+        self.connector_instructions = connector_instructions or []
         self._by_name = {item.name: item for item in descriptors}
 
     @classmethod
@@ -212,6 +251,7 @@ class IntegrationToolRuntime:
                 if connector.id in allowed_connector_ids
             ]
         descriptors: list[IntegrationToolDescriptor] = []
+        connector_instructions: list[ConnectorInstructions] = []
         for connector in connectors:
             adapter = get_adapter(connector.kind)
             if adapter is None:
@@ -226,6 +266,18 @@ class IntegrationToolRuntime:
                     authored_definition = loads(authored_skill.content_md)
                 except Exception:  # noqa: BLE001 - malformed policy fails closed
                     authored_failed = True
+            if (
+                authored_definition is not None
+                and authored_definition.custom_instructions
+            ):
+                connector_instructions.append(
+                    ConnectorInstructions(
+                        connector_id=connector.id,
+                        name=connector.name,
+                        kind=connector.kind,
+                        by_tier=dict(authored_definition.custom_instructions),
+                    )
+                )
             for capability in adapter.capabilities:
                 name = _tool_name(connector.kind, capability.action, connector.id)
                 authored_operation = (
@@ -254,7 +306,12 @@ class IntegrationToolRuntime:
                         authored_operation=authored_operation,
                     )
                 )
-        return cls(factory, org_id=org_id, descriptors=descriptors)
+        return cls(
+            factory,
+            org_id=org_id,
+            descriptors=descriptors,
+            connector_instructions=connector_instructions,
+        )
 
     def owns(self, tool_name: str) -> bool:
         return tool_name in self._by_name

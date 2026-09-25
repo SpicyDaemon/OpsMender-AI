@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import select
 
+from backend.api.routes import paging as paging_routes
 from backend.db.models import IncidentComment, IncidentPage
 from backend.db.repos import (
     EscalationChainRepo,
@@ -242,6 +243,27 @@ async def test_r05_engine_api_range_and_calendar_agree(app, client, auth_headers
     assert ranged.json()["items"][0]["user_id"] == str(expected)
     level = calendar.json()["days"][0]["levels"][0]
     assert level["resolved_user_id"] == str(expected)
+
+
+async def test_r05_on_call_now_is_the_current_instant_in_the_rosters_zone(
+    app, client, auth_headers, monkeypatch
+):
+    # 17:13 UTC is 13:13 in New York, inside 09:00-17:00. The server's naive
+    # clock (17:13) read as New York time falls outside and named nobody.
+    fixture = await _roster(app, start="09:00", end="17:00", tz="America/New_York")
+    instant = datetime(2026, 9, 25, 17, 13, tzinfo=timezone.utc)
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz else instant.replace(tzinfo=None)
+
+    monkeypatch.setattr(paging_routes, "datetime", _Clock)
+    resp = await client.get(
+        f"/rosters/{fixture.roster_id}/on-call", headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == str(fixture.users[0])
 
 
 async def test_r05_calendar_at_needs_a_single_day(app, client, auth_headers):

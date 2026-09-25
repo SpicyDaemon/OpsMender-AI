@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The Services table's "On call now" resolves at the current time instead
     of the middle of today's coverage window. The chain calendar API accepts
     `at` (with `range=today`) for this.
+  - The Dashboard's on-call coverage and the Rosters page's "On call now"
+    are right for Rosters in any time zone. Asked for "now", the on-call API
+    used the server's clock without a zone and read it as Roster-local time,
+    so a New York Roster at 13:00 showed nobody on a UTC server.
   - An Override for a deactivated user is ignored everywhere, as paging
     already did, and is no longer flagged on the Roster calendar.
 - **Quiet hours never block a page to the on-call person** (D-4). When a

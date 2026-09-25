@@ -290,8 +290,16 @@ class TestStateMachine:
             state = await IncidentChainStateRepo.get_for_incident(
                 db, TEST_ORG_ID, incident.id
             )
-            # Single step + page mode → no next deadline.
-            assert state.next_step_due_at is None
+            # The final level retains its own timeout before exhaustion.
+            assert _esc._aware(state.next_step_due_at) == now + timedelta(seconds=30)
+            await _esc.tick(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                at=now + timedelta(seconds=30),
+            )
+            await db.commit()
+            assert state.status == "exhausted"
 
     async def test_escalate_immediate_fires_all_steps_at_once(self, app):
         team_id = await _make_team(app)

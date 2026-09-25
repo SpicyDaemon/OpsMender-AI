@@ -704,7 +704,7 @@ async def create_roster(
         pattern_length=body.pattern_length,
         coverage_start_time=body.coverage_start_time,
         coverage_end_time=body.coverage_end_time,
-        handoff_time=body.coverage_start_time,
+        handoff_time=body.handoff_time,
         handoff_day=body.handoff_day,
         is_active=body.is_active,
     )
@@ -1572,7 +1572,7 @@ async def delete_escalation_step(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await EscalationStepRepo.delete(db, org_id, step_id)
+    deleted = await EscalationStepRepo.delete(db, org_id, step_id, chain_id=chain_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
     await db.commit()

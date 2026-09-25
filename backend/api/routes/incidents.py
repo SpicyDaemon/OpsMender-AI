@@ -477,6 +477,13 @@ async def _create_incident_record(
                 incident=incident,
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             )
+        else:
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=incident.id,
+                body="No escalation chain matches this service and priority; no responder was paged.",
+            )
     return incident
 
 
@@ -875,6 +882,10 @@ async def update_incident(
     # otherwise defeat the resolved-transition guard below.
     prior_status = incident.status
     service_changed = body.service_id_set and body.service_id != incident.service_id
+    if service_changed and prior_status not in _CLOSED_STATUSES:
+        await IncidentChainStateRepo.get_for_incident(
+            db, org_id, incident_id, for_update=True
+        )
     if body.service_id_set and body.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
         if service is None:
@@ -919,6 +930,14 @@ async def update_incident(
                     chain_id=link.chain_id,
                     mode=updated.response_mode or "page",
                     channel_factory=build_channel_factory(),
+                )
+            else:
+                await _esc.cancel_chain(db, org_id, incident_id=incident_id)
+                await record_lifecycle_comment(
+                    db,
+                    org_id,
+                    incident_id=incident_id,
+                    body="No escalation chain matches the new service and priority; no responder was paged.",
                 )
 
     if body.status != "resolved" and not service_changed:

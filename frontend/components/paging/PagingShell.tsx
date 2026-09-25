@@ -781,6 +781,8 @@ function ServicesPanel({
     is_active: true,
   };
   const [form, setForm] = useState(emptyForm);
+  const [linkedChainApplies, setLinkedChainApplies] = useState(true);
+  const [linkedPriorityFilters, setLinkedPriorityFilters] = useState<(string[] | null)[]>([]);
   const [serviceSearch, setServiceSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -979,6 +981,8 @@ function ServicesPanel({
 
   const openCreate = () => {
     setEditing(null);
+    setLinkedChainApplies(true);
+    setLinkedPriorityFilters([]);
     setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
     setOpen(true);
   };
@@ -989,8 +993,17 @@ function ServicesPanel({
     try {
       const links = await listServiceEscalationChains(service.id);
       chainId = links.items[0]?.chain_id ?? "";
+      const filters = links.items.map((link) => {
+        const priorities = link.applies_when?.priorities;
+        return Array.isArray(priorities) ? priorities.map((value) => String(value).toUpperCase()) : null;
+      });
+      setLinkedPriorityFilters(filters);
+      setLinkedChainApplies(filters.some((priorities) =>
+        !priorities || priorities.length === 0 || priorities.includes(service.priority)));
     } catch {
       /* non-fatal — leave unselected */
+      setLinkedChainApplies(false);
+      setLinkedPriorityFilters([]);
     }
     setForm({
       name: service.name,
@@ -1420,9 +1433,14 @@ function ServicesPanel({
             <Label>Priority</Label>
             <Select
               value={form.priority}
-              onChange={(e) =>
-                setForm({ ...form, priority: e.target.value as Priority })
-              }
+              onChange={(e) => {
+                const priority = e.target.value as Priority;
+                setForm({ ...form, priority });
+                if (editing && linkedPriorityFilters.length) {
+                  setLinkedChainApplies(linkedPriorityFilters.some((priorities) =>
+                    !priorities || priorities.length === 0 || priorities.includes(priority)));
+                }
+              }}
             >
               {PRIORITY_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1459,9 +1477,11 @@ function ServicesPanel({
             <Label>Escalation chain (optional)</Label>
             <Select
               value={form.escalation_chain_id}
-              onChange={(e) =>
-                setForm({ ...form, escalation_chain_id: e.target.value })
-              }
+              onChange={(e) => {
+                setForm({ ...form, escalation_chain_id: e.target.value });
+                setLinkedChainApplies(true);
+                setLinkedPriorityFilters([]);
+              }}
             >
               <option value="">— none —</option>
               {chains
@@ -1476,6 +1496,12 @@ function ServicesPanel({
               P0/P1 incidents page through this chain. Chains belong to the
               service&apos;s team.
             </p>
+            {(form.priority === "P0" || form.priority === "P1") &&
+              (!form.escalation_chain_id || !linkedChainApplies) && (
+                <p role="alert" className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  No escalation chain matches this service priority. Incidents will not page a responder.
+                </p>
+              )}
           </div>
           <div>
             <Label>MCP servers</Label>

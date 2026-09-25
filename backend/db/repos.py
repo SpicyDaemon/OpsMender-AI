@@ -6769,15 +6769,69 @@ class EscalationStepRepo:
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
-    async def delete(db: AsyncSession, org_id: uuid.UUID, step_id: uuid.UUID) -> bool:
-        from sqlalchemy import delete as sql_delete
-
-        stmt = sql_delete(EscalationStep).where(
-            EscalationStep.org_id == org_id, EscalationStep.id == step_id
+    async def delete(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        step_id: uuid.UUID,
+        *,
+        chain_id: uuid.UUID | None = None,
+    ) -> bool:
+        # Chain states are the first lock for every transition. Preserve their
+        # cursor when the definition is compacted under an active run.
+        step = (
+            await db.execute(
+                select(EscalationStep).where(
+                    EscalationStep.org_id == org_id, EscalationStep.id == step_id
+                )
+            )
+        ).scalar_one_or_none()
+        if step is None:
+            return False
+        if chain_id is not None and step.chain_id != chain_id:
+            return False
+        states = (
+            (
+                await db.execute(
+                    select(IncidentChainState)
+                    .where(
+                        IncidentChainState.org_id == org_id,
+                        IncidentChainState.chain_id == step.chain_id,
+                    )
+                    .order_by(IncidentChainState.id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
         )
-        result = await db.execute(stmt)
+        # A concurrent definition edit may have renumbered or removed this
+        # step while we waited for the state locks.
+        step = (
+            await db.execute(
+                select(EscalationStep)
+                .where(EscalationStep.org_id == org_id, EscalationStep.id == step_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if step is None:
+            return False
+        for state in states:
+            if chain_is_live(state):
+                if state.current_step_index >= step.step_index:
+                    state.current_step_index -= 1
+                state.round += 1
+        await db.delete(step)
         await db.flush()
-        return result.rowcount > 0
+        remaining = await EscalationStepRepo.list_for_chain(db, org_id, step.chain_id)
+        # Two passes avoid a transient collision on (chain_id, step_index).
+        for offset, item in enumerate(remaining):
+            item.step_index = -1 - offset
+        await db.flush()
+        for index, item in enumerate(remaining):
+            item.step_index = index
+        await db.flush()
+        return True
 
     @staticmethod
     async def update_fields(
@@ -6890,9 +6944,13 @@ class ServiceEscalationChainRepo:
     async def list_for_service(
         db: AsyncSession, org_id: uuid.UUID, service_id: uuid.UUID
     ) -> Sequence[ServiceEscalationChain]:
-        stmt = select(ServiceEscalationChain).where(
-            ServiceEscalationChain.org_id == org_id,
-            ServiceEscalationChain.service_id == service_id,
+        stmt = (
+            select(ServiceEscalationChain)
+            .where(
+                ServiceEscalationChain.org_id == org_id,
+                ServiceEscalationChain.service_id == service_id,
+            )
+            .order_by(ServiceEscalationChain.id)
         )
         return (await db.execute(stmt)).scalars().all()
 
@@ -6937,6 +6995,7 @@ class IncidentPageRepo:
         user_id: uuid.UUID,
         chain_id: uuid.UUID | None = None,
         step_index: int | None = None,
+        round: int = 0,
         channel: str = "recorded",
         delivery_status: str = "recorded",
         delivery_error: str | None = None,
@@ -6947,6 +7006,7 @@ class IncidentPageRepo:
             user_id=user_id,
             chain_id=chain_id,
             step_index=step_index,
+            round=round,
             channel=channel,
             delivery_status=delivery_status,
             delivery_error=delivery_error,
@@ -6963,14 +7023,21 @@ class IncidentPageRepo:
         incident_id: uuid.UUID,
         user_id: uuid.UUID,
         step_index: int,
+        round: int = 0,
     ) -> bool:
-        stmt = select(IncidentPage).where(
-            IncidentPage.org_id == org_id,
-            IncidentPage.incident_id == incident_id,
-            IncidentPage.user_id == user_id,
-            IncidentPage.step_index == step_index,
+        stmt = (
+            select(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == incident_id,
+                IncidentPage.user_id == user_id,
+                IncidentPage.step_index == step_index,
+                IncidentPage.round == round,
+                IncidentPage.channel == "recorded",
+            )
+            .limit(1)
         )
-        return (await db.execute(stmt)).scalar_one_or_none() is not None
+        return (await db.execute(stmt)).scalars().first() is not None
 
     @staticmethod
     async def list_for_incident(
@@ -7021,6 +7088,8 @@ class IncidentPageRepo:
         user_id: uuid.UUID,
         channel: str,
         after: datetime,
+        round: int | None = None,
+        step_index: int | None = None,
     ) -> bool:
         """Sprint 35 dedup: was this (incident, user, channel) already
         delivered (or attempted with non-skipped status) since ``after``?"""
@@ -7033,7 +7102,12 @@ class IncidentPageRepo:
             IncidentPage.delivery_status.in_(("sent", "failed")),
             IncidentPage.sent_at >= after,
         )
-        return (await db.execute(stmt)).scalar_one_or_none() is not None
+        if round is not None and step_index is not None:
+            stmt = stmt.where(
+                IncidentPage.round == round,
+                IncidentPage.step_index == step_index,
+            )
+        return (await db.execute(stmt.limit(1))).scalars().first() is not None
 
     @staticmethod
     async def ack_all_unacked(
@@ -7156,24 +7230,29 @@ class IncidentChainStateRepo:
             IncidentChainState.next_step_due_at.is_not(None),
             IncidentChainState.next_step_due_at <= now,
         )
-        stmt = select(IncidentChainState).where(
-            or_(
-                and_(IncidentChainState.status == "running", due),
-                and_(
-                    IncidentChainState.status == "paused",
-                    IncidentChainState.paused_until.is_not(None),
-                    due,
-                ),
-                and_(
-                    IncidentChainState.status == "acked",
-                    IncidentChainState.finished_at.is_(None),
-                    due,
-                ),
-                and_(
-                    IncidentChainState.pending_takeover_expires_at.is_not(None),
-                    IncidentChainState.pending_takeover_expires_at <= now,
-                ),
+        stmt = (
+            select(IncidentChainState)
+            .where(
+                or_(
+                    and_(IncidentChainState.status == "running", due),
+                    and_(
+                        IncidentChainState.status == "paused",
+                        IncidentChainState.paused_until.is_not(None),
+                        due,
+                    ),
+                    and_(
+                        IncidentChainState.status == "acked",
+                        IncidentChainState.finished_at.is_(None),
+                        due,
+                    ),
+                    and_(
+                        IncidentChainState.pending_takeover_expires_at.is_not(None),
+                        IncidentChainState.pending_takeover_expires_at <= now,
+                    ),
+                )
             )
+            .order_by(IncidentChainState.id)
+            .with_for_update(skip_locked=True)
         )
         return (await db.execute(stmt)).scalars().all()
 

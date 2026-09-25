@@ -34,6 +34,7 @@ EVENT_HEADLINES: dict[str, str] = {
     "incident.acknowledged": "✅ Incident acknowledged",
     "incident.resolved": "🟢 Incident resolved",
     "incident.escalated": "⏫ Incident escalated",
+    "incident.escalation_exhausted": "Escalation exhausted",
     "incident.updated": "✏️ Incident updated",
 }
 

@@ -107,6 +107,14 @@ cannot make an unavailable tool available, change the active tier, override a
 deny entry, bypass approval, or relax the backend's structured operation policy.
 Unassigned draft skills still never enter a session.
 
+A session also receives the active tier's Custom Instructions from each
+integration connector on the service's allowlist that has a bound Skill. They
+follow the MCP Skill's instructions, one labelled section per connector,
+ordered by connector name. A connector Skill that can't be read adds no
+instructions (its tools stay denied), and a disabled or unlisted connector adds
+none. Only the MCP Skill's AI Action Workflow is used; connector workflows are
+not merged.
+
 All skills (including Unassigned drafts) are **downloadable** as Markdown from
 the row action.
 

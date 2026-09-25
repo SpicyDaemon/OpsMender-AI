@@ -224,7 +224,10 @@ async def _fire_step(
                     or getattr(dispatch, "staged", False)
                     or any(a.status == "sent" for a in dispatch.attempts)
                 )
-                if dispatch.suppressed and dispatch.suppression_reason:
+                if (
+                    getattr(dispatch, "suppressed", False)
+                    and dispatch.suppression_reason
+                ):
                     reasons.append(
                         f"{user.username}: {dispatch.suppression_reason.replace('_', ' ')}"
                     )

@@ -29,6 +29,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Everyone agrees on who is on call.** Paging, the on-call API, the Roster
+  and chain calendars, and the Services table now build the on-call picture
+  the same way, from the Roster's real coverage window. Before, paging used a
+  default 09:00–17:00 window, so a night Roster could page nobody at 03:00
+  while the calendar named someone.
+  - Shifts hand over at the Roster's handoff time (its coverage start), on the
+    Start Date and every shift after it. A round-the-clock Roster used to
+    switch people at local midnight. The weekly handoff day is the Start
+    Date's weekday; the unused `handoff_day` field stays legacy.
+  - The Services table's "On call now" resolves at the current time instead
+    of the middle of today's coverage window. The chain calendar API accepts
+    `at` (with `range=today`) for this.
+  - An Override for a deactivated user is ignored everywhere, as paging
+    already did, and is no longer flagged on the Roster calendar.
+- **Quiet hours never block a page to the on-call person** (D-4). When a
+  level targets a Roster, the person on call is paged even inside their quiet
+  hours. Quiet hours still apply to direct and team targets, and any page held
+  back by quiet hours or a Maintenance Window is now recorded as a skipped
+  delivery with the reason and a timeline note. Before, it vanished without a
+  record.
+- **Notification preferences are validated.** Malformed quiet hours or routing
+  return 422 instead of failing silently at page time. Saving paging routing
+  no longer wipes the Inbox mutes set on the Inbox preferences page.
+  *Upgrade note:* an older nested quiet-hours shape (`{"weekday": {...}}`)
+  was never read by paging and is now rejected on save; stored values load
+  unchanged.
+
 - **Escalation chains now visit every eligible level once.** The first level
   no longer stops at a 15-minute start-time cap. Each level, including the
   final one, keeps its configured timeout; an unacknowledged chain then sends

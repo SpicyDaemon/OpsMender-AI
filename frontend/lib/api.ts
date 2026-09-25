@@ -1808,11 +1808,17 @@ export async function listChainServices(
 
 export async function getEscalationChainCalendar(
   chainId: string,
-  options?: { range?: "today" | "7d" | "30d" | "90d"; start?: string },
+  options?: {
+    range?: "today" | "7d" | "30d" | "90d";
+    start?: string;
+    /** Resolve at this instant (ISO time) instead of sampling the day. */
+    at?: string;
+  },
 ): Promise<EscalationCalendarResponse> {
   const qs = new URLSearchParams();
   if (options?.range) qs.set("range", options.range);
   if (options?.start) qs.set("start", options.start);
+  if (options?.at) qs.set("at", options.at);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return api.get<EscalationCalendarResponse>(
     `/escalation-chains/${chainId}/calendar${suffix}`,

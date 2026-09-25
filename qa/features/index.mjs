@@ -12,6 +12,7 @@ import notifications from "./notifications.mjs";
 import incidents from "./incidents.mjs";
 import intakeCorrectness from "./intake_correctness.mjs";
 import ownershipLifecycle from "./ownership_lifecycle.mjs";
+import onCallConsistency from "./on_call_consistency.mjs";
 import escalationProgression from "./escalation_progression.mjs";
 import reliability from "./reliability.mjs";
 import models from "./models.mjs";
@@ -30,6 +31,7 @@ export const features = [
   incidents,
   intakeCorrectness,
   ownershipLifecycle,
+  onCallConsistency,
   escalationProgression,
   reliability,
   models,

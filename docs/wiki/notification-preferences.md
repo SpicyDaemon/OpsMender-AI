@@ -78,7 +78,22 @@ Quiet hours suppress non-critical pages during a configured window. Enable the p
 - **Start / End** — local times. Windows wrap midnight correctly (`22:00 → 07:00`).
 - **Days** — the days of week the window applies (e.g. Mon–Fri). Leave all selected for every day.
 
-**P0 (Critical) always pages through quiet hours.** Quiet hours apply to **P1, P2, and P3 only**. When a P1–P3 page is suppressed by quiet hours, it's still recorded in `incident_pages` so the on-call audit log stays complete.
+**What always gets through:**
+
+- **P0 (Critical) pages.** Quiet hours apply to P1, P2 and P3 only.
+- **Pages to you as a Roster's on-call person.** When an Escalation Chain
+  level targets a Roster and you are on call for it, you are paged even
+  inside your quiet hours: being on call is the commitment. Quiet hours still
+  apply when a level targets you directly or through a team.
+
+When a page is held back by quiet hours (or by a Maintenance Window), it is
+recorded as a skipped delivery with the reason, and the incident timeline
+says who wasn't reached and why. The level's timeout still runs, so the next
+level is paged if nobody acknowledges.
+
+Saving malformed quiet hours or routing is rejected: times must be 00:00–23:59,
+the time zone a valid IANA name, days 0 (Mon) to 6 (Sun), and each priority up
+to three stages.
 
 ---
 

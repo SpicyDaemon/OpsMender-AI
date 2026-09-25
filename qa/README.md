@@ -26,6 +26,7 @@ workflow actually works against a running instance.
 | Incidents | page loads · create (fire-test) · open detail · acknowledge · resolve |
 | Intake correctness | SNS alarm/duplicate/recovery/re-fire through the service URL · browser acknowledgment · cross-service Inbox link · simultaneous collision delivery |
 | Ownership lifecycle | Take stops paging · comment extends the lock · release resumes the next level · re-acknowledge · resolve stops the chain · bulk acknowledge/resolve · owner-confirmed takeover |
+| Who's on call | Services "On call now" matches the Roster API at the current time · routing form saves quiet hours · the API rejects a bad time zone |
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
 | Skills | page loads · starter templates + backend validation · MCP/integration generator sources |

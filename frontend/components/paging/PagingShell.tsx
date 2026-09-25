@@ -877,9 +877,11 @@ function ServicesPanel({
               const links = await listServiceEscalationChains(service.id);
               if (links.items.length > 0) {
                 for (const link of links.items) {
+                  // "On call now" means now, not the middle of today's window.
                   const calendar = await getEscalationChainCalendar(link.chain_id, {
                     range: "today",
                     start: todayIsoDate(),
+                    at: new Date().toISOString(),
                   });
                   const coveredUserId = firstCoveredCalendarUserId(calendar);
                   if (coveredUserId) {

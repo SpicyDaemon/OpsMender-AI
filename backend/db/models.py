@@ -2487,6 +2487,16 @@ class IncidentChainState(Base):
     pending_takeover_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # D-021 acknowledgement lock and snooze. While a chain is live
+    # (running, paused, or acked with no finished_at), next_step_due_at is
+    # when the next level fires unless someone intervenes: the level timeout
+    # (running), the snooze end (paused), or the inactivity deadline (acked).
+    paused_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

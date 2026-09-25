@@ -25,6 +25,7 @@ workflow actually works against a running instance.
 | Notifications | page loads · open Add-Channel form · *(optional)* send live test |
 | Incidents | page loads · create (fire-test) · open detail · acknowledge · resolve |
 | Intake correctness | SNS alarm/duplicate/recovery/re-fire through the service URL · browser acknowledgment · cross-service Inbox link · simultaneous collision delivery |
+| Ownership lifecycle | Take stops paging · comment extends the lock · release resumes the next level · re-acknowledge · resolve stops the chain · bulk acknowledge/resolve · owner-confirmed takeover |
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
 | Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
@@ -36,11 +37,13 @@ screenshot and the run keeps going, so one report shows everything that is or
 isn't working. Steps that can't run (missing precondition, opt-in disabled)
 are marked **skipped**, not failed.
 
-The intake correctness feature creates two services whose Escalation Chains
-page the QA user, then sends synthetic webhooks through their intake tokens.
-It is skipped unless `QA_INTAKE_PAGING=true`. Enable it only against a
-disposable instance with local notification sinks. Select it alone with
-`QA_FEATURES=auth,intake_correctness`.
+The intake correctness and ownership lifecycle features create services
+whose Escalation Chains page real accounts (the QA user, and an operator the
+lifecycle feature creates). Both are skipped unless `QA_LIVE_PAGING=true`.
+Enable it only against a disposable instance with local notification sinks.
+Select one alone with, for example, `QA_FEATURES=auth,ownership_lifecycle`.
+The lifecycle feature waits past two level timeouts (about 40 seconds each)
+to prove nothing escalates while someone owns or has closed the incident.
 
 ## Prerequisites
 
@@ -98,7 +101,7 @@ All configuration is via environment variables (or a gitignored
 | `QA_CLEANUP` | `false` | Best-effort delete of this run's QA-prefixed entities at the end. |
 | `QA_FIRE_TEST_INCIDENT` | `true` | Use the synthetic Fire-Test-Incident flow (vs a real incident). |
 | `QA_SEND_TEST_NOTIFICATION` | `false` | Actually send a live test notification (**may page real people**). |
-| `QA_INTAKE_PAGING` | `false` | Run the intake recovery and collision checks, whose Escalation Chains page the QA user (**disposable instance only**). |
+| `QA_LIVE_PAGING` | `false` | Run the checks whose Escalation Chains page real accounts: intake recovery/collision and the ownership lifecycle (**disposable instance only**). `QA_INTAKE_PAGING` is the earlier name and still works. |
 | `QA_CREATE_MODEL` | `false` | Create a model config during the run (needs the `QA_MODEL_*` params). |
 | `QA_TEST_MODEL_CONNECTION` | `true` | Click "Test" on the first saved model config. |
 | `QA_MODEL_PROVIDER` / `QA_MODEL_ID` / `QA_MODEL_KEY_ENV` / `QA_MODEL_BASE_URL` | openai / gpt-4o-mini / OPENAI_API_KEY / — | Params for `QA_CREATE_MODEL`. |

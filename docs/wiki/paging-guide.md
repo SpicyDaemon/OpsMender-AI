@@ -158,6 +158,39 @@ Services use their team's escalation behavior. Roster and user targets are suppo
 
 The Escalation Chain Calendar shows who is expected to respond at each escalation level over a selected time range. It is resolved from chain levels, roster schedules, rotation order, coverage windows, and active users.
 
+### Owning an incident stops paging
+
+Acknowledging an incident makes you its owner and stops the chain. So does
+every other way of taking it: **Take**, a bulk acknowledge or reassign from the
+incident list, phone keypad `1`, a chat Acknowledge button or `/ack`, and
+taking over its AI session. Staged notifications stop too.
+
+Ownership is a lock with a timer:
+
+- **It lasts while you work.** Your own recorded actions on the incident keep
+  it: a comment, a status or severity change, a snooze, starting an AI
+  session, approving or rejecting its AI actions, or messaging its AI session.
+  Viewing the incident doesn't count, and neither does anyone else's action.
+- **It lapses after 15 minutes without any of those.** You are released, and
+  the chain pages the **next** level. If there is no next level, you keep the
+  incident and the chain ends.
+- **Releasing** hands it back: the chain pages the next level straight away,
+  never level 1 again.
+- **Resolving or combining** the incident ends all paging for it, whatever
+  state the chain is in.
+
+**Snooze** (Slack `/snooze 30m`) pauses escalation for a set time. If nobody
+owns the incident, the next level is paged when the snooze ends. If you own
+it, you keep it, and the lock lasts at least until the snooze ends.
+**Escalate now** (phone keypad `2`, or the chat Escalate button) pages the next
+level immediately, even while snoozed or owned; it doesn't change the owner.
+
+**Taking over from someone.** Asking for an incident someone else owns sends
+them a request; only they can confirm it, within five minutes, and an
+unanswered request just expires. An admin can force a takeover, which is
+recorded on the timeline. The **Take over** button in the incident page is an
+immediate reassignment by an operator, as before.
+
 ---
 
 ## 6. On Call Schedule
@@ -224,7 +257,7 @@ Sections:
 - Routing by Priority: map `P0`/`P1`/`P2`/`P3` to configured channels.
 - Sessions / Chat: session behavior for chat-capable adapters only.
 
-Supported channels depend on configured adapters, such as Slack, Microsoft Teams, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters. Voice Call and SMS delivery use **Settings -> Voice & SMS calling**. The matching `OPSMENDER_TWILIO_*` environment variables still bootstrap fresh instances, but saved Settings values override them. Voice calls read the incident summary and accept keypad actions: `1` acknowledge, `2` escalate, and `*` repeat.
+Supported channels depend on configured adapters, such as Slack, Microsoft Teams, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters. Voice Call and SMS delivery use **Settings -> Voice & SMS calling**. The matching `OPSMENDER_TWILIO_*` environment variables still bootstrap fresh instances, but saved Settings values override them. Voice calls read the incident summary and accept keypad actions: `1` acknowledge, `2` escalate, `3` resolve, and `*` repeat.
 
 Stakeholder communication lives under Reports. Admins and operators can export
 incident CSV/PDF reports, while admins can schedule recurring email delivery.

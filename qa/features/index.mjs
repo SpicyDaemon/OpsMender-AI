@@ -11,6 +11,7 @@ import rosterCalendar from "./roster_calendar.mjs";
 import notifications from "./notifications.mjs";
 import incidents from "./incidents.mjs";
 import intakeCorrectness from "./intake_correctness.mjs";
+import ownershipLifecycle from "./ownership_lifecycle.mjs";
 import reliability from "./reliability.mjs";
 import models from "./models.mjs";
 import skills from "./skills.mjs";
@@ -27,6 +28,7 @@ export const features = [
   notifications,
   incidents,
   intakeCorrectness,
+  ownershipLifecycle,
   reliability,
   models,
   skills,

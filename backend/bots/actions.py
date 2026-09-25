@@ -290,22 +290,33 @@ async def execute_incident_action(
             db, claims.org_id, claims.incident_id
         )
         if active is not None and active.assigned_to == actor_user_id:
+            # The owner pressing Acknowledge again is activity on the lock.
+            await _escalation.record_assignee_activity(
+                db,
+                claims.org_id,
+                incident_id=claims.incident_id,
+                actor_id=actor_user_id,
+            )
             return IncidentActionResult(
                 action=claims.action,
                 status="already_acknowledged",
                 incident_id=claims.incident_id,
                 actor_user_id=actor_user_id,
             )
-        await _escalation.handle_ack(
+        outcome = await _escalation.acknowledge(
             db,
             claims.org_id,
             incident_id=claims.incident_id,
-            user_id=actor_user_id,
+            assignee_id=actor_user_id,
             via=(connector.platform if connector is not None else "web_ui"),
         )
+        status = {
+            "closed": "already_resolved",
+            "owned_by_other": "already_owned",
+        }.get(outcome.status, "acknowledged")
         return IncidentActionResult(
             action=claims.action,
-            status="acknowledged",
+            status=status,
             incident_id=claims.incident_id,
             actor_user_id=actor_user_id,
         )
@@ -317,7 +328,7 @@ async def execute_incident_action(
             claims.incident_id,
             reason="Incident was resolved before AI capacity became available.",
         )
-        if incident.status == "resolved":
+        if incident.status in ("resolved", "merged"):
             return IncidentActionResult(
                 action=claims.action,
                 status="already_resolved",
@@ -392,6 +403,12 @@ async def execute_incident_action(
             ),
         )
         session = admission.session
+        await _escalation.record_assignee_activity(
+            db,
+            claims.org_id,
+            incident_id=claims.incident_id,
+            actor_id=actor_user_id,
+        )
         return IncidentActionResult(
             action=claims.action,
             status="session_queued" if admission.queued else "session_started",

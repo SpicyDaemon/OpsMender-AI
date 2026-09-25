@@ -82,9 +82,13 @@ export const config = {
   testModelConnection: bool("QA_TEST_MODEL_CONNECTION", "testModelConnection", true),
   // Actually send a live test notification (MAY page real people).
   sendTestNotification: bool("QA_SEND_TEST_NOTIFICATION", "sendTestNotification", false),
-  // Send real webhooks through intake with paging Escalation Chains that
-  // target the QA user (MAY page that account). Use a disposable instance.
-  intakePaging: bool("QA_INTAKE_PAGING", "intakePaging", false),
+  // Run checks whose Escalation Chains page real accounts (the QA user and a
+  // QA-created operator): intake recovery/collision and the ownership
+  // lifecycle. MAY page those accounts. Use a disposable instance.
+  // QA_INTAKE_PAGING is the earlier name and is still accepted.
+  livePaging:
+    bool("QA_LIVE_PAGING", "livePaging", false) ||
+    bool("QA_INTAKE_PAGING", "intakePaging", false),
   // Use the synthetic Fire Test Incident flow rather than a real incident.
   fireTestIncident: bool("QA_FIRE_TEST_INCIDENT", "fireTestIncident", true),
 

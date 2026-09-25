@@ -2189,6 +2189,8 @@ export interface IncidentChainStateRecord {
   hard_deadline_at: string | null;
   pending_takeover_user_id: string | null;
   pending_takeover_expires_at: string | null;
+  paused_until?: string | null;
+  last_activity_at?: string | null;
   started_at: string;
   finished_at: string | null;
 }

@@ -40,6 +40,7 @@ from backend.ingest.noise import (
 )
 from backend.ingest.registry import get_adapter
 from backend.ingest.adapters.universal import normalize_payload
+from backend.paging.maintenance import window_matches
 from backend.llm.selection import choose_model_for_incident_service
 
 logger = logging.getLogger(__name__)
@@ -204,18 +205,11 @@ async def ingest_incident(
         service = await ServiceRepo.get_by_id(db, org_id, service_id)
         active_windows = await MaintenanceWindowRepo.list_active_at(db, org_id, now)
         for window in active_windows:
-            matches = window.scope_type == "global"
-            if window.scope_type == "service":
-                service_ids = set(str(v) for v in (window.target_ids or []))
-                if window.scope_id is not None:
-                    service_ids.add(str(window.scope_id))
-                matches = str(service_id) in service_ids
-            elif window.scope_type == "team" and service is not None:
-                team_ids = set(str(v) for v in (window.target_ids or []))
-                if window.scope_id is not None:
-                    team_ids.add(str(window.scope_id))
-                matches = str(service.team_id) in team_ids
-            if matches:
+            if window_matches(
+                window,
+                service_id=service_id,
+                team_id=None if service is None else service.team_id,
+            ):
                 await IngestLogRepo.create(
                     db,
                     org_id,
@@ -384,50 +378,13 @@ async def ingest_incident(
         db.add(incident)
         await db.flush()
         # Apply priority rules — locked at creation per D-021.
-        from backend.paging.service import apply_priority_to_incident
+        from backend.paging.service import (
+            apply_priority_to_incident,
+            page_new_incident,
+        )
 
-        priority_result = await apply_priority_to_incident(db, org_id, incident)
-        # Kick off escalation chain if this incident pages humans.
-        if priority_result.response_mode in ("page", "escalate_immediate"):
-            from backend.paging import escalation as _esc_kickoff
-
-            link = await _esc_kickoff.select_chain_for_incident(
-                db,
-                org_id,
-                service_id=incident.service_id,
-                priority=priority_result.priority,
-            )
-            if link is not None:
-                from backend.paging.channel_factory import build_channel_factory
-
-                await _esc_kickoff.start_chain(
-                    db,
-                    org_id,
-                    incident_id=incident.id,
-                    chain_id=link.chain_id,
-                    mode=priority_result.response_mode,
-                    channel_factory=build_channel_factory(),
-                )
-                import os as _os
-                from backend.paging.slack_channel_mirror import (
-                    mirror_incident_to_slack_channel,
-                )
-
-                await mirror_incident_to_slack_channel(
-                    db,
-                    org_id,
-                    incident=incident,
-                    base_url=_os.environ.get("OPSMENDER_PUBLIC_URL"),
-                )
-            else:
-                from backend.services.incident_timeline import record_lifecycle_comment
-
-                await record_lifecycle_comment(
-                    db,
-                    org_id,
-                    incident_id=incident.id,
-                    body="No escalation chain matches this service and priority; no responder was paged.",
-                )
+        await apply_priority_to_incident(db, org_id, incident)
+        await page_new_incident(db, org_id, incident)
         await attach_created_incident(
             db,
             org_id,

@@ -78,7 +78,9 @@ class GenericAdapter(IngestAdapter):
         # Normalize severity
         if isinstance(severity, str):
             severity = severity.lower()
-            if severity not in ("critical", "high", "medium", "low"):
+            if severity in ("info", "informational"):
+                severity = "low"
+            elif severity not in ("critical", "high", "medium", "low"):
                 severity = "medium"
         else:
             severity = None

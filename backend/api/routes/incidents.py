@@ -86,7 +86,7 @@ from backend.api.schemas import (
     IncidentPagingPanelResponse,
     SuppressedByMaintenanceWindow,
 )
-from backend.paging.service import compute_priority_for_payload
+from backend.paging.service import compute_priority_for_payload, page_new_incident
 from backend.paging import escalation as _esc
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
@@ -448,42 +448,7 @@ async def _create_incident_record(
         external_id=body.external_id,
         external_source=body.external_source,
     )
-    # Kick off the escalation chain when the response mode pages humans.
-    if priority_result.response_mode in ("page", "escalate_immediate"):
-        link = await _esc.select_chain_for_incident(
-            db,
-            org_id,
-            service_id=incident.service_id,
-            priority=priority_result.priority,
-        )
-        if link is not None:
-            from backend.paging.channel_factory import build_channel_factory
-
-            await _esc.start_chain(
-                db,
-                org_id,
-                incident_id=incident.id,
-                chain_id=link.chain_id,
-                mode=priority_result.response_mode,
-                channel_factory=build_channel_factory(),
-            )
-            from backend.paging.slack_channel_mirror import (
-                mirror_incident_to_slack_channel,
-            )
-
-            await mirror_incident_to_slack_channel(
-                db,
-                org_id,
-                incident=incident,
-                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
-            )
-        else:
-            await record_lifecycle_comment(
-                db,
-                org_id,
-                incident_id=incident.id,
-                body="No escalation chain matches this service and priority; no responder was paged.",
-            )
+    await page_new_incident(db, org_id, incident)
     return incident
 
 

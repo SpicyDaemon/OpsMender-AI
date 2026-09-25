@@ -43,6 +43,7 @@ from backend.db.repos import (
     TeamRepo,
     UptimeSampleRepo,
 )
+from backend.paging.maintenance import parse_rrule
 from backend.sla import metrics
 from backend.sla import response_time
 from backend.sla.poller import validate_expected_status_config
@@ -926,6 +927,19 @@ async def list_maintenance_windows(
     )
 
 
+def _check_rrule(rrule: str | None, starts_at: datetime) -> None:
+    if not rrule:
+        return
+    try:
+        parse_rrule(rrule, starts_at)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Recurrence rule is not valid ({exc}). Use iCalendar RRULE format, "
+            "for example FREQ=WEEKLY;BYDAY=SU.",
+        ) from exc
+
+
 @router.post(
     _mw_prefix,
     response_model=MaintenanceWindowResponse,
@@ -943,6 +957,7 @@ async def create_maintenance_window(
             status.HTTP_400_BAD_REQUEST,
             "ends_at must be after starts_at",
         )
+    _check_rrule(body.rrule, body.starts_at)
 
     scope_ids = list(body.scope_ids or [])
     if body.scope_id is not None and body.scope_id not in scope_ids:
@@ -992,6 +1007,8 @@ async def update_maintenance_window(
     existing = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    if "rrule" in body.model_fields_set:
+        _check_rrule(body.rrule, body.starts_at or existing.starts_at)
 
     scope_ids = body.scope_ids
     scope_id = body.scope_id

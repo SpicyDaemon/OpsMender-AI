@@ -173,7 +173,8 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
             placeholder="FREQ=WEEKLY;BYDAY=SU"
           />
           <p className="mt-1 text-xs text-fg-muted">
-            Leave blank for a one-off window. Uses iCalendar RRULE format.
+            Leave blank for a one-off window. Uses iCalendar RRULE format; each
+            repeat lasts as long as the first window and starts at the same UTC time.
           </p>
         </div>
 

@@ -1267,6 +1267,8 @@ async def _create_manual_service_via_api(client, headers, label: str = "Manual")
             "team_id": team.json()["id"],
             "name": f"{label} Service",
             "slug": f"{label.lower().replace(' ', '-')}-service-{suffix}",
+            # A service that doesn't page; new services default to P1.
+            "priority": "P2",
         },
         headers=headers,
     )

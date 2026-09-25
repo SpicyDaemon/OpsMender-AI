@@ -27,7 +27,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which tools a session gets and never blocks a session. Overlap details are
   shown to admins and operators only.
 
+### Changed
+
+- **P0 and P1 page; P2 and P3 notify.** P3 incidents now notify, like P2,
+  instead of getting the unused "auto resolve" mode. New services default to
+  P1, and the service form explains which priorities page. Existing
+  services keep their priority: a service still at the old default, P2,
+  won't page until you raise it.
+- **Low-severity alerts notify.** An alert whose severity is `low` or `info`
+  notifies instead of paging, even on a P0 or P1 service; the incident keeps
+  the service's priority and its timeline says why it didn't page. The
+  generic intake adapter now reads `info` and `informational` as `low`
+  (it used to read them as `medium`).
+
 ### Fixed
+
+- **SLO burn-rate incidents page.** They take their service's priority and
+  page its Escalation Chain like any other incident; before, they never
+  paged. A violation after the previous one resolved opens a new incident
+  instead of reopening the old one. Manual incidents, intake and SLO
+  violations now start paging through one shared path.
+- **Recurring Maintenance Windows recur.** A window with a recurrence rule
+  (for example `FREQ=WEEKLY;BYDAY=SU`) now covers every repeat, not just the
+  first. An unreadable rule, or one repeating more often than hourly, is
+  rejected with 422. Team-scoped windows now also hold back pages, not just
+  intake, and Roster-scoped windows hold back pages sent through that
+  Roster's escalation level; before, they did nothing.
+  *Upgrade note:* existing recurring windows start repeating after the
+  upgrade. Check them before upgrading if any were set up long ago.
+- **The Reliability page no longer promises a P0.** Creating an incident
+  from an SLO recommendation said it would be P0 and page; it takes the
+  service's priority.
 
 - **Everyone agrees on who is on call.** Paging, the on-call API, the Roster
   and chain calendars, and the Services table now build the on-call picture

@@ -217,7 +217,9 @@ async def _fire_step(
                     page=page,
                     channel_factory=channel_factory,
                     at=at,
-                    roster_on_call=step.target_type == "roster",
+                    roster_id=(
+                        step.target_id if step.target_type == "roster" else None
+                    ),
                 )
                 delivered = (
                     delivered

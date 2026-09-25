@@ -3689,21 +3689,33 @@ class MaintenanceWindowRepo:
         scope_type: str | None = None,
         scope_id: uuid.UUID | None = None,
     ) -> Sequence[MaintenanceWindow]:
-        """Return maintenance windows active exactly at ``dt``.
+        """Return maintenance windows active exactly at ``dt``, including
+        repeats of recurring windows.
 
-        RRULE is omitted from this quick check for now. When a scope is
-        provided, global windows are included alongside matching scoped ones.
+        When a scope is provided, global windows are included alongside
+        matching scoped ones.
         """
+        from sqlalchemy import and_
+
+        from backend.paging.maintenance import window_active_at
+
         stmt = (
             select(MaintenanceWindow)
             .where(MaintenanceWindow.org_id == org_id)
-            .where(MaintenanceWindow.starts_at <= dt, MaintenanceWindow.ends_at > dt)
+            .where(MaintenanceWindow.starts_at <= dt)
+            .where(
+                or_(
+                    MaintenanceWindow.ends_at > dt,
+                    and_(
+                        MaintenanceWindow.rrule.is_not(None),
+                        MaintenanceWindow.rrule != "",
+                    ),
+                )
+            )
             # Pending (unapproved) windows do not suppress alerts.
             .where(MaintenanceWindow.approved == True)  # noqa: E712
         )
         if scope_type is not None:
-            from sqlalchemy import and_, or_
-
             scoped_match = and_(
                 MaintenanceWindow.scope_type == scope_type,
                 MaintenanceWindow.scope_id == scope_id,
@@ -3712,7 +3724,7 @@ class MaintenanceWindowRepo:
                 or_(MaintenanceWindow.scope_type == "global", scoped_match)
             )
         result = await db.execute(stmt)
-        return result.scalars().all()
+        return [w for w in result.scalars().all() if window_active_at(w, dt)]
 
     @staticmethod
     async def update(

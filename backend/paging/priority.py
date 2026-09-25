@@ -27,7 +27,7 @@ DEFAULT_MODE_FOR: dict[str, str] = {
     "P0": "page",
     "P1": "page",
     "P2": "notify",
-    "P3": "auto_resolve",
+    "P3": "notify",
 }
 
 

@@ -126,9 +126,9 @@ The Active / Scheduled / Past tabs let you audit what's happening now, what's co
 After saving:
 
 1. Click **Test notification** and confirm the per-channel results match what you'd expect (delivered / skipped / failed).
-2. Trigger a low-stakes P3 page (e.g. via a test alert that maps to `page` mode). Confirm only the channels you selected for P3 fire.
-3. Toggle quiet hours on, set start/end to **right now** with today's weekday selected, and fire a P2. Confirm it's suppressed — then fire a P0 and confirm it pages through anyway.
-4. As an admin, schedule a global maintenance window covering the next 5 minutes and fire a `page` incident. Confirm no page lands. Then fire an `escalate_immediate` incident and confirm the page goes through anyway.
+2. Trigger a test alert on a P1 service whose chain pages you directly. Confirm only the channels you selected for P1 fire.
+3. Toggle quiet hours on, set start/end to **right now** with today's weekday selected, and fire that P1 again. Confirm it's held back and the incident says why. Then fire a P0 and confirm it pages through anyway.
+4. As an admin, schedule a global maintenance window covering the next 5 minutes and fire the P1 again. Confirm no page lands.
 
 ---
 

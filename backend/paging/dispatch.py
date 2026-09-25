@@ -354,6 +354,8 @@ async def dispatch_page(
             user_id=user.id,
             channel=key,
             after=cutoff,
+            round=page.round,
+            step_index=page.step_index,
         )
         if recent:
             attempt = DeliveryAttempt(key, "skipped", "dedup")
@@ -365,6 +367,7 @@ async def dispatch_page(
                 user_id=user.id,
                 chain_id=page.chain_id,
                 step_index=page.step_index,
+                round=page.round,
                 channel=key,
                 delivery_status="skipped",
                 delivery_error="dedup",
@@ -455,6 +458,7 @@ async def dispatch_page(
             user_id=user.id,
             chain_id=page.chain_id,
             step_index=page.step_index,
+            round=page.round,
             channel=key,
             delivery_status=attempt.status,
             delivery_error=attempt.error,

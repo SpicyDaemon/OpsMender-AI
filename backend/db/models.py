@@ -2435,6 +2435,7 @@ class IncidentPage(Base):
         Uuid, ForeignKey("escalation_chains.id", ondelete="SET NULL"), nullable=True
     )
     step_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    round: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     channel: Mapped[str] = mapped_column(String(40), default="recorded", nullable=False)
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
@@ -2447,6 +2448,19 @@ class IncidentPage(Base):
         String(20), default="recorded", nullable=False
     )
     delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_incident_pages_recorded_round",
+            "incident_id",
+            "user_id",
+            "step_index",
+            "round",
+            unique=True,
+            postgresql_where=text("channel = 'recorded' AND step_index IS NOT NULL"),
+            sqlite_where=text("channel = 'recorded' AND step_index IS NOT NULL"),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2475,6 +2489,10 @@ class IncidentChainState(Base):
         String(20), default="running", nullable=False
     )  # running | paused | acked | exhausted | resolved | cancelled
     current_step_index: Mapped[int] = mapped_column(Integer, default=-1, nullable=False)
+    round: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exhaustion_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     next_step_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

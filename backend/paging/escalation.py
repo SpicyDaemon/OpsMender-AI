@@ -28,17 +28,9 @@ until the chain is cancelled or exhausted. While a chain is live,
 A chain acknowledged before the lock existed kept its ``finished_at`` and
 stays finished.
 
-Additive page semantics (D-021 #5): once a user has been paged on step N,
-they stay paged for the rest of the chain. ``IncidentPage.already_paged``
-keys on ``(incident_id, user_id, step_index)`` so a re-fire of the same
-step is idempotent. Pages from earlier steps are NOT re-issued for higher
-steps; the audit log records every fire-event uniquely.
-
-The start-time cap (``hard_deadline_at``, 15 min from the first page) still
-exhausts a chain nobody has touched (KI-010; removed in X1b). Acknowledging,
-snoozing or resuming clears it, so it never defeats a lock or a resume. The
-acknowledgement lock's inactivity deadline is separate: it is kept in
-``next_step_due_at`` and measured from the assignee's last write.
+The logical marker is keyed by incident, user, level and round. A handoff or
+definition edit increments the round; physical delivery rows retain it.
+The only 15-minute deadline is the assignee's inactivity lock.
 
 The engine never blocks on real notification delivery — it writes
 ``incident_pages`` rows with ``channel='recorded'`` and Sprint 35 wires the
@@ -53,6 +45,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.repos import (
@@ -63,12 +56,14 @@ from backend.db.repos import (
     IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
+    EscalationChainRepo,
     RosterOverrideRepo,
     RosterRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
     UserRepo,
 )
+from backend.notifications import CATEGORY_INCIDENT, emit_to_users
 from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
@@ -93,6 +88,8 @@ CLOSED_INCIDENT_STATUSES = ("resolved", "merged")
 class StepFireResult:
     step_index: int
     users_paged: list[uuid.UUID]
+    eligible_targets: int = 0
+    delivery_recorded: bool = True
 
 
 def _utcnow() -> datetime:
@@ -120,17 +117,39 @@ async def _resolve_step_targets(
     """Expand an escalation_step target into a list of user_ids to page."""
 
     if target_type == "user":
-        return [target_id]
+        user = await UserRepo.get_by_id(db, target_id)
+        if user is None or not user.is_active or user.deleted_at is not None:
+            return []
+        return (
+            [target_id]
+            if user.primary_org_id == org_id
+            or await UserRepo.is_member(db, target_id, org_id)
+            else []
+        )
     if target_type == "team":
         members = await TeamRepo.list_members(db, org_id, target_id)
-        return [m.user_id for m in members]
+        eligible = []
+        for member in members:
+            user = await UserRepo.get_by_id(db, member.user_id)
+            if user is not None and user.is_active and user.deleted_at is None:
+                eligible.append(member.user_id)
+        return eligible
     if target_type == "roster":
         roster = await RosterRepo.get_by_id(db, org_id, target_id)
-        if roster is None:
+        if roster is None or not roster.is_active:
             return []
         # Deactivated/soft-deleted users are never paged.
         members = await RosterRepo.list_members(db, org_id, target_id, active_only=True)
         overrides = await RosterOverrideRepo.list_for_roster(db, org_id, target_id)
+        active_overrides = []
+        for override in overrides:
+            covering = await UserRepo.get_by_id(db, override.covering_user_id)
+            if (
+                covering is not None
+                and covering.is_active
+                and covering.deleted_at is None
+            ):
+                active_overrides.append(override)
         ctx = OnCallContext(
             members=[
                 OnCallMember(user_id=m.user_id, position_index=m.position_index)
@@ -142,7 +161,7 @@ async def _resolve_step_targets(
                     starts_at=o.starts_at,
                     ends_at=o.ends_at,
                 )
-                for o in overrides
+                for o in active_overrides
             ],
             time_zone=roster.time_zone,
             pattern=roster.pattern,
@@ -161,6 +180,7 @@ async def _fire_step(
     *,
     incident_id: uuid.UUID,
     chain_id: uuid.UUID,
+    round: int,
     step,
     at: datetime,
     channel_factory: ChannelFactory | None = None,
@@ -185,6 +205,7 @@ async def _fire_step(
         at=at,
     )
     fired: list[uuid.UUID] = []
+    delivered = False
     incident = None
     for uid in user_ids:
         if await IncidentPageRepo.already_paged(
@@ -193,23 +214,31 @@ async def _fire_step(
             incident_id=incident_id,
             user_id=uid,
             step_index=step.step_index,
+            round=round,
         ):
             continue
-        page = await IncidentPageRepo.create(
-            db,
-            org_id,
-            incident_id=incident_id,
-            user_id=uid,
-            chain_id=chain_id,
-            step_index=step.step_index,
-        )
+        try:
+            async with db.begin_nested():
+                page = await IncidentPageRepo.create(
+                    db,
+                    org_id,
+                    incident_id=incident_id,
+                    user_id=uid,
+                    chain_id=chain_id,
+                    step_index=step.step_index,
+                    round=round,
+                )
+        except IntegrityError:
+            # A competing claim already recorded this logical page. The
+            # savepoint leaves the enclosing batch transaction usable.
+            continue
         fired.append(uid)
         if channel_factory is not None:
             if incident is None:
                 incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
             user = await UserRepo.get_by_id(db, uid)
             if incident is not None and user is not None:
-                await dispatch_page(
+                dispatch = await dispatch_page(
                     db,
                     org_id,
                     incident=incident,
@@ -218,13 +247,27 @@ async def _fire_step(
                     channel_factory=channel_factory,
                     at=at,
                 )
-    return StepFireResult(step_index=step.step_index, users_paged=fired)
+                delivered = (
+                    delivered
+                    or getattr(dispatch, "staged", False)
+                    or any(a.status == "sent" for a in dispatch.attempts)
+                )
+        else:
+            delivered = True
+    return StepFireResult(
+        step_index=step.step_index,
+        users_paged=fired,
+        eligible_targets=len(user_ids),
+        delivery_recorded=delivered,
+    )
 
 
 async def _notify_escalation(
     db: AsyncSession,
     org_id: uuid.UUID,
     incident_id: uuid.UUID,
+    *,
+    exhausted: bool = False,
 ) -> None:
     """Best-effort: post an escalation card to enabled Notification Channels.
 
@@ -260,24 +303,78 @@ async def _notify_escalation(
         responder = await _resolve_incident_responder(db, org_id, incident_id)
         text = build_incident_message(
             incident,
-            event_type="incident.escalated",
+            event_type=(
+                "incident.escalation_exhausted" if exhausted else "incident.escalated"
+            ),
             base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             responder=responder,
             service_name=service_name,
             team_name=team_name,
             supports_actions=False,
         )
+        if exhausted:
+            text += "\nNo further responder level is configured."
         schedule_incident_text(
             get_current_session_factory(),
             org_id=org_id,
             text=text,
-            event_type="incident.escalated",
+            event_type=(
+                "incident.escalation_exhausted" if exhausted else "incident.escalated"
+            ),
             team_id=target_team_id,
             incident_id=incident.id,
             rendered_status=incident.status,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
-        _log.warning("escalation channel notify skipped", exc_info=True)
+        _log.warning("escalation channel notify skipped")
+
+
+async def _exhaust_chain(
+    db: AsyncSession, org_id: uuid.UUID, state, *, now: datetime, reason: str
+) -> None:
+    """Finish a run and create its sole exhaustion notice under the state lock."""
+    if state.status == "exhausted":
+        return
+    state.status = "exhausted"
+    state.finished_at = now
+    state.next_step_due_at = None
+    state.paused_until = None
+    await record_lifecycle_comment(
+        db,
+        org_id,
+        incident_id=state.incident_id,
+        body=f"Escalation exhausted: {reason}",
+    )
+    if state.exhaustion_notified_at is None:
+        state.exhaustion_notified_at = now
+        chain = await EscalationChainRepo.get_by_id(db, org_id, state.chain_id)
+        recipients: set[uuid.UUID] = set()
+        if chain is not None:
+            for member in await TeamRepo.list_members(db, org_id, chain.team_id):
+                user = await UserRepo.get_by_id(db, member.user_id)
+                if user is not None and user.is_active and user.deleted_at is None:
+                    recipients.add(user.id)
+        for page in await IncidentPageRepo.list_for_incident(
+            db, org_id, state.incident_id
+        ):
+            if page.channel == "recorded":
+                user = await UserRepo.get_by_id(db, page.user_id)
+                if user is not None and user.is_active and user.deleted_at is None:
+                    recipients.add(user.id)
+        # The shared Inbox path honours each recipient's category mute.
+        await emit_to_users(
+            db,
+            org_id,
+            sorted(recipients),
+            event_type="incident.escalation_exhausted",
+            category=CATEGORY_INCIDENT,
+            title="Escalation exhausted",
+            body="No further escalation level is available. Review this incident.",
+            link=f"/dashboard/incidents/detail?id={state.incident_id}",
+            incident_id=state.incident_id,
+        )
+        await _notify_escalation(db, org_id, state.incident_id, exhausted=True)
+    await db.flush()
 
 
 async def select_chain_for_incident(
@@ -299,19 +396,25 @@ async def select_chain_for_incident(
     links = await ServiceEscalationChainRepo.list_for_service(db, org_id, service_id)
     if not links:
         return None
-    if priority is None:
-        return links[0]
     matching = []
+    defaults = []
     for link in links:
+        chain = await EscalationChainRepo.get_by_id(db, org_id, link.chain_id)
+        if chain is None or not chain.is_active:
+            continue
         applies_when = link.applies_when or {}
         priorities = (
             applies_when.get("priorities") if isinstance(applies_when, dict) else None
         )
-        if priorities and priority in {str(p).upper() for p in priorities}:
+        if (
+            priorities
+            and priority is not None
+            and priority.upper() in {str(p).upper() for p in priorities}
+        ):
             matching.append(link)
-    if matching:
-        return matching[0]
-    return links[0]
+        elif not priorities:
+            defaults.append(link)
+    return matching[0] if matching else (defaults[0] if defaults else None)
 
 
 async def start_chain(
@@ -329,7 +432,9 @@ async def start_chain(
     """
 
     now = at or _utcnow()
-    existing = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    existing = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
     if existing is not None:
         return None
 
@@ -340,49 +445,21 @@ async def start_chain(
         chain_id=chain_id,
     )
     state.started_at = now
-    state.hard_deadline_at = now + timedelta(seconds=HARD_INACTIVITY_TIMEOUT_SECONDS)
-
-    steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
-    if not steps:
-        state.status = "exhausted"
-        state.finished_at = now
-        await db.flush()
-        return None
-
-    if mode == "escalate_immediate":
-        last_result: StepFireResult | None = None
-        for step in steps:
-            last_result = await _fire_step(
-                db,
-                org_id,
-                incident_id=incident_id,
-                chain_id=chain_id,
-                step=step,
-                at=now,
-                channel_factory=channel_factory,
-            )
-            state.current_step_index = step.step_index
-        state.next_step_due_at = None
-        await db.flush()
-        return last_result
-
-    # page mode: fire step 0, schedule next.
-    step0 = steps[0]
-    result = await _fire_step(
-        db,
-        org_id,
-        incident_id=incident_id,
-        chain_id=chain_id,
-        step=step0,
-        at=now,
-        channel_factory=channel_factory,
+    result = await _fire_next_level(
+        db, org_id, state, now=now, channel_factory=channel_factory
     )
-    state.current_step_index = step0.step_index
-    if len(steps) > 1:
-        state.next_step_due_at = now + timedelta(seconds=step0.timeout_seconds)
-    else:
-        state.next_step_due_at = None
-    await db.flush()
+    if mode == "escalate_immediate":
+        steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+        while (
+            steps
+            and chain_is_live(state)
+            and state.current_step_index < steps[-1].step_index
+        ):
+            advanced = await _fire_next_level(
+                db, org_id, state, now=now, channel_factory=channel_factory
+            )
+            if advanced is not None:
+                result = advanced
     return result
 
 
@@ -403,7 +480,9 @@ async def restart_chain_for_handoff(
     """
 
     now = at or _utcnow()
-    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
     if state is None:
         return await start_chain(
             db,
@@ -418,6 +497,8 @@ async def restart_chain_for_handoff(
     state.chain_id = chain_id
     state.status = "running"
     state.current_step_index = -1
+    state.round += 1
+    state.exhaustion_notified_at = None
     state.next_step_due_at = None
     state.paused_until = None
     state.last_activity_at = None
@@ -425,46 +506,22 @@ async def restart_chain_for_handoff(
     state.pending_takeover_expires_at = None
     state.started_at = now
     state.finished_at = None
-    state.hard_deadline_at = now + timedelta(seconds=HARD_INACTIVITY_TIMEOUT_SECONDS)
-
-    steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
-    if not steps:
-        state.status = "exhausted"
-        state.finished_at = now
-        await db.flush()
-        return None
-
+    state.hard_deadline_at = None
+    result = await _fire_next_level(
+        db, org_id, state, now=now, channel_factory=channel_factory
+    )
     if mode == "escalate_immediate":
-        last_result: StepFireResult | None = None
-        for step in steps:
-            last_result = await _fire_step(
-                db,
-                org_id,
-                incident_id=incident_id,
-                chain_id=chain_id,
-                step=step,
-                at=now,
-                channel_factory=channel_factory,
+        steps = await EscalationStepRepo.list_for_chain(db, org_id, chain_id)
+        while (
+            steps
+            and chain_is_live(state)
+            and state.current_step_index < steps[-1].step_index
+        ):
+            advanced = await _fire_next_level(
+                db, org_id, state, now=now, channel_factory=channel_factory
             )
-            state.current_step_index = step.step_index
-        await db.flush()
-        return last_result
-
-    step0 = steps[0]
-    result = await _fire_step(
-        db,
-        org_id,
-        incident_id=incident_id,
-        chain_id=chain_id,
-        step=step0,
-        at=now,
-        channel_factory=channel_factory,
-    )
-    state.current_step_index = step0.step_index
-    state.next_step_due_at = (
-        now + timedelta(seconds=step0.timeout_seconds) if len(steps) > 1 else None
-    )
-    await db.flush()
+            if advanced is not None:
+                result = advanced
     return result
 
 
@@ -509,47 +566,58 @@ async def _fire_next_level(
     now: datetime,
     channel_factory: ChannelFactory | None,
 ) -> StepFireResult | None:
-    """Fire the level after ``current_step_index`` and leave the chain
-    running, or mark it exhausted when there is none."""
-
+    """Visit each remaining level once, skipping empty targets immediately."""
     steps = list(await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id))
-    next_idx = state.current_step_index + 1
-    next_step = next((s for s in steps if s.step_index == next_idx), None)
     state.paused_until = None
-    if next_step is None:
-        state.status = "exhausted"
-        state.finished_at = now
-        state.next_step_due_at = None
-        await db.flush()
-        return None
-
-    result = await _fire_step(
-        db,
-        org_id,
-        incident_id=state.incident_id,
-        chain_id=state.chain_id,
-        step=next_step,
-        at=now,
-        channel_factory=channel_factory,
-    )
-    state.status = "running"
-    state.current_step_index = next_step.step_index
-    has_more = any(s.step_index > next_step.step_index for s in steps)
-    state.next_step_due_at = (
-        now + timedelta(seconds=next_step.timeout_seconds) if has_more else None
-    )
-    await db.flush()
-    # An advanced step (index >= 1) is an escalation to a higher level — notify
-    # configured Notification Channels. Best-effort; never blocks the engine.
-    if result.step_index >= 1 and result.users_paged:
-        await record_lifecycle_comment(
+    for step in steps:
+        if step.step_index <= state.current_step_index:
+            continue
+        result = await _fire_step(
             db,
             org_id,
             incident_id=state.incident_id,
-            body=f"Escalated to step {result.step_index + 1}.",
+            chain_id=state.chain_id,
+            round=state.round,
+            step=step,
+            at=now,
+            channel_factory=channel_factory,
         )
-        await _notify_escalation(db, org_id, state.incident_id)
-    return result
+        state.current_step_index = step.step_index
+        if result.eligible_targets == 0:
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=state.incident_id,
+                body=f"Skipped escalation step {step.step_index + 1}: no eligible responders.",
+            )
+            continue
+        state.status = "running"
+        state.next_step_due_at = now + timedelta(seconds=step.timeout_seconds)
+        await db.flush()
+        if result.users_paged and not result.delivery_recorded:
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=state.incident_id,
+                body=f"Escalation step {step.step_index + 1} has eligible responders, but delivery was suppressed or unavailable; its timeout remains active.",
+            )
+        if result.step_index >= 1 and result.users_paged:
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=state.incident_id,
+                body=f"Escalated to step {result.step_index + 1}.",
+            )
+            await _notify_escalation(db, org_id, state.incident_id)
+        return result
+    await _exhaust_chain(
+        db,
+        org_id,
+        state,
+        now=now,
+        reason="No eligible escalation level remains.",
+    )
+    return None
 
 
 async def _tick_state(
@@ -598,16 +666,6 @@ async def _tick_state(
 
     due = _aware(state.next_step_due_at)
     if state.status == "running":
-        # The start-time cap applies only while nobody has touched the chain
-        # (KI-010; removed in X1b). Acknowledging, snoozing, or resuming
-        # clears it, so it can never defeat a lock or a resume.
-        hard_deadline = _aware(state.hard_deadline_at)
-        if hard_deadline is not None and now >= hard_deadline:
-            state.status = "exhausted"
-            state.finished_at = now
-            state.next_step_due_at = None
-            await db.flush()
-            return None, True
         if due is None or now < due:
             if changed:
                 await db.flush()
@@ -647,22 +705,15 @@ async def _tick_state(
         await _username(db, active.assigned_to) if active is not None else "the owner"
     )
     steps = await EscalationStepRepo.list_for_chain(db, org_id, state.chain_id)
-    has_next = any(s.step_index == state.current_step_index + 1 for s in steps)
+    has_next = any(s.step_index > state.current_step_index for s in steps)
     if not has_next:
         # Nobody left to escalate to: the owner keeps the incident.
-        state.status = "exhausted"
-        state.finished_at = now
-        state.next_step_due_at = None
-        state.paused_until = None
-        await db.flush()
-        await record_lifecycle_comment(
+        await _exhaust_chain(
             db,
             org_id,
-            incident_id=incident_id,
-            body=(
-                f"No activity from {owner} for 15 minutes, and there is no "
-                "further level to escalate to."
-            ),
+            state,
+            now=now,
+            reason=f"No activity from {owner} for 15 minutes; no further level exists.",
         )
         return None, True
     if active is not None:
@@ -731,8 +782,6 @@ async def escalate_now(
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if _closed(incident):
         return None
-    if state.status != "running":
-        state.hard_deadline_at = None
     return await _fire_next_level(
         db, org_id, state, now=now, channel_factory=channel_factory
     )
@@ -1150,13 +1199,19 @@ async def tick_all_due(
     due = await IncidentChainStateRepo.list_due(db, now=now)
     changed_rows = 0
     for state in due:
-        _, changed = await _tick_state(
-            db,
-            state.org_id,
-            incident_id=state.incident_id,
-            now=now,
-            channel_factory=channel_factory,
-        )
-        if changed:
-            changed_rows += 1
+        try:
+            async with db.begin_nested():
+                _, changed = await _tick_state(
+                    db,
+                    state.org_id,
+                    incident_id=state.incident_id,
+                    now=now,
+                    channel_factory=channel_factory,
+                )
+            if changed:
+                changed_rows += 1
+        except Exception as exc:
+            _log.warning(
+                "escalation tick isolated a failed chain (%s)", type(exc).__name__
+            )
     return changed_rows

@@ -156,6 +156,20 @@ Every escalation chain belongs to a team. Chains define levels:
 
 Services use their team's escalation behavior. Roster and user targets are supported in v1. Team-to-team fallback is a later enhancement.
 
+When several chains are attached to a service, a chain filtered to the
+incident's priority wins; otherwise an unfiltered chain is used. Ties use a
+stable order. If neither exists, the incident timeline records that no
+responder was paged, and the service editor warns for P0/P1.
+
+Each level waits for its configured timeout before the next level fires. The
+final level waits too, then the chain ends with one exhaustion notice in the
+team's Notification Channels and responders' Inbox. An empty level (no active
+target user) is skipped immediately and explained on the timeline; a level
+whose delivery is suppressed or unavailable still keeps its timeout. Removing
+a level compacts the remaining list without repeating or skipping levels in
+an active chain. Service handoffs begin a new page round, so a responder can
+be paged again on the new chain.
+
 The Escalation Chain Calendar shows who is expected to respond at each escalation level over a selected time range. It is resolved from chain levels, roster schedules, rotation order, coverage windows, and active users.
 
 ### Owning an incident stops paging
@@ -173,7 +187,7 @@ Ownership is a lock with a timer:
   Viewing the incident doesn't count, and neither does anyone else's action.
 - **It lapses after 15 minutes without any of those.** You are released, and
   the chain pages the **next** level. If there is no next level, you keep the
-  incident and the chain ends.
+  incident and the chain ends with one exhaustion notice.
 - **Releasing** hands it back: the chain pages the next level straight away,
   never level 1 again.
 - **Resolving or combining** the incident ends all paging for it, whatever

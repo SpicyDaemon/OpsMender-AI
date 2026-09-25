@@ -29,6 +29,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Escalation chains now visit every eligible level once.** The first level
+  no longer stops at a 15-minute start-time cap. Each level, including the
+  final one, keeps its configured timeout; an unacknowledged chain then sends
+  one exhaustion notice to the team's Notification Channels and responders'
+  Inbox. An inactivity lock that lapses with no next level sends the same
+  notice while leaving the owner assigned.
+- Deleting a level compacts the chain without skipping the next level in an
+  active incident. Empty or inactive targets are skipped immediately; a
+  suppressed or unconfigured delivery keeps its level timeout. A service
+  selects a matching priority chain, then an unfiltered chain, and warns on
+  the incident timeline and service form when none matches.
+- Logical page markers now carry a run round and are unique per incident,
+  responder, level and round. Later levels and service handoffs can page the
+  same responder again without colliding with prior delivery history. Roster
+  writes reject invalid time zones and times, and an explicit `null` in a
+  Roster update leaves that field unchanged instead of failing.
+  *Upgrade note:* duplicate historical logical markers are retained as
+  `recorded_legacy`; physical delivery and acknowledgement records are kept.
+  The nullable `hard_deadline_at` column remains for compatibility but is no
+  longer used. Database claims prevent overlapping workers from dispatching
+  the same level twice; acceptance by a remote channel cannot be guaranteed
+  exactly once across a crash or ambiguous network response.
+
 - **Owning or closing an incident now stops paging, everywhere.**
   - Resolving through the web page, the incident list, phone keypad `3`, an
     alert recovery, a chat button, Slack `/resolve`, or combining incidents

@@ -666,6 +666,7 @@ INCIDENT_CHAT_EVENTS = {
     "incident.acknowledged",
     "incident.resolved",
     "incident.escalated",
+    "incident.escalation_exhausted",
     "incident.updated",
 }
 

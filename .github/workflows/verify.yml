@@ -89,6 +89,19 @@ jobs:
       - name: Upgrade an empty database
         run: uv run alembic upgrade head
 
+      - name: Install test dependencies
+        run: uv sync --frozen --group dev
+
+      # Real two-connection races on this job's Postgres service. They need a
+      # live database, so the main backend run deselects them.
+      - name: Postgres concurrency tests
+        shell: bash
+        run: >-
+          PART4_PG_URL="$OPSMENDER_DATABASE_URL"
+          uv run pytest -m integration --run-integration
+          tests/test_escalation_part4_postgres.py
+          -q --timeout=180 --timeout-method=thread
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

@@ -10,6 +10,7 @@ import re
 import uuid
 from datetime import date, datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -2427,6 +2428,26 @@ class RosterCreate(BaseModel):
     anchor_date: date
     is_active: bool = True
 
+    @field_validator("time_zone")
+    @classmethod
+    def valid_time_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("time_zone must be a valid IANA time zone") from exc
+        return value
+
+    @field_validator("coverage_start_time", "coverage_end_time", "handoff_time")
+    @classmethod
+    def valid_clock_time(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+            raise ValueError("time must be between 00:00 and 23:59")
+        return value
+
 
 class RosterUpdate(BaseModel):
     team_id: Optional[uuid.UUID] = None
@@ -2441,6 +2462,13 @@ class RosterUpdate(BaseModel):
     handoff_day: Optional[str] = None
     anchor_date: Optional[date] = None
     is_active: Optional[bool] = None
+
+    _valid_time_zone = field_validator("time_zone")(
+        RosterCreate.valid_time_zone.__func__
+    )
+    _valid_clock_time = field_validator(
+        "coverage_start_time", "coverage_end_time", "handoff_time"
+    )(RosterCreate.valid_clock_time.__func__)
 
 
 class RosterResponse(BaseModel):

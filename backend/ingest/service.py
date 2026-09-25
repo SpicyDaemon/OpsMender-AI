@@ -419,6 +419,15 @@ async def ingest_incident(
                     incident=incident,
                     base_url=_os.environ.get("OPSMENDER_PUBLIC_URL"),
                 )
+            else:
+                from backend.services.incident_timeline import record_lifecycle_comment
+
+                await record_lifecycle_comment(
+                    db,
+                    org_id,
+                    incident_id=incident.id,
+                    body="No escalation chain matches this service and priority; no responder was paged.",
+                )
         await attach_created_incident(
             db,
             org_id,

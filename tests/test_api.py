@@ -1818,13 +1818,27 @@ class TestIncidents:
                 team_id=target_team.id,
                 name="Target chain",
             )
+            original_responder = await UserRepo.create(
+                db,
+                username="original-handoff-responder",
+                email="original-handoff-responder@example.test",
+                password_hash="x",
+                primary_org_id=TEST_ORG_ID,
+            )
+            target_responder = await UserRepo.create(
+                db,
+                username="target-handoff-responder",
+                email="target-handoff-responder@example.test",
+                password_hash="x",
+                primary_org_id=TEST_ORG_ID,
+            )
             await EscalationStepRepo.create(
                 db,
                 TEST_ORG_ID,
                 chain_id=original_chain.id,
                 step_index=0,
                 target_type="user",
-                target_id=uuid.uuid4(),
+                target_id=original_responder.id,
             )
             await EscalationStepRepo.create(
                 db,
@@ -1832,7 +1846,7 @@ class TestIncidents:
                 chain_id=target_chain.id,
                 step_index=0,
                 target_type="user",
-                target_id=uuid.uuid4(),
+                target_id=target_responder.id,
             )
             await ServiceEscalationChainRepo.link(
                 db,

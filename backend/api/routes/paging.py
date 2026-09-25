@@ -728,7 +728,12 @@ async def update_roster(
     existing = await RosterRepo.get_by_id(db, org_id, roster_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Roster not found")
-    fields = body.model_dump(exclude_unset=True)
+    # An explicit null means "no change" except where the column is nullable.
+    fields = {
+        key: value
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if value is not None or key in {"description", "handoff_day"}
+    }
 
     # Reparenting the roster to a different team must not strand its current
     # rotation members under a team they don't belong to. Reject the update
@@ -1572,7 +1577,7 @@ async def delete_escalation_step(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    deleted = await EscalationStepRepo.delete(db, org_id, step_id)
+    deleted = await EscalationStepRepo.delete(db, org_id, step_id, chain_id=chain_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
     await db.commit()

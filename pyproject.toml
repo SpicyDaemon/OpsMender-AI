@@ -104,7 +104,7 @@ build = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
-    "integration: live integration tests requiring K8s cluster + MCP server",
+    "integration: live integration tests (K8s cluster + MCP server, or a disposable PostgreSQL database)",
 ]
 
 [tool.mypy]

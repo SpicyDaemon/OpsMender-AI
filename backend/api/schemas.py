@@ -2430,7 +2430,9 @@ class RosterCreate(BaseModel):
 
     @field_validator("time_zone")
     @classmethod
-    def valid_time_zone(cls, value: str) -> str:
+    def valid_time_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as exc:
@@ -2439,7 +2441,9 @@ class RosterCreate(BaseModel):
 
     @field_validator("coverage_start_time", "coverage_end_time", "handoff_time")
     @classmethod
-    def valid_clock_time(cls, value: str) -> str:
+    def valid_clock_time(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
             raise ValueError("time must be between 00:00 and 23:59")
         return value

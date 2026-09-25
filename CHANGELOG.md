@@ -43,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logical page markers now carry a run round and are unique per incident,
   responder, level and round. Later levels and service handoffs can page the
   same responder again without colliding with prior delivery history. Roster
-  writes reject invalid time zones and times.
+  writes reject invalid time zones and times, and an explicit `null` in a
+  Roster update leaves that field unchanged instead of failing.
   *Upgrade note:* duplicate historical logical markers are retained as
   `recorded_legacy`; physical delivery and acknowledgement records are kept.
   The nullable `hard_deadline_at` column remains for compatibility but is no

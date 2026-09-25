@@ -677,10 +677,57 @@ async def test_roster_api_rejects_invalid_time_and_accepts_overnight(
     assert invalid.status_code == 422
     created = await client.post("/rosters", json=base, headers=auth_headers)
     assert created.status_code == 201, created.text
-    assert created.json()["handoff_time"] == "00:00"
+    # handoff_time mirrors the coverage start until X1c defines handoffs.
+    assert created.json()["handoff_time"] == "23:59"
     rejected = await client.put(
         f"/rosters/{created.json()['id']}",
         json={"time_zone": "Mars/Olympus"},
         headers=auth_headers,
     )
     assert rejected.status_code == 422
+    unchanged = await client.put(
+        f"/rosters/{created.json()['id']}",
+        json={"time_zone": None, "coverage_end_time": None, "handoff_time": None},
+        headers=auth_headers,
+    )
+    assert unchanged.status_code == 200, unchanged.text
+    assert unchanged.json()["time_zone"] == "America/Chicago"
+    assert unchanged.json()["coverage_end_time"] == "00:00"
+
+
+async def test_exhaustion_inbox_notice_respects_muted_category(app):
+    from backend.db.repos import UserNotificationPrefRepo
+
+    team = await _make_team(app, name="exhaust-mute")
+    muted = await _make_user(app, username="exhaust-muted")
+    listening = await _make_user(app, username="exhaust-listening")
+    async with app.state.session_factory() as db:
+        await UserNotificationPrefRepo.upsert(
+            db,
+            TEST_ORG_ID,
+            muted,
+            routing={"in_app": {"muted_categories": ["incident"]}},
+        )
+        chain, _ = await _chain(db, team, [muted, listening], timeout=20)
+        incident = await _incident(db, chain.id)
+        for seconds in (20, 40):
+            await esc.tick(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                at=T0 + timedelta(seconds=seconds),
+            )
+        await db.commit()
+        notices = (
+            (
+                await db.execute(
+                    select(InAppNotification).where(
+                        InAppNotification.incident_id == incident.id,
+                        InAppNotification.event_type == "incident.escalation_exhausted",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [notice.user_id for notice in notices] == [listening]

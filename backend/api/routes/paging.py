@@ -704,7 +704,7 @@ async def create_roster(
         pattern_length=body.pattern_length,
         coverage_start_time=body.coverage_start_time,
         coverage_end_time=body.coverage_end_time,
-        handoff_time=body.handoff_time,
+        handoff_time=body.coverage_start_time,
         handoff_day=body.handoff_day,
         is_active=body.is_active,
     )
@@ -728,7 +728,12 @@ async def update_roster(
     existing = await RosterRepo.get_by_id(db, org_id, roster_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Roster not found")
-    fields = body.model_dump(exclude_unset=True)
+    # An explicit null means "no change" except where the column is nullable.
+    fields = {
+        key: value
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if value is not None or key in {"description", "handoff_day"}
+    }
 
     # Reparenting the roster to a different team must not strand its current
     # rotation members under a team they don't belong to. Reject the update

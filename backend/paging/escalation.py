@@ -56,7 +56,6 @@ from backend.db.repos import (
     IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
-    InAppNotificationRepo,
     EscalationChainRepo,
     RosterOverrideRepo,
     RosterRepo,
@@ -64,6 +63,7 @@ from backend.db.repos import (
     TeamRepo,
     UserRepo,
 )
+from backend.notifications import CATEGORY_INCIDENT, emit_to_users
 from backend.paging.dispatch import ChannelFactory, dispatch_page
 from backend.paging.on_call import (
     OnCallContext,
@@ -361,18 +361,18 @@ async def _exhaust_chain(
                 user = await UserRepo.get_by_id(db, page.user_id)
                 if user is not None and user.is_active and user.deleted_at is None:
                     recipients.add(user.id)
-        for uid in sorted(recipients):
-            await InAppNotificationRepo.create(
-                db,
-                org_id,
-                uid,
-                event_type="incident.escalation_exhausted",
-                category="incident",
-                title="Escalation exhausted",
-                body="No further escalation level is available. Review this incident.",
-                link=f"/dashboard/incidents/detail?id={state.incident_id}",
-                incident_id=state.incident_id,
-            )
+        # The shared Inbox path honours each recipient's category mute.
+        await emit_to_users(
+            db,
+            org_id,
+            sorted(recipients),
+            event_type="incident.escalation_exhausted",
+            category=CATEGORY_INCIDENT,
+            title="Escalation exhausted",
+            body="No further escalation level is available. Review this incident.",
+            link=f"/dashboard/incidents/detail?id={state.incident_id}",
+            incident_id=state.incident_id,
+        )
         await _notify_escalation(db, org_id, state.incident_id, exhausted=True)
     await db.flush()
 
@@ -714,15 +714,6 @@ async def _tick_state(
             state,
             now=now,
             reason=f"No activity from {owner} for 15 minutes; no further level exists.",
-        )
-        await record_lifecycle_comment(
-            db,
-            org_id,
-            incident_id=incident_id,
-            body=(
-                f"No activity from {owner} for 15 minutes, and there is no "
-                "further level to escalate to."
-            ),
         )
         return None, True
     if active is not None:

@@ -1,7 +1,8 @@
 """Side-effect bridge between the paging algorithms and the DB.
 
 ``apply_priority_to_incident`` is the single entry point called from
-incident-creation paths (manual REST create + inbound ingest). In v1,
+incident-creation paths (manual REST create, inbound ingest and SLO
+violations); ``page_new_incident`` then starts their paging. In v1,
 service configuration is the source of truth for priority. Legacy priority
 rules remain in the DB/API for compatibility but are not used to decide new
 incident priority.
@@ -9,6 +10,7 @@ incident priority.
 
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any, Awaitable, Callable
 
@@ -25,6 +27,9 @@ from backend.paging.priority import (
     PriorityRuleLike,
     assign_priority,
 )
+
+
+LOW_SEVERITIES = frozenset({"low", "info", "informational"})
 
 
 def _to_rule_like(rule) -> PriorityRuleLike:
@@ -69,17 +74,22 @@ async def compute_priority_for_payload(
     fall back to a deterministic severity mapping rather than legacy rules.
     """
 
+    severity = str(payload.get("severity") or "").strip().lower()
     if service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, service_id)
         if service is not None:
             priority = service.priority or "P2"
+            response_mode = DEFAULT_MODE_FOR.get(priority, "notify")
+            # D-5: a low or info alert notifies instead of paging; the
+            # service still sets the priority.
+            if severity in LOW_SEVERITIES:
+                response_mode = "notify"
             return PriorityAssignment(
                 priority=priority,
-                response_mode=DEFAULT_MODE_FOR.get(priority, "notify"),
+                response_mode=response_mode,
                 matched_rule_id=None,
             )
 
-    severity = str(payload.get("severity") or "").strip().lower()
     severity_priority = {
         "critical": "P0",
         "high": "P1",
@@ -161,3 +171,53 @@ async def apply_priority_to_incident(
         )
     await db.flush()
     return result
+
+
+async def page_new_incident(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident
+) -> None:
+    """Start paging for a newly opened incident, or record why nobody was paged.
+
+    The incident's priority and Response Mode must already be set. Manual
+    create, intake and SLO violations all open incidents through here.
+    """
+
+    from backend.paging import escalation
+    from backend.paging.channel_factory import build_channel_factory
+    from backend.paging.slack_channel_mirror import mirror_incident_to_slack_channel
+    from backend.services.incident_timeline import record_lifecycle_comment
+
+    if incident.response_mode not in ("page", "escalate_immediate"):
+        if incident.priority in ("P0", "P1"):
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=incident.id,
+                body=(
+                    f"The alert's severity is low, so this {incident.priority} "
+                    "incident notifies instead of paging."
+                ),
+            )
+        return
+    link = await escalation.select_chain_for_incident(
+        db, org_id, service_id=incident.service_id, priority=incident.priority
+    )
+    if link is None:
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident.id,
+            body="No escalation chain matches this service and priority; no responder was paged.",
+        )
+        return
+    await escalation.start_chain(
+        db,
+        org_id,
+        incident_id=incident.id,
+        chain_id=link.chain_id,
+        mode=incident.response_mode,
+        channel_factory=build_channel_factory(),
+    )
+    await mirror_incident_to_slack_channel(
+        db, org_id, incident=incident, base_url=os.environ.get("OPSMENDER_PUBLIC_URL")
+    )

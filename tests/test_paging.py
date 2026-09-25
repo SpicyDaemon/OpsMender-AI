@@ -290,7 +290,7 @@ class TestPriority:
     async def test_fallback_when_no_match(self):
         result = await assign_priority({"severity": "info"}, [])
         assert result.priority == "P3"
-        assert result.response_mode == "auto_resolve"
+        assert result.response_mode == "notify"  # D-3: P3 notifies, like P2
 
     async def test_inactive_rules_skipped(self):
         rules = [

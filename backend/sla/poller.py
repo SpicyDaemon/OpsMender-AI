@@ -23,6 +23,7 @@ from backend.db.repos import (
     OrganizationRepo,
 )
 from backend.services.session_orchestration import admit_session
+from backend.paging.service import apply_priority_to_incident, page_new_incident
 from backend.ingest.autostart import (
     has_active_session_for_incident,
     load_auto_start_policy,
@@ -237,38 +238,29 @@ class SLAPoller:
                     if existing and existing.status != "resolved":
                         continue
 
-                    dedup_action = "created"
+                    # A violation after the last one resolved opens a new
+                    # incident, as intake does, and pages like any other.
                     target = await SLATargetRepo.get_by_id(db, org_id, slo.target_id)
-                    if existing:
-                        await IncidentRepo.update_status(
-                            db, org_id, existing.id, "open"
-                        )
-                        incident = existing
-                        dedup_action = "updated"
-                        logger.warning(
-                            "Re-opened incident %s for SLO violation: %s",
-                            incident.id,
-                            slo.name,
-                        )
-                    else:
-                        incident = Incident(
-                            org_id=org_id,
-                            title=f"SLO Violation: {slo.name}",
-                            description=f"SLO {slo.name} has exceeded its burn rate alert threshold.\n\nObjective: {slo.objective_pct}%\nActual: {actual_pct:.2f}%\nBurn Rate: {burn_rate:.2f}x\nThreshold: {slo.burn_alert_threshold}x",
-                            severity="high",
-                            status="open",
-                            external_id=external_id,
-                            external_source=external_source,
-                            target_id=slo.target_id,
-                            service_id=None if target is None else target.service_id,
-                        )
-                        db.add(incident)
-                        await db.flush()
-                        logger.warning(
-                            "Created incident %s for SLO violation: %s",
-                            incident.id,
-                            slo.name,
-                        )
+                    incident = Incident(
+                        org_id=org_id,
+                        title=f"SLO Violation: {slo.name}",
+                        description=f"SLO {slo.name} has exceeded its burn rate alert threshold.\n\nObjective: {slo.objective_pct}%\nActual: {actual_pct:.2f}%\nBurn Rate: {burn_rate:.2f}x\nThreshold: {slo.burn_alert_threshold}x",
+                        severity="high",
+                        status="open",
+                        external_id=external_id,
+                        external_source=external_source,
+                        target_id=slo.target_id,
+                        service_id=None if target is None else target.service_id,
+                    )
+                    db.add(incident)
+                    await db.flush()
+                    await apply_priority_to_incident(db, org_id, incident)
+                    await page_new_incident(db, org_id, incident)
+                    logger.warning(
+                        "Created incident %s for SLO violation: %s",
+                        incident.id,
+                        slo.name,
+                    )
 
                     policy = await load_auto_start_policy(
                         db,
@@ -277,7 +269,7 @@ class SLAPoller:
                         incident=incident,
                     )
                     if should_auto_start_session(
-                        incident, dedup_action=dedup_action, policy=policy
+                        incident, dedup_action="created", policy=policy
                     ):
                         if not await has_active_session_for_incident(
                             db, org_id, incident.id

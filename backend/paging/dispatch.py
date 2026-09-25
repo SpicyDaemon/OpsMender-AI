@@ -45,6 +45,7 @@ from backend.db.repos import (
     ServiceRepo,
     UserNotificationPrefRepo,
 )
+from backend.paging.maintenance import window_matches
 
 
 CHANNEL_KEYS: tuple[str, ...] = (
@@ -136,27 +137,34 @@ async def evaluate_maintenance_window(
     *,
     incident: Incident,
     at: datetime,
+    roster_id: uuid.UUID | None = None,
 ) -> MaintenanceWindow | None:
     """Return the first active maintenance window that applies to this
-    incident's scope, or None. Global windows always apply; scoped windows
-    must match ``incident.service_id``.
+    incident's scope, or None. Global windows always apply; service and team
+    windows match the incident's service; Roster windows match a page sent
+    through that Roster's level (``roster_id``).
 
     D-021 #1: ``escalate_immediate`` is never downgraded — callers should
     short-circuit before invoking this if the response mode equals
     ``escalate_immediate``.
     """
 
-    service_id = incident.service_id
     windows = await MaintenanceWindowRepo.list_active_at(db, org_id, at)
+    if not windows:
+        return None
+    service = (
+        await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if incident.service_id is not None
+        else None
+    )
     for window in windows:
-        if window.scope_type == "global":
+        if window_matches(
+            window,
+            service_id=incident.service_id,
+            team_id=None if service is None else service.team_id,
+            roster_id=roster_id,
+        ):
             return window
-        if service_id is not None and window.scope_type == "service":
-            service_ids = set(str(v) for v in (window.target_ids or []))
-            if window.scope_id is not None:
-                service_ids.add(str(window.scope_id))
-            if str(service_id) in service_ids:
-                return window
     return None
 
 
@@ -257,15 +265,16 @@ async def dispatch_page(
     page: IncidentPage,
     channel_factory: ChannelFactory,
     at: datetime | None = None,
-    roster_on_call: bool = False,
+    roster_id: uuid.UUID | None = None,
 ) -> DispatchResult:
     """Fan out a recorded incident_pages row across the channels configured
     for this user. Each delivery attempt becomes a new incident_pages row
     keyed by channel.
 
-    ``roster_on_call`` means this user is paged as the on-call person of a
-    Roster level: quiet hours never block that page (D-4). A page that is
-    suppressed is still recorded as a ``skipped`` row with the reason.
+    ``roster_id`` is set when this user is paged as the on-call person of a
+    Roster level: quiet hours never block that page (D-4), and that Roster's
+    Maintenance Windows apply. A page that is suppressed is still recorded as
+    a ``skipped`` row with the reason.
     """
 
     now = at or _utcnow()
@@ -292,7 +301,9 @@ async def dispatch_page(
 
     # 1. Maintenance-window suppression
     if response_mode != "escalate_immediate":
-        mw = await evaluate_maintenance_window(db, org_id, incident=incident, at=now)
+        mw = await evaluate_maintenance_window(
+            db, org_id, incident=incident, at=now, roster_id=roster_id
+        )
         if mw is not None:
             result.suppressed_by_window_id = mw.id
             if incident.suppressed_by_maintenance_window_id is None:
@@ -306,7 +317,7 @@ async def dispatch_page(
     dedup_window = org.notification_dedup_window_minutes if org is not None else 10
 
     quiet_hours = prefs.quiet_hours if prefs is not None else None
-    if not roster_on_call and quiet_hours_block(
+    if roster_id is None and quiet_hours_block(
         quiet_hours, priority=incident.priority, at=now
     ):
         return await record_suppression("quiet_hours")

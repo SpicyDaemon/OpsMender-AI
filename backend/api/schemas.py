@@ -2438,7 +2438,7 @@ class ServiceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = None
-    priority: str = Field(default="P2", pattern="^(P0|P1|P2|P3)$")
+    priority: str = Field(default="P1", pattern="^(P0|P1|P2|P3)$")
     alert_grouping: str = Field(default="inherit", pattern="^(inherit|on|off)$")
     # Strict allowlist; empty means no MCP servers for this service's sessions.
     mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)

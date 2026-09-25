@@ -14,6 +14,7 @@ import intakeCorrectness from "./intake_correctness.mjs";
 import ownershipLifecycle from "./ownership_lifecycle.mjs";
 import onCallConsistency from "./on_call_consistency.mjs";
 import escalationProgression from "./escalation_progression.mjs";
+import everySourcePages from "./every_source_pages.mjs";
 import reliability from "./reliability.mjs";
 import models from "./models.mjs";
 import skills from "./skills.mjs";
@@ -33,6 +34,7 @@ export const features = [
   ownershipLifecycle,
   onCallConsistency,
   escalationProgression,
+  everySourcePages,
   reliability,
   models,
   skills,

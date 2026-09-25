@@ -55,6 +55,8 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "websockets>=15.0",
     "tzdata>=2025.2",
+    # Maintenance Window recurrence (iCalendar RRULE).
+    "python-dateutil>=2.9",
     # SAML 2.0 SP support (Sprint 30). Pulls in xmlsec / lxml — requires
     # libxmlsec1 + libxml2 native libs at runtime. The Docker image installs
     # these; PyInstaller builds fail-loud if they are missing on the host.

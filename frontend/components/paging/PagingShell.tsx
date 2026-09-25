@@ -767,7 +767,7 @@ function ServicesPanel({
     slug: "",
     team_id: "",
     description: "",
-    priority: "P2" as Priority,
+    priority: "P1" as Priority,
     alert_grouping: "inherit" as AlertGroupingMode,
     mcp_server_ids: [] as string[],
     model_config_ids: [] as string[],
@@ -1451,8 +1451,9 @@ function ServicesPanel({
               ))}
             </Select>
             <p className="mt-1 text-xs text-fg-muted">
-              Incidents created through this service use this priority. AI does
-              not override it in v1.
+              P0 and P1 page the on-call person. P2 and P3 don&apos;t page; they
+              notify. Incidents created through this service use this priority,
+              and AI doesn&apos;t override it.
             </p>
           </div>
           <div>
@@ -3457,7 +3458,7 @@ function PagingFlowModal({
       tone: "info" as const,
       lines: [
         "Service configuration sets P0–P3",
-        "Priority controls whether OpsMender resolves, notifies, or pages",
+        "P0 and P1 page; P2 and P3 notify",
       ],
     },
     {

@@ -24,7 +24,7 @@ If you are a developer looking for architecture details or codebase references, 
 
 ### 3. Operator Guide
 * [Operator Guide](operator-guide.md) — Incident triage flow, managing approvals, interacting with session chat, using the audit log, and understanding rollback behavior.
-* [Paging Guide](paging-guide.md) — Top-level orientation: the incident-response loop, services / teams / rosters / chains / priority rules / response modes / maintenance windows / notification preferences, a setup walkthrough, and an end-to-end verification recipe.
+* [Paging Guide](paging-guide.md) — Top-level orientation: the incident-response loop, services / teams / rosters / chains / priority (which pages and which notifies) / maintenance windows / notification preferences, a setup walkthrough, and an end-to-end verification recipe.
 * [Notification Preferences](notification-preferences.md) — My Routing, Respond/Track Notification Channels, quiet hours, dedup, maintenance windows, and the reports-only Inform model.
 * [Slack as your paging surface](slack-paging-surface.md) — Block Kit page cards, slash commands (`/ack` / `/take` / `/release` / `/resolve` / `/snooze` / `/status`), per-incident channel mirroring, and Slack app setup.
 * [Teams as your paging surface](teams-paging-surface.md) — Adaptive-card page cards with Acknowledge / Resolve / Escalate / Start AI Session actions via the Microsoft Bot Framework, Graph app-only OAuth setup, and a verification recipe.

@@ -195,8 +195,8 @@ function TargetDetailContent() {
     }
   }
 
-  // Open a P0 (critical → P0) incident in the SLO's owning service straight
-  // from the recommendation pill, then jump to the new incident.
+  // Open an incident in the SLO's owning service straight from the
+  // recommendation pill, then jump to it. It takes the service's priority.
   async function createIncidentFromRec(rec: SLORecommendation) {
     const serviceId = rec.service_id ?? target?.service_id ?? undefined;
     setCreatingFor(rec.slo_id);
@@ -211,7 +211,7 @@ function TargetDetailContent() {
         severity: "critical",
         service_id: serviceId,
       });
-      toast.success("P0 incident created.", {
+      toast.success("Incident created.", {
         label: "Open incident",
         href: `/dashboard/incidents/detail?id=${result.id}`,
       });
@@ -332,7 +332,7 @@ function TargetDetailContent() {
                       >
                         here
                       </button>{" "}
-                      to create a P0 incident.
+                      to create an incident.
                     </span>
                   ) : null}
                 </div>
@@ -670,14 +670,15 @@ function TargetDetailContent() {
       <Modal
         open={confirmRec !== null}
         onClose={() => setConfirmRec(null)}
-        title="Create P0 incident?"
+        title="Create an incident?"
       >
         <p className="text-sm text-fg-secondary">
-          Are you sure you want to create a P0 incident
+          Create an incident
           {confirmRec?.service_name ? (
             <> for <span className="font-medium text-fg-primary">{confirmRec.service_name}</span></>
           ) : null}
-          ? P0 is the highest priority and will page the owning on-call.
+          ? It takes the service&apos;s priority: P0 and P1 page the on-call
+          person, P2 and P3 notify.
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setConfirmRec(null)} disabled={creatingFor !== null}>
@@ -690,7 +691,7 @@ function TargetDetailContent() {
               if (confirmRec) void createIncidentFromRec(confirmRec);
             }}
           >
-            Create P0 incident
+            Create incident
           </Button>
         </div>
       </Modal>

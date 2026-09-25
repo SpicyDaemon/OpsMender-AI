@@ -20,10 +20,15 @@ For the data-model + algorithm overview (Paging Model, design invariant D-021), 
 Every paged incident walks the same simple loop:
 
 1. Alert fires and POSTs to a service endpoint: `POST /api/v1/intake/{service_token}`.
-2. The service sets the priority: `P0 Critical`, `P1 High`, `P2 Medium`, or `P3 Low`.
+2. The service sets the priority: `P0 Critical`, `P1 High`, `P2 Medium`, or `P3 Low`. P0 and P1 page; P2 and P3 notify and don't page. An alert whose severity is `low` (or `info`) notifies even on a P0 or P1 service, and the incident's timeline says so.
 3. If an active maintenance window matches the service or team scope, the alert is dropped and no visible incident is created.
 4. OpsMender creates the incident and starts the AI session.
-5. The team's escalation chain pages the roster or user levels for that service.
+5. If the incident pages, the team's escalation chain pages the roster or user levels for that service.
+
+SLO burn-rate violations open incidents the same way: they take their service's
+priority and page its chain. A violation after the previous one resolved opens a
+new incident.
+
 6. An operator acknowledges, works the incident, and resolves it with or without AI assistance.
 
 The AI does not assign or override priority in v1. A service's MCP servers are
@@ -79,7 +84,7 @@ Each service has:
 
 - Name and slug.
 - Owning team.
-- Fixed priority: `P0`, `P1`, `P2`, or `P3`.
+- Fixed priority: `P0`, `P1`, `P2`, or `P3`. New services start at `P1`.
 - Enabled state.
 - Generated intake URL.
 - MCP servers strict allowlist.
@@ -254,9 +259,25 @@ Maintenance Windows.
 
 Maintenance windows suppress known noisy periods.
 
-When an incoming alert matches an active maintenance window scope, OpsMender drops it at intake. It does not create a visible incident and does not show a suppressed incident in the main incident list.
+A window's scope decides what it covers:
 
-In v1, maintenance windows support selecting multiple services. Team scopes may be supported where the data model allows it; if not, service scopes are the safe default.
+- **Global:** every alert and page.
+- **Service:** alerts and pages for the selected services.
+- **Team:** alerts and pages for services owned by the selected teams.
+- **Roster:** pages sent through an escalation level that targets the
+  selected Rosters. Alerts still open incidents, because the Roster isn't
+  known until a level fires.
+
+When an incoming alert matches an active window, OpsMender drops it at intake.
+It does not create a visible incident and does not show a suppressed incident in
+the main incident list. A page that a window suppresses later is recorded on the
+incident as not delivered, with the reason.
+
+A window can repeat. Give it an iCalendar recurrence rule such as
+`FREQ=WEEKLY;BYDAY=SU`: each repeat starts at an occurrence of the rule and lasts
+as long as the first window. Occurrences follow the first window's start time in
+UTC. `COUNT` and `UNTIL` end the series (write `UNTIL` in UTC, ending in `Z`).
+Rules that repeat more often than hourly, or that can't be read, are rejected.
 
 ---
 

@@ -179,6 +179,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including the connector-skill deny that keeps only the MCP route), that a
   connector's `project_key` is a default rather than a limit, and why
   connector names should carry the project or space key.
+- The paging guide documents the full phone keypad (`1` acknowledge, `2`
+  escalate, `3` resolve, `*` repeat), that the menu needs
+  `OPSMENDER_PUBLIC_URL`, and that the voice status-callback URL has no
+  receiving route in OpsMender (the `.env.example` said otherwise).
+- The notification-preferences guide now matches the product: only P0 and P1
+  page, so the P2 and P3 routing rows aren't used; quiet hours can only hold
+  back P1; a chat stage posts to the channel's shared chat, not a direct
+  message; "sent" means the provider accepted a delivery, with no retries or
+  fallback; and Maintenance Windows cover team and Roster scopes and can
+  repeat. The Slack guide notes `/snooze` defaults to `30m`.
+- **My Routing** says which priorities page: P2 and P3 are marked "Doesn't
+  page, so these stages aren't used".
 
 ## [1.1.0] - 2026-07-26
 

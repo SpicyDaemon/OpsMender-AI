@@ -196,13 +196,22 @@ Ownership is a lock with a timer:
 - **Releasing** hands it back: the chain pages the next level straight away,
   never level 1 again.
 - **Resolving or combining** the incident ends all paging for it, whatever
-  state the chain is in.
+  state the chain is in. Phone keypad `3` resolves it too.
 
 **Snooze** (Slack `/snooze 30m`) pauses escalation for a set time. If nobody
 owns the incident, the next level is paged when the snooze ends. If you own
 it, you keep it, and the lock lasts at least until the snooze ends.
 **Escalate now** (phone keypad `2`, or the chat Escalate button) pages the next
 level immediately, even while snoozed or owned; it doesn't change the owner.
+
+**Phone pages.** A phone page reads a short summary of the incident, then
+offers a keypad menu: `1` acknowledges and makes you the owner, `2` escalates to
+the next responder, `3` resolves the incident (for a false alarm, say), and `*`
+repeats the message. The menu needs `OPSMENDER_PUBLIC_URL`, so the phone
+provider can reach OpsMender; without it the call only reads the page. The
+optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
+as-is: OpsMender has no route that receives it, so leave it unset unless you
+collect call status elsewhere.
 
 **Taking over from someone.** Asking for an incident someone else owns sends
 them a request; only they can confirm it, within five minutes, and an

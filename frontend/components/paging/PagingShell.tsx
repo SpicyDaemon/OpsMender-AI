@@ -4257,10 +4257,10 @@ function RoutingSummaryPanel({
 }
 
 const PRIORITY_META: Record<Priority, { label: string; description: string }> = {
-  P0: { label: "Critical", description: "Highest urgency" },
-  P1: { label: "High", description: "High priority" },
-  P2: { label: "Medium", description: "Medium priority" },
-  P3: { label: "Low", description: "Low priority" },
+  P0: { label: "Critical", description: "Pages you, even in quiet hours" },
+  P1: { label: "High", description: "Pages you" },
+  P2: { label: "Medium", description: "Doesn't page, so these stages aren't used" },
+  P3: { label: "Low", description: "Doesn't page, so these stages aren't used" },
 };
 
 // Days of week for quiet hours, matching Python datetime.weekday() (Mon=0).

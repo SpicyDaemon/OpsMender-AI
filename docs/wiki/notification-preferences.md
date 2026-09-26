@@ -39,12 +39,15 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 Open the **My Routing** tab. Instead of a checkbox matrix, each incident priority is its own row:
 
-| Priority | Label | Default behavior |
-|----------|-------|------------------|
-| **P0** | Critical | Always pages — bypasses quiet hours. |
-| **P1** | High | Pages your selected channels. |
-| **P2** | Medium | Notifies your selected channels. |
-| **P3** | Low | Often "Do not notify". |
+| Priority | Label | What your stages do |
+|----------|-------|---------------------|
+| **P0** | Critical | Page you, even inside quiet hours. |
+| **P1** | High | Page you; quiet hours can hold them back. |
+| **P2** | Medium | Nothing: P2 incidents don't page. They appear in the Inbox and on Notification Channels instead. |
+| **P3** | Low | Nothing, as for P2. |
+
+Only P0 and P1 incidents start an Escalation Chain, so only those rows are
+used when you're paged. The priority comes from the incident's service.
 
 Each priority holds an **ordered notification escalation** of up to **3 stages**. Stage 1 fires immediately; if the incident is still unacknowledged after the stage's configured **wait** (default 5 minutes, per stage), the next stage fires, and so on:
 
@@ -66,13 +69,26 @@ incident actions. Telegram, Mattermost, Matrix, and WhatsApp use the
 authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are
 delivery-only.
 
+**A chat stage posts to a shared channel.** A stage that uses a chat
+Notification Channel posts to that channel's first allowed chat, which is a
+shared channel, not a direct message to you. Voice and SMS stages call or text
+your own number.
+
+**What "sent" means.** A delivery marked **sent** means the provider accepted
+it: the chat API, mail server or phone provider returned success. OpsMender
+can't confirm you saw it. Each stage is attempted once: a failed delivery isn't
+retried and doesn't fall back to another channel, and stages don't use the
+dedup window. The Escalation Chain's timer still runs, so the next level is
+paged if nobody acknowledges.
+
 Click **Test notification** (top-right) to send a one-off test to your routed channels. Channels without credentials or a destination are reported as skipped rather than failing.
 
 ---
 
 ## 2. Quiet hours
 
-Quiet hours suppress non-critical pages during a configured window. Enable the panel and fill in:
+Quiet hours hold back P1 pages to you during a configured window. (P2 and P3
+don't page at all, and P0 always gets through.) Enable the panel and fill in:
 
 - **Time zone** — any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
 - **Start / End** — local times. Windows wrap midnight correctly (`22:00 → 07:00`).
@@ -93,7 +109,8 @@ level is paged if nobody acknowledges.
 
 Saving malformed quiet hours or routing is rejected: times must be 00:00–23:59,
 the time zone a valid IANA name, days 0 (Mon) to 6 (Sun), and each priority up
-to three stages.
+to three stages. The form keeps the break-through priority at P0; through the
+API, `min_priority_to_break: "P1"` also lets P1 pages through.
 
 ---
 
@@ -107,15 +124,24 @@ If you find you're getting paged twice for the same thing, ask your admin to rai
 
 ## 4. Maintenance windows
 
-Admins can schedule maintenance windows under `Paging → Maintenance Windows`:
+Admins can schedule maintenance windows under `Paging → Maintenance Windows`
+(an operator's request waits for an admin's approval):
 
-- **Global** windows drop matching alerts for **every** service.
-- **Service / Team** windows scope the drop behavior. The v1 UI supports selecting multiple services.
+- **Global** windows cover every alert and page.
+- **Service** and **Team** windows cover the selected services, or the
+  services the selected teams own.
+- **Roster** windows cover pages sent through an escalation level that targets
+  the selected Rosters.
 
 Inside the window:
 
 - Matching incoming alerts are dropped at intake.
-- Non-matching alerts still create incidents.
+- A page that a window holds back later is recorded on the incident as not
+  delivered, with the reason.
+- Non-matching alerts still create incidents and page as usual.
+
+A window can repeat with an iCalendar recurrence rule such as
+`FREQ=WEEKLY;BYDAY=SU`; see the [Paging Guide](paging-guide.md#7-maintenance-windows).
 
 The Active / Scheduled / Past tabs let you audit what's happening now, what's coming up, and what's already passed. The From / To range filter narrows all three.
 
@@ -141,7 +167,7 @@ After saving:
 | `POST /users/me/notification-preferences/test` | Any user | Sends a one-off test notification to the caller's routed channels; returns per-channel `{channel, status, detail}`. Never fails on per-channel delivery errors. |
 | `GET /organizations/{id}/notification-settings` | Admin | Returns `notification_dedup_window_minutes`. |
 | `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0–1440). |
-| `POST /maintenance-windows` | Admin | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`. |
+| `POST /maintenance-windows` | Admin or operator (an operator's window waits for approval) | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`/`scope_ids`, and an optional `rrule` (rejected with 422 if it can't be read or repeats more often than hourly). |
 | `GET /incidents/{id}/paging` | Any user | Returns `suppressed_by_maintenance_window` when applicable. |
 
 ---

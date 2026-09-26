@@ -90,6 +90,9 @@ export async function cleanup(request, auth) {
   await sweep("escalation-chains", "/escalation-chains", (id) => `/escalation-chains/${id}`);
   await sweep("rosters", "/rosters", (id) => `/rosters/${id}`);
   await sweep("sla-targets", "/sla-targets", (id) => `/sla-targets/${id}`);
+  // A connector's Skill before the connector, so no Skill is left orphaned.
+  await sweep("skills", "/skills", (id) => `/skills/${id}`);
+  await sweep("integrations", "/integrations", (id) => `/integrations/${id}`);
   await sweep("notification-channels", "/bot-connectors", (id) => `/bot-connectors/${id}`);
   await sweep("models", "/models", (id) => `/models/${id}`);
   // Teams last — services/rosters/chains reference them.

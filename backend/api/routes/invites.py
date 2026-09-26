@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import create_access_token, hash_password, require_role
 from backend.api.deps import get_db
+from backend.auth.signin_throttle import sign_in_attempt
 from backend.api.schemas import (
     InviteAcceptRequest,
     InviteCreatedResponse,
@@ -383,6 +384,7 @@ async def get_invite(
 async def accept_invite(
     token: str,
     body: InviteAcceptRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint. Creates the user, binds them to the inviting
@@ -391,11 +393,13 @@ async def accept_invite(
     proceed directly into the dashboard."""
 
     invite = await OrgInviteRepo.get_by_hash(db, people_tokens.hash_token(token))
-    if invite is None or not _consumable(invite):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invite is invalid or no longer active.",
-        )
+    # Guessed links count against the caller's address (KI-014).
+    async with sign_in_attempt(request, endpoint="invite_accept", failures=(400,)):
+        if invite is None or not _consumable(invite):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invite is invalid or no longer active.",
+            )
 
     # Username conflict check.
     if await UserRepo.get_by_username(db, body.username):

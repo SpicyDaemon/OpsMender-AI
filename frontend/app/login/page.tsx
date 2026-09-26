@@ -75,8 +75,15 @@ export default function LoginPage() {
       } else {
         navigateDashboard("/dashboard");
       }
-    } catch {
-      setError("Invalid email or password.");
+    } catch (err) {
+      // Too many failed attempts: say how long to wait. Anything else stays
+      // generic, so the page never reveals which accounts exist.
+      const status = (err as { status?: number }).status;
+      setError(
+        status === 429 && err instanceof Error
+          ? err.message
+          : "Invalid email or password.",
+      );
     } finally {
       setLoading(false);
     }

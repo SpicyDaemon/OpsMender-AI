@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import create_access_token, hash_password
 from backend.api.deps import get_db
+from backend.auth.signin_throttle import sign_in_attempt
 from backend.auth.saml import (
     SAMLError,
     SAMLOrgConfig,
@@ -177,6 +178,13 @@ async def saml_login(slug: str, request: Request, db: AsyncSession = Depends(get
 @router.post("/{slug}/acs")
 async def saml_acs(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Validate the IdP's SAML response and JIT-provision the user."""
+    # Failed callbacks count against the caller's address (KI-014); a blocked
+    # address is refused before any IdP work.
+    async with sign_in_attempt(request, endpoint="saml_acs"):
+        return await _saml_acs(slug, request, db)
+
+
+async def _saml_acs(slug: str, request: Request, db: AsyncSession):
     sp = _sp_keypair_or_503()
     org, org_cfg, saml_row = await _resolve_active_saml(db, slug)
 

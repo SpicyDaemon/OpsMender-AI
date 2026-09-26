@@ -38,6 +38,7 @@ from backend.api.auth import (
 )
 from backend.api.deps import get_db
 from backend.auth.avatar import process_avatar, to_data_url
+from backend.auth.signin_throttle import sign_in_attempt
 from backend.api.schemas import (
     LoginRequest,
     LoginResponse,
@@ -226,6 +227,7 @@ async def registration_open(
 )
 async def register(
     body: RegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     # Sprint 56: self-registration is closed in production once any
@@ -245,17 +247,19 @@ async def register(
     if not username:
         username = await _available_username(db, email)
 
-    # Check for existing username / email
-    if await UserRepo.get_by_username(db, username):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Username '{username}' already taken",
-        )
-    if await UserRepo.get_by_email(db, email):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Email '{email}' already registered",
-        )
+    # Conflicts reveal which names exist, so they count against the caller's
+    # address (KI-014).
+    async with sign_in_attempt(request, endpoint="register", failures=(409,)):
+        if await UserRepo.get_by_username(db, username):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Username '{username}' already taken",
+            )
+        if await UserRepo.get_by_email(db, email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Email '{email}' already registered",
+            )
 
     # First user in the system gets admin role automatically
     existing_users = await UserRepo.list_all(db)
@@ -295,6 +299,7 @@ async def register(
 )
 async def login(
     body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     # Accept either the username OR the email address in the "username"
@@ -308,19 +313,26 @@ async def login(
         user = await UserRepo.get_by_email(db, identifier)
         if user is None and identifier != identifier.lower():
             user = await UserRepo.get_by_email(db, identifier.lower())
-    # Sprint 56: soft-deleted users have a scrubbed (empty) password_hash;
-    # short-circuit before verify_password to avoid the bcrypt empty-hash
-    # exception, and to return the same generic 401 to avoid enumeration.
-    if (
-        user is None
-        or user.deleted_at is not None
-        or not user.password_hash
-        or not verify_password(body.password, user.password_hash)
+    # Failed attempts count per account and per address (KI-014). The account
+    # is the matched user, so username and email share one count; an unknown
+    # name counts under what was typed, so both look the same to a caller.
+    account = f"user:{user.id}" if user is not None else identifier.lower()
+    async with sign_in_attempt(
+        request, endpoint="login", account=account, failures=(401,)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-        )
+        # Sprint 56: soft-deleted users have a scrubbed (empty) password_hash;
+        # short-circuit before verify_password to avoid the bcrypt empty-hash
+        # exception, and to return the same generic 401 to avoid enumeration.
+        if (
+            user is None
+            or user.deleted_at is not None
+            or not user.password_hash
+            or not verify_password(body.password, user.password_hash)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password",
+            )
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -837,6 +849,7 @@ async def set_temporary_password(
 async def consume_password_reset(
     token: str,
     body: PasswordResetConsumeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint — the recipient of the one-time URL POSTs their
@@ -849,11 +862,17 @@ async def consume_password_reset(
     token_hash = people_tokens.hash_token(token)
     row = await PasswordResetTokenRepo.get_by_hash(db, token_hash)
     now = datetime.now(timezone.utc)
-    if row is None or row.used_at is not None or _ensure_aware(row.expires_at) < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired token.",
-        )
+    # Guessed links count against the caller's address (KI-014).
+    async with sign_in_attempt(request, endpoint="password_reset", failures=(400,)):
+        if (
+            row is None
+            or row.used_at is not None
+            or _ensure_aware(row.expires_at) < now
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired token.",
+            )
 
     user = await UserRepo.get_by_id(db, row.user_id)
     if user is None or user.deleted_at is not None or not user.is_active:

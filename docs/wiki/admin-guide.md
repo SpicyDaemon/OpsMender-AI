@@ -190,3 +190,7 @@ To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch
 2. Create or open the service that owns the alerts.
 3. Use the service-specific alert intake URL when available. The v1 security model is an embedded unguessable secret in the URL, so external monitors can POST directly without managing separate API-key headers.
 4. The legacy `/dashboard/ingest-tokens` route remains available for existing installs while service-level webhook UX matures.
+
+Deleting a service revokes its intake URL. A token that has received alerts
+can be revoked but not deleted, because its delivery log is kept as an audit
+record.

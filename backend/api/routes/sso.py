@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config, create_access_token, hash_password
 from backend.api.deps import get_db
+from backend.auth.signin_throttle import sign_in_attempt
 from backend.auth.oidc import (
     OIDCClientConfig,
     OIDCError,
@@ -129,6 +130,13 @@ async def sso_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    # Failed callbacks count against the caller's address (KI-014); a blocked
+    # address is refused before any IdP work.
+    async with sign_in_attempt(request, endpoint="oidc_callback"):
+        return await _sso_callback(slug, request, db)
+
+
+async def _sso_callback(slug: str, request: Request, db: AsyncSession):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
     if not code or not state:

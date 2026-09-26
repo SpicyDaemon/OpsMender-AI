@@ -379,10 +379,16 @@ async def _service_responses(
     *,
     include_tool_source_overlaps: bool,
 ) -> list[ServiceResponse]:
-    """Build service responses, attaching the advisory tool-source overlap
-    warning when the caller may see MCP server and connector names."""
+    """Build service responses. Only admins and operators get the intake URL,
+    whose embedded secret can post alerts and page the team (KI-047), and the
+    advisory tool-source overlap warning, which names MCP servers and
+    connectors."""
     responses = [ServiceResponse.model_validate(svc) for svc in services]
-    if not include_tool_source_overlaps or not responses:
+    if not include_tool_source_overlaps:
+        for response in responses:
+            response.intake_url = None
+        return responses
+    if not responses:
         return responses
     mcp_by_id, connectors_by_id = await load_tool_source_index(db, org_id)
     for svc, response in zip(services, responses):

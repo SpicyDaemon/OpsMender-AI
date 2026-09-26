@@ -42,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One combined alert clearing no longer resolves the incident.** When
+  alerts were combined, a recovery for one of them resolved the whole
+  incident and stopped paging. The incident now stays open, notes the
+  cleared alert on its timeline, and resolves when its own alert clears.
+- **Escalate now on an owned incident pages one level.** It used to turn the
+  owner's lock back into running escalation, so later levels kept paging on
+  schedule while someone owned the incident. The owner now keeps the lock.
 - **Deleting an ingest token that has received alerts** returns `409` and
   asks you to revoke it instead; it used to fail with a server error on
   Postgres. Its delivery log is kept as an audit record.
@@ -172,6 +179,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A deny rule wins wherever it appears in a Skill.** A `deny: true` entry
+  written below a broad glob such as `*` was ignored, so the denied tool ran
+  autonomously at Tier 0 and Tier 1; connector Skills had the same gap. Deny
+  now wins in any order, and over an exact entry for a tool a deny glob
+  matches, so narrow the glob to allow one tool. `allow_generic` opts a
+  generic runner out of the guardrail only on an exact-name entry, not a
+  glob.
+- **Chat approvals follow the same rules as the web.** `/approve` and
+  `/reject` from chat refused nothing after the request expired and recorded
+  no approver; they now expire like the web, record the linked OpsMender
+  user, and count as the owner's activity. Chat commands also require a
+  verified user link.
+- **Viewers no longer see intake URLs.** The URL carries the secret that
+  lets a monitor post alerts and page the team; only admins and operators
+  get it.
 - **Failed sign-ins are limited.** Login, MFA verification, registration,
   password-reset and invite links, and the SSO and SAML callbacks now refuse
   a caller with `429` and `Retry-After` after repeated failures: 5 per account

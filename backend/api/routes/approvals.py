@@ -18,8 +18,9 @@ from backend.api.schemas import (
     WSMessage,
 )
 from backend.api.routes.ws import publish
+from backend.approvals.decisions import decide
 from backend.db.models import ApprovalRequest, Session as SessionModel, User
-from backend.db.repos import ApprovalRequestRepo, SessionRepo
+from backend.db.repos import ApprovalRequestRepo
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -97,76 +98,41 @@ async def _resolve_request(
     resolver: User,
     resolution_note: str | None = None,
 ):
-    request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
-    if request is None:
+    result = await decide(
+        db,
+        org_id,
+        request_id,
+        decision=decision,
+        resolver_id=resolver.id,
+        resolution_note=resolution_note,
+    )
+    if result.outcome == "not_found":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Approval request not found",
         )
-
-    if request.status != "pending":
+    if result.outcome == "not_pending":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Approval request is already {request.status}",
+            detail=f"Approval request is already {result.request.status}",
         )
-
-    if _utcnow() >= _as_utc(request.expires_at):
-        await ApprovalRequestRepo.resolve(db, org_id, request.id, status="expired")
-        await SessionRepo.set_status(
-            db,
-            org_id,
-            request.session_id,
-            status="timed_out",
-            ended_at=_utcnow(),
-        )
-        await db.commit()
+    if result.outcome == "expired":
         from backend.services.session_orchestration import schedule_queue_drain
 
         schedule_queue_drain(app_request.app, org_id=org_id)
-        expired = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)
-        if expired is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Approval request not found",
-            )
-        await publish(expired.session_id, _to_ws_message(expired))
+        if result.request is not None:
+            await publish(result.request.session_id, _to_ws_message(result.request))
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Approval request expired before it could be resolved",
         )
-
-    updated = await ApprovalRequestRepo.resolve(
-        db,
-        org_id,
-        request.id,
-        status=decision,
-        resolved_by=resolver.id,
-        resolution_note=resolution_note,
-    )
-    if not updated:
+    if result.outcome == "failed" or result.request is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Approval request could not be resolved",
         )
 
-    await SessionRepo.set_status(db, org_id, request.session_id, status="active")
-    session = await SessionRepo.get_by_id(db, org_id, request.session_id)
-    if session is not None and session.incident_id is not None:
-        from backend.paging.escalation import record_assignee_activity
-
-        # An approval decision by the incident's owner is activity on the lock.
-        await record_assignee_activity(
-            db, org_id, incident_id=session.incident_id, actor_id=resolver.id
-        )
-    await db.commit()
-
-    resolved = await ApprovalRequestRepo.get_by_id(db, org_id, request.id)
-    if resolved is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Approval request not found",
-        )
-
+    resolved = result.request
     await publish(resolved.session_id, _to_ws_message(resolved))
     tiers = await _session_tiers(db, org_id, {resolved.session_id})
     return _approval_response(

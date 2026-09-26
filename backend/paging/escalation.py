@@ -757,10 +757,11 @@ async def escalate_now(
     at: datetime | None = None,
     channel_factory: ChannelFactory | None = None,
 ) -> StepFireResult | None:
-    """Immediately fire the next level of a live chain.
+    """Immediately fire the next level of a live chain, once.
 
-    Clears a snooze or an acknowledgement lock first. It does not change who
-    owns the incident or its status.
+    Clears a snooze. It does not change who owns the incident or its status:
+    on an owned incident the owner keeps their acknowledgement lock, restarted
+    from now, so later levels don't resume paging on their timeouts (KI-049).
     """
 
     now = at or _utcnow()
@@ -772,9 +773,16 @@ async def escalate_now(
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if _closed(incident):
         return None
-    return await _fire_next_level(
+    was_owned = state.status == "acked"
+    result = await _fire_next_level(
         db, org_id, state, now=now, channel_factory=channel_factory
     )
+    if was_owned and chain_is_live(state) and state.status == "running":
+        state.status = "acked"
+        state.last_activity_at = now
+        state.next_step_due_at = _lock_deadline(state, now)
+        await db.flush()
+    return result
 
 
 @dataclasses.dataclass(slots=True)

@@ -986,9 +986,7 @@ async def test_l05_repeat_snooze_replaces_the_end(world):
     assert (world.level2, 1) in await _recorded_pages(world.app, incident_id)
 
 
-async def test_l05_escalate_now_clears_a_snooze_and_a_lock_without_moving_ownership(
-    world,
-):
+async def test_l05_escalate_now_clears_a_snooze_without_moving_ownership(world):
     incident_id = await _three_levels(world)
     await _run(
         world.app,
@@ -1027,6 +1025,41 @@ async def test_l05_escalate_now_clears_a_snooze_and_a_lock_without_moving_owners
         assert (
             await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
         ).status == "open"
+
+
+async def test_l05_escalate_now_on_an_owned_incident_advances_once(world):
+    # KI-049: escalate-now pages the next level once; the owner keeps the
+    # lock, so later levels don't resume paging on their timeouts.
+    incident_id = await _three_levels(world)
+    await _run(
+        world.app,
+        _esc.acknowledge,
+        incident_id=incident_id,
+        assignee_id=world.level1,
+        at=T0,
+    )
+    await _run(
+        world.app,
+        _esc.escalate_now,
+        incident_id=incident_id,
+        at=T0 + timedelta(minutes=1),
+    )
+    assert (world.level2, 1) in await _recorded_pages(world.app, incident_id)
+    assert (await _state(world.app, incident_id)).status == "acked"
+    assert await _owner(world.app, incident_id) == world.level1
+
+    # Level 2's 60-second timeout passes; level 3 isn't paged under the lock.
+    await _tick(world.app, T0 + timedelta(minutes=5))
+    paged = [user for user, _step in await _recorded_pages(world.app, incident_id)]
+    assert world.level3 not in paged
+    # The owner's own activity still counts on the lock.
+    assert await _run(
+        world.app,
+        _esc.record_assignee_activity,
+        incident_id=incident_id,
+        actor_id=world.level1,
+        at=T0 + timedelta(minutes=6),
+    )
 
 
 async def test_l05_release_while_snoozed_resumes_escalation(world):

@@ -241,8 +241,46 @@ async def ingest_incident(
         )
         if existing is not None:
             fingerprint_existing = existing
-            # Update existing incident if status changed
-            if parsed.status == "resolved" and existing.status in (
+            # The lookup follows merges, so ``existing`` may be the incident
+            # this alert was combined into rather than its own.
+            owns_fingerprint = (
+                existing.external_source == parsed.external_source
+                and existing.external_id == parsed.external_id
+            )
+            if (
+                parsed.status == "resolved"
+                and existing.status in ("open", "in_progress")
+                and not owns_fingerprint
+            ):
+                # One combined alert clearing doesn't resolve the incident it
+                # was combined into (KI-048); say so on its timeline.
+                from backend.services.incident_timeline import record_lifecycle_comment
+
+                title = parsed.title.strip()
+                cleared = (
+                    f"{title} ({parsed.external_id})" if title else parsed.external_id
+                )
+                await record_lifecycle_comment(
+                    db,
+                    org_id,
+                    incident_id=existing.id,
+                    body=(
+                        f"A combined alert cleared: {cleared}. "
+                        "The incident stays open until its own alert clears."
+                    ),
+                )
+                dedup_action = "updated"
+                incident = existing
+                if grouping_enabled:
+                    await record_existing_transition(
+                        db,
+                        org_id,
+                        service=service,
+                        parsed=parsed,
+                        incident=existing,
+                        kind="cleared",
+                    )
+            elif parsed.status == "resolved" and existing.status in (
                 "open",
                 "in_progress",
             ):

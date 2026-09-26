@@ -86,7 +86,8 @@ Each service has:
 - Owning team.
 - Fixed priority: `P0`, `P1`, `P2`, or `P3`. New services start at `P1`.
 - Enabled state.
-- Generated intake URL.
+- Generated intake URL (shown to admins and operators only: it carries the
+  secret that lets a monitor post alerts).
 - MCP servers strict allowlist.
 - Up to three ranked Models.
 
@@ -202,7 +203,9 @@ Ownership is a lock with a timer:
 owns the incident, the next level is paged when the snooze ends. If you own
 it, you keep it, and the lock lasts at least until the snooze ends.
 **Escalate now** (phone keypad `2`, or the chat Escalate button) pages the next
-level immediately, even while snoozed or owned; it doesn't change the owner.
+level immediately, even while snoozed or owned. It pages one level: if someone
+owns the incident, they keep it and their lock restarts, so later levels don't
+start paging on their timeouts.
 
 **Phone pages.** A phone page reads a short summary of the incident, then
 offers a keypad menu: `1` acknowledges and makes you the owner, `2` escalates to

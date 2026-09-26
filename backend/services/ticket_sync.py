@@ -25,7 +25,7 @@ TICKETING_KINDS = {"jira", "servicenow"}
 
 # OpsMender lifecycle statuses synced onto a ticket, lowest → highest. The
 # guardrail refuses to push a status whose rank is below the last one synced
-# (e.g. a reopen must not drag a Done ticket backward), matching PagerDuty.
+# (e.g. a reopen must not drag a Done ticket backward).
 SYNC_STATUSES: tuple[str, ...] = ("open", "acknowledged", "in_progress", "resolved")
 STATUS_RANK: dict[str, int] = {name: i for i, name in enumerate(SYNC_STATUSES)}
 

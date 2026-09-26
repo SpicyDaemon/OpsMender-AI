@@ -2265,9 +2265,9 @@ async def ack_incident(
             session_id=session.id,
         )
     await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
-    # Transition linked tickets to the acknowledged-mapped status (PagerDuty-
-    # style). The no-backward guardrail in the sync service protects already-
-    # progressed tickets.
+    # Transition linked tickets to the acknowledged-mapped status. The
+    # no-backward guardrail in the sync service protects already-progressed
+    # tickets.
     from backend.services.ticket_sync import schedule_ticket_status_sync
 
     schedule_ticket_status_sync(

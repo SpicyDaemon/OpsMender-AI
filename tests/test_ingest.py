@@ -590,8 +590,9 @@ class TestIngestGeneric:
             )
             await db.commit()
 
-        # Re-firing the secondary's alert resolves onto the PRIMARY, leaving
-        # the merged-away secondary untouched.
+        # The secondary's alert clearing acts on the PRIMARY but doesn't
+        # resolve it (KI-048): one combined alert clearing isn't the incident
+        # clearing. The merged-away secondary is untouched.
         refire = await client.post(
             "/incidents/ingest",
             json={
@@ -610,10 +611,36 @@ class TestIngestGeneric:
         async with app.state.session_factory() as db:
             primary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, primary_id)
             secondary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, secondary_id)
-            assert primary.status == "resolved"
+            assert primary.status == "open"
             # The secondary stays merged — it is never reopened or re-resolved.
             assert secondary.status == "merged"
             assert secondary.merged_into_incident_id == primary_id
+            notes = await IncidentCommentRepo.list_for_incident(
+                db, TEST_ORG_ID, primary_id
+            )
+            assert any(
+                note.body.startswith(
+                    "A combined alert cleared: Disk filling (disk-sec-001)."
+                )
+                for note in notes
+            )
+
+        # The primary's own alert clearing resolves it.
+        own = await client.post(
+            "/incidents/ingest",
+            json={
+                "title": "Disk filling (primary)",
+                "description": "Recovered",
+                "severity": "low",
+                "id": "disk-primary-001",
+                "status": "resolved",
+            },
+            headers={"X-OpsMender-Token": raw},
+        )
+        assert own.json()["dedup_action"] == "updated"
+        async with app.state.session_factory() as db:
+            primary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, primary_id)
+            assert primary.status == "resolved"
 
     async def test_ingest_resolve_stops_in_progress_sessions(
         self, client: AsyncClient, app

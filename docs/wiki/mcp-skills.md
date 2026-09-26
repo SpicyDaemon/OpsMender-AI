@@ -173,9 +173,10 @@ conservatively:
 - **Tier 0** — blocked (there is no command-pattern allowlisting yet, so a
   generic tool cannot run autonomously).
 
-To opt a **narrowly-scoped** wrapper out of the guardrail, list it in the skill
-with `allow_generic: true` (normal tier/classification rules then apply). Prefer
-explicit `deny: true` entries for anything dangerous.
+To opt a **narrowly-scoped** wrapper out of the guardrail, list it **by its
+exact name** in the skill with `allow_generic: true` (normal tier/classification
+rules then apply). A glob such as `run_*` can't opt tools out. Prefer explicit
+`deny: true` entries for anything dangerous.
 
 ```yaml
 operations:
@@ -198,7 +199,10 @@ irreversible) · `unknown` (unclassified — **always denied**, never silently
 allowed) · generic-execution (auto-detected). Its explicit T0/T1/T2 policy
 controls execution. An entry with `deny: true` is
 blocked at **every tier — deny always wins**, even over `allow_generic` or a
-`safe` classification, and even at Tier 0.
+`safe` classification, and even at Tier 0. It wins wherever it appears: a deny
+entry below a broad glob such as `*` still blocks the tools it matches. An
+exact entry can't carve an exception out of a deny glob either; to allow one
+tool, narrow the glob.
 
 Conservative defaults: if **no skill** resolves for a server (no server-specific
 and no global), unclassified write/remediation actions are treated as unknown

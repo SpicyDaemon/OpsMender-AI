@@ -171,6 +171,20 @@ def _merge_instructions(
     return merged
 
 
+def _authored_policy(
+    skill: SkillDefinition, tool_name: str
+) -> OperationClassification | None:
+    """A Skill's policy for one tool, with deny winning over entry order."""
+    if skill.is_denied(tool_name):
+        return OperationClassification(
+            tool=tool_name,
+            classification="destructive",
+            deny=True,
+            notes="Denied by the Skill.",
+        )
+    return skill.operation_for(tool_name)
+
+
 def merge_integration_skill(
     base: SkillDefinition,
     descriptors: list[IntegrationToolDescriptor],
@@ -185,7 +199,9 @@ def merge_integration_skill(
     integration_operations = []
     for descriptor in descriptors:
         operation = _operation_for(descriptor)
-        operation = _restrict_operation(operation, base.operation_for(descriptor.name))
+        operation = _restrict_operation(
+            operation, _authored_policy(base, descriptor.name)
+        )
         operation = _restrict_operation(operation, descriptor.authored_operation)
         integration_operations.append(operation)
     return SkillDefinition(
@@ -291,7 +307,7 @@ class IntegrationToolRuntime:
                     else (
                         None
                         if authored_definition is None
-                        else authored_definition.operation_for(name)
+                        else _authored_policy(authored_definition, name)
                     )
                 )
                 descriptors.append(

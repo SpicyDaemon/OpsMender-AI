@@ -17,6 +17,7 @@ workflow actually works against a running instance.
 | Feature | Steps |
 |---|---|
 | Authentication | login page renders · sign in · session established |
+| Sign-in protection | repeated failed sign-ins lock that account on this address; the login page says how long to wait (throwaway user, deactivated after) |
 | Teams | page loads · create team (with the current user as a member) |
 | Services | page loads · create service on the team |
 | Escalation policies | page loads · create escalation chain |
@@ -32,7 +33,6 @@ workflow actually works against a running instance.
 | AI models | page loads · *(optional)* create config · test connection |
 | Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
 | MCP-optional acceptance | zero-MCP service · integration tool discovery · Tier 1/Tier 2 session start · checklist · screenshot |
-| Sign-in protection | repeated failed sign-ins lock that account on this address; the login page says how long to wait (throwaway user, deactivated after) |
 | Authentication | sign out · session cleared |
 
 Each step uses **soft assertions**: a failure is recorded with a full-page

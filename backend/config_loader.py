@@ -358,11 +358,16 @@ class DatabaseConfig:
 
 @dataclasses.dataclass
 class AuthConfig:
-    """JWT auth settings."""
+    """JWT auth settings, and failed sign-in limits (0 turns a limit off)."""
 
     jwt_secret: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 10080  # 7 days (v1 browser session = 604800s)
+    # Failed attempts per account from one client address, and per address
+    # across accounts, within the window (KI-014).
+    signin_max_failures: int = 5
+    signin_max_address_failures: int = 100
+    signin_window_seconds: int = 900
 
 
 @dataclasses.dataclass
@@ -649,6 +654,13 @@ class AppConfig:
                 jwt_algorithm=_env_str(env, "OPSMENDER_JWT_ALGORITHM", "HS256")
                 or "HS256",
                 jwt_expire_minutes=_env_int(env, "OPSMENDER_JWT_EXPIRE_MINUTES", 10080),
+                signin_max_failures=_env_int(env, "OPSMENDER_SIGNIN_MAX_FAILURES", 5),
+                signin_max_address_failures=_env_int(
+                    env, "OPSMENDER_SIGNIN_MAX_ADDRESS_FAILURES", 100
+                ),
+                signin_window_seconds=_env_int(
+                    env, "OPSMENDER_SIGNIN_WINDOW_SECONDS", 900
+                ),
             ),
             saml=SAMLConfig(
                 sp_cert=_env_str(env, "OPSMENDER_SAML_SP_CERT"),

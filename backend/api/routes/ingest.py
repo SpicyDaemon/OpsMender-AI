@@ -34,7 +34,7 @@ from backend.api.schemas import (
     IngestTokenResponse,
 )
 from backend.db.models import IngestToken, User
-from backend.db.repos import IngestTokenRepo, ServiceRepo
+from backend.db.repos import IngestLogRepo, IngestTokenRepo, ServiceRepo
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -561,6 +561,15 @@ async def delete_ingest_token(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    # Delivery logs are audit records that point at their token (KI-043).
+    if await IngestLogRepo.exists_for_token(db, org_id, token_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This token has received alerts, and its delivery log is kept "
+                "as an audit record. Revoke the token instead."
+            ),
+        )
     deleted = await IngestTokenRepo.delete(db, org_id, token_id)
     if not deleted:
         raise HTTPException(

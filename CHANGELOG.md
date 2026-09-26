@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deleting an ingest token that has received alerts** returns `409` and
+  asks you to revoke it instead; it used to fail with a server error on
+  Postgres. Its delivery log is kept as an audit record.
 - **Connector Skill instructions reach the AI.** A Skill bound to an
   integration connector could restrict the connector's tools, but its written
   Custom Instructions never reached the model; for a service with only
@@ -169,6 +172,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Failed sign-ins are limited.** Login, MFA verification, registration,
+  password-reset and invite links, and the SSO and SAML callbacks now refuse
+  a caller with `429` and `Retry-After` after repeated failures: 5 per account
+  from one address and 100 per address in 15 minutes (configurable; `0`
+  turns a limit off). Reaching a limit writes one `sign_in_lockout` audit
+  entry. Keying on the address as well as the account means nobody can lock
+  another user out just by knowing their username.
+  *Upgrade note:* behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the
+  proxy's address, or every user shares the proxy's address and its limits.
+- **A deleted service's intake URL stops working.** Deleting a service now
+  revokes its ingest tokens; before, the old URL kept creating incidents
+  with no service.
 - Upgraded `anyio` from 4.13.0 to 4.14.2 (4.15.1 on Python 3.15+) to fix
   CVE-2026-63374 (critical). `anyio` is a transitive dependency of `httpx`,
   FastAPI, and the model SDKs; no application code changed.

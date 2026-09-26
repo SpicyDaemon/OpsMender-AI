@@ -67,6 +67,37 @@ No SSO/SAML buttons until a provider is configured. No org switcher. No tenant p
 
 The Register link only appears when self-signup is still open (i.e. no users exist yet). Once an admin exists, the link is hidden and that route returns 403.
 
+## Sign-in protection
+
+Failed attempts are limited, so passwords, MFA codes and one-time links can't
+be guessed at speed:
+
+- **An account from one address:** 5 failed attempts in 15 minutes block that
+  address for that account until the oldest attempt is 15 minutes old. The
+  person signing in from somewhere else isn't affected, so nobody can lock
+  another user out just by knowing their username.
+- **One address across accounts:** 100 failed attempts in 15 minutes block
+  that address.
+- Login and MFA verification count both. Registration conflicts,
+  password-reset and invite links, and the SSO and SAML callbacks count per
+  address, because no account is known yet.
+- A blocked attempt gets `429 Too Many Requests` with `Retry-After`, even with
+  the right password, and the page says how long to wait. Unknown usernames
+  behave the same way, so the limit doesn't reveal which accounts exist.
+- Reaching a limit writes one `sign_in_lockout` entry to the audit log
+  (endpoint, scope, address and the account tried; never a password).
+
+Settings: `OPSMENDER_SIGNIN_MAX_FAILURES` (5),
+`OPSMENDER_SIGNIN_MAX_ADDRESS_FAILURES` (100) and
+`OPSMENDER_SIGNIN_WINDOW_SECONDS` (900). `0` turns a limit off.
+
+**Behind a reverse proxy**, set `FORWARDED_ALLOW_IPS` to the proxy's address,
+so the app reads each client's address from `X-Forwarded-For`. Otherwise every
+user appears to come from the proxy and shares its limits. Counts are kept in
+memory on each replica, like the other rate limits: a restart clears them,
+and with several replicas each counts separately. Guessing one account from
+many addresses is left to strong passwords and MFA.
+
 ---
 
 ## Multi-factor authentication

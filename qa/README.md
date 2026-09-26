@@ -17,6 +17,7 @@ workflow actually works against a running instance.
 | Feature | Steps |
 |---|---|
 | Authentication | login page renders · sign in · session established |
+| Sign-in protection | repeated failed sign-ins lock that account on this address; the login page says how long to wait (throwaway user, deactivated after) |
 | Teams | page loads · create team (with the current user as a member) |
 | Services | page loads · create service on the team |
 | Escalation policies | page loads · create escalation chain |

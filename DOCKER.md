@@ -89,3 +89,7 @@ This setup:
 2. Sets up a persistent PostgreSQL database.
 3. Automatically applies database migrations on startup.
 4. Uses environment variables from the root `.env` file.
+
+Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` in `.env` to the proxy's
+address so the app sees each client's real address; sign-in limits count per
+address (see `docs/wiki/auth-guide.md`).

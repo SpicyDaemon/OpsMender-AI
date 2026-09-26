@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ from backend.auth.mfa import (
     qr_data_url,
 )
 from backend.auth.secrets import decrypt_secret, encrypt_secret
+from backend.auth.signin_throttle import sign_in_attempt
 from backend.db.models import User, UserMFA
 from backend.db.repos import OrganizationRepo, UserMFARepo, UserRepo
 
@@ -151,42 +152,52 @@ async def confirm_mfa(
 @router.post("/auth/mfa/verify", response_model=TokenResponse)
 async def verify_mfa(
     body: MFAVerifyRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     try:
         payload = decode_access_token(body.mfa_token)
         if payload.get("token_type") != "mfa":
             raise ValueError("wrong token type")
-        user_id = uuid.UUID(payload["sub"])
+        user_id: uuid.UUID | None = uuid.UUID(payload["sub"])
     except (JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired MFA challenge.",
-        )
+        user_id = None
 
-    user = await UserRepo.get_by_id(db, user_id)
-    row = await UserMFARepo.get(db, user_id)
-    if (
-        user is None
-        or not user.is_active
-        or user.deleted_at is not None
-        or row is None
-        or row.enabled_at is None
+    # Wrong codes count per user and per address (KI-014).
+    async with sign_in_attempt(
+        request,
+        endpoint="mfa_verify",
+        account=None if user_id is None else f"user:{user_id}",
+        failures=(401,),
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired MFA challenge.",
-        )
-    if not await _verify_factor(
-        db,
-        row,
-        totp_code=body.totp_code,
-        recovery_code=body.recovery_code,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authenticator or recovery code.",
-        )
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired MFA challenge.",
+            )
+        user = await UserRepo.get_by_id(db, user_id)
+        row = await UserMFARepo.get(db, user_id)
+        if (
+            user is None
+            or not user.is_active
+            or user.deleted_at is not None
+            or row is None
+            or row.enabled_at is None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired MFA challenge.",
+            )
+        if not await _verify_factor(
+            db,
+            row,
+            totp_code=body.totp_code,
+            recovery_code=body.recovery_code,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authenticator or recovery code.",
+            )
 
     await db.commit()
     return TokenResponse(access_token=create_access_token(user.id, user.role))

@@ -320,6 +320,15 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         window_seconds=config.ingest.rate_window,
     )
 
+    # -- Failed sign-in limits (KI-014) -------------------------------------
+    from backend.auth.signin_throttle import SignInThrottle
+
+    app.state.signin_throttle = SignInThrottle(
+        account_limit=config.auth.signin_max_failures,
+        address_limit=config.auth.signin_max_address_failures,
+        window_seconds=config.auth.signin_window_seconds,
+    )
+
     # -- CORS ---------------------------------------------------------------
     allowed_origins = config.cors.origins
     # allow_credentials=True is incompatible with wildcard origins per CORS spec

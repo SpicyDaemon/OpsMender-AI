@@ -62,7 +62,7 @@ async function request<T>(
     } catch {
       // non-JSON response
     }
-    throw new Error(detail);
+    throw Object.assign(new Error(detail), { status: res.status });
   }
 
   // 204 No Content

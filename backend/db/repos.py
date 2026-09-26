@@ -3169,6 +3169,19 @@ class IngestTokenRepo:
 
 class IngestLogRepo:
     @staticmethod
+    async def exists_for_token(
+        db: AsyncSession, org_id: uuid.UUID, ingest_token_id: uuid.UUID
+    ) -> bool:
+        """True once a token has received any delivery."""
+        stmt = (
+            select(IngestLog.id)
+            .where(IngestLog.org_id == org_id)
+            .where(IngestLog.ingest_token_id == ingest_token_id)
+            .limit(1)
+        )
+        return (await db.execute(stmt)).first() is not None
+
+    @staticmethod
     async def create(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -6068,6 +6081,14 @@ class ServiceRepo:
         svc = await ServiceRepo.get_by_id(db, org_id, service_id)
         if svc is None:
             return False
+        # A deleted service's intake URLs must stop working (KI-044); the
+        # tokens stay, revoked, so their delivery logs keep their history.
+        await db.execute(
+            update(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.service_id == service_id)
+            .values(is_active=False)
+        )
         await db.delete(svc)
         await db.flush()
         return True

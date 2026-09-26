@@ -20,6 +20,7 @@ import models from "./models.mjs";
 import skills from "./skills.mjs";
 import mcpOptional from "./mcp_optional.mjs";
 import logout from "./logout.mjs";
+import signInProtection from "./sign_in_protection.mjs";
 
 export const features = [
   auth,
@@ -39,5 +40,6 @@ export const features = [
   models,
   skills,
   mcpOptional,
+  signInProtection,
   logout,
 ];

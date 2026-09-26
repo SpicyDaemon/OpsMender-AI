@@ -22,7 +22,7 @@ workflow actually works against a running instance.
 | Escalation policies | page loads · create escalation chain |
 | Rosters | page loads · create weekly on-call roster |
 | Roster calendar | open calendar · navigate range |
-| Notifications | page loads · open Add-Channel form · *(optional)* send live test |
+| Notifications | page loads · My Routing says which priorities page · open Add-Channel form · *(optional)* send live test |
 | Incidents | page loads · create (fire-test) · open detail · acknowledge · resolve |
 | Intake correctness | SNS alarm/duplicate/recovery/re-fire through the service URL · browser acknowledgment · cross-service Inbox link · simultaneous collision delivery |
 | Ownership lifecycle | Take stops paging · comment extends the lock · release resumes the next level · re-acknowledge · resolve stops the chain · bulk acknowledge/resolve · owner-confirmed takeover |
@@ -31,7 +31,7 @@ workflow actually works against a running instance.
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
 | Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
-| MCP-optional acceptance | zero-MCP service · integration tool discovery · Tier 1/Tier 2 session start · checklist · screenshot |
+| MCP-optional acceptance | zero-MCP service · integration tool discovery · Tier 1/Tier 2 session start · setup checklist (skipped, with its reason, on a workspace that already has MCP servers) · screenshot |
 | Authentication | sign out · session cleared |
 
 Each step uses **soft assertions**: a failure is recorded with a full-page

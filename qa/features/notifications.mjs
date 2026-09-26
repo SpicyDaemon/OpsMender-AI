@@ -18,6 +18,17 @@ export default {
       await h.expectText(/notification|channel/i);
     });
 
+    await h.step("My Routing says which priorities page", async () => {
+      const tab = h.page.getByRole("button", { name: /^my routing$/i }).first();
+      if (await tab.count()) await tab.click().catch(() => {});
+      await h.page.getByText("Pages you, even in quiet hours").waitFor({ state: "visible" });
+      const unused = h.page.getByText("Doesn't page, so these stages aren't used");
+      await unused.first().waitFor({ state: "visible" });
+      if ((await unused.count()) !== 2) {
+        throw new Error("expected the P2 and P3 rows to say they don't page");
+      }
+    });
+
     await h.step("create-channel form opens", async () => {
       // The Add Channel button lives on the "Notification Channels" sub-tab
       // (the panel defaults to "My Routing").

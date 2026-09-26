@@ -6001,8 +6001,100 @@ class TestTelegramBotWebhook:
             session = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
             assert updated is not None
             assert updated.status == "approved"
+            # KI-046: chat decisions record the linked OpsMender user.
+            assert str(updated.resolved_by) == opsmender_user_id
+            assert updated.resolution_note == "Approved in chat."
             assert session is not None
             assert session.status == "active"
+
+    async def _chat_approval(self, app, *, expires_in: timedelta) -> str:
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=1)
+            await SessionRepo.set_status(
+                db, TEST_ORG_ID, session.id, status="awaiting_approval"
+            )
+            approval = await ApprovalRequestRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                action={"tool_name": "scale_deployment"},
+                expires_at=datetime.now(timezone.utc) + expires_in,
+            )
+            await db.commit()
+            return str(approval.id)
+
+    async def _chat_send(self, client, connector_id: str, user: int, text: str):
+        return await client.post(
+            f"/bot-connectors/{connector_id}/telegram/webhook",
+            json={
+                "message": {
+                    "from": {"id": user},
+                    "chat": {"id": "-100123"},
+                    "text": text,
+                }
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "telegram-secret"},
+        )
+
+    async def test_telegram_approve_after_expiry_is_refused(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.db.repos import UserRepo
+
+        rate_limiter.reset()
+        connector_id = await self._create_connector(
+            client, auth_headers, capabilities=["approvals"]
+        )
+        async with app.state.session_factory() as db:
+            admin = await UserRepo.get_by_username(db, "testadmin")
+        await self._link_user(client, auth_headers, connector_id, "112", str(admin.id))
+        approval_id = await self._chat_approval(app, expires_in=timedelta(minutes=-1))
+
+        resp = await self._chat_send(
+            client, connector_id, 112, f"/approve {approval_id}"
+        )
+
+        assert "expired" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            updated = await ApprovalRequestRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(approval_id)
+            )
+            assert updated.status == "expired"  # before KI-046: approved
+
+    async def test_telegram_unverified_link_cannot_approve(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        from backend.bots.rate_limit import rate_limiter
+        from backend.db.repos import BotUserLinkRepo, UserRepo
+
+        rate_limiter.reset()
+        connector_id = await self._create_connector(
+            client, auth_headers, capabilities=["approvals"]
+        )
+        async with app.state.session_factory() as db:
+            admin = await UserRepo.get_by_username(db, "testadmin")
+            link = await BotUserLinkRepo.create(
+                db,
+                TEST_ORG_ID,
+                connector_id=uuid.UUID(connector_id),
+                platform_user_id="113",
+                opsmender_user_id=admin.id,
+            )
+            link.verified = False
+            await db.commit()
+        approval_id = await self._chat_approval(app, expires_in=timedelta(minutes=15))
+
+        resp = await self._chat_send(
+            client, connector_id, 113, f"/approve {approval_id}"
+        )
+
+        assert "not linked" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            updated = await ApprovalRequestRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(approval_id)
+            )
+            assert updated.status == "pending"
 
     async def test_telegram_webhook_rejects_session_command_without_capability(
         self, client: AsyncClient, auth_headers

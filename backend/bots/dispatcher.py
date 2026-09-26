@@ -184,7 +184,8 @@ async def _resolve_opsmender_user(
         connector_id=connector.id,
         platform_user_id=platform_user_id,
     )
-    if link is None:
+    # Only a verified link speaks for an OpsMender user, as in native actions.
+    if link is None or not link.verified:
         return None
     opsmender_user = await UserRepo.get_by_id(db, link.opsmender_user_id)
     if opsmender_user is None or not opsmender_user.is_active:
@@ -198,20 +199,32 @@ async def _resolve_approval_from_bot(
     request_id: uuid.UUID,
     *,
     decision: str,
+    resolver: User,
 ) -> str:
-    request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
-    if request is None:
+    """The same decision path as the web: expiry, approver, lock activity."""
+    from backend.api.routes.approvals import _to_ws_message
+    from backend.api.routes.ws import publish
+    from backend.approvals.decisions import decide
+
+    result = await decide(
+        db,
+        org_id,
+        request_id,
+        decision=decision,
+        resolver_id=resolver.id,
+        resolution_note=f"{decision.capitalize()} in chat.",
+    )
+    if result.request is not None and result.outcome in ("decided", "expired"):
+        await publish(result.request.session_id, _to_ws_message(result.request))
+    if result.outcome == "not_found":
         return "Approval request not found."
-    if request.status != "pending":
-        return f"Approval request is already {request.status}."
-
-    updated = await ApprovalRequestRepo.resolve(db, org_id, request.id, status=decision)
-    if not updated:
+    if result.outcome == "not_pending":
+        return f"Approval request is already {result.request.status}."
+    if result.outcome == "expired":
+        return "Approval request expired before it could be resolved."
+    if result.outcome == "failed":
         return "Approval request could not be resolved."
-
-    await SessionRepo.set_status(db, org_id, request.session_id, status="active")
-    await db.commit()
-    return f"Approval request `{request.id}` {decision}."
+    return f"Approval request `{request_id}` {decision}."
 
 
 async def dispatch_inbound(
@@ -510,7 +523,7 @@ async def dispatch_inbound(
             return DispatchResult(reply_text="Approval ID must be a valid UUID.")
         decision = "approved" if command == "/approve" else "rejected"
         result_text = await _resolve_approval_from_bot(
-            db, org_id, request_id, decision=decision
+            db, org_id, request_id, decision=decision, resolver=opsmender_user
         )
         await _audit(
             db,

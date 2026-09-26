@@ -3,8 +3,8 @@
 ``ticket_sync_state.last_synced_status`` records the OpsMender lifecycle status
 (open / acknowledged / in_progress / resolved) most recently pushed to the
 external ticket, so the outbound sync can refuse to move a ticket *backward*
-(e.g. a reopen must not drag a Done ticket back to In Progress), matching how
-PagerDuty forbids backward status moves. Nullable; existing rows backfill as
+(e.g. a reopen must not drag a Done ticket back to In Progress). Nullable;
+existing rows backfill as
 NULL (treated as "no prior sync", so the next sync always applies).
 
 Revision ID: c3d4e5f6a7b8

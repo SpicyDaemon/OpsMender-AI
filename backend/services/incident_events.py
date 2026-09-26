@@ -93,7 +93,7 @@ async def dispatch_incident_created(
     )
 
     # Open + link tickets for the incident's service-allowlisted ticketing
-    # integrations (PagerDuty-style auto-create). Runs on the API node in both
+    # integrations (automatic ticket creation). Runs on the API node in both
     # deployment modes and is idempotent, so it's safe regardless of auto-start.
     from backend.services.ticket_sync import schedule_incident_ticket_provisioning
 

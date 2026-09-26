@@ -178,6 +178,14 @@ class SkillDefinition:
         """Return the free-form guidance for the active autonomy tier."""
         return self.custom_instructions.get(tier, "")
 
+    @staticmethod
+    def _matches(op: OperationClassification, tool_name: str) -> bool:
+        if op.tool == tool_name:
+            return True
+        return ("*" in op.tool or "?" in op.tool) and fnmatch.fnmatch(
+            tool_name, op.tool
+        )
+
     def _match(self, tool_name: str) -> Optional[OperationClassification]:
         """Return the first matching OperationClassification or None."""
         for op in self.operations:
@@ -203,15 +211,19 @@ class SkillDefinition:
         return op.classification if op is not None else "unknown"
 
     def is_denied(self, tool_name: str) -> bool:
-        """Return True when *tool_name* matches an explicit deny-list entry."""
-        op = self._match(tool_name)
-        return bool(op is not None and op.deny)
+        """Return True when any entry that matches *tool_name*, exact or glob,
+        denies it. Deny wins whatever order the entries are written in: an
+        earlier broad glob must not hide it (KI-045)."""
+        return any(op.deny and self._matches(op, tool_name) for op in self.operations)
 
     def allows_generic(self, tool_name: str) -> bool:
-        """Return True when an exact policy entry opts this generic tool out of
-        the generic-tool guardrail (``allow_generic: true``)."""
-        op = self._match(tool_name)
-        return bool(op is not None and op.allow_generic and not op.deny)
+        """Return True when an exact-name entry opts this generic tool out of
+        the generic-tool guardrail (``allow_generic: true``). A glob can't:
+        it would opt every runner it matches out (KI-045)."""
+        exact = next((op for op in self.operations if op.tool == tool_name), None)
+        return bool(
+            exact is not None and exact.allow_generic and not self.is_denied(tool_name)
+        )
 
     def is_reversible(self, tool_name: str) -> bool:
         """Return True if *tool_name* is declared reversible.

@@ -49,7 +49,7 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | `/take [incident-id]` | Take an unowned incident, or ask the owner to hand it over (they have five minutes to confirm). |
 | `/release [incident-id]` | Release the incident. If you held it under an acknowledgement, the next level is paged straight away. |
 | `/resolve [incident-id]` | Cancel chain and mark the incident resolved. |
-| `/snooze <duration> [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
+| `/snooze [duration] [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
 | `/status [incident-id]` | Without an id, lists the org's active chains. With an id, prints status / step index / next-due-at / current owner. |
 
 A paged operator can usually just type `/ack` after receiving the DM — the implicit fallback to "your most recently paged incident" works in 95% of cases.

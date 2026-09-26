@@ -432,7 +432,8 @@ class VoiceChannel:
     ) -> DeliveryAttempt:
         if ack_url and summary:
             # Speak a concise summary, then gather a keypad digit (1 = ack,
-            # 2 = escalate, * = repeat) POSTed to the signed ack callback.
+            # 2 = escalate, 3 = resolve, * = repeat) POSTed to the signed ack
+            # callback.
             from backend.paging.page_text import format_voice_menu_twiml
 
             twiml = format_voice_menu_twiml(summary, ack_url)

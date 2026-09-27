@@ -11,7 +11,7 @@ observe → diagnose → plan → tier_gate → execute → verify → summarize
 
 Design rules
 -------------
-* ``tier_gate`` is a **hard programmatic check** — NOT an LLM decision.
+* ``tier_gate`` is a **hard programmatic check** - NOT an LLM decision.
   It reads the plan, classifies each proposed action via the skill
   definition, and splits them into approved / blocked lists.
 * LLM-powered nodes receive the LLM via closure injection so the node
@@ -25,6 +25,7 @@ from typing import Any
 
 from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
+from backend.agent.writing_style import PLAIN_WRITING
 from backend.approvals import ApprovalService
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
@@ -34,7 +35,8 @@ from backend.tiers.enforcement import check as tier_check
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-OBSERVE_PROMPT = """\
+OBSERVE_PROMPT = (
+    """\
 You are an expert Site Reliability Engineer (SRE) performing incident response.
 
 An incident has been reported with the following description:
@@ -49,10 +51,14 @@ Based on this description, provide a structured summary of:
 3. What initial observations can be made
 4. What information would be useful to gather next
 
-Be concise and actionable.  Focus on facts, not speculation."""
+Be concise and actionable.  Focus on facts, not speculation.
+"""
+    + PLAIN_WRITING
+)
 
 
-DIAGNOSE_PROMPT = """\
+DIAGNOSE_PROMPT = (
+    """\
 You are an expert Site Reliability Engineer (SRE) diagnosing an incident.
 
 Here are the observations gathered so far:
@@ -67,10 +73,14 @@ Based on these observations, provide:
 3. Severity assessment (critical / high / medium / low)
 4. Confidence level in the diagnosis (high / medium / low)
 
-Be concise and structured."""
+Be concise and structured.
+"""
+    + PLAIN_WRITING
+)
 
 
-PLAN_PROMPT = """\
+PLAN_PROMPT = (
+    """\
 You are an expert Site Reliability Engineer (SRE) planning remediation.
 
 Diagnosis:
@@ -84,7 +94,7 @@ Available tools (from skill definition):
 Allowed MCP servers for this incident:
 {preferred_mcp_servers}
 
-Operator guidance (the operator redirected your previous plan — follow this):
+Operator guidance (the operator redirected your previous plan; follow this):
 {operator_guidance}
 
 Current tier: {tier} (determines what actions are allowed)
@@ -99,11 +109,15 @@ Return your plan as a JSON array of objects.  Example:
   {{"tool_name": "get_pods", "tool_parameters": {{"namespace": "default"}}, "justification": "Check pod status"}}
 ]
 
-Only propose actions using available tools.  Be conservative — prefer
-safe read operations before any writes."""
+Only propose actions using available tools.  Be conservative: prefer
+safe read operations before any writes.
+"""
+    + PLAIN_WRITING
+)
 
 
-VERIFY_PROMPT = """\
+VERIFY_PROMPT = (
+    """\
 You are an expert Site Reliability Engineer (SRE) verifying incident remediation.
 
 Diagnosis: {diagnosis}
@@ -119,10 +133,14 @@ Based on the results, assess:
 3. Are there any remaining concerns?
 4. What follow-up actions (if any) are recommended?
 
-Be concise and definitive."""
+Be concise and definitive.
+"""
+    + PLAIN_WRITING
+)
 
 
-SUMMARIZE_PROMPT = """\
+SUMMARIZE_PROMPT = (
+    """\
 You are an expert Site Reliability Engineer (SRE) writing an incident summary.
 
 Incident description: {incident_description}
@@ -138,7 +156,10 @@ Write a concise incident summary covering:
 4. Current status
 5. Follow-up items (if any)
 
-Keep it under 200 words."""
+Keep it under 200 words.
+"""
+    + PLAIN_WRITING
+)
 
 
 SKILL_INSTRUCTIONS_BLOCK = """\
@@ -184,7 +205,7 @@ def _build_recall(
 ):
     """Return a recall node closed over the org + service binding.
 
-    The closure performs no LLM call — it's a pure SQL lookup against the
+    The closure performs no LLM call - it's a pure SQL lookup against the
     ``incident_memories`` table. Surfaced memories are written to
     ``incident_memory_recall_log`` and stamped via ``last_used_at`` so the
     self-improvement signal stays accurate.
@@ -234,7 +255,8 @@ def recall(state: IncidentState) -> dict:
 # observe
 # ---------------------------------------------------------------------------
 
-OBSERVE_PROMPT_WITH_MEMORY = """\
+OBSERVE_PROMPT_WITH_MEMORY = (
+    """\
 You are an expert Site Reliability Engineer (SRE) performing incident response.
 
 {memory_context}\
@@ -250,7 +272,10 @@ Based on this description, provide a structured summary of:
 3. What initial observations can be made
 4. What information would be useful to gather next
 
-Be concise and actionable.  Focus on facts, not speculation."""
+Be concise and actionable.  Focus on facts, not speculation.
+"""
+    + PLAIN_WRITING
+)
 
 
 def _build_observe(
@@ -346,7 +371,7 @@ def _format_operator_guidance(state: IncidentState) -> str:
     """Render accumulated operator redirect guidance for the plan prompt."""
     guidance = state.get("operator_guidance", []) or []
     if not guidance:
-        return "(none — this is your first plan for the incident)"
+        return "(none; this is your first plan for the incident)"
     return "\n".join(f"- {item}" for item in guidance)
 
 
@@ -377,7 +402,7 @@ def _build_plan(
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
 
-        # Parse the LLM response as JSON — fall back to empty plan on failure
+        # Parse the LLM response as JSON - fall back to empty plan on failure
         try:
             actions = json.loads(raw)
             if not isinstance(actions, list):
@@ -470,7 +495,7 @@ def _build_workflow_plan(workflow_executor):
 
 
 # ---------------------------------------------------------------------------
-# tier_gate  (HARD PROGRAMMATIC CHECK — not an LLM decision)
+# tier_gate  (HARD PROGRAMMATIC CHECK - not an LLM decision)
 # ---------------------------------------------------------------------------
 
 
@@ -579,7 +604,7 @@ def _build_tier_gate(
                 ):
                     # Operator steered the AI. Abandon the rest of this plan
                     # pass and loop back to the plan node with the guidance in
-                    # context — the conditional edge after tier_gate routes on
+                    # context - the conditional edge after tier_gate routes on
                     # ``redirect_requested``. Already-approved actions from this
                     # same pass are intentionally dropped (the operator chose a
                     # different course of action).
@@ -808,7 +833,7 @@ def summarize(state: IncidentState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# remember (Sprint 45 — Step 4)
+# remember (Sprint 45 - Step 4)
 # ---------------------------------------------------------------------------
 
 

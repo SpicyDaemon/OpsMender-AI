@@ -6,7 +6,7 @@ This module builds a small, plain-text block that the session runner appends to
 the incident description so the very first ``observe`` pass is grounded in the
 service it is actually working on.
 
-Pure + deterministic — no DB. The runner resolves the service and passes its
+Pure + deterministic - no DB. The runner resolves the service and passes its
 fields here.
 """
 

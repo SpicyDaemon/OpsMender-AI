@@ -5,7 +5,7 @@ import { config, qaName, qaSlug } from "../lib/config.mjs";
 
 export default {
   id: "teams",
-  title: "Paging — teams",
+  title: "Paging: teams",
   async run(h) {
     const name = qaName("team");
     const slug = qaSlug("team");
@@ -26,7 +26,7 @@ export default {
       await h.fill(slug, { placeholder: "payments-team" });
 
       // Add the logged-in user to the team so it has an eligible on-call
-      // member. Best-effort — the roster feature needs at least one member.
+      // member. Best-effort - the roster feature needs at least one member.
       await h.checkMultiOption("Team members", config.username).catch(() => {});
 
       await h.clickButton(/^create$/i);

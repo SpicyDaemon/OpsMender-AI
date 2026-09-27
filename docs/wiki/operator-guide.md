@@ -35,7 +35,7 @@ The Session Chat is your primary interface with the AI agent.
 
 The AI Autonomy Tier governs both what the AI may do and **how a session starts**:
 
-- **Tier 0 — Autonomous:** a session auto-starts the moment the incident is created.
+- **Tier 0 (Autonomous):** a session auto-starts the moment the incident is created.
 - **Tier 1 / Tier 2:** **no** session auto-starts. **Acknowledge** the incident first (this records you as the owner), then click **Start Session**. Starting a Tier 1/2 session is blocked until the incident is acknowledged.
 
 Queued sessions are ordered P0→P3 and FIFO within the same priority. Model
@@ -59,17 +59,17 @@ At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not
 1. Find the prompt in the **Session Chat** (or the **Approvals** dashboard).
 2. Review the exact tool + parameters the AI intends to run.
 3. Choose one:
-   - **Approve** — the action executes.
-   - **Reject** — the action is blocked.
-   - **Redirect** — type free-text guidance (e.g. "drain the node first, then restart") and the AI **re-plans** with your steering in context.
-   - **Extend session** — resets the approval-hold timer when you need more time. OpsMender warns approvers shortly before the hold expires; expiry rejects the pending action, ends the session, and releases its model slot.
+   - **Approve**: the action executes.
+   - **Reject**: the action is blocked.
+   - **Redirect**: type free-text guidance (e.g. "drain the node first, then restart") and the AI **re-plans** with your steering in context.
+   - **Extend session**: resets the approval-hold timer when you need more time. OpsMender warns approvers shortly before the hold expires; expiry rejects the pending action, ends the session, and releases its model slot.
 
 ## 5. Intercept a running session (Stop / Override)
 
 You can take control of any running session from the session page:
 
-- **Stop** — immediately halts the AI (use this to take over manually elsewhere; an action already in flight may still finish on the target system).
-- **Override** — stops the AI's current autonomy and **continues the same session** under your control at a less-autonomous tier (**Tier 1** approval-driven or **Tier 2** advisory). Overriding assigns the incident to you.
+- **Stop**: immediately halts the AI (use this to take over manually elsewhere; an action already in flight may still finish on the target system).
+- **Override**: stops the AI's current autonomy and **continues the same session** under your control at a less-autonomous tier (**Tier 1** approval-driven or **Tier 2** advisory). Overriding assigns the incident to you.
 
 ## 6. The Audit Log
 
@@ -79,7 +79,7 @@ session and its tool audit history.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
-- It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor — see [postmortem-guide.md](postmortem-guide.md).
+- It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor: see [postmortem-guide.md](postmortem-guide.md).
 
 ## 7. Writing Postmortems
 
@@ -89,10 +89,10 @@ Once an incident reaches its final `resolved` status, the Incident Command Strip
 
 Press **Cmd+K** (Mac) / **Ctrl+K** (everywhere else) to open the **Command Palette** from anywhere in the dashboard. The palette has two categories:
 
-- **Navigate** — every sidebar route (Dashboard, Incidents, Approvals, Paging surfaces, AI Agent surfaces, Admin, etc.) with fuzzy keyword matching (e.g. type "audit log" to land on Activity, "schedule" for Rosters).
-- **Actions** — New incident · Fire test incident · Open pending approvals · Show who's on-call · Run environment scan.
+- **Navigate**: every sidebar route (Dashboard, Incidents, Approvals, Paging surfaces, AI Agent surfaces, Admin, etc.) with fuzzy keyword matching (e.g. type "audit log" to land on Activity, "schedule" for Rosters).
+- **Actions**: New incident · Fire test incident · Open pending approvals · Show who's on-call · Run environment scan.
 
-Keyboard model: `↑` / `↓` move the highlight, `Enter` executes, `Esc` closes. The shortcut is reserved — it works even when an input is focused, which is the point. The existing `?` overlay (keyboard shortcut help) lists `Cmd K` for discovery.
+Keyboard model: `↑` / `↓` move the highlight, `Enter` executes, `Esc` closes. The shortcut is reserved. It works even when an input is focused, which is the point. The existing `?` overlay (keyboard shortcut help) lists `Cmd K` for discovery.
 
 ## 9. Rollback Behavior
 

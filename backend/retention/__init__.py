@@ -1,4 +1,4 @@
-"""Sprint 53 — data retention & garbage collection."""
+"""Sprint 53 - data retention & garbage collection."""
 
 from backend.retention.pruner import (
     PrunerResult,

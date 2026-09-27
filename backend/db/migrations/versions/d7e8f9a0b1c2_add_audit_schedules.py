@@ -4,7 +4,7 @@ Revision ID: d7e8f9a0b1c2
 Revises: c6d7e8f9a0b1
 Create Date: 2026-05-17 12:00:00.000000
 
-Sprint 39 step 2 — scheduled audit runs. v1 uses a simple
+Sprint 39 step 2 - scheduled audit runs. v1 uses a simple
 ``interval_minutes`` field (15-min minimum) rather than full cron
 expressions to keep the dependency surface tight. The background
 scheduler polls this table every minute and kicks off a queued

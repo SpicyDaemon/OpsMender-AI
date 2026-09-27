@@ -1,6 +1,6 @@
 """Tests for the MCPServerOAuthToken model + repo (Sprint 42 step 1).
 
-Covers the persistence layer only — the OAuth client (Step 3) lands in
+Covers the persistence layer only - the OAuth client (Step 3) lands in
 a sibling test file once the discovery + PKCE + refresh code is in.
 
 Encryption boundary: the repo wraps Fernet around plaintext at write
@@ -165,7 +165,7 @@ class TestUpsert:
         )
         await db.commit()
 
-        # Same row id — replacement, not a new insert (UNIQUE on mcp_server_id).
+        # Same row id - replacement, not a new insert (UNIQUE on mcp_server_id).
         assert second.id == first.id
 
         access, refresh = await MCPServerOAuthTokenRepo.read_plaintext(second)
@@ -231,7 +231,7 @@ class TestRotate:
 
     async def test_rotate_without_new_refresh_keeps_existing(self, db):
         """OAuth 2.1 §4.3.1: if the AS omits refresh_token from the response,
-        keep using the prior one — it is still valid until the AS rotates."""
+        keep using the prior one - it is still valid until the AS rotates."""
 
         server_id = await _make_server(db)
         await MCPServerOAuthTokenRepo.upsert(
@@ -379,7 +379,7 @@ class TestCascade:
         )
         await db.commit()
 
-        # Sanity — row is there.
+        # Sanity - row is there.
         before = await MCPServerOAuthTokenRepo.get_for_server(
             db, TEST_ORG_ID, server_id
         )

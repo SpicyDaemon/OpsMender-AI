@@ -2,7 +2,7 @@
 
 ``assign_priority`` runs the org's rule list, picks the first match, and
 returns ``(priority, response_mode)``. An optional one-way LLM escalation
-pass can bump priority up — never down. False positives are tolerable;
+pass can bump priority up - never down. False positives are tolerable;
 missed P0s are not.
 
 Pure with respect to the inputs: caller is responsible for materializing
@@ -33,7 +33,7 @@ DEFAULT_MODE_FOR: dict[str, str] = {
 
 @dataclasses.dataclass(slots=True)
 class PriorityRuleLike:
-    """Minimal duck-typed rule shape — ORM rows match by attribute names."""
+    """Minimal duck-typed rule shape - ORM rows match by attribute names."""
 
     id: Any
     name: str
@@ -64,7 +64,7 @@ def _normalize_terms(value: Any) -> list[str]:
 def rule_matches(condition: dict, payload: dict) -> bool:
     """Return True if every key in ``condition`` matches ``payload``.
 
-    Condition values may be a scalar or a list — list semantics is OR.
+    Condition values may be a scalar or a list - list semantics is OR.
     Missing payload keys never match. Comparison is case-insensitive.
     """
 
@@ -102,7 +102,7 @@ async def assign_priority(
     """Compute priority + response_mode for an incoming incident.
 
     ``rules`` should already be filtered to ``is_active = True`` and sorted
-    by ``rule_index`` ascending — first match wins. ``llm_callback`` is an
+    by ``rule_index`` ascending - first match wins. ``llm_callback`` is an
     async function ``(payload, current_priority) -> (new_priority, reason)``.
     The callback is only invoked when ``llm_escalation_enabled`` is True.
     """

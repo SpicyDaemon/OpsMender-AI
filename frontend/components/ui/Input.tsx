@@ -45,14 +45,14 @@ interface LabelProps {
   className?: string;
   /**
    * Render the shared red-asterisk required marker after the label text.
-   * This is the canonical way to flag a mandatory field across the app — keep
+   * This is the canonical way to flag a mandatory field across the app - keep
    * the visual star in sync with the input's own `required`/validation.
    */
   required?: boolean;
 }
 export function Label({ children, htmlFor, className = "", required = false }: LabelProps) {
   // The required marker is a CSS ::after pseudo-element rather than a real text
-  // node so it never leaks into the label's textContent — `getByLabelText` and
+  // node so it never leaks into the label's textContent - `getByLabelText` and
   // the accessibility name stay clean; the input's own `required` attribute is
   // what assistive tech announces.
   const requiredMarker = required
@@ -74,7 +74,7 @@ export function FormError({ message }: { message?: string }) {
 }
 
 /**
- * Prominent form-level alert banner — for errors that aren't tied to a single
+ * Prominent form-level alert banner - for errors that aren't tied to a single
  * field (failed login, save failures, permission errors). Unlike the inline
  * {@link FormError}, this is impossible to miss. Defaults to the critical tone.
  */

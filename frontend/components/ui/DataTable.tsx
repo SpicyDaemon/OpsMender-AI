@@ -83,13 +83,13 @@ export interface DataTableProps<T> {
     render: (row: T) => ReactNode;
     label?: string;
   };
-  /** Sprint 50 — enable row-selection checkboxes. */
+  /** Sprint 50 - enable row-selection checkboxes. */
   selectable?: boolean;
-  /** Sprint 50 — controlled selection (a Set of row keys). */
+  /** Sprint 50 - controlled selection (a Set of row keys). */
   selectedKeys?: Set<string>;
-  /** Sprint 50 — fires whenever the selection set changes. */
+  /** Sprint 50 - fires whenever the selection set changes. */
   onSelectionChange?: (next: Set<string>) => void;
-  /** Sprint 50 — rendered above the table when at least one row is selected. */
+  /** Sprint 50 - rendered above the table when at least one row is selected. */
   bulkActions?: (selected: Set<string>, rows: T[]) => ReactNode;
   pageSizeOptions?: number[];
   defaultPageSize?: number;
@@ -212,7 +212,7 @@ export function DataTable<T>({
   searchPlaceholder = "Search…",
   className = "",
 }: DataTableProps<T>) {
-  // Persistence — read on mount only.
+  // Persistence - read on mount only.
   const [persisted] = useState<PersistedState>(() =>
     _loadPersisted(storageKey),
   );
@@ -467,7 +467,7 @@ export function DataTable<T>({
   const renderCellContent = (col: DataTableColumn<T>, row: T) => {
     if (col.cell) return col.cell(row);
     const v = col.accessor(row);
-    return v == null ? "—" : String(v);
+    return v == null ? "None" : String(v);
   };
 
   // ----- Render ---------------------------------------------------------------
@@ -778,7 +778,7 @@ export function DataTable<T>({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <span className="whitespace-nowrap">Rows per page</span>
-          {/* Width comes from the wrapper, not utility overrides on Select —
+          {/* Width comes from the wrapper, not utility overrides on Select -
               conflicting w-full/w-16 and py-2/py-0 utilities resolve by
               stylesheet order and were clipping the value text. */}
           <div className="w-20 shrink-0">

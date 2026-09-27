@@ -6,7 +6,7 @@
 #   2. Install the pyinstaller build group.
 #   3. Run pyinstaller with opsmender.spec.
 #
-# Result: ./dist/opsmender (~50–100 MB depending on platform).
+# Result: ./dist/opsmender (~50-100 MB depending on platform).
 # Run with: ./dist/opsmender serve
 
 set -euo pipefail

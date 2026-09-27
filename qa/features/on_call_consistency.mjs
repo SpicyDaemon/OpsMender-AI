@@ -24,7 +24,7 @@ function yesterdayUtc() {
 
 export default {
   id: "on_call_consistency",
-  title: "Paging — who's on call",
+  title: "Paging: who's on call",
   async run(h) {
     const s = {};
 

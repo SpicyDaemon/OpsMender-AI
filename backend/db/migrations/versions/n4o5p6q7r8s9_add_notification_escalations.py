@@ -3,7 +3,7 @@
 Backs the staged notification escalation engine: each priority's ordered
 routing stages fire over time (with delays) until the incident is
 acknowledged or resolved. Existing single/legacy routing keeps working with
-no data migration — legacy entries are read as Stage 1.
+no data migration - legacy entries are read as Stage 1.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """Tests for the shared Notification Channel capability model.
 
 These lock in the honesty guarantees: every supported platform is modelled,
-delivery-only platforms don't advertise rich/interactive support, and — most
-importantly — only platforms with verified callback implementations advertise
+delivery-only platforms don't advertise rich/interactive support, and - most
+importantly - only platforms with verified callback implementations advertise
 interactive action support.
 """
 

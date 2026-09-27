@@ -1,4 +1,4 @@
-"""Tests for Sprint 42 Step 5 — resolve_oauth_access_token + pool OAuth integration.
+"""Tests for Sprint 42 Step 5 - resolve_oauth_access_token + pool OAuth integration.
 
 Covers:
   * Token is fresh → returns access token immediately (no refresh call).
@@ -156,7 +156,7 @@ class TestNoTokenRow:
 
 
 # ---------------------------------------------------------------------------
-# Tests: token expiring — missing refresh data
+# Tests: token expiring - missing refresh data
 # ---------------------------------------------------------------------------
 
 
@@ -221,7 +221,7 @@ class TestExpiringTokenMissingData:
 
 
 # ---------------------------------------------------------------------------
-# Tests: token expiring — refresh path
+# Tests: token expiring - refresh path
 # ---------------------------------------------------------------------------
 
 

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: opsmender
-description: OpsMender AI — AI-powered incident response with tiered access controls
+description: Open-source incident response with tiered access controls for AI agents
 type: application
 version: 0.1.0
 appVersion: "1.0.0"

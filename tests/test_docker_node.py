@@ -1,8 +1,8 @@
-"""Tests for Sprint 16 — Node.js bundling in Docker image.
+"""Tests for Sprint 16 - Node.js bundling in Docker image.
 
 These tests parse the production Dockerfile to verify that Node.js,
 npm, and npx are provisioned correctly in the runtime stage.
-They do NOT build the Docker image (that requires Docker Engine) —
+They do NOT build the Docker image (that requires Docker Engine) -
 they validate the Dockerfile *structure* statically, which is fast
 and CI-friendly.
 

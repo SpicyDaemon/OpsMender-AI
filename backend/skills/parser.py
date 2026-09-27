@@ -25,7 +25,7 @@ Expected YAML structure::
           T2: {enabled: false, mode: blocked}
       - tool: "delete_*"
         classification: destructive
-        notes: "Deletes resources — requires Tier 1 approval"
+        notes: "Deletes resources - requires Tier 1 approval"
         tiers:
           T0: {enabled: false, mode: blocked}
           T1: {enabled: true, mode: approval}
@@ -71,7 +71,7 @@ class OperationClassification:
     operations that resolve to ``reversible=True``.  When unset it falls back
     to a classification-driven default (``safe`` is implicitly reversible;
     ``caution``/``destructive`` are not).  ``compensating_inverse`` names the
-    tool that undoes this one — the rollback engine invokes it with the same
+    tool that undoes this one - the rollback engine invokes it with the same
     parameters.
     """
 
@@ -80,7 +80,7 @@ class OperationClassification:
     notes: Optional[str] = None
     reversible: Optional[bool] = None
     compensating_inverse: Optional[str] = None
-    # ``deny: true`` makes this an explicit deny-list entry — the tier gate
+    # ``deny: true`` makes this an explicit deny-list entry - the tier gate
     # blocks it at EVERY tier (deny always wins), regardless of classification.
     deny: bool = False
     # ``allow_generic: true`` opts a generic command-execution tool OUT of the
@@ -93,7 +93,7 @@ class OperationClassification:
 
     def __post_init__(self) -> None:
         valid = ("safe", "caution", "destructive")
-        # A deny-list entry need not carry a classification — the gate blocks it
+        # A deny-list entry need not carry a classification - the gate blocks it
         # regardless. Default such entries to "destructive" (the safest label).
         if self.deny and self.classification in ("", "unknown", None):
             object.__setattr__(self, "classification", "destructive")
@@ -164,7 +164,7 @@ class SkillDefinition:
     default_tier: Optional[int] = None
     # Optional free-form list of areas the operator wants Environment Scans
     # to weight (e.g. "crashlooping containers", "tasks stuck in PROVISIONING",
-    # "high systemd restart counts"). Platform-agnostic by design — the LLM
+    # "high systemd restart counts"). Platform-agnostic by design - the LLM
     # decides what each phrase means given the MCP server's tools.
     focus_areas: List[str] = dataclasses.field(default_factory=list)
     # Optional ordered remediation workflow parsed from ``## Workflow``.
@@ -255,7 +255,7 @@ class SkillDefinition:
         """
         op = self._match(tool_name)
         if op is None:
-            return "unknown operation — not declared in skill definition"
+            return "unknown operation: not declared in the skill definition"
         policy = op.policy_for_tier(0)
         require_reversible = (
             True
@@ -288,7 +288,7 @@ def _extract_yaml_front_matter(text: str) -> str:
     if start is not None:
         # Single --- at top, treat rest as YAML (no closing fence)
         return "".join(lines[start:])
-    # No fences at all — treat entire content as YAML
+    # No fences at all - treat entire content as YAML
     return text
 
 

@@ -20,7 +20,7 @@ vi.mock("@/components/ui/Toast", () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
 }));
 
-// Heavy operator/admin-only children — not rendered for viewers; stub so the
+// Heavy operator/admin-only children - not rendered for viewers; stub so the
 // page module loads without pulling their dependency trees.
 vi.mock("@/components/incidents/IncidentCommandStrip", () => ({ IncidentCommandStrip: () => null }));
 vi.mock("@/components/incidents/IncidentContextRail", () => ({ IncidentContextRail: () => null }));

@@ -1,5 +1,5 @@
 /**
- * People page v1 cleanup — wide layout, Services-style filter bar, direct
+ * People page v1 cleanup - wide layout, Services-style filter bar, direct
  * user creation, and auth-method gating (SSO/SAML hidden unless advanced auth).
  */
 

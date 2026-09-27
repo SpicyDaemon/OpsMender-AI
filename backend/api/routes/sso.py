@@ -2,10 +2,10 @@
 
 Two routes:
 
-* ``GET /auth/sso/{slug}/login`` — initiates the OIDC authorize redirect.
+* ``GET /auth/sso/{slug}/login`` - initiates the OIDC authorize redirect.
   The state parameter is a short-lived signed JWT that carries the org_id
   and a nonce so we don't need server-side state.
-* ``GET /auth/sso/{slug}/callback`` — exchanges the code, verifies the
+* ``GET /auth/sso/{slug}/callback`` - exchanges the code, verifies the
   id_token, JIT-provisions the user, and redirects to the dashboard with
   the OpsMender JWT in the URL fragment.
 
@@ -187,7 +187,7 @@ async def _sso_callback(slug: str, request: Request, db: AsyncSession):
         while await UserRepo.get_by_username(db, username):
             suffix += 1
             username = f"{base_username}{suffix}"
-        # Random password — local password login is disabled for SSO users.
+        # Random password - local password login is disabled for SSO users.
         random_pw = _secrets.token_urlsafe(32)
         user = await UserRepo.create(
             db,

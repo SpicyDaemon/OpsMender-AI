@@ -1,4 +1,4 @@
-<!-- Thanks for the PR. Fill out each section — the clearer the context, the faster the review. -->
+<!-- Thanks for the PR. Fill out each section: the clearer the context, the faster the review. -->
 
 ## Summary
 

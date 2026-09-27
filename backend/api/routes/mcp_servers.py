@@ -325,7 +325,7 @@ async def mcp_oauth_callback(
             ),
         )
         await db.commit()
-    except Exception as exc:  # noqa: BLE001 — provider failures vary widely
+    except Exception as exc:  # noqa: BLE001 - provider failures vary widely
         await db.rollback()
         return _redirect_with(
             request,

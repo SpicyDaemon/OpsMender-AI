@@ -10,7 +10,7 @@ import { requiredRolesForPath } from "@/components/Sidebar";
  * Per-route authorization guard. Mirrors the sidebar role model so a user who
  * navigates directly to a restricted URL (not just hides it in the nav) sees a
  * clean access-denied panel instead of admin data. Backend routes enforce the
- * same boundaries — this is the UI half of "do not rely only on hiding UI".
+ * same boundaries - this is the UI half of "do not rely only on hiding UI".
  */
 export function RouteRoleGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();

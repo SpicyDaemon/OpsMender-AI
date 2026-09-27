@@ -85,7 +85,7 @@ def auto_start_skip_reason(
       acknowledges the incident (``auto_start_deferred_to_ack``).
 
     The legacy ``enabled`` / ``min_severity`` / ``source`` ingest controls no
-    longer gate this — tier alone decides.
+    longer gate this - tier alone decides.
     """
     if dedup_action != "created":
         return "auto_start_skipped_not_created"

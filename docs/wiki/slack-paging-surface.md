@@ -17,7 +17,7 @@ Channel, the Block Kit card includes:
 
 - The priority and status of the incident.
 - The first line of the incident description.
-- Four action buttons — **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**.
+- Four action buttons: **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**.
 - A **View in OpsMender** link button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to the incident detail page with a `?from=slack` breadcrumb.
 
 Every button click is signed, verified, and authenticated against your `bot_user_links` row before any state change happens. Slack users without a link get a friendly ephemeral "your account isn't linked" message instead of a silent failure.
@@ -52,7 +52,7 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | `/snooze [duration] [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
 | `/status [incident-id]` | Without an id, lists the org's active chains. With an id, prints status / step index / next-due-at / current owner. |
 
-A paged operator can usually just type `/ack` after receiving the DM — the implicit fallback to "your most recently paged incident" works in 95% of cases.
+A paged operator can usually just type `/ack` after receiving the DM: the implicit fallback to "your most recently paged incident" works in 95% of cases.
 
 ---
 
@@ -71,7 +71,7 @@ When enabled, the moment an incident enters `page` mode (REST `POST /incidents` 
 2. Stores the new channel id on `incidents.slack_channel_id` so subsequent kickoffs no-op (the mirror is idempotent).
 3. Posts the same Block Kit page card to that channel.
 
-If Slack rejects the call (`name_taken`, `missing_scope`, …), the mirror logs a warning and the chain still runs — channel mirroring is a convenience, not a hard requirement.
+If Slack rejects the call (`name_taken`, `missing_scope`, …), the mirror logs a warning and the chain still runs: channel mirroring is a convenience, not a hard requirement.
 
 Required Slack app scopes:
 
@@ -126,6 +126,6 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 
 See also:
 
-- [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
-- [Operator Guide](operator-guide.md) — full incident triage flow.
-- `backend/paging/on_call.py` (Paging Model, D-021) — the underlying data model and algorithms.
+- [Notification Preferences](notification-preferences.md): channels, per-priority routing, quiet hours.
+- [Operator Guide](operator-guide.md): full incident triage flow.
+- `backend/paging/on_call.py` (Paging Model, D-021): the underlying data model and algorithms.

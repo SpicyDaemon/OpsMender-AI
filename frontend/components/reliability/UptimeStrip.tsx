@@ -5,7 +5,7 @@ import { formatDateTime } from "@/lib/formatDate";
 
 /**
  * Lightweight uptime history strip: one segment per series bucket, coloured
- * green (up) / red (down) / gray (no data). Intentionally simple — no latency
+ * green (up) / red (down) / gray (no data). Intentionally simple - no latency
  * or response-time charting in v1.
  */
 export function UptimeStrip({
@@ -44,8 +44,8 @@ export function UptimeStrip({
               : "bg-border-subtle";
         const title =
           point.status === "unknown"
-            ? `${formatDateTime(point.ts)} — no data`
-            : `${formatDateTime(point.ts)} — ${point.up_pct.toFixed(2)}% up`;
+            ? `${formatDateTime(point.ts)}: no data`
+            : `${formatDateTime(point.ts)}: ${point.up_pct.toFixed(2)}% up`;
         return (
           <div
             key={i}

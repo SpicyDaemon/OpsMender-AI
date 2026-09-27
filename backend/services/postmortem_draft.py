@@ -3,7 +3,7 @@
 Assembles a postmortem markdown draft from an incident's persisted session
 ``progress`` snapshots (observations / diagnosis / plan / workflow_result) plus
 the incident lifecycle, mapped onto the canonical postmortem sections. Pure and
-LLM-free — the operator reviews/edits the draft in the existing editor; nothing
+LLM-free - the operator reviews/edits the draft in the existing editor; nothing
 is saved automatically.
 """
 
@@ -15,7 +15,7 @@ from typing import Any, Sequence
 
 def _fmt_ts(value: datetime | None) -> str:
     if value is None:
-        return "—"
+        return "time unknown"
     return value.strftime("%Y-%m-%d %H:%M UTC")
 
 
@@ -76,20 +76,20 @@ def draft_postmortem(incident: Any, sessions: Sequence[Any]) -> str:
     resolved = getattr(incident, "resolved_at", None) or getattr(
         incident, "updated_at", None
     )
-    priority = getattr(incident, "priority", None) or "—"
+    priority = getattr(incident, "priority", None) or "None"
 
-    timeline = [f"- {_fmt_ts(created)} — incident created"]
+    timeline = [f"- {_fmt_ts(created)}: incident created"]
     for s in ordered:
         timeline.append(
-            f"- {_fmt_ts(getattr(s, 'started_at', None))} — AI session started"
+            f"- {_fmt_ts(getattr(s, 'started_at', None))}: AI session started"
         )
         if getattr(s, "ended_at", None):
-            timeline.append(f"- {_fmt_ts(s.ended_at)} — AI session ended ({s.status})")
+            timeline.append(f"- {_fmt_ts(s.ended_at)}: AI session ended ({s.status})")
     if getattr(incident, "status", None) == "resolved":
-        timeline.append(f"- {_fmt_ts(resolved)} — resolved")
+        timeline.append(f"- {_fmt_ts(resolved)}: resolved")
 
     summary_block = (
-        latest_summary or "_Draft from the AI session trail — review and edit._"
+        latest_summary or "_Draft from the AI session trail. Review and edit it._"
     )
     impact_block = f"Priority {priority}. Created {_fmt_ts(created)}" + (
         f", resolved {_fmt_ts(resolved)}."
@@ -99,13 +99,13 @@ def draft_postmortem(incident: Any, sessions: Sequence[Any]) -> str:
     if observations:
         impact_block += f"\n\nObserved signals:\n\n{observations}"
     root_cause_block = (
-        diagnosis or "_No AI diagnosis was recorded — fill in the underlying cause._"
+        diagnosis or "_No AI diagnosis was recorded. Fill in the underlying cause._"
     )
     resolution_block = (
         "Proposed/taken actions from the AI session:\n\n"
         + "\n".join(f"- {b}" for b in plan_bullets)
         if plan_bullets
-        else "_What was changed to mitigate — fill in._"
+        else "_What was changed to mitigate? Fill this in._"
     )
 
     return "\n".join(

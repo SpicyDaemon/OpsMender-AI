@@ -1,4 +1,4 @@
-"""Tests for the FastAPI REST layer — Sprint 8.
+"""Tests for the FastAPI REST layer - Sprint 8.
 
 Uses in-memory SQLite via aiosqlite so no Postgres is needed.
 Tests the full API surface: auth, incidents, sessions, audit, config.
@@ -1616,7 +1616,7 @@ class TestIncidents:
         data = resp.json()
         assert data["incident"]["external_source"] == "opsmender-test"
         assert data["resolved_tier"] == tier
-        # T1/T2 defer the AI session — an operator acknowledges, then starts it.
+        # T1/T2 defer the AI session - an operator acknowledges, then starts it.
         assert data["auto_start_status"] == "skipped"
         assert data["auto_start_reason"] == "auto_start_deferred_to_ack"
         assert "start the AI session" in data["message"]
@@ -1669,7 +1669,7 @@ class TestIncidents:
         assert data["resolved_tier"] == 0
         assert data["auto_start_status"] == "queued"
         assert data["auto_start_reason"] is None
-        assert "auto-started under T0" in data["message"]
+        assert "auto-started under Tier 0 (Autonomous)" in data["message"]
         assert len(scheduled) == 1
         assert scheduled[0][0] == TEST_ORG_ID
         assert str(scheduled[0][1]) == data["incident"]["id"]
@@ -1966,7 +1966,7 @@ class TestIncidents:
         # No session was created anywhere during create + resolve.
         assert session_create_calls == 0
 
-        # And none exists for the incident — resolve did not auto-start one.
+        # And none exists for the incident - resolve did not auto-start one.
         sessions_resp = await client.get(
             f"/incidents/{incident_id}/sessions", headers=auth_headers
         )
@@ -1977,7 +1977,7 @@ class TestIncidents:
         self, client: AsyncClient, app, auth_headers, monkeypatch
     ):
         """A slow/failing notification channel must not break or block the
-        resolve request — delivery is scheduled fire-and-forget after commit.
+        resolve request - delivery is scheduled fire-and-forget after commit.
         """
         # Enable a connector that wants incident notifications so the resolve
         # transition actually reaches the delivery scheduler.
@@ -1995,7 +1995,7 @@ class TestIncidents:
 
         # Make the background delivery coroutine blow up. Because it is
         # scheduled (not awaited) in the request path, resolve must still
-        # succeed — proving delivery failure can't break incident resolve.
+        # succeed - proving delivery failure can't break incident resolve.
         import backend.bots.notifier as notifier
 
         async def _failing_delivery(*args, **kwargs):  # pragma: no cover
@@ -2463,7 +2463,7 @@ class TestIncidents:
         )
         other_id = other_incident.json()["id"]
 
-        # Seed session rows directly — this test only exercises the listing
+        # Seed session rows directly - this test only exercises the listing
         # endpoint, so we skip the start gates (ack + tier) and the background
         # workflows that POST /sessions would otherwise spawn.
         async with app.state.session_factory() as db:
@@ -2633,7 +2633,7 @@ class TestIncidents:
 
 
 class TestIncidentPostmortem:
-    """Sprint 61 Step 4 — GET / PUT /incidents/{id}/postmortem."""
+    """Sprint 61 Step 4 - GET / PUT /incidents/{id}/postmortem."""
 
     async def _create_incident(self, client: AsyncClient, auth_headers) -> str:
         service_id = await _create_manual_service_via_api(
@@ -2807,7 +2807,7 @@ class TestIncidentPostmortem:
 
 
 class TestIncidentComments:
-    """v1.2 Phase 4 — operator comments on incidents + timeline surfacing."""
+    """v1.2 Phase 4 - operator comments on incidents + timeline surfacing."""
 
     async def _create_incident(self, client: AsyncClient, auth_headers) -> str:
         service_id = await _create_manual_service_via_api(
@@ -2899,7 +2899,7 @@ class TestIncidentComments:
 
 
 class TestIncidentAutoStartPolicy:
-    """v1.1 — tier-driven AI session auto-start (T0 on create; T1/T2 on ACK)."""
+    """v1.1 - tier-driven AI session auto-start (T0 on create; T1/T2 on ACK)."""
 
     async def _seed_service(self, app, *, with_model: bool = True) -> str:
         from backend.db.repos import ServiceRepo, TeamRepo
@@ -2966,7 +2966,7 @@ class TestIncidentAutoStartPolicy:
         data = resp.json()
         assert data["resolved_tier"] == 0
         assert data["auto_start_status"] == "queued"
-        assert "auto-started under T0" in data["auto_start_message"]
+        assert "auto-started under Tier 0 (Autonomous)" in data["auto_start_message"]
         assert len(scheduled) == 1
 
     @pytest.mark.parametrize("tier", [1, 2])
@@ -2990,7 +2990,7 @@ class TestIncidentAutoStartPolicy:
         self, tier, client, app, auth_headers, monkeypatch
     ):
         # New model (ACK then separate Start): acknowledging takes ownership but
-        # does NOT auto-start the AI session — the operator starts it explicitly.
+        # does NOT auto-start the AI session - the operator starts it explicitly.
         service_id = await self._seed_service(app)
         await self._set_tier(client, auth_headers, tier)
         scheduled = self._capture_schedule(monkeypatch)
@@ -3065,7 +3065,7 @@ class TestIncidentAutoStartPolicy:
 
 
 class TestIncidentBulkActions:
-    """Sprint 50 — POST /incidents/bulk."""
+    """Sprint 50 - POST /incidents/bulk."""
 
     async def _operator_headers(self, app) -> dict[str, str]:
         from backend.api.auth import create_access_token
@@ -3713,7 +3713,7 @@ class TestSessions:
         resp = await client.get(f"/sessions/{uuid.uuid4()}", headers=auth_headers)
         assert resp.status_code == 404
 
-    # Sprint 59 Step 1 — GET /sessions powers the Operations Dashboard's
+    # Sprint 59 Step 1 - GET /sessions powers the Operations Dashboard's
     # Active sessions + Recent failures Attention Queue cards. Coverage
     # for the new route lives here.
     async def test_list_sessions_returns_all_for_org(
@@ -4020,7 +4020,7 @@ class TestConfig:
     async def test_get_config_exposes_public_base_url(
         self, client: AsyncClient, auth_headers
     ):
-        """v1 paging — /config surfaces the configured public base URL so the
+        """v1 paging - /config surfaces the configured public base URL so the
         frontend can render a service's full intake URL. The field is always
         present; it is null when OPSMENDER_PUBLIC_BASE_URL is unset (the browser
         then falls back to window.location.origin)."""
@@ -4034,7 +4034,7 @@ class TestConfig:
     async def test_get_config_exposes_simple_by_default_auth_flags(
         self, client: AsyncClient, auth_headers
     ):
-        """Sprint 64 Step 1 — surface the four auth visibility booleans.
+        """Sprint 64 Step 1 - surface the four auth visibility booleans.
 
         Default install has no SSO/SAML configured and no env flags set,
         so every value is False. The frontend's rule for showing
@@ -4052,7 +4052,7 @@ class TestConfig:
         self, client: AsyncClient, app, auth_headers
     ):
         """An org with a saved OIDC config keeps its settings visible
-        even when ``advanced_auth_enabled`` stays off — that's the
+        even when ``advanced_auth_enabled`` stays off - that's the
         explicit Sprint 64 rule so existing providers keep working."""
         from backend.db.repos import OrgSSOConfigRepo
 
@@ -4072,7 +4072,7 @@ class TestConfig:
         data = resp.json()
         assert data["sso_configured"] is True
         assert data["saml_configured"] is False
-        # Env flag stays off — the existing provider is what unlocks
+        # Env flag stays off - the existing provider is what unlocks
         # the UI; advanced_auth_enabled doesn't flip just because a
         # row exists.
         assert data["advanced_auth_enabled"] is False
@@ -4098,7 +4098,7 @@ class TestConfig:
 
 
 class TestIncidentMemoryAPI:
-    """Sprint 45 Step 6 — /memories CRUD + feedback + per-session memories-used."""
+    """Sprint 45 Step 6 - /memories CRUD + feedback + per-session memories-used."""
 
     async def _seed_service(self, app) -> uuid.UUID:
         _, service_id = await self._seed_team_service(app)
@@ -4524,7 +4524,7 @@ class TestIncidentMemoryAPI:
 
 
 class TestRetentionAPI:
-    """Sprint 53 — /retention status, config, and run."""
+    """Sprint 53 - /retention status, config, and run."""
 
     async def test_status_returns_defaults_for_fresh_org(
         self, client: AsyncClient, auth_headers
@@ -6327,7 +6327,7 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         assert "not linked" in resp.json()["text"]
 
-        # Approval must still be pending — no mutation occurred.
+        # Approval must still be pending - no mutation occurred.
         async with app.state.session_factory() as db:
             from backend.db.models import BotActionAudit
             from sqlalchemy import select
@@ -8025,7 +8025,7 @@ class TestApprovals:
         assert resp.status_code == 200
         assert resp.json()["status_counts"] == {"pending": 1}
 
-        # Counts are independent of the status filter — filtering to a status
+        # Counts are independent of the status filter - filtering to a status
         # with no items still reports the full pending tally.
         resp = await client.get("/approvals?status=rejected", headers=auth_headers)
         assert resp.json()["items"] == []
@@ -8228,7 +8228,7 @@ class TestResolveLLM:
 
 
 class TestIncidentCombine:
-    """v1.2 — Combine (merge) incidents."""
+    """v1.2 - Combine (merge) incidents."""
 
     async def _mk_incident(self, client, headers, service_id, title):
         resp = await client.post(
@@ -8909,7 +8909,7 @@ class TestVoiceAck:
         resp = await client.post(f"/paging/voice/ack/{token}", data={"Digits": "2"})
         assert resp.status_code == 200
         # No escalation chain on this incident, so it reports nobody to escalate
-        # to — but it took the escalate branch (not the ack/decline copy).
+        # to - but it took the escalate branch (not the ack/decline copy).
         assert "escalat" in resp.text.lower()
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)

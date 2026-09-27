@@ -127,7 +127,7 @@ async def verify_bot_framework_token(
 
     ``expected_audience`` must match the bot's app id (the
     ``bot_app_id`` field on the Teams connector). Raises
-    :class:`BotFrameworkAuthError` on any failure — including missing
+    :class:`BotFrameworkAuthError` on any failure - including missing
     header, malformed token, unknown signing key, audience/issuer
     mismatch, or expiry.
     """

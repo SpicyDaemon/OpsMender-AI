@@ -1,4 +1,4 @@
-"""Tests for Sprint 14 — External Incident Ingestion.
+"""Tests for Sprint 14 - External Incident Ingestion.
 
 Covers:
 - Ingest token CRUD (create, list, revoke, delete)
@@ -406,7 +406,7 @@ class TestIngestProviders:
 
 
 # ===========================================================================
-# Webhook — Authentication
+# Webhook - Authentication
 # ===========================================================================
 
 
@@ -461,7 +461,7 @@ class TestIngestAuth:
 
 
 # ===========================================================================
-# Webhook — Generic adapter
+# Webhook - Generic adapter
 # ===========================================================================
 
 
@@ -494,7 +494,7 @@ class TestIngestGeneric:
             "id": "cpu-spike-001",
         }
 
-        # First ingest — creates
+        # First ingest - creates
         resp1 = await client.post(
             "/incidents/ingest",
             json=payload,
@@ -503,7 +503,7 @@ class TestIngestGeneric:
         assert resp1.json()["dedup_action"] == "created"
         inc_id = resp1.json()["incident_id"]
 
-        # Second ingest — same fingerprint → skipped
+        # Second ingest - same fingerprint → skipped
         resp2 = await client.post(
             "/incidents/ingest",
             json=payload,
@@ -612,7 +612,7 @@ class TestIngestGeneric:
             primary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, primary_id)
             secondary = await IncidentRepo.get_by_id(db, TEST_ORG_ID, secondary_id)
             assert primary.status == "open"
-            # The secondary stays merged — it is never reopened or re-resolved.
+            # The secondary stays merged - it is never reopened or re-resolved.
             assert secondary.status == "merged"
             assert secondary.merged_into_incident_id == primary_id
             notes = await IncidentCommentRepo.list_for_incident(
@@ -1195,7 +1195,7 @@ class TestAlertNoiseIntelligence:
 
 
 # ===========================================================================
-# Webhook — CloudWatch adapter
+# Webhook - CloudWatch adapter
 # ===========================================================================
 
 
@@ -1281,7 +1281,7 @@ class TestIngestCloudWatch:
 
 
 # ===========================================================================
-# Webhook — Azure Monitor adapter
+# Webhook - Azure Monitor adapter
 # ===========================================================================
 
 
@@ -1374,7 +1374,7 @@ class TestIngestAuditLog:
             provider="azure_monitor",
             name="log-error-tok",
         )
-        # Azure adapter expects data.essentials — this will fail
+        # Azure adapter expects data.essentials - this will fail
         resp = await client.post(
             "/incidents/ingest",
             json={"bad": "payload"},
@@ -1470,7 +1470,7 @@ class TestAdaptersUnit:
 
 
 # ===========================================================================
-# Rate limiter — unit tests
+# Rate limiter - unit tests
 # ===========================================================================
 
 
@@ -1557,7 +1557,7 @@ class TestRateLimiterUnit:
 
 
 # ===========================================================================
-# Rate limiter — integration test via webhook
+# Rate limiter - integration test via webhook
 # ===========================================================================
 
 
@@ -1600,12 +1600,12 @@ class TestRateLimitIntegration:
 
 
 # ===========================================================================
-# Universal adapter — heuristic + LLM fallback + shape cache
+# Universal adapter - heuristic + LLM fallback + shape cache
 # ===========================================================================
 
 
 class TestUniversalAdapterUnit:
-    """Pure unit tests for the heuristic parser — no DB, no HTTP."""
+    """Pure unit tests for the heuristic parser - no DB, no HTTP."""
 
     def test_flat_standard_fields(self):
         from backend.ingest.adapters.universal import UniversalAdapter

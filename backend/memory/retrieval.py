@@ -1,4 +1,4 @@
-"""Sprint 45 Step 2 — session-aware memory retrieval.
+"""Sprint 45 Step 2 - session-aware memory retrieval.
 
 Wraps :class:`backend.db.repos.IncidentMemoryRepo` with the side effects the
 ``recall`` LangGraph node needs:
@@ -79,7 +79,7 @@ class MemoryRetrievalResult:
 def derive_query(incident: dict[str, Any] | None) -> str | None:
     """Pick a short, keyword-shaped query from an incident dict.
 
-    We use the incident title — it's short, operator-authored when manual, and
+    We use the incident title - it's short, operator-authored when manual, and
     alert-system-authored when ingested, so it's almost always the best
     signal. Description gets noisy fast for ingested incidents (raw JSON
     payloads); we keep it out of the query.
@@ -128,7 +128,7 @@ def format_memories_as_markdown(
         "",
         (
             "The following lessons were distilled from previous incidents on this "
-            "service. They are advisory context only — do not skip your own "
+            "service. They are advisory context only. Don't skip your own "
             "diagnosis, but use them to inform what you check first."
         ),
         "",
@@ -164,14 +164,14 @@ async def recall_for_session(
     ----------
     factory:
         Async session factory (``async_sessionmaker``). When ``None``, the
-        function returns an empty result — useful for CLI / test paths that
+        function returns an empty result - useful for CLI / test paths that
         run the graph without a DB.
     org_id, session_id:
         Active session's owning org and id. ``session_id`` must already exist
         in ``sessions`` so the ``incident_memory_recall_log`` FK can attach.
     service_id:
         Active incident's owning service. May be ``None`` for unbound
-        incidents — global memories will still surface.
+        incidents - global memories will still surface.
     incident:
         Same shape as ``IncidentContext`` in :mod:`backend.agent.state`.
     limit:
@@ -207,7 +207,7 @@ async def recall_for_session(
                 await IncidentMemoryRepo.touch_last_used(db, memory.id)
                 memory_ids.append(str(memory.id))
             await db.commit()
-    except Exception:  # pragma: no cover — memory must never break a session
+    except Exception:  # pragma: no cover - memory must never break a session
         logger.exception(
             "memory recall failed for session %s; continuing without memory",
             session_id,

@@ -20,7 +20,7 @@ async function chainState(h, id) {
 
 export default {
   id: "escalation_progression",
-  title: "Paging — escalation progression",
+  title: "Paging: escalation progression",
   async run(h) {
     if (!config.livePaging) {
       await h.step("escalation progression checks", async () => {

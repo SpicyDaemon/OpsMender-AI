@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Sprint 58 Step 2 — Tier capability summary.
+ * Sprint 58 Step 2 - Tier capability summary.
  *
  * The UX direction doc says: "Always show what the AI is allowed to do
  * and what it isn't." This is the smallest surface that satisfies that
- * commitment — a compact two-column card with what each tier permits
+ * commitment - a compact two-column card with what each tier permits
  * and what it doesn't. The current session's tier is highlighted
  * inline; the other tiers are visible but muted so operators can
  * always orient themselves against the full ladder.
@@ -72,7 +72,7 @@ const TIERS: TierDef[] = [
       "Diagnosis, planning, and recommendations",
     ],
     notAllowed: [
-      "Any write or remediation execution — humans perform every action",
+      "Any write or remediation execution: humans perform every action",
     ],
     tone: "low",
   },
@@ -103,7 +103,7 @@ export function TierCapabilitySummary({ tier, defaultCollapsed = false }: Props)
       data-testid="tier-capability-summary"
       className="mb-4 rounded-xl border border-border-subtle bg-bg-panel shadow-sm"
     >
-      {/* Headline row — always visible. */}
+      {/* Headline row - always visible. */}
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -117,7 +117,7 @@ export function TierCapabilitySummary({ tier, defaultCollapsed = false }: Props)
           </p>
           <p className="mt-0.5 truncate text-sm font-semibold text-fg-primary">
             {current
-              ? `Tier ${current.tier} · ${current.headline} — ${current.oneLiner}`
+              ? `Tier ${current.tier} · ${current.headline}: ${current.oneLiner}`
               : `Tier ${tier} (unknown)`}
           </p>
         </div>
@@ -129,7 +129,7 @@ export function TierCapabilitySummary({ tier, defaultCollapsed = false }: Props)
         />
       </button>
 
-      {/* Expanded body — full capability matrix. */}
+      {/* Expanded body - full capability matrix. */}
       {expanded && (
         <div className="border-t border-border-subtle px-4 py-4 sm:px-5 sm:py-5">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -207,7 +207,7 @@ export function TierCapabilitySummary({ tier, defaultCollapsed = false }: Props)
           <p className="mt-4 text-[11px] text-fg-muted">
             Tier is set per environment in <code className="font-mono">Config → Runtime defaults</code>. Tools are
             classified <em>safe</em> / <em>caution</em> / <em>destructive</em> by each MCP server&apos;s SKILL.md.
-            The tier gate is enforced programmatically — the agent cannot reason past it.
+            The tier gate is enforced in code, so the agent can&apos;t reason past it.
           </p>
         </div>
       )}

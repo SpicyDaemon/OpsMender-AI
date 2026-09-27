@@ -412,7 +412,7 @@ function IncidentDetailContent() {
                 <div className="min-w-0">
                   {/* Status/severity live in the sticky command strip above
                       (persistent on scroll); the session posture is in the
-                      "Session history" metric below — so the hero shows only
+                      "Session history" metric below - so the hero shows only
                       the alert source to avoid repeating the same pills. */}
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${source?.tone}`}>
@@ -653,12 +653,12 @@ function StartSessionModal({
             value={form.tier}
             onChange={(e) => setForm((f) => ({ ...f, tier: Number(e.target.value) }))}
           >
-            <option value={0}>Tier 0 — Autonomous</option>
-            <option value={1}>Tier 1 — Approval Required</option>
-            <option value={2}>Tier 2 — Advisory Only</option>
+            <option value={0}>Tier 0: Autonomous</option>
+            <option value={1}>Tier 1: Approval Required</option>
+            <option value={2}>Tier 2: Advisory Only</option>
           </Select>
           <p className="mt-1.5 text-xs text-fg-muted">
-            How much autonomy the AI has this session — separate from incident
+            How much autonomy the AI has this session. It&apos;s separate from incident
             priority and your role. Tier 2 (Advisory) is the default.
           </p>
           {form.tier === 0 && (
@@ -670,7 +670,7 @@ function StartSessionModal({
           )}
           {blockedOnAck && (
             <p className="mt-1.5 text-xs font-medium text-status-medium">
-              Acknowledge the incident first — Tier {form.tier} sessions can only
+              Acknowledge the incident first. Tier {form.tier} sessions can only
               be started after an operator acknowledges it.
             </p>
           )}

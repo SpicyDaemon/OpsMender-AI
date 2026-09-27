@@ -37,7 +37,7 @@ _ISO_RE = re.compile(
 _HEX_RE = re.compile(r"\b(?:0x)?[0-9a-f]{8,}\b", re.IGNORECASE)
 _DIGIT_RE = re.compile(r"\d+")
 # Matches the same language as `[a-z0-9][a-z0-9-]*\d+(\.…)*`, but without the
-# ambiguity between `[a-z0-9-]*` and a following `\d+` — both can consume the
+# ambiguity between `[a-z0-9-]*` and a following `\d+` - both can consume the
 # same digits, which made the engine try every split and backtrack
 # exponentially. A single trailing `\d` is equivalent (the leading class
 # already absorbs any earlier digits) and matches in linear time. Alert titles

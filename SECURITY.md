@@ -25,7 +25,7 @@ Include:
 ## What to expect
 
 - **Acknowledgement** within 5 business days of your report.
-- **Triage** within 10 business days — I will confirm whether I can reproduce and give an initial severity assessment.
+- **Triage** within 10 business days. I will confirm whether I can reproduce and give an initial severity assessment.
 - **Fix timeline** depends on severity:
   - Critical (remote code execution, auth bypass, credential exposure): patched as quickly as possible, typically within 7 days.
   - High (privilege escalation, data leakage with auth): patched in the next minor release.
@@ -54,9 +54,9 @@ OpsMender is meant to be deployed inside an organization's trusted network. The 
 
 - Administrators are trusted.
 - Operators and viewers are authenticated and authorized via the built-in JWT + role model.
-- The tier gate is the final guard against destructive actions — it is programmatic and cannot be bypassed by agent reasoning. Reports showing a way to bypass the tier gate are treated as critical.
+- The tier gate is the final guard against destructive actions. It is programmatic and cannot be bypassed by agent reasoning. Reports showing a way to bypass the tier gate are treated as critical.
 
-If you have questions about whether something is in scope, open an issue first — it's fine to ask.
+If you have questions about whether something is in scope, open an issue first. It's fine to ask.
 
 ## Supply-chain verification
 

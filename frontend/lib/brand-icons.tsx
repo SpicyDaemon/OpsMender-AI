@@ -187,7 +187,7 @@ const PROVIDER_ICONS: Record<string, Brand> = {
 
 function glyph(brand: Brand | undefined, fallback: IconComponent, size: number): ReactNode {
   const Icon = brand?.Icon ?? fallback;
-  // Brand glyphs are always decorative — the kind/platform/provider name is
+  // Brand glyphs are always decorative - the kind/platform/provider name is
   // rendered as adjacent text wherever these appear. react-icons emits
   // role="img" with no name (an axe svg-img-alt violation); hiding the svg
   // from the accessibility tree is the correct treatment.

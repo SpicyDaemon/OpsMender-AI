@@ -1,14 +1,14 @@
 ## ECS cluster + Fargate task definition + service + CloudWatch logs.
 ##
 ## The task definition references three flavors of config:
-##   1. extra_environment  — plain env vars (tier, log level, public URL).
-##   2. *_secret_arn       — secrets pulled by the execution role from
+##   1. extra_environment - plain env vars (tier, log level, public URL).
+##   2. *_secret_arn - secrets pulled by the execution role from
 ##                            Secrets Manager at task-start time.
-##   3. provider_secret_arns — same, one entry per LLM provider key.
+##   3. provider_secret_arns - same, one entry per LLM provider key.
 ##
 ## OpsMender's container entrypoint runs Alembic migrations on every
 ## task start. That's safe on Postgres but means a deploy briefly holds
-## the DB lock — for zero-downtime upgrades, run migrations out of band
+## the DB lock - for zero-downtime upgrades, run migrations out of band
 ## and override the entrypoint to skip them.
 
 resource "aws_cloudwatch_log_group" "this" {

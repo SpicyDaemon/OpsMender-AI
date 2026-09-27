@@ -1,4 +1,4 @@
-"""Priority routing stages — shared parsing for personal notification routing.
+"""Priority routing stages - shared parsing for personal notification routing.
 
 A priority's routing is an **ordered list of escalation stages**. Each stage
 targets a single notification channel and carries a delay (in seconds) after
@@ -9,14 +9,14 @@ Canonical (new) shape::
     {"P0": [{"channel_id": "telegram-ops", "delay_seconds": 300},
             {"channel_id": "sms-primary", "delay_seconds": 300}]}
 
-Legacy (pre-staging) shape — a flat list of channel keys::
+Legacy (pre-staging) shape - a flat list of channel keys::
 
     {"P0": ["slack_dm", "email"]}
 
 ``parse_stages`` accepts either and always returns a normalized list of
 ``Stage`` objects. Legacy entries become stages with ``delay_seconds == 0``
 (the first stage fires immediately; the rest follow with no extra wait),
-so existing preferences keep working with no data migration — "existing
+so existing preferences keep working with no data migration - "existing
 single-channel routing becomes Stage 1."
 
 ``channel_id`` is either a configured Notification Channel id (a
@@ -72,7 +72,7 @@ def parse_stages(
             channel_id = entry.strip()
             if not channel_id:
                 continue
-            # Legacy fan-out — no inter-stage delay.
+            # Legacy fan-out - no inter-stage delay.
             stages.append(Stage(channel_id=channel_id, delay_seconds=0))
         elif isinstance(entry, dict):
             channel_id = str(entry.get("channel_id") or "").strip()

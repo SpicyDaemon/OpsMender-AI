@@ -1,4 +1,4 @@
-"""Sprint 45 Step 8 — end-to-end memory loop tests.
+"""Sprint 45 Step 8 - end-to-end memory loop tests.
 
 Unit tests already cover each layer in isolation (repo, retrieval, recall
 node, writeback, remember node, REST API). This file covers the
@@ -54,7 +54,7 @@ class _SequenceLLM:
     def invoke(self, prompt: str) -> str:
         self.calls.append(prompt)
         if not self._responses:
-            return ""  # exhausted — treated as a parse failure by remember
+            return ""  # exhausted - treated as a parse failure by remember
         return self._responses.pop(0)
 
 
@@ -174,7 +174,7 @@ class TestEndToEndMemoryLoop:
 
         # ---- Session 1: produces memory ------------------------------------
         # LLM responses, in graph order:
-        #   recall  : (no LLM call — pure SQL)
+        #   recall  : (no LLM call - pure SQL)
         #   observe : free-form observations text (≥ 20 chars so
         #             should_remember accepts the session)
         #   diagnose: free-form diagnosis text
@@ -186,7 +186,7 @@ class TestEndToEndMemoryLoop:
             [
                 "Checkout endpoint returning 500s. Upstream timeouts visible in logs.",
                 "Root cause likely the payments service dropping idle connections.",
-                "[]",  # plan output — empty action list
+                "[]",  # plan output - empty action list
                 "Verification confirms the diagnosis.",
                 "Resolved by enabling keepalive on the upstream proxy.",
                 _VALID_REMEMBER_JSON,
@@ -257,7 +257,7 @@ class TestEndToEndMemoryLoop:
         assert "Payments-service" in result_2["memory_context"]
         assert result_2["recalled_memory_ids"] == [str(memorized_id_1)]
 
-        # The first LLM call (observe) saw the memory context — the
+        # The first LLM call (observe) saw the memory context - the
         # implementation prepends the block before the incident description.
         observe_prompt = llm2.calls[0]
         assert "Past lessons from similar incidents" in observe_prompt
@@ -288,11 +288,11 @@ class TestEndToEndMemoryLoop:
         # that didn't really land.
         llm = _SequenceLLM(
             [
-                "x",  # observe — trivial
-                "x",  # diagnose — trivial
+                "x",  # observe - trivial
+                "x",  # diagnose - trivial
                 "[]",  # plan
                 "x",  # verify
-                "x",  # summarize — trivial
+                "x",  # summarize - trivial
                 _VALID_REMEMBER_JSON,  # remember should NOT call this
             ]
         )

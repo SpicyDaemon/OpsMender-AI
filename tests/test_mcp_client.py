@@ -132,7 +132,7 @@ class TestResolveNodeCommand:
 
     def test_opsmender_node_path_missing_command_falls_to_path(self, tmp_path):
         """If OPSMENDER_NODE_PATH is set but doesn't contain the command, fall back to PATH."""
-        # Empty OPSMENDER_NODE_PATH dir — no npx there.
+        # Empty OPSMENDER_NODE_PATH dir - no npx there.
         env = {**os.environ, "OPSMENDER_NODE_PATH": str(tmp_path)}
         with patch.dict(os.environ, env, clear=True):
             with patch("shutil.which", return_value="/usr/local/bin/npx"):

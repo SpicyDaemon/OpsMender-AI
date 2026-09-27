@@ -16,7 +16,7 @@ Detector field                Audit schedule field
 ``org_id``                    ``org_id``
 ============================  =================================
 
-Analyzers always default to ``["environment-scan"]`` — the
+Analyzers always default to ``["environment-scan"]`` - the
 :class:`EnvironmentScanAnalyzer` is the closest analog to the legacy
 detector loop (read-only MCP + LLM verdict).
 
@@ -75,7 +75,7 @@ class MigrationPlan:
     focus_areas: list[str]
     interval_minutes: int
     is_active: bool
-    # Skip reason — set when we can't migrate this row (e.g. unresolvable
+    # Skip reason - set when we can't migrate this row (e.g. unresolvable
     # MCP server). UI prints these so the operator knows which rules
     # need manual attention.
     skip_reason: str | None = None
@@ -86,7 +86,7 @@ def _focus_areas_from_prompt(prompt: str) -> list[str]:
 
     Detector prompts tend to be free-form English; we take the first
     sentence and the first three bullet points (if any) and truncate
-    each to 80 characters. The resulting list is a hint to the LLM —
+    each to 80 characters. The resulting list is a hint to the LLM -
     operators can edit it after migration.
     """
 
@@ -109,7 +109,7 @@ def _focus_areas_from_prompt(prompt: str) -> list[str]:
 async def plan_migrations(db: AsyncSession) -> list[MigrationPlan]:
     """Build a migration plan for every detector rule on the server.
 
-    The function never writes — only reads. Operators inspect the
+    The function never writes - only reads. Operators inspect the
     output, then run ``apply_migrations`` (or the CLI ``--apply`` flag)
     to actually persist the new audit schedules.
     """

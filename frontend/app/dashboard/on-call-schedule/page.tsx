@@ -65,7 +65,7 @@ function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1);
 }
 
-// The Sunday on/before the 1st of the displayed month — top-left grid cell.
+// The Sunday on/before the 1st of the displayed month - top-left grid cell.
 function gridStart(month: Date): Date {
   const first = firstOfMonth(month);
   const back = first.getDay(); // 0 = Sunday
@@ -98,8 +98,8 @@ function statusShort(status: string): string {
 
 /**
  * The level's coverage window as a label, re-expressed in `displayTz` when it
- * differs from the roster's own zone — e.g. "09:00–17:00 UTC", or
- * "04:00–12:00 CDT" when viewing a UTC roster in US Central. A ⁺¹/⁻¹
+ * differs from the roster's own zone - e.g. "09:00-17:00 UTC", or
+ * "04:00-12:00 CDT" when viewing a UTC roster in US Central. A ⁺¹/⁻¹
  * superscript marks a start/end that lands on the next/previous day.
  */
 function shiftLabel(
@@ -113,7 +113,7 @@ function shiftLabel(
   const end = convertWallTime(dateIso, level.coverage_end, fromTz, displayTz);
   const mark = (d: number) => (d > 0 ? "⁺¹" : d < 0 ? "⁻¹" : "");
   const abbrev = tzAbbrev(displayTz, dateIso);
-  return `${start.time}${mark(start.dayShift)}–${end.time}${mark(
+  return `${start.time}${mark(start.dayShift)}-${end.time}${mark(
     end.dayShift,
   )}${abbrev ? ` ${abbrev}` : ""}`;
 }
@@ -173,7 +173,7 @@ function formatDayList(dates: string[]): string {
 export default function OnCallSchedulePage() {
   const { user } = useAuth();
   // Calendar edits (overrides + maintenance windows) are admin-only; everyone
-  // else — including operators and viewers — sees a read-only schedule.
+  // else - including operators and viewers - sees a read-only schedule.
   const canEdit = user?.role === "admin";
   const toast = useToast();
 
@@ -253,7 +253,7 @@ export default function OnCallSchedulePage() {
     void refresh();
   }, [refresh]);
 
-  // The selection refers to dates in the loaded window — drop it when the team
+  // The selection refers to dates in the loaded window - drop it when the team
   // or visible month changes.
   useEffect(() => {
     setSelected(new Set());
@@ -420,7 +420,7 @@ export default function OnCallSchedulePage() {
           with each level&apos;s shift in the roster&apos;s time zone.
           {canEdit
             ? " Click a person to replace who's on call; drag (or Ctrl-click) day backgrounds to schedule maintenance."
-            : " Read-only — calendar changes are admin-only."}
+            : " Read-only. Only admins can change the calendar."}
         </p>
       </div>
 
@@ -693,7 +693,7 @@ export default function OnCallSchedulePage() {
   );
 }
 
-/** One level chip: "L1 · on-call" over "09:00–17:00 EDT". Roster-backed levels
+/** One level chip: "L1 · on-call" over "09:00-17:00 EDT". Roster-backed levels
  * are clickable (admin) to replace who's on call. */
 function LevelChip({
   chainName,
@@ -710,7 +710,7 @@ function LevelChip({
   canEdit: boolean;
   onOverride: (chainName: string, level: EscalationCalendarLevel) => void;
 }) {
-  const name = level.resolved_user_name || statusShort(level.status) || "—";
+  const name = level.resolved_user_name || statusShort(level.status) || "Nobody";
   const shift = shiftLabel(level, dateIso, displayTz);
   // Only roster-backed levels can be reassigned via an override; direct
   // user-target levels are fixed by the chain definition.
@@ -734,7 +734,7 @@ function LevelChip({
   )}`;
   const title = `${chainName} · Level ${level.level} · ${name}${
     shift ? ` · ${shift}` : ""
-  }${overridable ? " — click to replace who's on call" : ""}`;
+  }${overridable ? ". Click to replace who's on call." : ""}`;
 
   if (!overridable) {
     return (
@@ -864,7 +864,7 @@ function DayDetailModal({
     <Modal
       open
       onClose={onClose}
-      title={`${teamName ? `${teamName} — ` : ""}${dateLabel}`}
+      title={`${teamName ? `${teamName} · ` : ""}${dateLabel}`}
       maxWidth="max-w-2xl"
     >
       <div className="space-y-4">
@@ -914,7 +914,7 @@ function DayMaintenanceAction({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [mwName, setMwName] = useState(`Maintenance — ${day.date}`);
+  const [mwName, setMwName] = useState(`Maintenance ${day.date}`);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -995,7 +995,7 @@ function ChainBlock({
       </div>
       {chain.levels.length === 0 ? (
         <div className="px-3 py-2 text-sm text-fg-muted">
-          No levels — this chain pages no one.
+          No levels, so this chain pages no one.
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle">
@@ -1014,7 +1014,7 @@ function ChainBlock({
                     level.resolved_user_id,
                   )}`}
                 >
-                  {level.resolved_user_name || statusShort(level.status) || "—"}
+                  {level.resolved_user_name || statusShort(level.status) || "Nobody"}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                   {level.resolved_user_email ?? level.target_name}
@@ -1074,7 +1074,7 @@ function OverrideLevelModal({
     () => rangeDates(date, through).length,
     [date, through],
   );
-  // Exclude the person already on call from the replacement list — you're
+  // Exclude the person already on call from the replacement list - you're
   // replacing them.
   const replacementOptions = useMemo(
     () => memberOptions.filter((o) => o.value !== level.resolved_user_id),
@@ -1200,7 +1200,7 @@ function BulkMaintenanceModal({
   const toast = useToast();
   const runs = useMemo(() => contiguousRuns(dates), [dates]);
   const [name, setName] = useState(
-    `Maintenance — ${dates[0]}${dates.length > 1 ? ` → ${dates[dates.length - 1]}` : ""}`,
+    `Maintenance ${dates[0]}${dates.length > 1 ? ` to ${dates[dates.length - 1]}` : ""}`,
   );
   const [busy, setBusy] = useState(false);
 
@@ -1237,7 +1237,7 @@ function BulkMaintenanceModal({
     <Modal
       open
       onClose={onClose}
-      title={`Maintenance window — ${dates.length} day${dates.length === 1 ? "" : "s"}`}
+      title={`Maintenance window (${dates.length} day${dates.length === 1 ? "" : "s"})`}
       maxWidth="max-w-lg"
     >
       <div className="space-y-3">
@@ -1255,7 +1255,7 @@ function BulkMaintenanceModal({
         </div>
         {runs.length > 1 && (
           <p className="text-[11px] text-fg-muted">
-            The selection is non-contiguous — {runs.length} separate windows
+            The selection isn&apos;t contiguous, so {runs.length} separate windows
             will be created, one per run of days.
           </p>
         )}

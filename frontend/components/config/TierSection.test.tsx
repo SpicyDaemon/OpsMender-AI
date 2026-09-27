@@ -1,5 +1,5 @@
 /**
- * Default AI Autonomy Tier control — 3-tier labels (no Tier 3), default Tier 2,
+ * Default AI Autonomy Tier control - 3-tier labels (no Tier 3), default Tier 2,
  * and the Tier 0 red warning.
  */
 
@@ -22,9 +22,9 @@ describe("Default AI Autonomy Tier control", () => {
   it("offers Tier 0/1/2 with new labels and no Tier 3", () => {
     render(<TierSection config={CONFIG} onSaved={async () => {}} canEdit />);
     expect(screen.getByText("Default AI Autonomy Tier")).toBeTruthy();
-    expect(screen.getByText("Tier 0 — Autonomous")).toBeTruthy();
-    expect(screen.getByText("Tier 1 — Approval Required")).toBeTruthy();
-    expect(screen.getByText("Tier 2 — Advisory Only")).toBeTruthy();
+    expect(screen.getByText("Tier 0: Autonomous")).toBeTruthy();
+    expect(screen.getByText("Tier 1: Approval Required")).toBeTruthy();
+    expect(screen.getByText("Tier 2: Advisory Only")).toBeTruthy();
     expect(screen.queryByText(/Tier 3/)).toBeNull();
     expect(screen.queryByText(/Advise-only/i)).toBeNull();
   });

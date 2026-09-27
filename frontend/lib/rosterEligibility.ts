@@ -33,7 +33,7 @@ export function eligibleRosterMemberOptions(
     }));
 }
 
-// Keep only the selected members who belong to the (new) team — used to
+// Keep only the selected members who belong to the (new) team - used to
 // reconcile the picker when the team changes.
 export function keepRosterMembersOnTeam(
   selected: string[],

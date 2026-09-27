@@ -301,7 +301,7 @@ async def test_model_config(
     """Actually exercise a saved model config: build the provider from its
     stored settings and send a tiny prompt. Surfaces real failures (bad
     base_url, missing API key, wrong model id, unreachable endpoint) that
-    config validation can only warn about. Read-only — never mutates the config.
+    config validation can only warn about. Read-only - never mutates the config.
     """
     cfg = await ModelConfigRepo.get_by_id(db, org_id, config_id)
     if cfg is None:
@@ -331,11 +331,11 @@ async def test_model_config(
         return ModelConfigTestResponse(
             ok=False,
             error=(
-                f"No response within {int(_MODEL_TEST_TIMEOUT_SECONDS)}s — the "
+                f"No response within {int(_MODEL_TEST_TIMEOUT_SECONDS)}s. The "
                 "provider endpoint may be unreachable or overloaded."
             ),
         )
-    except Exception as exc:  # noqa: BLE001 — surface any provider error to the operator
+    except Exception as exc:  # noqa: BLE001 - surface any provider error to the operator
         return ModelConfigTestResponse(ok=False, error=str(exc))
 
     latency_ms = int((time.monotonic() - start) * 1000)

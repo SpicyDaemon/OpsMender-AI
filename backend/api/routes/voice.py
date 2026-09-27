@@ -1,4 +1,4 @@
-"""Twilio Programmable Voice — acknowledge a phone page from the keypad (DTMF).
+"""Twilio Programmable Voice - acknowledge a phone page from the keypad (DTMF).
 
 A voice page speaks the incident and then ``<Gather>``s a single digit. Pressing
 ``1`` POSTs back here with a short-lived signed token identifying the incident +
@@ -6,7 +6,7 @@ responder, and the incident is acknowledged (a self-ack assignment, same as the
 "acknowledge the page" button in the UI).
 
 The token is the bearer credential: unguessable, single-purpose, and expiring,
-so the endpoint needs no session auth — Twilio cannot present one. Only
+so the endpoint needs no session auth - Twilio cannot present one. Only
 OpsMender (holding the JWT secret) can mint a valid token, and it is scoped to
 exactly one incident + responder for a short window.
 """

@@ -1,4 +1,4 @@
-"""Sprint 53 — data retention & garbage collection tests.
+"""Sprint 53 - data retention & garbage collection tests.
 
 Covers:
 - `RetentionConfigRepo`: upsert + per-category effective TTL + default fallback.

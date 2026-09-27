@@ -1,11 +1,11 @@
 """Automatic incident-comment timeline (v2 Phase 4).
 
-Lifecycle actions — acknowledge / resolve / escalate / AI-session started/ended —
+Lifecycle actions - acknowledge / resolve / escalate / AI-session started/ended -
 record an incident comment with source ``lifecycle`` so the incident timeline
 reads as one human-legible narrative regardless of where the action originated
 (web UI, chat, slash command, or the AI session runner).
 
-These comments are advisory context only — like operator notes, they never affect
+These comments are advisory context only - like operator notes, they never affect
 enforcement or the AI workflow. They are written inside the caller's existing
 transaction so they commit atomically with the action they describe.
 """

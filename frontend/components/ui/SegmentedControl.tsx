@@ -14,7 +14,7 @@ interface SegmentedControlProps<V extends string> {
 }
 
 /**
- * A connected, mutually-exclusive "pick one view" control — for filtering a
+ * A connected, mutually-exclusive "pick one view" control - for filtering a
  * single list by a small fixed set of options (unlike loose `FilterChips`,
  * which read as multi-select facets, and unlike navigation tabs, which change
  * the page). Optional per-option counts turn the filter into a glance-able

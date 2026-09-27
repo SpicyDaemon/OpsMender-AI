@@ -7,7 +7,7 @@ import { config } from "../lib/config.mjs";
 
 export default {
   id: "notifications",
-  title: "Paging — notifications",
+  title: "Paging: notifications",
   async run(h) {
     await h.step("notifications page loads", async () => {
       // Newer builds use /paging/notifications; older expose notification-channels.

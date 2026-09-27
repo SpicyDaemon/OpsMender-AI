@@ -23,7 +23,7 @@ jobs:
   # -------------------------------------------------------------------------
   # Cross-platform PyInstaller binaries (Linux x64, Windows x64)
   # Each archive ships with a matching .sha256 file.
-  # macOS is intentionally skipped — GitHub-hosted macOS runners are slow
+  # macOS is intentionally skipped - GitHub-hosted macOS runners are slow
   # and queue-prone; re-add a `macos-*` matrix entry when there's a real
   # operator ask.
   # -------------------------------------------------------------------------
@@ -137,7 +137,7 @@ jobs:
 
   # -------------------------------------------------------------------------
   # Source tarball + GitHub Release
-  # Depends only on the binary job — Docker is decoupled, so a Docker
+  # Depends only on the binary job - Docker is decoupled, so a Docker
   # failure does not block publishing the release assets.
   # -------------------------------------------------------------------------
   release:

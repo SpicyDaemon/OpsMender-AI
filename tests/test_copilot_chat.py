@@ -1,12 +1,12 @@
-"""Tests for Sprint 12 Feature 4 — Co-pilot Chat.
+"""Tests for Sprint 12 Feature 4 - Co-pilot Chat.
 
 Covers:
 
-* ``SessionMessageRepo`` — create/list/pending/mark_consumed.
-* ``POST /sessions`` — ``initial_briefing`` seeds a user message.
-* ``POST /sessions/{id}/messages`` — RBAC + payload shape + DB persistence.
-* ``GET  /sessions/{id}/messages`` — list endpoint.
-* ``backend.chat.responder.respond_to_user_message`` — builds prompt,
+* ``SessionMessageRepo`` - create/list/pending/mark_consumed.
+* ``POST /sessions`` - ``initial_briefing`` seeds a user message.
+* ``POST /sessions/{id}/messages`` - RBAC + payload shape + DB persistence.
+* ``GET  /sessions/{id}/messages`` - list endpoint.
+* ``backend.chat.responder.respond_to_user_message`` - builds prompt,
   writes assistant reply, publishes WS events (verified via a recording
   ``publish``).
 """
@@ -147,7 +147,7 @@ def _stub_publish(monkeypatch):
         calls.append((session_id, message.model_dump()))
 
     monkeypatch.setattr(ws_module, "publish", _recording_publish)
-    # sessions.py and responder.py import publish directly — patch those too.
+    # sessions.py and responder.py import publish directly - patch those too.
     import backend.api.routes.sessions as sessions_module
     import backend.chat.responder as responder_module
 
@@ -365,7 +365,7 @@ class TestChatRoutes:
     async def test_viewer_cannot_read_chat(
         self, client: AsyncClient, admin_headers, viewer_headers
     ):
-        # Co-pilot chat is AI session content — Viewers are forbidden (Part 1).
+        # Co-pilot chat is AI session content - Viewers are forbidden (Part 1).
         create = await client.post("/sessions", json={"tier": 2}, headers=admin_headers)
         session_id = create.json()["id"]
         await client.post(

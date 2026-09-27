@@ -1,10 +1,10 @@
 """Session endpoints.
 
-POST /sessions                      — start a new incident response session
-GET  /sessions/{id}                 — get session details
-GET  /sessions/{id}/messages        — list co-pilot chat messages
-POST /sessions/{id}/messages        — append a user message + fire async reply
-POST /sessions/{id}/rollback        — replay compensating inverses (Sprint 17)
+POST /sessions - start a new incident response session
+GET  /sessions/{id} - get session details
+GET  /sessions/{id}/messages - list co-pilot chat messages
+POST /sessions/{id}/messages - append a user message + fire async reply
+POST /sessions/{id}/rollback - replay compensating inverses (Sprint 17)
 """
 
 from __future__ import annotations
@@ -418,7 +418,7 @@ async def purge_session_queue(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    """v2 queue admin — cancel all queued sessions at once."""
+    """v2 queue admin - cancel all queued sessions at once."""
     count = await SessionRepo.purge_queue(
         db, org_id, reason=f"Queue purged by {user.username}"
     )
@@ -607,7 +607,7 @@ async def switch_session_model(
 
 
 # ---------------------------------------------------------------------------
-# Intercept — Stop / Override a running session (admin or operator)
+# Intercept - Stop / Override a running session (admin or operator)
 # ---------------------------------------------------------------------------
 
 _RUNNING_STATUSES = {"active", "awaiting_approval"}
@@ -641,7 +641,7 @@ async def stop_session(
 ):
     """Hard-abort a live AI session. The AI stops immediately and the operator
     takes over manually elsewhere. An in-flight tool call may still complete
-    server-side — use the Tier 0 auto-rollback / manual rollback paths if it
+    server-side - use the Tier 0 auto-rollback / manual rollback paths if it
     must be reverted."""
     session = await SessionRepo.get_by_id(db, org_id, session_id)
     if session is None:
@@ -716,7 +716,7 @@ async def override_session(
     """Stop the AI's current autonomy and continue the *same* session under
     operator control at a less-autonomous tier (convert in place).
 
-    The session row is reused — its tier flips to the chosen Tier 1 (Approval
+    The session row is reused - its tier flips to the chosen Tier 1 (Approval
     Required) or Tier 2 (Advisory Only) and the workflow is re-run under
     operator supervision. Override can only *reduce* autonomy, so the target
     tier must be strictly less autonomous than the current tier (a larger tier
@@ -750,7 +750,7 @@ async def override_session(
     await SessionRepo.set_status(db, org_id, session_id, status="active")
     session.tier = target_tier
 
-    # A human is now in control — record them as the incident assignee so the
+    # A human is now in control - record them as the incident assignee so the
     # incident is acknowledged/owned (mirrors the Tier 1/2 ack-then-start gate).
     if session.incident_id is not None:
         from backend.paging.escalation import acknowledge
@@ -872,7 +872,7 @@ async def create_session_message(
         ),
     )
 
-    # Fire the assistant reply in the background — the route returns
+    # Fire the assistant reply in the background - the route returns
     # immediately so the UI can optimistically render the user bubble.
     factory = get_current_session_factory()
     asyncio.create_task(
@@ -888,7 +888,7 @@ async def create_session_message(
 
 
 # ---------------------------------------------------------------------------
-# Rollback (Sprint 17 — Tier 0 sandbox)
+# Rollback (Sprint 17 - Tier 0 sandbox)
 # ---------------------------------------------------------------------------
 
 
@@ -945,7 +945,7 @@ async def rollback_session(
     if skill_row is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="No skill definition available — cannot resolve compensating inverses",
+            detail="No skill definition available, so compensating inverses can't be resolved",
         )
     skill_def = load_skill_def(skill_row.content_md)
 
@@ -982,7 +982,7 @@ async def rollback_session(
             ],
         )
 
-    # -- Live rollback: spawn an MCP session + use the Tier 0 sandbox --
+    # - Live rollback: spawn an MCP session + use the Tier 0 sandbox --
     logger = PgAuditLogger(db, org_id)
     async with pool.connect(org_id, body.mcp_server) as mcp_session:
         tools = await mcp_list_tools(mcp_session)

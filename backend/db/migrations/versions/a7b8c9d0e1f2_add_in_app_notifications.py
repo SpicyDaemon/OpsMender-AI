@@ -3,7 +3,7 @@
 Backs the v1.2 notification bell: each row is a per-(org, user) record of a
 lifecycle event (assignment, paging, approval, incident state change, AI
 session, @mention, reliability, account). ``read_at`` drives the unread
-badge. No data migration — the center starts empty and fills as events fire.
+badge. No data migration - the center starts empty and fills as events fire.
 """
 
 from __future__ import annotations

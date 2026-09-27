@@ -1,4 +1,4 @@
-"""AI Autonomy 3-tier model — enforcement, normalization, and skill assignment.
+"""AI Autonomy 3-tier model - enforcement, normalization, and skill assignment.
 
 Covers the safety-critical behaviours of the tier rework:
   - Tier 2 (advisory) is the default and blocks all remediation.
@@ -79,9 +79,9 @@ def test_template_parses_and_classifies():
     assert sd_loaded.classify("restart_deployment") == "caution"
     # The template advertises the 3-tier sections.
     md = build_skill_template()
-    assert "Tier 0 — Autonomous" in md
-    assert "Tier 1 — Approval Required" in md
-    assert "Tier 2 — Advisory Only" in md
+    assert "Tier 0: Autonomous" in md
+    assert "Tier 1: Approval Required" in md
+    assert "Tier 2: Advisory Only" in md
     assert "No actions allowed. Advisory mode only." in md
 
 

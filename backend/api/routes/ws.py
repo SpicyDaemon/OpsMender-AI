@@ -6,11 +6,11 @@ Authenticates via ``?token=<JWT>`` query parameter (WebSocket does not
 support Authorization headers on connect).
 
 Sends JSON messages to the client as events occur:
-- ``node_transition`` — workflow node changed
-- ``tool_call``       — MCP tool call started/completed/blocked
-- ``approval_requested`` / ``approval_resolved`` — Tier 1 approval lifecycle
-- ``session_end``     — session finished
-- ``error``           — something went wrong
+- ``node_transition`` - workflow node changed
+- ``tool_call`` - MCP tool call started/completed/blocked
+- ``approval_requested`` / ``approval_resolved`` - Tier 1 approval lifecycle
+- ``session_end`` - session finished
+- ``error`` - something went wrong
 
 This sprint establishes the WebSocket plumbing.  Actual workflow event
 publishing is integrated in Sprint 9+ once the session runner is
@@ -62,7 +62,7 @@ async def publish(session_id: uuid.UUID, message: WSMessage) -> None:
 
 
 # ---------------------------------------------------------------------------
-# In-memory channel registry (per user) — powers the notification bell
+# In-memory channel registry (per user) - powers the notification bell
 # ---------------------------------------------------------------------------
 
 _user_channels: dict[uuid.UUID, set[asyncio.Queue]] = {}
@@ -88,7 +88,7 @@ async def publish_user(user_id: uuid.UUID, message: WSMessage) -> None:
     """Broadcast a message to every live connection of *user_id*.
 
     Best-effort and in-memory: if the user has no open tab the message is
-    simply dropped — the persisted notification still shows on next load.
+    simply dropped - the persisted notification still shows on next load.
     """
     subs = _user_channels.get(user_id, set())
     for q in subs:

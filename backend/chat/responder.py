@@ -9,6 +9,7 @@ from typing import Callable
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from backend.agent.writing_style import PLAIN_WRITING
 from backend.api.routes.ws import publish
 from backend.api.schemas import WSMessage
 from backend.bots.notifier import schedule_copilot_relay
@@ -29,7 +30,8 @@ class ChatResponderError(Exception):
     """Raised when the chat responder can't produce a reply."""
 
 
-_SYSTEM_PROMPT = """You are the OpsMender AI co-pilot, running alongside \
+_SYSTEM_PROMPT = (
+    """You are the OpsMender AI co-pilot, running alongside \
 an automated incident response workflow. Your job is to help the on-call \
 engineer understand the incident, answer questions, and accept additional \
 context they share. Be concise, specific, and grounded in the data provided.
@@ -38,7 +40,10 @@ You do NOT execute tools from this chat. Tool execution happens in the \
 workflow under strict tier/skill enforcement. If the user asks you to run \
 something destructive, explain that it goes through the workflow and any \
 tier-1 actions require human approval.
+
 """
+    + PLAIN_WRITING
+)
 
 
 def _build_prompt(

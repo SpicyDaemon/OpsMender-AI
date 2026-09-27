@@ -22,7 +22,7 @@ OpsMender is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL
    ```
 3. Verify the services are running:
    - Backend API: `http://localhost:8000/health`
-   - Interactive API docs: `http://localhost:8000/docs` (development only —
+   - Interactive API docs: `http://localhost:8000/docs` (development only,
      disabled in production unless `OPSMENDER_ENABLE_API_DOCS=true`)
    - Frontend Dashboard: `http://localhost:3000`
 

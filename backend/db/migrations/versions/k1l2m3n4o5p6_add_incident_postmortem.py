@@ -1,6 +1,6 @@
 """Add postmortem_md + postmortem_updated_at to incidents.
 
-Sprint 61 Step 4 — postmortem authoring surface. A single markdown column
+Sprint 61 Step 4 - postmortem authoring surface. A single markdown column
 holds the operator-authored postmortem; a separate updated_at column
 lets the UI show "last edited" without conflating it with the incident's
 own updated_at clock.

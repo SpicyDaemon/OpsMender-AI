@@ -1,4 +1,4 @@
-"""Tests for Slack / Discord OAuth flow on bot connectors (Sprint 31 Steps 5–6).
+"""Tests for Slack / Discord OAuth flow on bot connectors (Sprint 31 Steps 5-6).
 
 We test the surface OpsMender owns:
 - AppConfig env wiring + per-platform is_enabled gate.
@@ -6,7 +6,7 @@ We test the surface OpsMender owns:
 - Authorize URL builder shape.
 - Route guards: 404 unknown platform, 503 OAuth disabled, 400 platform
   mismatch, callback handling of state errors / provider errors.
-- Code exchange — Slack & Discord — with httpx mocked.
+- Code exchange - Slack & Discord - with httpx mocked.
 
 Hitting the real Slack/Discord token endpoints is left to an
 integration suite (would need network + valid client credentials).
@@ -544,7 +544,7 @@ def test_supported_platforms_constant():
 
 
 # ---------------------------------------------------------------------------
-# Phase E — Notification Channel testing (structured checks + live send)
+# Phase E - Notification Channel testing (structured checks + live send)
 # ---------------------------------------------------------------------------
 
 

@@ -1,9 +1,9 @@
-## Task EXECUTION role — used by Fargate itself to pull the image, write
+## Task EXECUTION role - used by Fargate itself to pull the image, write
 ## logs, and fetch the secrets referenced in the task definition.
 ##
 ## This is distinct from the task ROLE (below), which is the identity the
 ## OpsMender process inside the container assumes at runtime. Keep the
-## task role minimal — OpsMender operates on infrastructure through MCP
+## task role minimal - OpsMender operates on infrastructure through MCP
 ## servers, not directly through the task's AWS credentials.
 
 data "aws_iam_policy_document" "ecs_tasks_assume" {
@@ -47,9 +47,9 @@ resource "aws_iam_role_policy" "execution_secrets" {
   policy = data.aws_iam_policy_document.execution_secrets.json
 }
 
-## Task RUNTIME role — assumed by the OpsMender process at runtime.
+## Task RUNTIME role - assumed by the OpsMender process at runtime.
 ## Empty by default; attach a managed/inline policy if your MCP servers
-## need to call AWS APIs from inside the task (uncommon — most MCP
+## need to call AWS APIs from inside the task (uncommon - most MCP
 ## servers run as separate processes the task connects out to).
 
 resource "aws_iam_role" "task" {

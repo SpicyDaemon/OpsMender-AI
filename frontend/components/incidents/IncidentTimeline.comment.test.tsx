@@ -1,5 +1,5 @@
 /**
- * Incident timeline — v1.2 Phase 4 comments + notification history.
+ * Incident timeline - v1.2 Phase 4 comments + notification history.
  */
 
 import React from "react";

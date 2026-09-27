@@ -1,4 +1,4 @@
-"""Adapter registry — maps platform key -> adapter instance."""
+"""Adapter registry - maps platform key -> adapter instance."""
 
 from __future__ import annotations
 

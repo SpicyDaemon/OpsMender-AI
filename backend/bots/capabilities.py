@@ -1,8 +1,8 @@
 """Shared Notification Channel capability model.
 
 This module is the single source of truth for *what each chat/notification
-platform can actually do*. It exists so OpsMender can be honest — in the UI,
-in the API, and in delivery routing — about which channels can render a rich
+platform can actually do*. It exists so OpsMender can be honest - in the UI,
+in the API, and in delivery routing - about which channels can render a rich
 incident card, which can host secure interactive responder actions, and which
 can only receive a plain delivery-only message.
 
@@ -10,7 +10,7 @@ Capability flags
 ----------------
 ``delivery``
     The platform can receive an outbound incident message at all. True for
-    every supported platform — this is the floor.
+    every supported platform - this is the floor.
 ``incident_card``
     The platform/adapter can render a structured, multi-field incident card
     (rich formatting / blocks) rather than a single plain-text line.
@@ -23,7 +23,7 @@ Capability flags
     (Acknowledge / Resolve / Escalate / Start AI Session) whose callbacks are
     authenticated (signed token or platform signature verification).
 
-    IMPORTANT — honesty guardrail: this is enabled only for platforms with a
+    IMPORTANT - honesty guardrail: this is enabled only for platforms with a
     registered verifier and mounted interaction route. Each channel must opt in
     before buttons render; every click is cryptographically verified before
     execution.
@@ -123,7 +123,7 @@ def _cap(
 # Single source of truth. Display names are user-friendly and must match the
 # frontend platform labels. Twilio is shown as "Twilio (SMS)" per product spec.
 PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
-    # Rich chat platforms — can render an incident card and post to channels.
+    # Rich chat platforms - can render an incident card and post to channels.
     "slack": _cap(
         "slack",
         "Slack",
@@ -197,7 +197,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
     "wecom": _cap(
         "wecom", "WeCom", incident_card=True, direct_message=True, shared_channel=True
     ),
-    # Delivery-only platforms — plain message + authenticated incident link.
+    # Delivery-only platforms - plain message + authenticated incident link.
     "whatsapp": _cap("whatsapp", "WhatsApp", direct_message=True),
     "signal": _cap("signal", "Signal", direct_message=True, shared_channel=True),
     "twilio": _cap("twilio", "Twilio (SMS)", direct_message=True, voice_call=True),
@@ -284,7 +284,7 @@ def supports_voice_call(platform: str) -> bool:
 def is_delivery_only(platform: str) -> bool:
     """True when the platform can only receive a plain delivery message.
 
-    Unknown platforms are treated as delivery-only — the safe default that
+    Unknown platforms are treated as delivery-only - the safe default that
     never over-promises rich/interactive support.
     """
     caps = PLATFORM_CAPABILITIES.get(platform)

@@ -1,5 +1,5 @@
 /**
- * TopBar account dropdown — structure, theme selector, and top-layer behavior.
+ * TopBar account dropdown - structure, theme selector, and top-layer behavior.
  *
  * Regression coverage for the v1 QA bug where the account dropdown rendered
  * behind page controls (missing z-index) and the theme row clipped.

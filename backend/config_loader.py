@@ -18,7 +18,7 @@ DEFAULT_LOCAL_POSTGRES_URL = (
 )
 DEFAULT_LOCAL_SQLITE_URL = "sqlite+aiosqlite:///./opsmender-local.db"
 
-# Sprint 43 P0 #4 — default JWT secrets that MUST be replaced before a
+# Sprint 43 P0 #4 - default JWT secrets that MUST be replaced before a
 # production deployment. The startup guard refuses to start the API
 # when any of these is in effect unless OPSMENDER_DEPLOYMENT_MODE is
 # explicitly set to "development".
@@ -111,7 +111,7 @@ def check_production_safety(config: "AppConfig") -> None:
         raise InsecureProductionConfigError(
             "OPSMENDER_JWT_SECRET is still the default placeholder "
             f"({secret!r}). Set a strong value before starting the API in "
-            "production — e.g. `openssl rand -hex 32` — or set "
+            "production (e.g. `openssl rand -hex 32`), or set "
             "OPSMENDER_ENVIRONMENT=development for local dev."
         )
 
@@ -394,7 +394,7 @@ class SAMLConfig:
 @dataclasses.dataclass
 class BotOAuthConfig:
     """Shared OAuth client credentials for bot-connector "Connect to …"
-    flows (Sprint 31 Step 5–6).
+    flows (Sprint 31 Step 5-6).
 
     Like the SAML SP keypair, these are global secrets supplied at deploy
     time and never persisted in the DB. A platform is treated as
@@ -424,14 +424,14 @@ class CorsConfig:
 
 @dataclasses.dataclass
 class PeopleConfig:
-    """Sprint 56 — user-management surface.
+    """Sprint 56 - user-management surface.
 
     `bootstrap_admin_email` + `bootstrap_admin_password` create the first
     admin when the users table is empty. Both must be set together; if
     either is missing or the table already has rows, bootstrap is a no-op.
 
     `advanced_auth_enabled` (Sprint 64) gates the SSO + SAML admin
-    settings UI. It is **purely a visibility flag** — the SSO/SAML
+    settings UI. It is **purely a visibility flag** - the SSO/SAML
     runtime routes (`/auth/sso/...`, `/auth/saml/...`) keep working
     regardless, and an org with an already-configured provider still
     surfaces its settings even when the flag is off. Frontend rule:
@@ -458,7 +458,7 @@ class SMTPConfig:
     """Best-effort outbound email for invites + password resets (Sprint 56).
 
     SMTP is treated as **configured** when `host` and `from_address` are
-    both set. Failures during send are logged but never raise — the
+    both set. Failures during send are logged but never raise - the
     copy-paste URL returned by the route is always the source of truth.
     """
 

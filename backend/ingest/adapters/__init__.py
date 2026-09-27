@@ -1,1 +1,1 @@
-"""Provider adapter package — one module per external alerting source."""
+"""Provider adapter package - one module per external alerting source."""

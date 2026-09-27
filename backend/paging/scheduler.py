@@ -1,7 +1,7 @@
 """Background scheduler for escalation chains (Sprint 34).
 
 Wakes up every ``poll_interval_seconds`` (default 10s), opens a session, and
-calls :func:`backend.paging.escalation.tick_all_due`. Idempotent — chain
+calls :func:`backend.paging.escalation.tick_all_due`. Idempotent - chain
 state transitions are guarded by the ``status`` column, so restart-safe.
 """
 

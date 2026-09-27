@@ -23,9 +23,9 @@ dataclass returned by ``import_from_claude``) so a future
 ``opsmender mcp import`` subcommand can hand them off to
 ``MCPServerRepo.create``.
 
-The Codex-specific knobs that don't map onto OpsMender's schema —
+The Codex-specific knobs that don't map onto OpsMender's schema -
 ``startup_timeout_sec``, ``tool_timeout_sec``, ``enabled_tools``,
-``default_tools_approval_mode`` — are not propagated; callers can
+``default_tools_approval_mode`` - are not propagated; callers can
 read them from the source dict if they want to surface a warning.
 
 Pure parsing only. No DB writes.
@@ -110,8 +110,8 @@ def _table_to_importable(
 
     # Bearer token: Codex stores the *env var name* that holds the
     # token (`bearer_token_env_var`), not the token itself. Surface
-    # this as the env_vars dict — operators can copy the actual value
-    # in afterward — and leave the OpsMender `token` column empty so
+    # this as the env_vars dict - operators can copy the actual value
+    # in afterward - and leave the OpsMender `token` column empty so
     # nothing leaks.
     bearer_env = table.get("bearer_token_env_var")
     if isinstance(bearer_env, str) and bearer_env:

@@ -1,4 +1,4 @@
-"""Sprint 45 Steps 2 + 3 — memory retrieval + `recall` LangGraph node tests.
+"""Sprint 45 Steps 2 + 3 - memory retrieval + `recall` LangGraph node tests.
 
 Covers:
 - `derive_query` / `derive_tags` helpers
@@ -307,6 +307,6 @@ class TestWorkflowOrder:
 
     def test_validate_allows_orders_without_recall(self):
         # Existing workflow profiles saved before Sprint 45 must keep
-        # working — recall is optional, not required.
+        # working - recall is optional, not required.
         order = validate_workflow_node_order(["observe", "summarize"])
         assert order == ["observe", "summarize"]

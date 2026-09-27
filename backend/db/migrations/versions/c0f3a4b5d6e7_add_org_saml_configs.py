@@ -5,7 +5,7 @@ Revises: b9d7e6c5a4f3
 Create Date: 2026-05-07 00:00:00.000000
 
 Sibling table to ``org_sso_configs``. Per Sprint 30 locked decisions, OIDC
-and SAML get separate tables — the columns don't meaningfully overlap, and
+and SAML get separate tables - the columns don't meaningfully overlap, and
 keeping them apart preserves NOT NULL constraints on each side.
 """
 
@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("org_id", sa.Uuid(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        # IdP can be supplied as a metadata URL (preferred — auto-fetched and
+        # IdP can be supplied as a metadata URL (preferred - auto-fetched and
         # cached) or as inline raw XML pasted by the admin. Exactly one of
         # these is required at runtime; the API enforces the XOR.
         sa.Column("idp_metadata_url", sa.Text(), nullable=True),

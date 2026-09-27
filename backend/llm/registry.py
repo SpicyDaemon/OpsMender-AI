@@ -58,7 +58,7 @@ def _detect_placeholder_creds(
     Only fires when an env value is EXPLICITLY SET to a literal
     .env.example placeholder string (the common "operator copied
     .env.example and didn't fill it in" case). Unset env vars are NOT
-    treated as placeholders — we let create_provider raise its own
+    treated as placeholders - we let create_provider raise its own
     "env var not set" error so test fixtures that mock create_provider
     keep working.
 
@@ -95,7 +95,7 @@ def _env_provider_defaults() -> dict[str, dict[str, str | None]]:
     operator actually configured in .env, not just empty defaults.
 
     Reads os.environ directly so the cache key in discover_models can
-    still be a pure function of caller args — the env state at process
+    still be a pure function of caller args - the env state at process
     start is captured in the env_defaults dict and stays stable for
     the cache window.
     """
@@ -140,7 +140,7 @@ _DISCOVERY_CACHE: dict[
     tuple[float, list[dict[str, object]]],
 ] = {}
 _DISCOVERY_CACHE_DEFAULT_TTL_SECONDS = 60.0
-# Sprint 62 — per-provider TTL overrides. Cloud catalogs (Bedrock,
+# Sprint 62 - per-provider TTL overrides. Cloud catalogs (Bedrock,
 # Vertex, OCI) change rarely, so a 1-hour cache trades little freshness
 # for much faster repeat loads. Local + OpenAI-compatible endpoints can
 # change during development; keep them at the default short TTL.
@@ -228,7 +228,7 @@ class ProviderRegistry:
             default_model_id="llama3.2",
             requires_api_key=False,
         ),
-        # Sprint 62 Step 1 — generic OpenAI-API-compatible endpoint.
+        # Sprint 62 Step 1 - generic OpenAI-API-compatible endpoint.
         # Covers vLLM, LM Studio, OpenRouter, Together, Groq, Fireworks,
         # Anyscale, and most local OpenAI-shape runtimes. base_url is
         # required (that's what distinguishes it from the plain
@@ -286,7 +286,7 @@ class ProviderRegistry:
                 return hit[1]
 
         # Lazy env-driven defaults so the multi-provider discovery call
-        # (no ?provider= filter — what the dashboard fires) picks up
+        # (no ?provider= filter - what the dashboard fires) picks up
         # operator-set env vars without us routing per-provider state
         # through the API surface. The caller's explicit values still
         # win; this is purely a fallback for None.

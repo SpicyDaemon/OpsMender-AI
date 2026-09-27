@@ -2,7 +2,7 @@
 ##
 ## Two SGs: one for the ALB (allows internet on 80/443), one for the
 ## Fargate tasks (allows ingress from the ALB SG only on the container
-## port). The task SG has no public ingress — every request hits the ALB
+## port). The task SG has no public ingress - every request hits the ALB
 ## first.
 
 resource "aws_security_group" "alb" {
@@ -60,7 +60,7 @@ resource "aws_vpc_security_group_ingress_rule" "tasks_from_alb" {
 }
 
 # Tasks need outbound to GHCR (pull image), to the LLM provider, to
-# Postgres, to MCP servers — anywhere. Tighten in production.
+# Postgres, to MCP servers - anywhere. Tighten in production.
 resource "aws_vpc_security_group_egress_rule" "tasks_egress_all" {
   security_group_id = aws_security_group.tasks.id
   cidr_ipv4         = "0.0.0.0/0"

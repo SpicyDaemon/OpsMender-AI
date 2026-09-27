@@ -18,7 +18,7 @@ variable "tags" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Networking — operator-provided. The module never creates a VPC.
+## Networking - operator-provided. The module never creates a VPC.
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "vpc_id" {
@@ -89,7 +89,7 @@ variable "assign_public_ip" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Secrets — pre-create in Secrets Manager and pass the ARNs.
+## Secrets - pre-create in Secrets Manager and pass the ARNs.
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "jwt_secret_arn" {
@@ -114,17 +114,17 @@ variable "provider_secret_arns" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## TLS — optional. If unset, ALB listens on :80 only (HTTP).
+## TLS - optional. If unset, ALB listens on :80 only (HTTP).
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "acm_certificate_arn" {
-  description = "ACM certificate ARN for the ALB HTTPS listener. When set, the ALB redirects :80 → :443 and serves traffic on :443. When empty, the ALB listens on :80 only (operator must layer their own TLS — e.g. CloudFront, API Gateway)."
+  description = "ACM certificate ARN for the ALB HTTPS listener. When set, the ALB redirects :80 → :443 and serves traffic on :443. When empty, the ALB listens on :80 only (the operator must layer their own TLS, e.g. CloudFront or API Gateway)."
   type        = string
   default     = ""
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Runtime config — env vars handed to the container.
+## Runtime config - env vars handed to the container.
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "extra_environment" {

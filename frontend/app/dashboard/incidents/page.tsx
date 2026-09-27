@@ -242,7 +242,7 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
             ) : null}
           </div>
         ) : (
-          <span className="text-fg-muted">—</span>
+          <span className="text-fg-muted">None</span>
         );
       },
       sortable: true,
@@ -306,7 +306,7 @@ function buildIncidentColumns(): DataTableColumn<IncidentResponse>[] {
         inc.severity ? (
           <Badge variant={inc.severity}>{inc.severity}</Badge>
         ) : (
-          <span className="text-fg-muted">—</span>
+          <span className="text-fg-muted">None</span>
         ),
       sortable: true,
     },
@@ -396,7 +396,7 @@ function IncidentPhoneCard({
 // a full skeleton on every visit. Refreshed on each successful load.
 let incidentsCache: IncidentListResponse | null = null;
 
-// Auto-refresh cadence (ms) while the tab is visible — keeps the AI-session
+// Auto-refresh cadence (ms) while the tab is visible - keeps the AI-session
 // badges (and the rest of the list) reasonably live without a dedicated
 // org-wide WebSocket broadcast channel. Cheap now that the list endpoint is
 // batched; paused entirely when the tab is hidden.
@@ -436,7 +436,7 @@ export default function IncidentsPage() {
   const isAdmin = user?.role === "admin";
   const deferredSearch = useDeferredValue(search);
 
-  // Sprint 61 (Sprint E) — command-palette deep-links.
+  // Sprint 61 (Sprint E) - command-palette deep-links.
   // /dashboard/incidents?new=1 opens the create-incident modal on
   // arrival; ?test=1 opens the fire-test modal. The param is
   // consumed once and stripped from the URL so a refresh doesn't
@@ -444,7 +444,7 @@ export default function IncidentsPage() {
   useEffect(() => {
     const wantNew = searchParams.get("new");
     const wantTest = searchParams.get("test");
-    // Creating + firing test incidents is admin-only — the buttons are hidden
+    // Creating + firing test incidents is admin-only - the buttons are hidden
     // for non-admins, so the ?new=1 / ?test=1 deep links (e.g. the Activity /
     // Approvals empty-state hints) must not open the modal for them either.
     if (isAdmin && wantNew === "1") setShowCreate(true);
@@ -499,7 +499,7 @@ export default function IncidentsPage() {
       setData(inc);
       incidentsCache = inc;
     } catch (err) {
-      // Background refreshes fail silently — the last good data stays on screen.
+      // Background refreshes fail silently - the last good data stays on screen.
       if (!silent) {
         toast.error(err instanceof Error ? err.message : "Failed to load incidents");
       }
@@ -685,7 +685,7 @@ export default function IncidentsPage() {
       {
         label: "Critical",
         value: String(criticalCount),
-        // Alarm red only when something is actually critical — a red zero
+        // Alarm red only when something is actually critical - a red zero
         // signals danger for a healthy state.
         tone: criticalCount > 0 ? "text-status-critical" : "text-fg-primary",
       },
@@ -703,7 +703,7 @@ export default function IncidentsPage() {
   }, [items]);
 
   // Selection-driven Actions menu. Lives in the filter row (right of the Time
-  // filter), always visible and disabled until at least one row is selected —
+  // filter), always visible and disabled until at least one row is selected -
   // mirroring the Memories page.
   const actionsMenu = canManage ? (
     <div className="relative">

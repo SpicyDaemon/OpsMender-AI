@@ -95,7 +95,7 @@ export async function cleanup(request, auth) {
   await sweep("integrations", "/integrations", (id) => `/integrations/${id}`);
   await sweep("notification-channels", "/bot-connectors", (id) => `/bot-connectors/${id}`);
   await sweep("models", "/models", (id) => `/models/${id}`);
-  // Teams last — services/rosters/chains reference them.
+  // Teams last - services/rosters/chains reference them.
   await sweep("teams", "/teams", (id) => `/teams/${id}`);
 
   return lines.length ? lines : ["  - nothing to clean up"];

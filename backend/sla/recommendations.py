@@ -1,12 +1,12 @@
 """SLO-breach recommendations (v1.2 Phase 6).
 
-Pure, deterministic advisory logic — **no LLM, no auto-incident, no auto-page**.
+Pure, deterministic advisory logic - **no LLM, no auto-incident, no auto-page**.
 Given an SLO's computed compliance status (objective/actual/error-budget/burn
 rate), the current target status, and the owning service/team (when the SLA
 target is linked), produce a human-readable recommendation for a breaching or
 at-risk SLO, or ``None`` when the SLO is healthy.
 
-Per ROADMAP, SLO breaches stay **warnings/recommendations** in v1 — an operator
+Per ROADMAP, SLO breaches stay **warnings/recommendations** in v1 - an operator
 decides whether to act. These recommendations exist to make that decision
 faster and route it to the right team.
 """
@@ -45,9 +45,9 @@ def evaluate_slo_recommendation(
     """Return a recommendation for a breaching/at-risk SLO, or ``None`` if healthy.
 
     Severity:
-      - **critical** — breaching (actual < objective) and either the error
+      - **critical** - breaching (actual < objective) and either the error
         budget is exhausted or it's burning fast (burn rate ≥ 2×).
-      - **warning** — breaching but not yet critical, *or* still compliant but
+      - **warning** - breaching but not yet critical, *or* still compliant but
         with ≤ 20% of the error budget remaining (at risk).
       - healthy SLOs return ``None``.
     """
@@ -71,14 +71,14 @@ def evaluate_slo_recommendation(
         )
     else:
         headline = (
-            f"SLO '{slo_name}' is at risk — only "
+            f"SLO '{slo_name}' is at risk: only "
             f"{error_budget_remaining_pct:g}% of its error budget remains."
         )
 
     actions: list[str] = []
     if target_status == "down":
         actions.append(
-            f"Target '{target_name}' is currently DOWN — investigate the "
+            f"Target '{target_name}' is currently DOWN. Investigate the "
             "monitored endpoint first."
         )
     if service_name:
@@ -89,7 +89,7 @@ def evaluate_slo_recommendation(
         )
     else:
         actions.append(
-            "This SLA target isn't linked to a Service — link it so future "
+            "This SLA target isn't linked to a Service. Link it so future "
             "recommendations route to the owning team."
         )
     actions.append(
@@ -97,11 +97,11 @@ def evaluate_slo_recommendation(
     )
     if burn_rate >= _CRITICAL_BURN_RATE:
         actions.append(
-            f"Error budget is burning fast (burn rate {burn_rate:g}×) — consider "
+            f"Error budget is burning fast (burn rate {burn_rate:g}×). Consider "
             "opening an incident to coordinate the response."
         )
     actions.append(
-        "Advisory only — OpsMender will not auto-create an incident or page "
+        "Advisory only. OpsMender will not auto-create an incident or page "
         "anyone on your behalf."
     )
 

@@ -68,7 +68,7 @@ class AzureMonitorAdapter(IngestAdapter):
         severity = _SEVERITY_MAP.get(severity_raw, "medium")
         status = _STATUS_MAP.get(monitor_condition, "open")
 
-        # Emit availability signal — Fired=down, Resolved=up
+        # Emit availability signal - Fired=down, Resolved=up
         availability = AvailabilitySignal(
             target_name=alert_rule,
             up=(monitor_condition in ("Resolved", "Deactivated")),

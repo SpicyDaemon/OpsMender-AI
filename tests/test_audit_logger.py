@@ -104,7 +104,7 @@ class TestAuditEntryType:
 
 
 # ---------------------------------------------------------------------------
-# AuditLogger — basic file operations
+# AuditLogger - basic file operations
 # ---------------------------------------------------------------------------
 
 
@@ -145,7 +145,7 @@ class TestAuditLoggerFileOps:
 
 
 # ---------------------------------------------------------------------------
-# AuditLogger — convenience helpers
+# AuditLogger - convenience helpers
 # ---------------------------------------------------------------------------
 
 
@@ -218,7 +218,7 @@ class TestAuditLoggerHelpers:
 
 
 # ---------------------------------------------------------------------------
-# AuditLogger — reading / querying
+# AuditLogger - reading / querying
 # ---------------------------------------------------------------------------
 
 

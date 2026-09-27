@@ -5,7 +5,7 @@ import { qaName } from "../lib/config.mjs";
 
 export default {
   id: "escalation",
-  title: "Paging — escalation policies",
+  title: "Paging: escalation policies",
   async run(h) {
     const name = qaName("chain");
     h.state.chainName = name;

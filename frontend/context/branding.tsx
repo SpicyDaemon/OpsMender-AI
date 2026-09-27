@@ -11,7 +11,7 @@ import { useAuth } from "./auth";
 import { getOrganization } from "@/lib/api";
 import type { BrandingConfig } from "@/lib/types";
 
-const DEFAULT_DOCUMENT_TITLE = "OpsMender — OpsMender AI";
+const DEFAULT_DOCUMENT_TITLE = "OpsMender";
 const DEFAULT_FAVICON_HREF = "/OpsMender-Dark.png";
 
 interface BrandingContextValue {

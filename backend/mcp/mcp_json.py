@@ -1,4 +1,4 @@
-"""`mcp.json` file mirror — Sprint 42 Step 6.
+"""`mcp.json` file mirror - Sprint 42 Step 6.
 
 Two-way sync between the org's ``mcp_servers`` rows and a
 Claude-Code-compatible JSON file (default ``~/.opsmender/mcp.json``).
@@ -26,7 +26,7 @@ Secret-handling rules:
 * OAuth tokens live in ``mcp_server_oauth_tokens`` (encrypted via
   Fernet) and **never** land in this file.
 * The static bearer ``token`` column is also not written to disk by
-  default — operators who want a static bearer should keep it in DB
+  default - operators who want a static bearer should keep it in DB
   via the UI. (Pre-existing tokens in DB are preserved across a
   reconcile because the file simply omits them.)
 
@@ -73,7 +73,7 @@ def default_path() -> Path:
 def sync_enabled() -> bool:
     """``OPSMENDER_MCP_JSON_SYNC`` env flag (default off).
 
-    Conservative default — multi-tenant deployments must opt in. The
+    Conservative default - multi-tenant deployments must opt in. The
     single-tenant binary path that the locked decisions reference will
     set this to ``true`` in its bundled environment.
     """
@@ -94,7 +94,7 @@ def sync_org_id() -> uuid.UUID | None:
         return uuid.UUID(raw)
     except ValueError:
         logger.warning(
-            "mcp_json: OPSMENDER_MCP_JSON_ORG_ID=%r is not a valid UUID — ignoring",
+            "mcp_json: OPSMENDER_MCP_JSON_ORG_ID=%r is not a valid UUID; ignoring",
             raw,
         )
         return None
@@ -119,7 +119,7 @@ def server_to_entry(server: MCPServer) -> dict[str, Any]:
         if server.url is not None:
             entry["url"] = server.url
         # env_vars on http transport may carry static request headers via
-        # OPSMENDER_MCP_HEADER_* — round-trip them under "env" to keep the
+        # OPSMENDER_MCP_HEADER_* - round-trip them under "env" to keep the
         # shape regular. (Claude Code uses "headers"; we accept both on
         # read for compatibility.)
         if server.env_vars:
@@ -232,7 +232,7 @@ class MCPJSONSyncer:
     file stays in lock-step with DB writes. Startup calls
     ``reconcile_on_startup`` once per known org so file edits made
     while the service was down are applied (file wins on conflict;
-    additive — DB-only entries are reported but never deleted).
+    additive - DB-only entries are reported but never deleted).
     """
 
     def __init__(
@@ -296,7 +296,7 @@ class MCPJSONSyncer:
         and additionally deleted (and recorded in
         ``ReconcileResult.deleted``) when ``prune=True``. When
         ``dry_run=True`` the planned mutations are computed but never
-        committed — used by ``opsmender mcp reload`` without
+        committed - used by ``opsmender mcp reload`` without
         ``--apply``.
         """
         result = ReconcileResult()
@@ -308,7 +308,7 @@ class MCPJSONSyncer:
         try:
             file_entries = read_from_disk(self._path)
         except ValueError as exc:
-            logger.warning("mcp_json: reconcile aborted — %s", exc)
+            logger.warning("mcp_json: reconcile aborted: %s", exc)
             result.errors.append(str(exc))
             return result
 
@@ -320,7 +320,7 @@ class MCPJSONSyncer:
                 try:
                     kwargs = entry_to_kwargs(name, entry)
                 except (KeyError, TypeError, ValueError) as exc:
-                    logger.warning("mcp_json: server %r invalid — %s", name, exc)
+                    logger.warning("mcp_json: server %r invalid: %s", name, exc)
                     result.errors.append(f"{name}: {exc}")
                     continue
                 row = existing_by_name.get(name)

@@ -57,7 +57,7 @@ function fmtDate(iso: string) {
 }
 
 function fmtDuration(ms: number | null) {
-  return ms != null ? `${ms}ms` : "—";
+  return ms != null ? `${ms}ms` : "No data";
 }
 
 function entryTimeMs(entry: AuditEntryResponse) {
@@ -369,7 +369,7 @@ export default function ActivityPage() {
         accessor: (entry) => entry.tool_name ?? "",
         cell: (entry) => (
           <span className="font-mono text-xs text-fg-primary">
-            {entry.tool_name ?? <span className="text-fg-muted">—</span>}
+            {entry.tool_name ?? <span className="text-fg-muted">None</span>}
           </span>
         ),
         sortable: true,
@@ -414,7 +414,7 @@ export default function ActivityPage() {
         accessor: (entry) => entry.duration_ms ?? null,
         cell: (entry) => (
           <span className="whitespace-nowrap font-mono text-xs tabular-nums text-fg-secondary">
-            {entry.duration_ms != null ? `${entry.duration_ms}ms` : "—"}
+            {entry.duration_ms != null ? `${entry.duration_ms}ms` : "No data"}
           </span>
         ),
         sortable: true,
@@ -426,7 +426,7 @@ export default function ActivityPage() {
         accessor: (entry) => entry.session_id,
         cell: (entry) => (
           <span className="font-mono text-xs text-fg-muted">
-            {entry.session_id?.slice(0, 8) ?? "—"}
+            {entry.session_id?.slice(0, 8) ?? "None"}
           </span>
         ),
         searchable: true,
@@ -490,7 +490,7 @@ export default function ActivityPage() {
         <EmptyState
           icon={BookOpen}
           title="No audit entries yet"
-          description="Every MCP tool call — permitted or blocked — is recorded here once sessions start running. Fire a test incident to generate a first session and watch tool calls land here."
+          description="Every MCP tool call, permitted or blocked, is recorded here once sessions start running. Fire a test incident to generate a first session and watch tool calls land here."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
@@ -767,7 +767,7 @@ function GroupedActivityRow({ entry }: { entry: AuditEntryResponse }) {
           Tool
         </p>
         <span className="break-all font-mono text-xs text-fg-primary">
-          {entry.tool_name ?? <span className="text-fg-muted">—</span>}
+          {entry.tool_name ?? <span className="text-fg-muted">None</span>}
         </span>
       </div>
       <div>

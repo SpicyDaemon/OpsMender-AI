@@ -2,7 +2,7 @@
 
 The pool is the single lookup point for MCP servers at runtime.  Every
 query hits the database fresh, so a server added via ``POST /mcp-servers``
-is immediately visible to anything that holds a pool reference — including
+is immediately visible to anything that holds a pool reference - including
 sessions that are already running.  An optional list of
 ``MCPServerConfig`` entries from ``.env`` acts as a fallback only when the
 database is unreachable.
@@ -193,7 +193,7 @@ class MCPServerPool:
             except MCPAuthorizationRequiredError:
                 raise
             except Exception:
-                pass  # DB unreachable — fall through to env fallback
+                pass  # DB unreachable - fall through to env fallback
 
         for fallback in self._env_fallback:
             if fallback.name == name:

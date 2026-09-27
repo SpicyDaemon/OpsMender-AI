@@ -1,4 +1,4 @@
-"""Tests for backend.mcp.pool — dynamic MCP server pool."""
+"""Tests for backend.mcp.pool - dynamic MCP server pool."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ async def session_factory():
 
 
 class TestMCPServerPoolFreshness:
-    """Every query re-reads the DB — new rows are visible instantly."""
+    """Every query re-reads the DB - new rows are visible instantly."""
 
     async def test_list_empty_when_db_empty(self, session_factory):
         pool = MCPServerPool(session_factory)
@@ -43,7 +43,7 @@ class TestMCPServerPoolFreshness:
         pool = MCPServerPool(session_factory)
         assert await pool.list_servers(TEST_ORG_ID) == []
 
-        # Simulate a POST /mcp-servers — the pool was already constructed
+        # Simulate a POST /mcp-servers - the pool was already constructed
         async with session_factory() as db:
             await MCPServerRepo.create(
                 db,
@@ -55,7 +55,7 @@ class TestMCPServerPoolFreshness:
             )
             await db.commit()
 
-        # No reload step — same pool instance must now see the new server
+        # No reload step - same pool instance must now see the new server
         servers = await pool.list_servers(TEST_ORG_ID)
         assert [s.name for s in servers] == ["k8s-dev"]
         assert servers[0].transport == "stdio"
@@ -132,7 +132,7 @@ class TestMCPServerPoolFallback:
             )
             await db.commit()
 
-        # When DB is reachable the env fallback is ignored entirely —
+        # When DB is reachable the env fallback is ignored entirely -
         # otherwise the two sources would silently merge and drift.
         names = [s.name for s in await pool.list_servers(TEST_ORG_ID)]
         assert names == ["db-only"]

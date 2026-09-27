@@ -1,4 +1,4 @@
-"""Phase 1 — auto-open + link tickets on incident creation (per-service)."""
+"""Phase 1 - auto-open + link tickets on incident creation (per-service)."""
 
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ async def test_respects_the_service_allowlist(env):
 async def test_per_service_override_disables_auto_ticketing(env):
     factory, org_id, team_id, connector_id, fake = env
     # Connector is allowed + sync-enabled, but the service opts this connector
-    # out of the ticket lifecycle — it stays available to the agent, no auto-open.
+    # out of the ticket lifecycle - it stays available to the agent, no auto-open.
     incident_id = await _make_incident(
         factory,
         org_id,
@@ -226,7 +226,7 @@ async def test_no_backward_move_guardrail(env):
     await sync_incident_status(
         factory, org_id=org_id, incident_id=incident_id, new_status="open"
     )
-    # Backward move (resolved -> open) is skipped — no transition attempted.
+    # Backward move (resolved -> open) is skipped - no transition attempted.
     assert fake.synced == []
     async with factory() as db:
         states = await TicketSyncStateRepo.list_for_incident(db, org_id, incident_id)

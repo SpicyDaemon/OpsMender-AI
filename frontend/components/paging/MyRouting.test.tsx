@@ -44,7 +44,7 @@ const basePref = {
   user_id: "u1",
   org_id: "o1",
   channels: {},
-  // Legacy shape — should be read as Stage 1/2 (backward compatibility).
+  // Legacy shape - should be read as Stage 1/2 (backward compatibility).
   routing: { P0: ["slack_dm", "email"], P1: ["email"] },
   quiet_hours: null as unknown,
   updated_at: new Date().toISOString(),
@@ -85,7 +85,7 @@ describe("ChannelMultiSelect", () => {
   });
 });
 
-describe("NotificationPreferencesPanel (My Routing — staged)", () => {
+describe("NotificationPreferencesPanel (My Routing, staged)", () => {
   it("renders the four priority rows", async () => {
     render(<NotificationPreferencesPanel />);
     expect(await screen.findByText("Critical")).toBeTruthy();

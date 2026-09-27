@@ -6,7 +6,7 @@
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 @theme {
-  /* Background scale — near-black slate with subtle elevation */
+  /* Background scale - near-black slate with subtle elevation */
   --color-bg-base: #0B0D10;
   --color-bg-elevated: #13161B;
   --color-bg-panel: #181B22;
@@ -21,12 +21,12 @@
   /* Foreground */
   --color-fg-primary: #E4E7EB;
   --color-fg-secondary: #9AA4B2;
-  /* Muted text — WCAG AA (>=4.5:1) on every dark surface incl. hover rows.
+  /* Muted text - WCAG AA (>=4.5:1) on every dark surface incl. hover rows.
      Do not lower toward #6B7280 (fails contrast on panels). */
   --color-fg-muted: #8A94A3;
   --color-fg-inverse: #0B0D10;
 
-  /* Status palette — severity + state */
+  /* Status palette - severity + state */
   --color-status-critical: #F87171;
   --color-status-critical-bg: rgba(239, 68, 68, 0.12);
   --color-status-critical-border: rgba(239, 68, 68, 0.35);
@@ -51,7 +51,7 @@
   --color-status-neutral-bg: rgba(107, 114, 128, 0.12);
   --color-status-neutral-border: rgba(107, 114, 128, 0.35);
 
-  /* Accent — used sparingly for primary CTAs and active nav */
+  /* Accent - used sparingly for primary CTAs and active nav */
   --color-accent: #2563EB;
   --color-accent-hover: #1D4ED8;
   --color-accent-contrast: #FFFFFF;
@@ -88,7 +88,7 @@
 
   --color-fg-primary: #0f172a;
   --color-fg-secondary: #475569;
-  /* Muted text — WCAG AA on tinted light surfaces (bg-base #f3f6fb,
+  /* Muted text - WCAG AA on tinted light surfaces (bg-base #f3f6fb,
      bg-hover #e8eef7); #64748b fails on those. */
   --color-fg-muted: #55617a;
   --color-fg-inverse: #f8fafc;
@@ -191,7 +191,7 @@ select.opsmender-select {
   background-size: 5px 5px, 5px 5px;
 }
 
-/* Focus ring — consistent across interactive elements */
+/* Focus ring - consistent across interactive elements */
 *:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;

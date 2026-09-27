@@ -1,4 +1,4 @@
-"""Wave 2 Phase 5 — Google Chat Respond/Track delivery tests."""
+"""Wave 2 Phase 5 - Google Chat Respond/Track delivery tests."""
 
 from __future__ import annotations
 

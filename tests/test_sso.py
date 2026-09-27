@@ -1,4 +1,4 @@
-"""Tests for per-tenant SSO (OIDC) — Sprint 30.
+"""Tests for per-tenant SSO (OIDC) - Sprint 30.
 
 Reuses the in-memory SQLite + ASGI fixtures from tests/test_api.py via
 shared imports rather than copy-pasting the fixture wiring.

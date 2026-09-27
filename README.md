@@ -50,7 +50,7 @@ and TOTP are there when you need them.
 | ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session workflow, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
 | Review Tier 1 actions with context before anything runs. | Configure workspace policy, session workflow, notifications, models, and guardrails. |
 
-**AI autonomy tiers** — the tier gate is enforced in code. Set the default per workspace and override it per session.
+**AI autonomy tiers**: the tier gate is enforced in code. Set the default per workspace and override it per session.
 
 | Tier 0 · Autonomous | Tier 1 · Approval Required | Tier 2 · Advisory (default) |
 | --- | --- | --- |
@@ -59,65 +59,65 @@ and TOTP are there when you need them.
 
 ## Features
 
-- **Three-tier AI autonomy** — Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).
-- **Programmatic tier gate** — enforced in code before any tool runs; not prompt-bypassable.
-- **MCP-first + native integrations** — operator-provided MCP servers remain the
+- **Three-tier AI autonomy**: Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).
+- **Programmatic tier gate**: enforced in code before any tool runs; not prompt-bypassable.
+- **MCP-first + native integrations**: operator-provided MCP servers remain the
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
-- **[Bring your own model](#bring-your-own-model)** — Anthropic, OpenAI, Azure
+- **[Bring your own model](#bring-your-own-model)**: Anthropic, OpenAI, Azure
   OpenAI, Bedrock, Vertex AI, Ollama, or any OpenAI compatible endpoint. Keys
   are encrypted in your database and requests go straight from your server to
   the provider. No OpsMender model, no inference bill from us.
-- **Org-owned skills** — bind `SKILL.md` policy to an MCP server or native
+- **Org-owned skills**: bind `SKILL.md` policy to an MCP server or native
   integration connector so every discovered operation has explicit T0/T1/T2
   behavior plus active-tier operating instructions. Unknown operations fail
   closed.
-- **Incident management** — P0–P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
-- **Similar alert grouping** — optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
-- **On-call paging** — verified Slack, Teams, and Discord incident actions,
+- **Incident management**: P0-P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
+- **Similar alert grouping**: optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
+- **On-call paging**: verified Slack, Teams, and Discord incident actions,
   plus Email / SMS / Voice Call delivery and per-incident channels; the voice
   IVR keypad does 1 acknowledge / 2 escalate / 3 resolve.
-- **Shared incident tracking** — update-in-place Slack, Discord, and Google
+- **Shared incident tracking**: update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.
-- **Incident reporting** — on-demand CSV/PDF metrics plus scheduled
+- **Incident reporting**: on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
-- **Operational analytics** — read-only **Noise** (alert volume, reduction ratio,
+- **Operational analytics**: read-only **Noise** (alert volume, reduction ratio,
   noisiest services) and **Response** (MTTA/MTTR trends by service and priority)
   dashboards, each with CSV export.
-- **[Native integration connectors](#native-integration-connectors)** — 26 kinds
+- **[Native integration connectors](#native-integration-connectors)**: 26 kinds
   covering source control, tickets, docs, CI/CD, infrastructure, and
   observability. Typed capabilities rather than raw API access, encrypted auth,
   guided per-provider setup fields, self-hosted API URLs where applicable, and
   approval-locked merges.
-- **Bi-directional ticket state** — linked Jira and ServiceNow tickets mirror
+- **Bi-directional ticket state**: linked Jira and ServiceNow tickets mirror
   mapped incident status in both directions through non-blocking outbound jobs
   and signed inbound webhooks.
-- **CI/CD integrations** — Jenkins, CircleCI, and Azure Pipelines expose build,
+- **CI/CD integrations**: Jenkins, CircleCI, and Azure Pipelines expose build,
   job, pipeline, and run status while triggers remain approval-gated.
-- **Infrastructure automation** — Terraform Cloud, Argo CD, and Ansible
+- **Infrastructure automation**: Terraform Cloud, Argo CD, and Ansible
   Automation expose workspace, run, application, diff, template, and job
   context; every plan/apply, sync/rollback, or launch requires approval.
-- **Kubernetes context and remediation** — encrypted API access for pods,
+- **Kubernetes context and remediation**: encrypted API access for pods,
   events, logs, and deployments; rollout restarts and pod deletion remain
   approval-gated.
-- **Inbox** — per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
-- **Universal alert ingest** — native Sentry, New Relic, Splunk, Rollbar,
+- **Inbox**: per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
+- **Universal alert ingest**: native Sentry, New Relic, Splunk, Rollbar,
   BugSnag, Elastic/OpenSearch, Honeycomb, Dynatrace, AppDynamics, Loki, and
   cloud-monitor parsing plus auto-learned JSON webhooks. SNS-wrapped CloudWatch
   alarms follow the same alarm/recovery lifecycle, and cross-service provider
   collisions surface an informational notice to the receiving team.
-- **AI incident memory** — lessons from past incidents injected into the agent's prompt; advisory, workspace-scoped, operator-curated.
-- **Reliability / SLA** — HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
-- **Audit everything** — every tool call, approval, rollback, and state transition recorded.
-- **Supply-chain security baseline** — CycloneDX SBOM generation, high/critical
+- **AI incident memory**: lessons from past incidents injected into the agent's prompt; advisory, workspace-scoped, operator-curated.
+- **Reliability / SLA**: HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
+- **Audit everything**: every tool call, approval, rollback, and state transition recorded.
+- **Supply-chain security baseline**: CycloneDX SBOM generation, high/critical
   container scanning, CodeQL, Dependabot, and digest-only image-signing
   guidance are included for self-hosted security review.
-- **RBAC + workspace auth** — Admin / Operator / Viewer, local accounts, optional OIDC/SAML, custom domains, and workspace-scoped data boundaries.
-- **Named API tokens** — revocable, role-scoped bearer tokens for REST API automation without a human session.
-- **Local-account MFA** — encrypted TOTP enrollment, one-time recovery codes,
+- **RBAC + workspace auth**: Admin / Operator / Viewer, local accounts, optional OIDC/SAML, custom domains, and workspace-scoped data boundaries.
+- **Named API tokens**: revocable, role-scoped bearer tokens for REST API automation without a human session.
+- **Local-account MFA**: encrypted TOTP enrollment, one-time recovery codes,
   and optional organization-wide enforcement.
-- **Dashboard** — Next.js console with a `Cmd/Ctrl-K` command palette.
+- **Dashboard**: Next.js console with a `Cmd/Ctrl-K` command palette.
 
 ## Architecture
 
@@ -144,18 +144,18 @@ flowchart LR
   NOTIF <--> OP
 ```
 
-- **Backend** (`backend/`) — FastAPI + async SQLAlchemy, the LangGraph workflow, the MCP client/pool, the tier gate, paging engine, SLA poller, and audit log. Alembic migrations run on startup.
-- **Frontend** (`frontend/`) — Next.js (React 19 + Tailwind 4) built as a **static export** and served by the backend on the same origin.
-- **CLI** (`cli/`) — `opsmender serve | check | run | config | approvals | audit`.
-- **Database** — SQLite for local dev (zero-config), PostgreSQL 16+ for production.
+- **Backend** (`backend/`): FastAPI + async SQLAlchemy, the LangGraph workflow, the MCP client/pool, the tier gate, paging engine, SLA poller, and audit log. Alembic migrations run on startup.
+- **Frontend** (`frontend/`): Next.js (React 19 + Tailwind 4) built as a **static export** and served by the backend on the same origin.
+- **CLI** (`cli/`): `opsmender serve | check | run | config | approvals | audit`.
+- **Database**: SQLite for local dev (zero-config), PostgreSQL 16+ for production.
 
-## How it works — incident lifecycle
+## How it works: incident lifecycle
 
 ```mermaid
 flowchart TD
   A["Alert fires<br/>(ingest / manual / fire-test)"] --> D{"Dedup<br/>source + external_id"}
   D -->|duplicate| U["Update existing incident"]
-  D -->|new| P["Resolve priority &amp; paging (P0–P3)"]
+  D -->|new| P["Resolve priority &amp; paging (P0-P3)"]
   P --> ES["Start escalation chain"]
   P --> T{"Autonomy tier"}
   T -->|"Tier 0"| S0["AI session auto-starts on creation"]
@@ -208,11 +208,11 @@ docker compose -f docker/docker-compose.yml down -v
 Requires **Python 3.12+**, **Node 24+**, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-# Backend — SQLite, auto-migrates, seeds admin/admin123, serves the built UI on :8000
+# Backend: SQLite, auto-migrates, seeds admin/admin123, serves the built UI on :8000
 uv sync --dev
 uv run python scripts/dev_server.py
 
-# Frontend — hot-reloading dev server on :3000, proxies the API to :8000
+# Frontend: hot-reloading dev server on :3000, proxies the API to :8000
 cd frontend && npm install && npm run dev
 ```
 
@@ -263,7 +263,7 @@ proxy (nginx, Caddy, Cloudflare) in front of port 8000.
 
 ### Standalone binary
 
-Download the Linux/Windows binary (with `.sha256`) from [**Releases**](https://github.com/SpicyDaemon/OpsMender-AI/releases), or build it with `bash scripts/build_binary.sh`. It bundles the Python runtime, the static frontend, migrations, and skills (Node.js is **not** bundled — install `node`/`npx` if your MCP servers need it).
+Download the Linux/Windows binary (with `.sha256`) from [**Releases**](https://github.com/SpicyDaemon/OpsMender-AI/releases), or build it with `bash scripts/build_binary.sh`. It bundles the Python runtime, the static frontend, migrations, and skills (Node.js is **not** bundled, install `node`/`npx` if your MCP servers need it).
 
 For a quick local evaluation, run the binary with no database configuration:
 
@@ -291,8 +291,8 @@ OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD='<strong password>' \
 <details>
 <summary><b>Kubernetes &amp; cloud</b></summary>
 
-- **Helm** — `deploy/helm/opsmender` (auto-generates the JWT secret, supports an external Postgres, Ingress + TLS).
-- **Cloud IaC** — `deploy/cloud/`: AWS ECS Fargate, Azure Container Apps, GCP Cloud Run, OCI Container Instances.
+- **Helm**: `deploy/helm/opsmender` (auto-generates the JWT secret, supports an external Postgres, Ingress + TLS).
+- **Cloud IaC**: `deploy/cloud/`: AWS ECS Fargate, Azure Container Apps, GCP Cloud Run, OCI Container Instances.
 
 </details>
 
@@ -305,17 +305,17 @@ All configuration is via environment variables; [`.env.example`](.env.example) d
 | `OPSMENDER_DEPLOYMENT_MODE` | ✅ | `monolith` | `monolith` or `distributed`; legacy `development`/`production` select monolith. |
 | `OPSMENDER_ENVIRONMENT` | ✅ | `production` | `development` permits local defaults; `production` enforces startup guards. |
 | `OPSMENDER_SERVICE_ROLE` | Distributed | `api` | `api`, `worker`, `scheduler`, or `dispatcher`. |
-| `OPSMENDER_JWT_SECRET` | ✅ | — | Session-token signing key (64+ random chars). |
+| `OPSMENDER_JWT_SECRET` | ✅ | None | Session-token signing key (64+ random chars). |
 | `OPSMENDER_DATABASE_URL` | ✅ | SQLite file | `postgresql+asyncpg://…` for production. |
 | `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` / `…_PASSWORD` | ✅ | `admin`/`admin123` (dev) | First admin account. |
-| `OPSMENDER_PUBLIC_BASE_URL` | ➕ | — | Base URL for invite / reset links. |
+| `OPSMENDER_PUBLIC_BASE_URL` | ➕ | None | Base URL for invite / reset links. |
 | `OPSMENDER_TIER` | ➕ | `2` | Default AI autonomy tier (`0`/`1`/`2`). |
-| `OPSMENDER_TWILIO_ACCOUNT_SID` / `…_AUTH_TOKEN` / `…_FROM_NUMBER` | ➕ | — | Optional Voice/SMS bootstrap; Settings -> Voice & SMS calling overrides env values. |
+| `OPSMENDER_TWILIO_ACCOUNT_SID` / `…_AUTH_TOKEN` / `…_FROM_NUMBER` | ➕ | None | Optional Voice/SMS bootstrap; Settings -> Voice & SMS calling overrides env values. |
 | `OPSMENDER_TWILIO_VOICE_FROM_NUMBER` | ➕ | SMS number | Optional dedicated Voice Call number. |
-| `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` | ➕ | — | Optional provider status callback URL for Voice Call delivery. |
+| `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` | ➕ | None | Optional provider status callback URL for Voice Call delivery. |
 | `AUDIT_RETENTION_DAYS` | ➕ | `90` | Hot audit-entry retention before pruning or archival. |
 | `AUDIT_ARCHIVE_ENABLED` | ➕ | `false` | Archive expired audit entries to S3-compatible storage before deletion. |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / … | ➕ | — | Only for the model providers you enable. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / … | ➕ | None | Only for the model providers you enable. |
 
 For the four-process topology:
 
@@ -329,21 +329,21 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 <details>
 <summary><b>First-login checklist (production)</b></summary>
 
-1. **Models** (`/dashboard/models`) — add a model, optionally cap concurrent
+1. **Models** (`/dashboard/models`): add a model, optionally cap concurrent
    incident sessions (`0` = unlimited), set a default, and run **Test connection**.
-2. **Infrastructure tools** — connect an MCP server
+2. **Infrastructure tools**: connect an MCP server
    (`/dashboard/mcp-servers`) and/or an encrypted native integration
    (`/dashboard/integrations`). A service may use either source.
-3. **Skills** (`/dashboard/skills`) — create or import a `SKILL.md`, bind it to
+3. **Skills** (`/dashboard/skills`): create or import a `SKILL.md`, bind it to
    an MCP server or native integration, and review its per-tier operation
    policy.
-4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`) — define routing and on-call.
-5. **On Call Schedule** (`/dashboard/on-call-schedule`) — see who's on call per level, replace coverage, and view shifts in any time zone.
-6. **Notification channels** (`/dashboard/paging/notifications`) — Slack /
+4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`): define routing and on-call.
+5. **On Call Schedule** (`/dashboard/on-call-schedule`): see who's on call per level, replace coverage, and view shifts in any time zone.
+6. **Notification channels** (`/dashboard/paging/notifications`): Slack /
    Teams / Discord / Email / SMS / Voice Call.
-7. **Voice & SMS calling** (`/dashboard/config`) — optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
-8. **People** (`/dashboard/people`) — invite operators (Admin / Operator / Viewer).
-9. **Tier** (`/dashboard/config`) — default is `2` (advisory); raise to `1`/`0` when ready.
+7. **Voice & SMS calling** (`/dashboard/config`): optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
+8. **People** (`/dashboard/people`): invite operators (Admin / Operator / Viewer).
+9. **Tier** (`/dashboard/config`): default is `2` (advisory); raise to `1`/`0` when ready.
 
 </details>
 
@@ -443,7 +443,7 @@ Start with **[Getting Started](docs/wiki/getting-started.md)**. Other guides: [A
 
 ## Contributing & security
 
-Contributions welcome — see **[CONTRIBUTING.md](CONTRIBUTING.md)** for the local setup, test loop, and the non-negotiable guardrails (tier gate, MCP-first, audit, org-owned skills). Report vulnerabilities per **[SECURITY.md](SECURITY.md)**.
+Contributions welcome: see **[CONTRIBUTING.md](CONTRIBUTING.md)** for the local setup, test loop, and the non-negotiable guardrails (tier gate, MCP-first, audit, org-owned skills). Report vulnerabilities per **[SECURITY.md](SECURITY.md)**.
 
 ## License
 

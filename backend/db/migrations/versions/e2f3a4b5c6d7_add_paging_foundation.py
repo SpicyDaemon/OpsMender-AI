@@ -8,10 +8,10 @@ Sprint 33 lays the foundation for OpsMender-owned paging (D-021):
 teams, services, rosters with deterministic on-call resolution,
 priority rules with optional LLM escalation log, and incident
 assignments granting incident-scoped operator authority. The full
-data model lives in ``docs/PROMPT_CONTEXT.md (D-021 — Paging Model)``.
+data model lives in ``docs/PROMPT_CONTEXT.md (D-021 - Paging Model)``.
 
 Escalation chains, maintenance windows, notification preferences,
-and incident_pages are deferred to Sprints 34–35.
+and incident_pages are deferred to Sprints 34-35.
 """
 
 from typing import Sequence, Union
@@ -288,7 +288,7 @@ def upgrade() -> None:
         ["incident_id"],
         unique=False,
     )
-    # Unique partial index — only one active assignment per incident.
+    # Unique partial index - only one active assignment per incident.
     op.create_index(
         "ix_incident_assignments_active",
         "incident_assignments",

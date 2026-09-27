@@ -20,7 +20,7 @@ async function api(h, method, route, data) {
 
 export default {
   id: "sign_in_protection",
-  title: "Auth — sign-in protection",
+  title: "Auth: sign-in protection",
   async run(h) {
     const s = {};
 

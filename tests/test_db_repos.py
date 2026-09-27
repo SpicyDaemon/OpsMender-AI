@@ -1,4 +1,4 @@
-"""Tests for backend.db.repos — async repository CRUD operations.
+"""Tests for backend.db.repos - async repository CRUD operations.
 
 Uses in-memory SQLite via aiosqlite.
 """

@@ -181,7 +181,7 @@ class WhatsAppAdapter:
                         continue
                     sender = msg.get("from") or ""
                     # WhatsApp messages don't have a "chat" concept like
-                    # Telegram groups — the sender phone is the chat scope.
+                    # Telegram groups - the sender phone is the chat scope.
                     return InboundMessage(
                         chat_id=str(sender),
                         platform_user_id=str(sender) if sender else None,

@@ -36,7 +36,7 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
     root = pathlib.Path(static_dir).resolve()
     if not root.is_dir():
         _LOG.info(
-            "frontend static dir not found at %s — skipping SPA mount (dev mode?)",
+            "frontend static dir not found at %s; skipping SPA mount (dev mode?)",
             root,
         )
         return
@@ -96,7 +96,7 @@ def mount_frontend(app: FastAPI, static_dir: pathlib.Path | str) -> None:
                 # files. The client router only accepts them as RSC flight data
                 # when served as `text/x-component`; the default `text/plain`
                 # (guessed from the extension) makes it reject the payload and
-                # fall back to a full-page reload — the whole-shell black flash
+                # fall back to a full-page reload - the whole-shell black flash
                 # on every in-app navigation. Force the correct content type so
                 # client-side navigation works and the layout persists.
                 if resolved.suffix == ".txt":

@@ -1,5 +1,5 @@
 /**
- * Notification Channels — honest capability rendering.
+ * Notification Channels - honest capability rendering.
  *
  * The table must advertise only what each platform can actually do: a
  * delivery-only channel (Twilio SMS) shows "Delivery-only" and never an
@@ -548,7 +548,7 @@ describe("Notification Channels capability rendering", () => {
     expect(screen.queryByText(/IMAP/i)).toBeNull();
     expect(screen.getByText("Enable this notification channel")).toBeTruthy();
 
-    // "smtp" is retired as a notification channel — SMTP is now the single
+    // "smtp" is retired as a notification channel - SMTP is now the single
     // workspace setting under Config → Email / SMTP, so it is not offered as a
     // creatable connector platform.
     fireEvent.click(screen.getByLabelText("Platform"));

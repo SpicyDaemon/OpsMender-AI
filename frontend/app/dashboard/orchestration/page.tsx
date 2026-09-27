@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * v2 Phase 3 — Session orchestration overview.
+ * v2 Phase 3 - Session orchestration overview.
  *
  * Read-only view of AI-session capacity: per-model concurrency occupancy,
  * the currently running sessions, and the priority queue (with the reason
@@ -26,7 +26,7 @@ import { formatRelative } from "@/lib/formatDate";
 import { isStaleActiveSession } from "@/lib/sessionFreshness";
 
 function relTime(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "Not yet";
   return formatRelative(iso);
 }
 
@@ -239,7 +239,7 @@ export default function OrchestrationPage() {
                   <td className="py-2 pr-3"><SessionLink s={s} /></td>
                   <td className="py-2 pr-3">
                     <span className={`inline-flex rounded-pill border px-1.5 py-0.5 text-[10px] font-semibold ${priorityTone(s.priority)}`}>
-                      {s.priority ?? "—"}
+                      {s.priority ?? "None"}
                       {s.queue_rank != null && (
                         <span className="ml-1 opacity-70" title="Manually reprioritized">★</span>
                       )}
@@ -247,7 +247,7 @@ export default function OrchestrationPage() {
                   </td>
                   <td className="py-2 pr-3 tabular-nums text-fg-secondary">{relTime(s.queued_at)}</td>
                   <td className="py-2 pr-3 tabular-nums text-fg-muted">{relTime(s.queue_expires_at)}</td>
-                  <td className="py-2 text-fg-muted">{s.queue_reason ?? "—"}</td>
+                  <td className="py-2 text-fg-muted">{s.queue_reason ?? "None"}</td>
                   {canManage && (
                     <td className="py-2 text-right">
                       <div className="inline-flex items-center gap-1">
@@ -346,7 +346,7 @@ export default function OrchestrationPage() {
                   <td className="py-2 pr-3"><SessionLink s={s} /></td>
                   <td className="py-2 pr-3">
                     <span className={`inline-flex rounded-pill border px-1.5 py-0.5 text-[10px] font-semibold ${priorityTone(s.priority)}`}>
-                      {s.priority ?? "—"}
+                      {s.priority ?? "None"}
                     </span>
                   </td>
                   <td className="py-2 pr-3 text-fg-secondary">
@@ -359,13 +359,13 @@ export default function OrchestrationPage() {
                     {isStaleActiveSession(s) && (
                       <span
                         className="ml-1.5 inline-flex rounded-pill border border-status-high-border bg-status-high-bg px-1.5 py-0.5 text-[10px] font-semibold text-status-high"
-                        title="Running far longer than any tier session limit — likely stuck; consider stopping it"
+                        title="Running far longer than any tier's session limit. It's likely stuck; consider stopping it."
                       >
                         Stale
                       </span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 font-mono text-[11px] text-fg-muted">{s.model_name ?? "—"}</td>
+                  <td className="py-2 pr-3 font-mono text-[11px] text-fg-muted">{s.model_name ?? "None"}</td>
                   <td className="py-2 tabular-nums text-fg-muted">{relTime(s.started_at)}</td>
                 </tr>
               ))}

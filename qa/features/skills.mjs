@@ -4,7 +4,7 @@ import { Harness } from "../lib/harness.mjs";
 
 export default {
   id: "skills",
-  title: "AI — skills",
+  title: "AI: skills",
   async run(h) {
     await h.step("skills page loads", async () => {
       await h.goto("/dashboard/skills");

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 58 Steps 3+4 — Tool call card with governed-AI surface.
+ * Sprint 58 Steps 3+4 - Tool call card with governed-AI surface.
  *
  * Replaces the generic event row for `kind === "tool"` events on
  * /dashboard/sessions/detail. Each tool event renders as a richer
@@ -9,14 +9,14 @@
  * the action without leaving the page:
  *
  *   - Tool name
- *   - MCP server (best-effort lookup; falls back to "—")
+ *   - MCP server (best-effort lookup; falls back to " - ")
  *   - Phase pill: Executing / Completed / Blocked
  *   - Parameters block (collapsible if large)
  *   - Result preview (only when phase = end)
  *   - Runtime (when known)
- *   - Block-reason callout (only when phase = blocked) -- this is
+ *   - Block-reason callout (only when phase = blocked) - this is
  *     Step 4 of the sprint, surfaced inline rather than as a tooltip
- *   - Safety-class chip (safe / caution / destructive) -- the tool's
+ *   - Safety-class chip (safe / caution / destructive) - the tool's
  *     SKILL.md classification, resolved server-side at tool-call time
  *     and carried on the `tool_call` WS payload (`classification`).
  */
@@ -75,8 +75,8 @@ function formatMs(ms: number): string {
 
 /** Heuristic match: the WS payload doesn't carry the MCP server id, so
  *  we try to match the tool name's common prefix (e.g. "kubectl_*")
- *  against the loaded MCP server names. Best-effort only -- a miss
- *  just renders "—" in the chip. */
+ *  against the loaded MCP server names. Best-effort only - a miss
+ *  just renders " - " in the chip. */
 function guessMCPServerName(
   toolName: string | undefined,
   servers: MCPServerResponse[] | undefined,
@@ -106,26 +106,26 @@ const SAFETY_CLASS_STYLES: Record<
   safe: {
     label: "Safe",
     className: "border-status-low-border bg-status-low-bg text-status-low",
-    title: "Safety class: safe — read-only / low-risk operation",
+    title: "Safety class: safe (read-only or low-risk operation)",
   },
   caution: {
     label: "Caution",
     className:
       "border-status-medium-border bg-status-medium-bg text-status-medium",
-    title: "Safety class: caution — may change state; review before approving",
+    title: "Safety class: caution (may change state; review before approving)",
   },
   destructive: {
     label: "Destructive",
     className:
       "border-status-critical-border bg-status-critical-bg text-status-critical",
     title:
-      "Safety class: destructive — irreversible / high-impact; tier-gated",
+      "Safety class: destructive (irreversible or high-impact; tier-gated)",
   },
   unknown: {
     label: "Unclassified",
     className: "border-border-subtle bg-bg-elevated text-fg-muted",
     title:
-      "Safety class: unknown — not declared in the skill definition (treated as high-risk)",
+      "Safety class: unknown (not declared in the skill definition, so treated as high-risk)",
   },
 };
 
@@ -196,7 +196,7 @@ export function ToolCallCard({
       </span>
     );
   } else {
-    // phase === "start" — in flight
+    // phase === "start" - in flight
     icon = <Loader2 size={14} className="animate-spin text-accent-text" />;
     phasePill = (
       <span className="inline-flex items-center gap-1 rounded-pill border border-accent/40 bg-accent-bg/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-text">

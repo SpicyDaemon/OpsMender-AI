@@ -1,20 +1,20 @@
 """SQLAlchemy ORM models for OpsMender AI.
 
 Maps the data model from PROMPT_CONTEXT.md to Postgres tables:
-- ``users``              — auth users with roles
-- ``incidents``          — top-level incident records
-- ``sessions``           — incident response sessions (one per ``opsmender run``)
-- ``audit_entries``      — every agent action (replaces JSONL backend)
-- ``approval_requests``  — Tier 1 human-approval queue
-- ``model_configs``      — BYOM provider configurations
-- ``mcp_servers``        — persisted MCP connection definitions
-- ``runtime_config``     — DB-backed UI overrides for runtime settings
-- ``skills``             — operator-owned skill definitions (optionally bound to an MCP server)
-- ``session_messages``   — co-pilot chat history (user ↔ assistant), parallel to the workflow
-- ``ingest_tokens``      — per-source webhook credentials for external incident ingestion
-- ``ingest_log``         — raw payloads from external ingest for replay/debugging
-- ``bot_connectors``     — external chat bot connector configurations
-- ``integration_connectors`` — external system read/action connector configurations
+- ``users`` - auth users with roles
+- ``incidents`` - top-level incident records
+- ``sessions`` - incident response sessions (one per ``opsmender run``)
+- ``audit_entries`` - every agent action (replaces JSONL backend)
+- ``approval_requests`` - Tier 1 human-approval queue
+- ``model_configs`` - BYOM provider configurations
+- ``mcp_servers`` - persisted MCP connection definitions
+- ``runtime_config`` - DB-backed UI overrides for runtime settings
+- ``skills`` - operator-owned skill definitions (optionally bound to an MCP server)
+- ``session_messages`` - co-pilot chat history (user ↔ assistant), parallel to the workflow
+- ``ingest_tokens`` - per-source webhook credentials for external incident ingestion
+- ``ingest_log`` - raw payloads from external ingest for replay/debugging
+- ``bot_connectors`` - external chat bot connector configurations
+- ``integration_connectors`` - external system read/action connector configurations
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ class Organization(Base):
 
 
 class OrganizationDomain(Base):
-    """Host-based tenant routing — maps a hostname to an organization.
+    """Host-based tenant routing - maps a hostname to an organization.
 
     Multiple domains may point at one org (e.g. ``acme.opsmender.example.com`` plus a
     custom CNAME ``incidents.acme.com``). One row per org is flagged primary
@@ -169,7 +169,7 @@ class OrgSSOConfig(Base):
 class OrgSAMLConfig(Base):
     """Per-organization SAML 2.0 SSO configuration (Sprint 30).
 
-    Sibling to :class:`OrgSSOConfig` — the columns don't meaningfully overlap
+    Sibling to :class:`OrgSSOConfig` - the columns don't meaningfully overlap
     so each protocol gets its own table to keep NOT NULL constraints honest.
 
     The IdP is described by either a metadata URL (preferred, auto-fetched +
@@ -177,7 +177,7 @@ class OrgSAMLConfig(Base):
     those two columns is set at any given time (enforced at the API layer).
 
     SP-side keypair lives in env (``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY``)
-    and is shared across all tenants — see :class:`SAMLConfig` in
+    and is shared across all tenants - see :class:`SAMLConfig` in
     ``backend/config_loader.py``.
     """
 
@@ -259,14 +259,14 @@ class User(Base):
     )  # admin | operator | viewer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Profile fields (optional). avatar_color is a palette key driving the
-    # generated initials avatar — no file storage in v1.
+    # generated initials avatar - no file storage in v1.
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Optional E.164-ish phone number for SMS / Voice Call paging. Stored as
     # entered ("+" and digits only); used as the default recipient for the
     # `sms` / `voice` personal-routing channels when no per-channel address is
-    # set. Optional — no phone means those channels simply have no recipient.
+    # set. Optional - no phone means those channels simply have no recipient.
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Optional uploaded profile picture, normalized server-side to a PNG that
     # fits within 200x200. Stored inline (small after resize); served to the
@@ -305,7 +305,7 @@ class User(Base):
 
     @property
     def has_avatar(self) -> bool:
-        """Cheap flag (no bytes loaded) — does the user have an uploaded pic."""
+        """Cheap flag (no bytes loaded) - does the user have an uploaded pic."""
         return self.avatar_image_updated_at is not None
 
     __table_args__ = (
@@ -348,7 +348,7 @@ class UserMFA(Base):
 
 
 class OrgInvite(Base):
-    """Sprint 56 — admin-initiated invite to join an organization.
+    """Sprint 56 - admin-initiated invite to join an organization.
 
     Issued by an admin via ``POST /organizations/{id}/invites``. The
     one-time URL returned to the admin embeds the raw token; only the
@@ -390,7 +390,7 @@ class OrgInvite(Base):
 
 
 class PasswordResetToken(Base):
-    """Sprint 56 — admin-minted one-time password reset token.
+    """Sprint 56 - admin-minted one-time password reset token.
 
     Issued by an admin via ``POST /auth/users/{id}/reset-password``. Only
     the sha256 hash is persisted; the raw token is returned exactly once
@@ -487,18 +487,18 @@ class Incident(Base):
     suppressed_by_maintenance_window_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("maintenance_windows.id", ondelete="SET NULL"), nullable=True
     )
-    # Sprint 36 step 5 — per-incident Slack channel mirror. Populated when
+    # Sprint 36 step 5 - per-incident Slack channel mirror. Populated when
     # the chain starts in ``page`` mode AND the org opt-in is on.
     slack_channel_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     slack_channel_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    # External ingestion fingerprint — dedup by (external_source, external_id)
+    # External ingestion fingerprint - dedup by (external_source, external_id)
     external_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     correlated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     flapping: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Combine incidents (v1.2): when this incident was merged into another, it
     # gets status="merged" and points at the surviving (primary) incident. Never
-    # deleted — the audit trail and external ids survive.
+    # deleted - the audit trail and external ids survive.
     merged_into_incident_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
     )
@@ -511,13 +511,13 @@ class Incident(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
-    # First-acknowledgment timestamp (Sprint 59 follow-up — MTTA). Stamped once,
+    # First-acknowledgment timestamp (Sprint 59 follow-up - MTTA). Stamped once,
     # the first time the incident gains an assignee (self-ack / chain-ack /
     # takeover); never overwritten. Powers MTTA (created_at → acknowledged_at).
     acknowledged_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Sprint 61 Step 4 — operator-authored postmortem markdown plus its
+    # Sprint 61 Step 4 - operator-authored postmortem markdown plus its
     # own edit timestamp so the UI can show "last edited" without
     # conflating with the incident's own lifecycle clock.
     postmortem_md: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -577,7 +577,7 @@ class Session(Base):
     )
     queue_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Admin manual reorder override (v2 queue admin): when set, ranked sessions
-    # drain before unranked ones, lowest rank first — overriding the P0→P3 +
+    # drain before unranked ones, lowest rank first - overriding the P0→P3 +
     # FIFO default. NULL = normal priority/FIFO ordering.
     queue_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     force_started: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -754,7 +754,7 @@ class MCPServerOAuthToken(Base):
 
     One row per ``(org_id, mcp_server_id)``. ``access_token`` and
     ``refresh_token`` are encrypted at rest with the project-wide Fernet
-    helper in ``backend/auth/secrets.py`` — repo callers pass plaintext;
+    helper in ``backend/auth/secrets.py`` - repo callers pass plaintext;
     encryption happens at the boundary.
 
     The ``issuer`` column captures the authorization-server issuer
@@ -1125,7 +1125,7 @@ class IncidentIntegrationLink(Base):
 
 
 # ---------------------------------------------------------------------------
-# Workflow profiles (custom workflow builder — Phase 3)
+# Workflow profiles (custom workflow builder - Phase 3)
 # ---------------------------------------------------------------------------
 
 
@@ -1158,7 +1158,7 @@ class WorkflowProfile(Base):
 
 
 # ---------------------------------------------------------------------------
-# Ingest tokens (external incident ingestion — Sprint 14)
+# Ingest tokens (external incident ingestion - Sprint 14)
 # ---------------------------------------------------------------------------
 
 
@@ -1171,7 +1171,7 @@ class IngestToken(Base):
     ``shape_cache`` holds learned field-path mappings keyed by a hash of
     the payload's top-level structure. Populated either by LLM fallback
     on first-sighting of a payload shape, or by operator-supplied sample
-    payloads during token creation — the Universal adapter uses it to
+    payloads during token creation - the Universal adapter uses it to
     skip heuristics on repeat traffic.
     """
 
@@ -1372,7 +1372,7 @@ class UptimeSample5m(Base):
         Numeric(5, 4, asdecimal=False), nullable=False
     )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Response-time rollups (v1.2) — preserved past raw-sample pruning so the
+    # Response-time rollups (v1.2) - preserved past raw-sample pruning so the
     # response-time history can span up to 365d. Null when no probe in the
     # bucket reported a latency.
     avg_latency_ms: Mapped[float | None] = mapped_column(
@@ -1406,7 +1406,7 @@ class UptimeSample1h(Base):
         Numeric(5, 4, asdecimal=False), nullable=False
     )
     total_samples: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Response-time rollups (v1.2) — see UptimeSample5m.
+    # Response-time rollups (v1.2) - see UptimeSample5m.
     avg_latency_ms: Mapped[float | None] = mapped_column(
         Numeric(10, 2, asdecimal=False), nullable=True
     )
@@ -1437,7 +1437,7 @@ class SLO(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    # Percentage 0–100 with up to 3 decimal places (e.g. 99.999). Numeric(6,3)
+    # Percentage 0-100 with up to 3 decimal places (e.g. 99.999). Numeric(6,3)
     # holds 100.000 and 99.999; the old Numeric(5,4) capped at 9.9999 and would
     # overflow on Postgres for any realistic SLA objective.
     objective_pct: Mapped[float] = mapped_column(
@@ -1544,7 +1544,7 @@ class UserNotificationPref(Base):
 
 
 # ---------------------------------------------------------------------------
-# In-app notifications (v1.2 — per-user notification center / bell)
+# In-app notifications (v1.2 - per-user notification center / bell)
 # ---------------------------------------------------------------------------
 
 
@@ -1900,14 +1900,14 @@ class NativeActionInvocation(Base):
 
 
 # ---------------------------------------------------------------------------
-# Auditor (Sprint 32) — read-only environment scans producing findings reports.
+# Auditor (Sprint 32) - read-only environment scans producing findings reports.
 # Distinct from incidents: audits run on demand or on schedule, produce a
 # triageable list of findings, and never auto-page humans.
 # ---------------------------------------------------------------------------
 
 
 class AuditRun(Base):
-    """One audit run — a set of analyzers executed against an environment."""
+    """One audit run - a set of analyzers executed against an environment."""
 
     __tablename__ = "audit_runs"
 
@@ -1941,7 +1941,7 @@ class AuditRun(Base):
 
 
 class AuditSchedule(Base):
-    """Sprint 39 step 2 — scheduled audit runs.
+    """Sprint 39 step 2 - scheduled audit runs.
 
     Background scheduler polls this table; rows with ``is_active`` and a
     past ``next_run_at`` get a new ``audit_runs`` row queued, then their
@@ -2017,8 +2017,8 @@ class AuditFinding(Base):
 
 
 # ---------------------------------------------------------------------------
-# Paging (Sprint 33) — teams, services, rosters, priority rules, assignments.
-# Full data model lives in docs/PROMPT_CONTEXT.md (D-021 — Paging Model).
+# Paging (Sprint 33) - teams, services, rosters, priority rules, assignments.
+# Full data model lives in docs/PROMPT_CONTEXT.md (D-021 - Paging Model).
 # ---------------------------------------------------------------------------
 
 
@@ -2102,7 +2102,7 @@ class Service(Base):
     # Per-service, per-connector action overrides keyed by connector id, e.g.
     # ``{"<connector_id>": {"ticket_lifecycle": false}}``. Only an explicit
     # ``false`` disables an action for this service; absent/true keeps the
-    # connector's default behavior — so existing services are unaffected. Lets a
+    # connector's default behavior - so existing services are unaffected. Lets a
     # service keep an integration available to the agent while opting out of its
     # automatic ticket lifecycle (open/sync).
     integration_action_overrides: Mapped[dict] = mapped_column(
@@ -2271,10 +2271,10 @@ class PriorityLLMOverrideLog(Base):
 
 
 class IncidentComment(Base):
-    """An operator note on an incident (v1.2 — event/comment UX).
+    """An operator note on an incident (v1.2 - event/comment UX).
 
     Comments are human notes that surface on the incident command timeline. They
-    are advisory context only — they never affect enforcement or the AI workflow.
+    are advisory context only - they never affect enforcement or the AI workflow.
     """
 
     __tablename__ = "incident_comments"
@@ -2342,7 +2342,7 @@ class IncidentAssignment(Base):
 
 
 # ---------------------------------------------------------------------------
-# Escalation chains (Sprint 34) — additive paging engine. State machine lives
+# Escalation chains (Sprint 34) - additive paging engine. State machine lives
 # in backend/paging/escalation.py; the tables here only persist the chain
 # definition + per-incident page log.
 # ---------------------------------------------------------------------------
@@ -2413,7 +2413,7 @@ class ServiceEscalationChain(Base):
 
 
 class IncidentPage(Base):
-    """One row per page attempt — used as the audit log for the chain engine
+    """One row per page attempt - used as the audit log for the chain engine
     in Sprint 34. Sprint 35 will wire ``channel`` to real delivery surfaces."""
 
     __tablename__ = "incident_pages"
@@ -2464,7 +2464,7 @@ class IncidentPage(Base):
 
 
 # ---------------------------------------------------------------------------
-# Per-incident chain run state (Sprint 34) — tracks current step, next
+# Per-incident chain run state (Sprint 34) - tracks current step, next
 # deadline, soft-takeover window, etc. Separate from the chain *definition*.
 # ---------------------------------------------------------------------------
 
@@ -2571,7 +2571,7 @@ class NotificationEscalation(Base):
 
 
 # ---------------------------------------------------------------------------
-# AI incident memory (Sprint 45 — D-025)
+# AI incident memory (Sprint 45 - D-025)
 # ---------------------------------------------------------------------------
 
 
@@ -2581,7 +2581,7 @@ class IncidentMemory(Base):
     The agent reads matching memories at session start (advisory context) and
     writes a new one after `summarize` on resolved sessions. Operators can also
     author and edit memories by hand. Memory cannot bypass tier or skill
-    enforcement — it is context only.
+    enforcement - it is context only.
     """
 
     __tablename__ = "incident_memories"
@@ -2601,7 +2601,7 @@ class IncidentMemory(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     unhelpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # v2 Phase 8 — operator-pinned memories are protected from bounded-growth
+    # v2 Phase 8 - operator-pinned memories are protected from bounded-growth
     # eviction (alongside high-recall memories). Never auto-deleted.
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -14,15 +14,15 @@ tools, its AI session still starts in advisory-only mode.
 
 Open **MCP Skills** at `/dashboard/skills`. MCP Skill Studio supports:
 
-- **New skill** — start with Blank, Kubernetes, Cloud infrastructure, CI/CD &
+- **New skill**: start with Blank, Kubernetes, Cloud infrastructure, CI/CD &
   source control, or Ticketing & communications policy templates.
-- **Generate from tools** — discover operations from an MCP server or native
+- **Generate from tools**: discover operations from an MCP server or native
   integration connector, review conservative policy suggestions, and generate
   a draft.
-- **Import, edit, clone, and download** — manage existing Markdown policies.
-- **Backend validation** — line-specific parser errors block save; warnings and
+- **Import, edit, clone, and download**: manage existing Markdown policies.
+- **Backend validation**: line-specific parser errors block save; warnings and
   the parsed operation table remain visible for review.
-- **Policy diff and coverage** — generated changes highlight risk or permission
+- **Policy diff and coverage**: generated changes highlight risk or permission
   widening, and bound sources list tools with no matching operation. An
   unclassified tool is denied at every tier.
 
@@ -30,10 +30,10 @@ Open **MCP Skills** at `/dashboard/skills`. MCP Skill Studio supports:
 
 A Skill may be:
 
-- **Unassigned** — saved and downloadable, but never used by a session.
-- **Global fallback** — applies to MCP servers without a server-specific Skill.
-- **MCP server** — governs that server's exact discovered tools.
-- **Integration connector** — adds connector-specific Custom Instructions
+- **Unassigned**: saved and downloadable, but never used by a session.
+- **Global fallback**: applies to MCP servers without a server-specific Skill.
+- **MCP server**: governs that server's exact discovered tools.
+- **Integration connector**: adds connector-specific Custom Instructions
   (shown to the AI after the MCP Skill's, labelled with the connector) and may
   restrict its capability policy. Its AI Action Workflow isn't used; sessions
   follow the MCP Skill's workflow.
@@ -46,9 +46,9 @@ approval/advisory floor, and malformed policy fails closed.
 
 | Tier | Behavior |
 |---|---|
-| **Tier 0 — Autonomous** | Runs only explicitly permitted operations within deny lists, generic-command restrictions, and the reversible-operation floor. |
-| **Tier 1 — Approval Required** | Each explicit operation policy chooses autonomous execution, operator approval, advisory behavior, or blocking. |
-| **Tier 2 — Advisory Only** | Read-only observation and recommendations; no write or remediation action executes. |
+| **Tier 0: Autonomous** | Runs only explicitly permitted operations within deny lists, generic-command restrictions, and the reversible-operation floor. |
+| **Tier 1: Approval Required** | Each explicit operation policy chooses autonomous execution, operator approval, advisory behavior, or blocking. |
+| **Tier 2: Advisory Only** | Read-only observation and recommendations; no write or remediation action executes. |
 
 The backend tier gate is authoritative. Skill prose can guide investigation
 order, evidence requirements, and rollback expectations, but it cannot change

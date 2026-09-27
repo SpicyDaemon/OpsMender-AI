@@ -1,4 +1,4 @@
-"""Tests for backend.audit.pg_logger — Postgres-backed audit logger."""
+"""Tests for backend.audit.pg_logger - Postgres-backed audit logger."""
 
 from __future__ import annotations
 

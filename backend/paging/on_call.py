@@ -2,10 +2,10 @@
 
 Given a roster snapshot and a timestamp T, ``on_call_at`` returns the
 ``user_id`` who is responsible for paging at that moment. The function is
-pure — caller materializes members + overrides from the DB and the result is
+pure - caller materializes members + overrides from the DB and the result is
 fully reproducible.
 
-Algorithm (see ``docs/PROMPT_CONTEXT.md (D-021 — Paging Model)`` for the spec):
+Algorithm (see ``docs/PROMPT_CONTEXT.md (D-021 - Paging Model)`` for the spec):
 
 1. Active override wins. If any override covers T, its ``covering_user_id``
    is on call.
@@ -136,7 +136,7 @@ def on_call_at(ctx: OnCallContext, t: datetime) -> uuid.UUID | None:
     shift_length = _shift_length_days(ctx)
     days_elapsed = (shift_date - ctx.anchor_date).days
     if days_elapsed < 0:
-        # Before the anchor date — fall back to position 0.
+        # Before the anchor date - fall back to position 0.
         shift_index = 0
     else:
         shift_index = (days_elapsed // shift_length) % len(members)
@@ -156,8 +156,8 @@ def build_context(
 
     ``members`` must already be the active members and ``overrides`` only those
     whose covering user can still be paged (see
-    ``backend.paging.on_call_context.load_on_call_context``). Every caller —
-    the paging engine, the on-call API, the calendars — goes through here, so
+    ``backend.paging.on_call_context.load_on_call_context``). Every caller -
+    the paging engine, the on-call API, the calendars - goes through here, so
     they all use the Roster's real coverage window and agree on who is on call.
     """
 

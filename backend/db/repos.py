@@ -2,7 +2,7 @@
 
 Each repository wraps common CRUD operations for a single model using
 an async SQLAlchemy session.  All methods accept a session and return
-model instances or lists — the caller controls the transaction boundary.
+model instances or lists - the caller controls the transaction boundary.
 
 Usage::
 
@@ -262,7 +262,7 @@ class UserRepo:
         avatar_color: str | None = None,
         phone: str | None | object = _UNSET,
     ) -> User | None:
-        """Admin or self patch — change role/active/profile fields. Only
+        """Admin or self patch - change role/active/profile fields. Only
         non-None arguments are applied.
 
         ``phone`` is the exception: it uses an ``_UNSET`` sentinel so an
@@ -699,7 +699,7 @@ class IncidentRepo:
         exclude_statuses: "Sequence[str] | None" = None,
     ):
         # Each categorical filter accepts a scalar (backward compatible) or a
-        # list — a list is an OR match (IN). An empty list means "no filter".
+        # list - a list is an OR match (IN). An empty list means "no filter".
         def _as_list(value):
             if value is None:
                 return []
@@ -714,7 +714,7 @@ class IncidentRepo:
 
         stmt = select(Incident).where(Incident.org_id == org_id)
         # Exclude statuses (e.g. "merged") unless explicitly requested via the
-        # status filter — merged incidents are folded away by default.
+        # status filter - merged incidents are folded away by default.
         excluded = [s for s in (exclude_statuses or []) if s not in statuses]
         if excluded:
             stmt = stmt.where(Incident.status.not_in(excluded))
@@ -1779,7 +1779,7 @@ class ApprovalRequestRepo:
         session_id: uuid.UUID | None = None,
     ) -> dict[str, int]:
         """Return ``{status: count}`` across all approval requests for the org
-        (optionally one session), independent of any status filter — powers the
+        (optionally one session), independent of any status filter - powers the
         segmented status filter's per-status counts."""
         stmt = (
             select(ApprovalRequest.status, func.count())
@@ -2224,7 +2224,7 @@ class MCPServerOAuthTokenRepo:
     """OAuth 2.1 token persistence for HTTP-transport MCP servers (Sprint 42).
 
     Tokens are encrypted at rest using the project's Fernet helper in
-    ``backend/auth/secrets.py`` — callers pass plaintext and read
+    ``backend/auth/secrets.py`` - callers pass plaintext and read
     plaintext; the repository owns the encrypt/decrypt boundary.
 
     Refresh-token rotation (OAuth 2.1 §4.3.1) is the common case: every
@@ -2317,7 +2317,7 @@ class MCPServerOAuthTokenRepo:
         """Update an existing token row after a successful refresh.
 
         Per OAuth 2.1 §4.3.1, public-client refresh responses rotate the
-        refresh_token — callers MUST pass the new value (or ``None`` if
+        refresh_token - callers MUST pass the new value (or ``None`` if
         the authorization server didn't issue one this round).
         """
 
@@ -2330,7 +2330,7 @@ class MCPServerOAuthTokenRepo:
         if refresh_token is not None:
             row.refresh_token_encrypted = encrypt_secret(refresh_token)
         # If the response omitted refresh_token we keep the existing one
-        # (the AS opted not to rotate this turn — still valid per spec).
+        # (the AS opted not to rotate this turn - still valid per spec).
         row.expires_at = expires_at
         if scopes is not None:
             row.scopes = scopes
@@ -2418,7 +2418,7 @@ class MCPServerOAuthTokenRepo:
         *,
         cutoff: datetime,
     ) -> Sequence[MCPServerOAuthToken]:
-        """Tokens with ``expires_at <= cutoff`` — the auto-refresh sweep query."""
+        """Tokens with ``expires_at <= cutoff`` - the auto-refresh sweep query."""
 
         stmt = (
             select(MCPServerOAuthToken)
@@ -2592,7 +2592,7 @@ class SkillRepo:
 
         Precedence: a server-specific skill (``mcp_server_id`` match) wins;
         otherwise the global-fallback skill (``assignment == 'global'``). A
-        skill assigned ``unassigned`` is a draft and is **never** returned —
+        skill assigned ``unassigned`` is a draft and is **never** returned -
         it must not be injected into AI sessions. Returns ``None`` if neither
         a server-specific nor a global skill exists.
         """
@@ -5544,7 +5544,7 @@ class AuditRunRepo:
 
 
 class AuditScheduleRepo:
-    """Sprint 39 step 2 — scheduled audit runs."""
+    """Sprint 39 step 2 - scheduled audit runs."""
 
     @staticmethod
     async def create(
@@ -5616,7 +5616,7 @@ class AuditScheduleRepo:
         now: datetime,
     ) -> None:
         """Advance ``last_run_at`` to ``now`` and push ``next_run_at`` by
-        ``interval_minutes``. Idempotent — never moves backwards."""
+        ``interval_minutes``. Idempotent - never moves backwards."""
 
         schedule.last_run_at = now
         schedule.next_run_at = now + timedelta(minutes=schedule.interval_minutes)
@@ -6277,7 +6277,7 @@ class RosterRepo:
         active_only: bool = False,
     ) -> Sequence[RosterMember]:
         """List roster members. With ``active_only`` deactivated / soft-deleted
-        users are excluded — used for on-call resolution + paging so a disabled
+        users are excluded - used for on-call resolution + paging so a disabled
         user never resolves as on-call or gets paged (their membership row is
         preserved for history)."""
         stmt = select(RosterMember).where(
@@ -6925,7 +6925,7 @@ class EscalationStepRepo:
         if not ordered_step_ids:
             return []
 
-        # Phase 1 — park all targeted steps in negative indices keyed by the
+        # Phase 1 - park all targeted steps in negative indices keyed by the
         # incoming order, so any subsequent index assignment is collision-free.
         for offset, step_id in enumerate(ordered_step_ids):
             await db.execute(
@@ -6938,7 +6938,7 @@ class EscalationStepRepo:
                 .values(step_index=-1 - offset)
             )
 
-        # Phase 2 — assign final indices.
+        # Phase 2 - assign final indices.
         for index, step_id in enumerate(ordered_step_ids):
             await db.execute(
                 sql_update(EscalationStep)
@@ -6991,7 +6991,7 @@ class ServiceEscalationChainRepo:
     async def list_for_chain(
         db: AsyncSession, org_id: uuid.UUID, chain_id: uuid.UUID
     ) -> Sequence[ServiceEscalationChain]:
-        """Sprint 49 — power the chain editor's "Where used" panel."""
+        """Sprint 49 - power the chain editor's "Where used" panel."""
         stmt = select(ServiceEscalationChain).where(
             ServiceEscalationChain.org_id == org_id,
             ServiceEscalationChain.chain_id == chain_id,
@@ -7359,7 +7359,7 @@ class NotificationEscalationRepo:
 
 
 class IncidentMemoryRepo:
-    """Sprint 45 — AI incident memory.
+    """Sprint 45 - AI incident memory.
 
     All methods are org-scoped; callers must pass `org_id` and the repo
     enforces the boundary on every read and write.

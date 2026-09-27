@@ -10,7 +10,7 @@ export interface FilterDropdownOption {
 
 /**
  * Multi-select checkbox filter dropdown (Services-style filter bar). No
- * Ctrl/Cmd — each option is a checkbox. Selecting multiple options is an OR
+ * Ctrl/Cmd - each option is a checkbox. Selecting multiple options is an OR
  * match; selecting none means "all" (the caller applies no filter for an empty
  * selection). The trigger reads `All <label>` when empty and `<label> · N`
  * when N options are selected.

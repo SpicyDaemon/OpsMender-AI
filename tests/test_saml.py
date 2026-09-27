@@ -29,7 +29,7 @@ TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
 
 
 # Minimal IdP EntityDescriptor for cache + dispatch tests. Not signed; we
-# never call OneLogin_Saml2_Auth.process_response with this — only the
+# never call OneLogin_Saml2_Auth.process_response with this - only the
 # parser, which accepts an unsigned descriptor at face value.
 SAMPLE_IDP_METADATA = """<?xml version="1.0"?>
 <EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata"

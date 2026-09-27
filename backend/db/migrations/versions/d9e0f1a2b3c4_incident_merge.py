@@ -1,4 +1,4 @@
-"""Combine incidents — merged_into_incident_id (v1.2).
+"""Combine incidents - merged_into_incident_id (v1.2).
 
 Adds a nullable self-referential FK so a secondary incident can be folded
 into a surviving (primary) incident with status="merged" instead of being

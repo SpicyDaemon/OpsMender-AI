@@ -65,7 +65,7 @@ async def bootstrap_model_config(
     Strict gating to avoid noisy bootstrapping:
       - Skips entirely if any org already has a model_configs row.
       - Skips if OPSMENDER_MODEL_PROVIDER is the compiled-in default
-        ("ollama") AND OLLAMA_BASE_URL is unchanged from default — i.e.
+        ("ollama") AND OLLAMA_BASE_URL is unchanged from default - i.e.
         the operator did not actually configure anything.
       - Skips providers that require a base_url if no base_url is set.
     """

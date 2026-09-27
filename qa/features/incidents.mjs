@@ -6,7 +6,7 @@ import { config, qaName } from "../lib/config.mjs";
 
 export default {
   id: "incidents",
-  title: "Incidents — create & lifecycle",
+  title: "Incidents: create & lifecycle",
   async run(h) {
     const title = qaName("incident");
 

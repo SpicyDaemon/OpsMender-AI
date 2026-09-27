@@ -1,4 +1,4 @@
-"""v2 Phase 6 — provider-agnostic Voice Call paging medium."""
+"""v2 Phase 6 - provider-agnostic Voice Call paging medium."""
 
 from __future__ import annotations
 

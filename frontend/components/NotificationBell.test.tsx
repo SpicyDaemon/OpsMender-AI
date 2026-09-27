@@ -1,5 +1,5 @@
 /**
- * NotificationBell — badge rendering, dropdown contents, and "Mark all read".
+ * NotificationBell - badge rendering, dropdown contents, and "Mark all read".
  */
 
 import React from "react";

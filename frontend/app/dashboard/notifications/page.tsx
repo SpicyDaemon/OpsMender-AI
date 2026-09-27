@@ -61,8 +61,8 @@ type NotificationGroup = {
 
 function notificationGroupKey(item: Notification) {
   // Group by content only. Subject ids (incident/session/link) are
-  // deliberately excluded: the flagship duplicate stack — four "Queued AI
-  // session expired" rows — comes from four *different* sessions, and keying
+  // deliberately excluded: the flagship duplicate stack - four "Queued AI
+  // session expired" rows - comes from four *different* sessions, and keying
   // on the subject would keep them apart. Per-item deep links stay reachable
   // through the expanded group.
   return JSON.stringify([
@@ -372,7 +372,7 @@ export default function NotificationsPage() {
                       type="button"
                       onClick={() => toggleGroupExpanded(group.key)}
                       aria-expanded={isExpanded}
-                      aria-label={`${group.count} duplicate notifications — ${
+                      aria-label={`${group.count} duplicate notifications: ${
                         isExpanded ? "collapse" : "expand"
                       }`}
                       className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full border border-border-subtle bg-bg-elevated px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary transition-colors hover:bg-bg-hover hover:text-fg-primary"

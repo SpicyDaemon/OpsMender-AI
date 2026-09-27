@@ -454,7 +454,7 @@ function SkillModal({
                 setForm({ ...form, assignment: e.target.value })
               }
             >
-              <option value="unassigned">Unassigned (draft — not used by sessions)</option>
+              <option value="unassigned">Unassigned (draft, not used by sessions)</option>
               <option value="global">Global (fallback for all servers)</option>
               <optgroup label="MCP servers">
               {servers.map((s) => (
@@ -571,7 +571,7 @@ function SkillModal({
             Skills guide the AI; the backend tier gate enforces what actually
             runs. Generic command tools (shell, bash, kubectl, aws_cli, gcloud,
             az, terraform, sql, run_command, …) are high-risk and are denied by
-            default — blocked at Tier 0/2 and approval-required at Tier 1 — unless
+            default (blocked at Tier 0/2 and approval-required at Tier 1) unless
             you explicitly allow narrow command patterns. Deny entries always win.
           </p>
         </div>
@@ -778,7 +778,7 @@ function tier0Incomplete(tools: EditableTool[]): string[] {
 /**
  * MCP Skill Studio generator: discover a server's tools, review OpsMender's
  * heuristic classification suggestions, then generate an editable skill draft.
- * The draft is handed to the editor for review/edit before saving — the backend
+ * The draft is handed to the editor for review/edit before saving - the backend
  * tier gate, not this UI, remains the execution authority.
  */
 function GenerateModal({
@@ -920,7 +920,7 @@ function GenerateModal({
       if (res.tier1_instructions) setT1(res.tier1_instructions);
       if (res.tier2_instructions) setT2(res.tier2_instructions);
       if (res.environment) setEnvironment(res.environment);
-      toast.success("AI suggestions applied — review the flagged rows.");
+      toast.success("AI suggestions applied. Review the flagged rows.");
     } catch (err) {
       // AI assist is optional: degrade to the heuristic suggestions already shown.
       setError(
@@ -939,7 +939,7 @@ function GenerateModal({
       return;
     }
     // Block generation when a Tier 0 tool lacks the safety metadata the backend
-    // floor requires — otherwise it would silently never run autonomously.
+    // floor requires - otherwise it would silently never run autonomously.
     const incomplete = tier0Incomplete(tools);
     if (incomplete.length > 0) {
       setError(
@@ -1010,7 +1010,7 @@ function GenerateModal({
           Discover an MCP server&apos;s or integration connector&apos;s tools,
           review the suggested
           classifications, then generate a draft you can edit before saving.
-          Suggestions are heuristic — the backend tier gate enforces what can
+          Suggestions are heuristic. The backend tier gate enforces what can
           actually run.
         </p>
 
@@ -1063,7 +1063,7 @@ function GenerateModal({
                 rows={2}
                 value={intent}
                 onChange={(e) => setIntent(e.target.value)}
-                placeholder="e.g. Production Kubernetes. Be conservative — never auto-delete; restarts OK if health checks pass."
+                placeholder="e.g. Production Kubernetes. Be conservative: never auto-delete; restarts OK if health checks pass."
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-xs text-fg-secondary">
@@ -1221,7 +1221,7 @@ function GenerateModal({
                         )}
                         {t.tier0 && !t.deny && t.classification === "safe" && (
                           <p className="mt-1 text-[11px] text-fg-tertiary">
-                            Read-only — clears Tier 0 automatically.
+                            Read-only, so it clears Tier 0 automatically.
                           </p>
                         )}
                       </td>
@@ -1650,7 +1650,7 @@ export default function SkillsPage() {
               ))}
             </div>
           ) : (
-            <span className="text-fg-muted">—</span>
+            <span className="text-fg-muted">None</span>
           ),
         searchable: true,
       },
@@ -1695,7 +1695,7 @@ export default function SkillsPage() {
     <div className="space-y-6">
       <PageHeader
         title="MCP Skills"
-        subtitle="MCP Skill Studio — create, edit, assign, and download skill policies. MCP Skills guide the AI; the backend tier gate enforces what can actually run."
+        subtitle="MCP Skill Studio: create, edit, assign, and download skill policies. MCP Skills guide the AI; the backend tier gate enforces what can actually run."
         actions={
           canEdit ? (
             <div className="flex items-center gap-2">
@@ -1719,7 +1719,7 @@ export default function SkillsPage() {
           title="No skills yet"
           description={
             canEdit
-              ? "MCP Skills define how the AI should use tools for each autonomy tier — action order, allow lists, approval-required actions, deny lists, and environment rules. Start from the 3-tier template."
+              ? "MCP Skills define how the AI should use tools for each autonomy tier: action order, allow lists, approval-required actions, deny lists, and environment rules. Start from the 3-tier template."
               : "Ask an admin to import or create an MCP Skill."
           }
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/mcp-skills.md"

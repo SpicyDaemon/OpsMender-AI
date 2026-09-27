@@ -331,7 +331,7 @@ function RoleEditor({
     <section className="rounded-lg border border-border-default bg-bg-panel p-5">
       <h2 className="text-sm font-semibold text-fg-primary">Role</h2>
       <p className="mt-1 text-xs text-fg-muted">
-        Admin — full access. Operator — drive sessions + approve. Viewer — read-only.
+        Admin: full access. Operator: drive sessions and approve. Viewer: read-only.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 sm:min-w-[200px]">
@@ -470,8 +470,8 @@ function ActionsCard({
       setMinted(resp);
       toast.success(
         resp.email_sent
-          ? "Reset email sent — link also available below"
-          : "Reset link minted — copy it from the modal",
+          ? "Reset email sent. The link is also below."
+          : "Reset link created. Copy it from the dialog.",
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -486,7 +486,7 @@ function ActionsCard({
     try {
       const resp = await setTemporaryPassword(user.id);
       setTempPw(resp.temporary_password);
-      toast.success("Temporary password set — copy it now (shown once)");
+      toast.success("Temporary password set. Copy it now; it's shown only once.");
       await onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -502,7 +502,7 @@ function ActionsCard({
         <p className="mt-1 text-xs text-fg-muted">
           <strong>Email reset:</strong> mint a one-time URL the user pastes into their browser to set a new password (expires in 24 hours).
           {" "}
-          <strong>Manual reset:</strong> set a temporary password (shown once) — the user logs in with it and is forced to change it.
+          <strong>Manual reset:</strong> set a temporary password (shown once). The user logs in with it and must change it.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={mint} disabled={resetting} variant="secondary">
@@ -595,7 +595,7 @@ function MintedResetModal({
       await navigator.clipboard.writeText(minted.url);
       toast.success("Reset link copied");
     } catch {
-      toast.error("Copy failed — select and copy manually.");
+      toast.error("Copy failed. Select the text and copy it manually.");
     }
   }, [minted, toast]);
 
@@ -630,7 +630,7 @@ function MintedResetModal({
           </p>
         ) : (
           <p className="text-sm text-fg-muted">
-            SMTP is not configured — share the link via Slack or another channel.
+            SMTP isn&apos;t configured, so share the link via Slack or another channel.
           </p>
         )}
         <div className="flex justify-end pt-2">

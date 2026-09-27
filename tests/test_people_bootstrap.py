@@ -48,7 +48,7 @@ def test_hash_token_is_pure():
 
 
 def test_smtp_not_configured_returns_false():
-    cfg = SMTPConfig()  # all defaults — host + from unset
+    cfg = SMTPConfig()  # all defaults - host + from unset
     assert not smtp_helper.is_configured(cfg)
     sent, err = smtp_helper.send_email(cfg, to="a@b.com", subject="s", body="b")
     assert sent is False
@@ -62,7 +62,7 @@ def test_smtp_configured_requires_both_host_and_from():
 
 
 def test_smtp_send_swallows_smtp_exception():
-    """SMTP send must never raise — failures degrade to (False, error)."""
+    """SMTP send must never raise - failures degrade to (False, error)."""
     cfg = SMTPConfig(host="invalid.host.example", from_address="x@example.com")
     sent, err = smtp_helper.send_email(cfg, to="a@b.com", subject="s", body="b")
     assert sent is False
@@ -97,7 +97,7 @@ async def test_bootstrap_dev_default_admin_when_env_unset(factory, monkeypatch):
         assert admin.email == "admin@localhost"
         assert admin.role == "admin"
         assert verify_password("admin123", admin.password_hash)
-    # Idempotent — a second startup does not create a duplicate.
+    # Idempotent - a second startup does not create a duplicate.
     await bootstrap_admin(factory, cfg)
     async with factory() as db:
         assert len(list(await UserRepo.list_all(db))) == 1
@@ -147,13 +147,13 @@ async def test_bootstrap_noop_when_users_exist(factory):
     await bootstrap_admin(factory, cfg)
     async with factory() as db:
         users = list(await UserRepo.list_all(db))
-        # Still only one user — bootstrap refused to add another admin
+        # Still only one user - bootstrap refused to add another admin
         assert len(users) == 1
         assert users[0].email == "existing@example.com"
 
 
 async def test_bootstrap_reuses_existing_org(factory):
-    # Pre-existing org named "Already" — bootstrap should bind admin to it
+    # Pre-existing org named "Already" - bootstrap should bind admin to it
     # rather than creating a second "Main" org.
     async with factory() as db:
         db.add(Organization(name="Already", slug="already"))

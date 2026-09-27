@@ -4,7 +4,7 @@ Drives a priority's ordered routing stages for one (incident, user): stage 0
 fires immediately, each later stage fires after the prior stage's delay if the
 incident is still unacknowledged. Acknowledgement or resolution stops it.
 
-Delivery is **channel-agnostic** — a stage targets a configured Notification
+Delivery is **channel-agnostic** - a stage targets a configured Notification
 Channel (a ``BotConnector``, by id) routed through the unified connector
 adapter ``send_message`` path, or a legacy delivery key
 (``slack_dm``/``email``/...) routed through the paging channel factory. New
@@ -14,7 +14,7 @@ and it becomes routable.
 The architecture intentionally keeps the *channel* abstraction separate from
 delivery so future chat-capable actions (Acknowledge / Resolve / Escalate /
 Start Session from inside a notification) can be layered on without touching
-routing — see docs/wiki/notification-preferences.md "Future direction".
+routing - see docs/wiki/notification-preferences.md "Future direction".
 """
 
 from __future__ import annotations

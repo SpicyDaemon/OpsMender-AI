@@ -228,7 +228,7 @@ function CopyButton({ value, label = "Copy" }: { value: string; label?: string }
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         } catch {
-          /* clipboard unavailable — non-fatal */
+          /* clipboard unavailable - non-fatal */
         }
       }}
     >
@@ -294,7 +294,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Paging"
-        subtitle="Teams, escalation chains, services, rosters, maintenance windows, and notifications — the OpsMender-owned paging surface."
+        subtitle="Everything that decides who gets paged: teams, escalation chains, services, rosters, maintenance windows, and notifications."
         actions={
           <Button
             variant="ghost"
@@ -568,7 +568,7 @@ function TeamsPanel({
               {t.description}
             </span>
           ) : (
-            <span className="text-fg-muted">—</span>
+            <span className="text-fg-muted">None</span>
           ),
       },
       {
@@ -1003,7 +1003,7 @@ function ServicesPanel({
       setLinkedChainApplies(filters.some((priorities) =>
         !priorities || priorities.length === 0 || priorities.includes(service.priority)));
     } catch {
-      /* non-fatal — leave unselected */
+      /* non-fatal - leave unselected */
       setLinkedChainApplies(false);
       setLinkedPriorityFilters([]);
     }
@@ -1203,7 +1203,7 @@ function ServicesPanel({
       id: "team",
       label: "Team",
       accessor: (r) => r.team_name ?? "",
-      cell: (r) => r.team_name ?? "—",
+      cell: (r) => r.team_name ?? "None",
       sortable: true,
     },
     {
@@ -1217,7 +1217,7 @@ function ServicesPanel({
             <span>{r.on_call_username}</span>
           </span>
         ) : (
-          <span className="text-fg-muted">—</span>
+          <span className="text-fg-muted">None</span>
         ),
       sortable: true,
     },
@@ -1242,7 +1242,7 @@ function ServicesPanel({
         r.last_incident_at ? (
           formatDateTime(r.last_incident_at)
         ) : (
-          <span className="text-fg-muted">—</span>
+          <span className="text-fg-muted">None</span>
         ),
       sortable: true,
     },
@@ -1486,7 +1486,7 @@ function ServicesPanel({
                 setLinkedPriorityFilters([]);
               }}
             >
-              <option value="">— none —</option>
+              <option value="">None</option>
               {chains
                 .filter((c) => !form.team_id || c.team_id === form.team_id)
                 .map((c) => (
@@ -1519,7 +1519,7 @@ function ServicesPanel({
               emptyLabel="No MCP servers configured yet."
             />
             <p className="mt-1 text-xs text-fg-muted">
-              Strict allowlist — sessions for this service can only use these
+              Strict allowlist: sessions for this service can only use these
               MCP servers. Leave empty when native integrations cover the
               toolset, or to run advisory-only.
             </p>
@@ -1543,7 +1543,7 @@ function ServicesPanel({
               emptyLabel="No integrations configured yet."
             />
             <p className="mt-1 text-xs text-fg-muted">
-              Strict allowlist — the AI agent for this service can use{" "}
+              Strict allowlist: the AI agent for this service can use{" "}
               <strong>only</strong> the integrations selected here.{" "}
               <strong>Leaving this empty means no integrations</strong> are
               available for the service. Configure integrations under{" "}
@@ -1623,7 +1623,7 @@ function ServicesPanel({
                                   ?.ticket_lifecycle === false && (
                                   <span className="text-fg-muted">
                                     {" "}
-                                    Off — the agent can still use this
+                                    Off. The agent can still use this
                                     integration on demand.
                                   </span>
                                 )}
@@ -1633,7 +1633,7 @@ function ServicesPanel({
                         )}
                         {isTicketing && !syncOn && (
                           <li className="text-status-high">
-                            Ticket sync is off — enable it on this integration to
+                            Ticket sync is off. Enable it on this integration to
                             auto-open and sync tickets.
                           </li>
                         )}
@@ -1656,7 +1656,7 @@ function ServicesPanel({
                           reads === 0 &&
                           actions.length === 0 && (
                             <li className="text-fg-muted">
-                              No adapter actions yet — stored for reference.
+                              No adapter actions yet. Stored for reference.
                             </li>
                           )}
                       </ul>
@@ -1700,9 +1700,9 @@ function ServicesPanel({
               }
             >
               <option value="">Inherit from MCP Skill / organization</option>
-              <option value="0">Tier 0 — Autonomous</option>
-              <option value="1">Tier 1 — Approval Required</option>
-              <option value="2">Tier 2 — Advisory</option>
+              <option value="0">Tier 0: Autonomous</option>
+              <option value="1">Tier 1: Approval Required</option>
+              <option value="2">Tier 2: Advisory</option>
             </Select>
             <p className="mt-1 text-xs text-fg-muted">
               Tier 0 may auto-start after acknowledgment when organization
@@ -1931,7 +1931,7 @@ function RostersPanel({
       return;
     }
     // Block save if any selected member isn't an eligible member of the team
-    // (the backend rejects these too — this just fails fast before any write).
+    // (the backend rejects these too - this just fails fast before any write).
     if (teamMemberIds !== null) {
       const eligibleIds = new Set(memberOptions.map((o) => o.value));
       if (form.member_ids.some((id) => !eligibleIds.has(id))) {
@@ -2046,7 +2046,7 @@ function RostersPanel({
         sortable: true,
         cell: (r) => (
           <span className="text-fg-secondary">
-            {teamNameById.get(r.team_id) ?? "—"}
+            {teamNameById.get(r.team_id) ?? "None"}
           </span>
         ),
       },
@@ -2372,7 +2372,7 @@ function RostersPanel({
             <p className="mt-1 text-xs text-fg-muted">
               Only Admin and Operator users assigned to the selected team can be
               added to this roster. Member 1 covers the first window, member 2 the
-              next, and so on — then the cycle repeats.
+              next, and so on. Then the cycle repeats.
             </p>
           </div>
           <div className="flex justify-end gap-2">
@@ -2573,7 +2573,7 @@ function ChainsPanel({
         sortable: true,
         cell: (c) => (
           <span className="text-fg-secondary">
-            {teamNameById.get(c.team_id) ?? "—"}
+            {teamNameById.get(c.team_id) ?? "None"}
           </span>
         ),
       },
@@ -2587,7 +2587,7 @@ function ChainsPanel({
               {c.description}
             </span>
           ) : (
-            <span className="text-fg-muted">—</span>
+            <span className="text-fg-muted">None</span>
           ),
       },
       {
@@ -2768,7 +2768,7 @@ function ChainsPanel({
           </div>
           <p className="text-xs text-fg-muted">
             Levels are added after saving from the chain&apos;s expanded row. A
-            chain with no levels pages no one — add at least Level 1.
+            chain with no levels pages no one. Add at least Level 1.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -2898,7 +2898,7 @@ function EscalationCalendarModal({
     <Modal
       open={true}
       onClose={onClose}
-      title={`Escalation Calendar — ${chain.name}`}
+      title={`Escalation Calendar: ${chain.name}`}
       maxWidth="max-w-5xl"
     >
       <div className="space-y-4">
@@ -3027,7 +3027,7 @@ function EscalationCalendarModal({
 }
 
 /**
- * Sprint 60 — format a cumulative-seconds value as a short timeline
+ * Sprint 60 - format a cumulative-seconds value as a short timeline
  * label (e.g. `0` / `5m` / `15m` / `1h 5m` / `2h`). Used by the
  * escalation chain preview timeline.
  */
@@ -3107,7 +3107,7 @@ function StepsEditor({
         if (!cancelled) setWhereUsed(res.items);
       })
       .catch(() => {
-        // Non-fatal — operators don't have to see where-used; keep silent.
+        // Non-fatal - operators don't have to see where-used; keep silent.
       })
       .finally(() => {
         if (!cancelled) setWhereLoading(false);
@@ -3234,7 +3234,7 @@ function StepsEditor({
         )}
       </div>
 
-      {/* Preview timeline — Sprint 60 (UX-direction Sprint D finish).
+      {/* Preview timeline - Sprint 60 (UX-direction Sprint D finish).
           Renders the steps as cumulative T+X events so operators can
           tell at a glance who gets paged and when. Pure presentation
           on top of the steps array; no extra fetches. */}
@@ -3255,7 +3255,7 @@ function StepsEditor({
               .map((s, idx, sorted) => {
                 // Cumulative time: step 0 fires at T+0; each subsequent
                 // step fires after the prior step's timeout. The doc's
-                // model is "additive — once paged, stay paged."
+                // model is "additive - once paged, stay paged."
                 const cumulativeSec = sorted
                   .slice(0, idx)
                   .reduce((sum, prev) => sum + prev.timeout_seconds, 0);
@@ -3280,7 +3280,7 @@ function StepsEditor({
                   </li>
                 );
               })}
-            {/* Exhaustion row — shows the last step's timeout as the
+            {/* Exhaustion row - shows the last step's timeout as the
                 "no more steps fire after this" cutoff. */}
             <li className="flex items-center gap-3 pt-1 text-xs">
               <span className="inline-flex w-16 shrink-0 justify-end font-mono tabular-nums text-fg-muted">
@@ -3299,11 +3299,11 @@ function StepsEditor({
       )}
 
       <div className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
-        Levels (additive — once paged, stay paged)
+        Levels (additive: once paged, stay paged)
       </div>
       {steps.length === 0 ? (
         <div className="rounded-md border border-status-medium-border bg-status-medium-bg px-3 py-2 text-xs text-status-medium">
-          No levels yet — this chain pages no one. Add at least Level 1 below.
+          No levels yet, so this chain pages no one. Add at least Level 1 below.
         </div>
       ) : (
         <ol className="space-y-1">
@@ -3415,7 +3415,7 @@ function StepsEditor({
               setStepForm({ ...stepForm, target_id: e.target.value })
             }
           >
-            <option value="">— pick —</option>
+            <option value="">Choose one</option>
             {targetOptions.map((o) => (
               <option key={o.id} value={o.id}>
                 {(o as { name?: string }).name ?? o.id}
@@ -3457,7 +3457,7 @@ function PagingFlowModal({
       question: "How urgent is it?",
       tone: "info" as const,
       lines: [
-        "Service configuration sets P0–P3",
+        "Service configuration sets P0-P3",
         "P0 and P1 page; P2 and P3 notify",
       ],
     },
@@ -3474,7 +3474,7 @@ function PagingFlowModal({
     {
       number: "3",
       heading: "Page",
-      question: "Who wakes up — and when?",
+      question: "Who wakes up, and when?",
       tone: "warn" as const,
       lines: [
         "Chain fires steps additively on a timeout",
@@ -4115,7 +4115,7 @@ function NotificationsPanel({
             Notification Channels
           </h3>
           <p className="mt-1 text-sm text-fg-secondary">
-            Workspace-level channels OpsMender uses to reach people — Telegram,
+            Workspace-level channels OpsMender uses to reach people: Telegram,
             Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost,
             Matrix, Email, SMS, and custom adapters. Chat-capable adapters can
             also host incident sessions.
@@ -4230,13 +4230,13 @@ function RoutingSummaryPanel({
                       {RESPONSE_BY_PRIORITY[s.priority]}
                     </td>
                     <td className="px-3 py-2 text-fg-secondary">
-                      {teamNameById.get(s.team_id) ?? "—"}
+                      {teamNameById.get(s.team_id) ?? "None"}
                     </td>
                     <td className="px-3 py-2 text-fg-secondary">
                       {chainId ? (
                         chainNameById.get(chainId) ?? "linked chain"
                       ) : (
-                        <span className="text-fg-muted">— none —</span>
+                        <span className="text-fg-muted">None</span>
                       )}
                     </td>
                   </tr>
@@ -4314,7 +4314,7 @@ function normalizeRoutingStages(raw: unknown): RoutingStage[] {
   return out;
 }
 
-/** Checkbox dropdown (popover) for selecting channels — no Ctrl/Cmd. */
+/** Checkbox dropdown (popover) for selecting channels - no Ctrl/Cmd. */
 export function ChannelMultiSelect({
   options,
   selected,
@@ -4411,7 +4411,7 @@ export function NotificationPreferencesPanel({
   const [quietDays, setQuietDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
   // Routing channels are driven entirely by configured Notification Channels
-  // (enabled connectors). No hardcoded delivery list — a new connector becomes
+  // (enabled connectors). No hardcoded delivery list - a new connector becomes
   // routable automatically. Friendly names only; provider lives in channel
   // config.
   const channelOptions = useMemo(
@@ -4596,7 +4596,7 @@ export function NotificationPreferencesPanel({
       const res = await testMyNotificationPreferences();
       if (res.tested === 0) {
         toast.success(
-          "No channels to test yet — add a channel to a priority first.",
+          "No channels to test yet. Add a channel to a priority first.",
         );
       } else {
         const sent = res.results.filter((r) => r.status === "sent").length;
@@ -4661,7 +4661,7 @@ export function NotificationPreferencesPanel({
         </div>
       )}
 
-      {/* Priority rows — ordered escalation stages */}
+      {/* Priority rows - ordered escalation stages */}
       <div className="space-y-3">
         {ALL_PRIORITIES.map((p) => {
           const meta = PRIORITY_META[p];
@@ -4801,13 +4801,13 @@ export function NotificationPreferencesPanel({
                                 >
                                   profile
                                 </a>
-                                ). This is a phone call — not a Slack or Teams
+                                ). This is a phone call, not a Slack or Teams
                                 call.
                               </p>
                             ) : (
                               <p className="flex items-center gap-1.5 text-xs text-status-high">
                                 <AlertTriangle size={12} className="shrink-0" />
-                                No phone number on your profile — add one in your{" "}
+                                No phone number on your profile. Add one in your{" "}
                                 <a
                                   href="/dashboard/settings/profile"
                                   className="text-accent-text underline"
@@ -4864,8 +4864,8 @@ export function NotificationPreferencesPanel({
             className="text-accent-text underline"
           >
             profile
-          </a>{" "}
-          — it is a phone call, not a Slack or Teams call.
+          </a>
+          . It is a phone call, not a Slack or Teams call.
         </span>
       </div>
 

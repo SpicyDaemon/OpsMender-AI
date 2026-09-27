@@ -2,13 +2,13 @@
 
 Surfaces the Auditor data model and execution flow:
 
-* ``GET  /audits/analyzers`` — list of analyzer keys available to the org.
-* ``POST /audits/runs`` — kick off an audit run (admin / operator).
-* ``GET  /audits/runs`` — paginated list of runs.
-* ``GET  /audits/runs/{id}`` — run detail + findings.
-* ``GET  /audits/findings`` — filterable list across runs.
-* ``POST /audits/findings/{id}/remediate`` — spawn a session from a finding.
-* ``POST /audits/findings/{id}/dismiss`` — operator marks a finding ignored.
+* ``GET  /audits/analyzers`` - list of analyzer keys available to the org.
+* ``POST /audits/runs`` - kick off an audit run (admin / operator).
+* ``GET  /audits/runs`` - paginated list of runs.
+* ``GET  /audits/runs/{id}`` - run detail + findings.
+* ``GET  /audits/findings`` - filterable list across runs.
+* ``POST /audits/findings/{id}/remediate`` - spawn a session from a finding.
+* ``POST /audits/findings/{id}/dismiss`` - operator marks a finding ignored.
 
 The remediate flow is tier-gated: the spawned session inherits the runtime
 tier from app state, just like ``opsmender run``.

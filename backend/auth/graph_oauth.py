@@ -5,10 +5,10 @@ Sprint 37 brings Teams to parity with Slack. For v1 we use **app-only**
 operator registers an Azure AD app, grants application permissions in
 the Azure portal (admin consent flow), and pastes the resulting
 ``tenant_id`` / ``client_id`` / ``client_secret`` into the Teams bot
-connector. There is no browser redirect — token acquisition is a
+connector. There is no browser redirect - token acquisition is a
 server-side POST to the token endpoint.
 
-This module exposes one entry point — :func:`acquire_app_only_token` —
+This module exposes one entry point - :func:`acquire_app_only_token` -
 plus a small in-process cache keyed by ``(tenant_id, client_id)`` so we
 don't hammer Microsoft for every Teams DM. Tokens are valid for ~1
 hour; the cache evicts them 60 seconds before expiry to give callers a
@@ -64,7 +64,7 @@ _cache_lock = asyncio.Lock()
 
 def reset_token_cache() -> None:
     """Drop every cached token. Test-only helper; production code never
-    calls this — the cache is process-local and self-evicting."""
+    calls this - the cache is process-local and self-evicting."""
 
     _token_cache.clear()
 

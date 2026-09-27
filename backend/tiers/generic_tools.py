@@ -12,7 +12,7 @@ conservatively at the tier gate:
 An operator who has genuinely scoped a wrapper tool can opt a specific tool out
 of this guardrail by listing it in the MCP Skill with ``allow_generic: true``;
 normal tier/classification rules then apply. This is the documented escape
-hatch — use it only for narrowly-scoped tools.
+hatch - use it only for narrowly-scoped tools.
 
 Detection is intentionally conservative (a curated set + a few unambiguous
 prefixes/suffixes) to avoid false positives on normal tools like ``get_pods``

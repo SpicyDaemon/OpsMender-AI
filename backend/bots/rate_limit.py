@@ -4,7 +4,7 @@ A simple sliding-window counter per (connector_id, scope_key). Scope key is
 typically the chat ID. Limits live on the connector's ``config`` JSON under
 ``rate_limit_per_minute`` (default 30). Set to 0 to disable.
 
-The state is process-local — appropriate for single-process OpsMender deployments
+The state is process-local - appropriate for single-process OpsMender deployments
 (the v1 target). When OpsMender is run behind multiple workers, each worker has
 its own counter; effective limit becomes ``rate_limit_per_minute * N``.
 This is acceptable for v1 since these limits exist as abuse-control floor,

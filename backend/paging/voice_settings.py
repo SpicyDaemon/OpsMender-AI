@@ -79,7 +79,7 @@ async def verify_twilio_credentials(
 ) -> tuple[bool, str]:
     """Validate Twilio credentials by fetching the account resource with them.
 
-    Returns ``(ok, message)`` and never raises — a self-test button should fail
+    Returns ``(ok, message)`` and never raises - a self-test button should fail
     softly. ``client`` is injectable for tests (e.g. an ``httpx.MockTransport``).
     """
     url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.account_sid}.json"
@@ -106,7 +106,7 @@ async def verify_twilio_credentials(
     if resp.status_code in (401, 403):
         return (
             False,
-            "Twilio rejected the credentials — check the Account SID and Auth Token.",
+            "Twilio rejected the credentials. Check the Account SID and Auth Token.",
         )
     return False, f"Twilio returned HTTP {resp.status_code}."
 

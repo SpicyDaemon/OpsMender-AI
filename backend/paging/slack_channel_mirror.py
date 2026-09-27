@@ -6,13 +6,13 @@ channel named ``inc-<short>`` via ``conversations.create`` and posts the
 Block Kit page card to it. The channel id is stored on the incident so
 later updates can mirror to the same place.
 
-The Slack bot token is read from env (``OPSMENDER_SLACK_BOT_TOKEN``) — the
+The Slack bot token is read from env (``OPSMENDER_SLACK_BOT_TOKEN``) - the
 same global credential the dispatcher already uses for ``slack_dm``.
 Tests inject ``httpx.MockTransport`` via ``http_client_factory``.
 
 Failure is non-fatal: the chain still runs whether or not the mirror
 succeeded; we just log a warning. The mirror is intentionally idempotent
-— calling it twice for the same incident is a no-op once
+- calling it twice for the same incident is a no-op once
 ``incident.slack_channel_id`` is populated.
 """
 
@@ -136,7 +136,7 @@ async def mirror_incident_to_slack_channel(
     await db.flush()
 
     # Post the page card to the new channel. Failure here is logged but
-    # does not roll back the channel id — the channel exists either way.
+    # does not roll back the channel id - the channel exists either way.
     try:
         async with factory() as client:
             await client.post(

@@ -625,7 +625,7 @@ async def _validate_roster_eligible_user(
     Shared source of truth for both rotation members and coverage overrides:
     the user must exist, be active, not be deleted, hold an Admin/Operator
     role, and belong to the roster's owning team. Raises a clear 400 on the
-    first failed check. This is the authoritative server-side guard — direct
+    first failed check. This is the authoritative server-side guard - direct
     API calls cannot create invalid rosters even if the frontend filter is
     bypassed. ``subject`` tailors the team-membership message (e.g. "Roster
     override users").
@@ -1045,7 +1045,7 @@ async def resolve_on_call_range(
     # For a daily (or coarser) calendar view, resolve each day at a time *inside*
     # the roster's coverage window rather than at the cursor's raw time-of-day.
     # Otherwise a calendar that starts at local midnight samples 00:00 every day,
-    # which is outside a 09:00–17:00 window, so every cell resolves to nobody.
+    # which is outside a 09:00-17:00 window, so every cell resolves to nobody.
     roster_tz = ZoneInfo(roster.time_zone)
     align_to_coverage = step_hours % 24 == 0
     while cursor <= end_cursor:
@@ -1478,7 +1478,7 @@ async def add_escalation_step(
 ):
     if await EscalationChainRepo.get_by_id(db, org_id, chain_id) is None:
         raise HTTPException(status_code=404, detail="Chain not found")
-    # Light target_id validation — Sprint 34 only checks the type vs. obvious
+    # Light target_id validation - Sprint 34 only checks the type vs. obvious
     # tables we have repos for.
     if body.target_type == "roster":
         if await RosterRepo.get_by_id(db, org_id, body.target_id) is None:
@@ -1691,7 +1691,7 @@ async def team_on_call_calendar(
     start: date | None = Query(default=None),
     days: int = Query(default=42, ge=1, le=366),
 ):
-    """All-chains on-call coverage for one team across a day range — powers the
+    """All-chains on-call coverage for one team across a day range - powers the
     team "On Call Schedule" month grid. Readable by any authenticated user;
     editing (overrides / maintenance windows) is gated on the mutating routes.
     Global + team-scoped maintenance windows blank that day's coverage.
@@ -1800,7 +1800,7 @@ async def chain_where_used(
     for link in links:
         svc = await ServiceRepo.get_by_id(db, org_id, link.service_id)
         if svc is None:
-            # Service was deleted but the link wasn't — skip rather than leak.
+            # Service was deleted but the link wasn't - skip rather than leak.
             continue
         team = await TeamRepo.get_by_id(db, org_id, svc.team_id)
         items.append(

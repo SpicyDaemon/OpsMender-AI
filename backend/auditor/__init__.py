@@ -1,4 +1,4 @@
-"""Auditor (Sprint 32) — read-only environment scans producing findings reports.
+"""Auditor (Sprint 32) - read-only environment scans producing findings reports.
 
 The Auditor module replaces the legacy Detector flow's "treat findings as
 incidents" pattern. Audits run on demand, fan out across one or more

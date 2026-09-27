@@ -88,7 +88,7 @@ class OCIMonitoringAdapter(IngestAdapter):
             region = dims.get("region", "")
             resource_id = dims.get("resourceId", "")
 
-        title = f"[OCI] {alarm_name} — {status_raw}"
+        title = f"[OCI] {alarm_name}: {status_raw}"
         desc_text = (
             f"**Alarm:** {alarm_name}\n"
             f"**Status:** {status_raw}\n"
@@ -109,7 +109,7 @@ class OCIMonitoringAdapter(IngestAdapter):
         # Fingerprint: alarm ID or alarm name + region
         external_id = alarm_id or f"{alarm_name}:{region}"
 
-        # Availability signal — FIRING=down, OK/RESET=up
+        # Availability signal - FIRING=down, OK/RESET=up
         availability = AvailabilitySignal(
             target_name=alarm_name,
             up=(status_raw in ("OK", "RESET")),

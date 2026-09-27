@@ -99,7 +99,7 @@ async function capture(h, label) {
 
 export default {
   id: "intake_correctness",
-  title: "Intake — recovery and collision",
+  title: "Intake: recovery and collision",
   async run(h) {
     if (!config.livePaging) {
       await h.step("intake recovery and collision checks", async () => {

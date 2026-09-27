@@ -210,7 +210,7 @@ async def test_internal_tool_runtime_returns_mcp_shape_and_updates_status(
 async def test_runtime_enforces_strict_service_integration_allowlist(
     integration_factory,
 ):
-    """Item 5 — a service's strict integration allowlist filters the tools.
+    """Item 5 - a service's strict integration allowlist filters the tools.
 
     ``None`` exposes every enabled connector; a set restricts to it; an empty
     set exposes nothing (strict allowlist → no integrations)."""

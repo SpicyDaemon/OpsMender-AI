@@ -1,6 +1,6 @@
 # OpsMender on Azure Container Apps
 
-Reference Bicep recipe for deploying OpsMender as a serverless Container App with external HTTPS ingress and HTTP-concurrency autoscaling. **Sprint 41 step 2** — sibling of the AWS ECS recipe at [../aws-ecs/](../aws-ecs/), sharing the same locked-decision shape (VPC/network handled by the platform, Postgres BYO, secrets pulled from the cloud's secret store, framework still ships zero platform knowledge per **D-023**).
+Reference Bicep recipe for deploying OpsMender as a serverless Container App with external HTTPS ingress and HTTP-concurrency autoscaling. **Sprint 41 step 2**: sibling of the AWS ECS recipe at [../aws-ecs/](../aws-ecs/), sharing the same locked-decision shape (VPC/network handled by the platform, Postgres BYO, secrets pulled from the cloud's secret store, framework still ships zero platform knowledge per **D-023**).
 
 If you want a one-line summary: **`az group create`, pre-create a Key Vault with three secrets, fill in `main.bicepparam`, run one `az deployment group create`, open the FQDN.**
 
@@ -22,8 +22,8 @@ If you want a one-line summary: **`az group create`, pre-create a Key Vault with
 - **Bicep CLI** (bundled with recent `az` releases, or install standalone with `brew install bicep`).
 - A **resource group** in the region you want to deploy to (`az group create -n opsmender-prod -l eastus`).
 - An **Azure Key Vault** with RBAC authorization enabled, holding:
-  - `opsmender-jwt-secret` — `openssl rand -hex 32` value.
-  - `opsmender-database-url` — `postgresql+asyncpg://user:pass@host:5432/opsmender`.
+  - `opsmender-jwt-secret`: `openssl rand -hex 32` value.
+  - `opsmender-database-url`: `postgresql+asyncpg://user:pass@host:5432/opsmender`.
   - At least one provider key (e.g. `opsmender-anthropic-key`).
 - A reachable **Postgres 16+** instance. Azure DB for PostgreSQL Flexible Server is the natural choice; provision separately.
 
@@ -69,7 +69,7 @@ echo "https://$FQDN"
 open "https://$FQDN"
 ```
 
-ACA terminates TLS automatically on the default `*.azurecontainerapps.io` FQDN — no certificate provisioning needed for the baseline path.
+ACA terminates TLS automatically on the default `*.azurecontainerapps.io` FQDN: no certificate provisioning needed for the baseline path.
 
 ## Verification recipe
 
@@ -116,11 +116,11 @@ After DNS propagates and the cert is issued, set `OPSMENDER_PUBLIC_URL=https://o
 ### Rolling a new image tag
 
 ```bash
-# Option A — change containerImage in main.bicepparam.local and re-deploy:
+# Option A: change containerImage in main.bicepparam.local and re-deploy:
 az deployment group create -g opsmender-prod \
   --template-file main.bicep --parameters main.bicepparam.local
 
-# Option B — out-of-band image roll (faster, skips full template):
+# Option B: out-of-band image roll (faster, skips full template):
 az containerapp update -g opsmender-prod -n opsmender \
   --image ghcr.io/spicydaemon/opsmender-ai:v1.0.1
 ```
@@ -159,7 +159,7 @@ az group delete -n opsmender-prod --yes --no-wait
         │       │                                                      │
         │       ▼                                                      │
         │   ┌─────────────────────────────────────────┐                │
-        │   │  Container App  —  port 8000             │               │
+        │   │  Container App  -  port 8000             │               │
         │   │  Replicas autoscale on HTTP concurrency  │               │
         │   │  User-assigned identity reads KV at start │              │
         │   └────┬─────────────────┬──────────────────┬──┘             │
@@ -174,7 +174,7 @@ az group delete -n opsmender-prod --yes --no-wait
 
 ## Related
 
-- [AWS ECS recipe](../aws-ecs/) — sibling deployment recipe for AWS Fargate.
-- [Helm chart](../../helm/opsmender/) — Kubernetes (any flavor, including AKS).
-- [Docker compose](../../../docker/docker-compose.yml) — single-host deploy with bundled Postgres.
-- [TASKS.md — Sprint 41](../../../docs/TASKS.md) — broader cloud-recipes plan; GCP Cloud Run + OCI Container Instances tracked as the remaining sub-sprints.
+- [AWS ECS recipe](../aws-ecs/): sibling deployment recipe for AWS Fargate.
+- [Helm chart](../../helm/opsmender/): Kubernetes (any flavor, including AKS).
+- [Docker compose](../../../docker/docker-compose.yml): single-host deploy with bundled Postgres.
+- [TASKS.md: Sprint 41](../../../docs/TASKS.md): broader cloud-recipes plan; GCP Cloud Run + OCI Container Instances tracked as the remaining sub-sprints.

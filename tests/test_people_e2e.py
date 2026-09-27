@@ -170,7 +170,7 @@ async def test_people_full_lifecycle(env):
     )
     assert new.status_code == 200
 
-    # Token is single-use — replay must fail.
+    # Token is single-use - replay must fail.
     replay = await client.post(
         f"/auth/password-reset/{reset_token}",
         json={"password": "third-pass-789"},

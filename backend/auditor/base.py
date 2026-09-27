@@ -58,7 +58,7 @@ class Analyzer(abc.ABC):
     Subclasses must declare ``key`` (stable identifier persisted on findings),
     ``label`` (human-readable display name), and ``description`` (one-liner).
     The ``run`` coroutine returns a list of :class:`FindingDraft`. Analyzers
-    are stateless — one instance is reused across runs.
+    are stateless - one instance is reused across runs.
     """
 
     key: str = ""

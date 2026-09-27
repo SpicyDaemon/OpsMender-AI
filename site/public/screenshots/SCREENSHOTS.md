@@ -8,10 +8,10 @@ checklist below.
 
 `scripts/take_screenshots.mjs` captures these four PNGs:
 
-- `incidents-list.png` — incident command center
-- `live-session-detail.png` — live AI session detail
-- `approvals-pending.png` — Tier 1 approval inbox with pending work
-- `settings.png` — workspace settings and guardrails
+- `incidents-list.png`: incident command center
+- `live-session-detail.png`: live AI session detail
+- `approvals-pending.png`: Tier 1 approval inbox with pending work
+- `settings.png`: workspace settings and guardrails
 
 The showcase site may also reference older gallery filenames:
 

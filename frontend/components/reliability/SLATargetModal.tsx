@@ -207,7 +207,7 @@ export function SLATargetModal({ open, onClose, onSaved, initialData }: SLATarge
             value={form.service_id}
             onChange={(e) => setForm({ ...form, service_id: e.target.value })}
           >
-            <option value="">— None —</option>
+            <option value="">None</option>
             {services.map((svc) => (
               <option key={svc.id} value={svc.id}>
                 {svc.name}

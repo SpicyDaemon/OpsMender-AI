@@ -42,7 +42,7 @@ def resource_path(relative: str) -> pathlib.Path:
 def bootstrap_bundled_env() -> None:
     """Point env vars at bundled resources when running as a frozen binary.
 
-    Only sets a variable if the caller hasn't already provided one — user
+    Only sets a variable if the caller hasn't already provided one - user
     overrides (``--env-file``, explicit ``export OPSMENDER_...=...``) always win.
     """
     if not is_frozen():

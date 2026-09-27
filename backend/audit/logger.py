@@ -6,11 +6,11 @@ configured JSONL output file.
 
 Entry types
 -----------
-- ``tool_call_start``  — logged before a tool call is executed
-- ``tool_call_end``    — logged after a tool call completes
-- ``tool_call_blocked``— logged when tier enforcement denies a tool call
-- ``session_start``    — logged when a session begins
-- ``session_end``      — logged when a session ends
+- ``tool_call_start`` - logged before a tool call is executed
+- ``tool_call_end`` - logged after a tool call completes
+- ``tool_call_blocked`` - logged when tier enforcement denies a tool call
+- ``session_start`` - logged when a session begins
+- ``session_end`` - logged when a session ends
 """
 
 from __future__ import annotations

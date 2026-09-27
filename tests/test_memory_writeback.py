@@ -1,4 +1,4 @@
-"""Sprint 45 Steps 4 + 5 — `remember` node + auto-compaction tests."""
+"""Sprint 45 Steps 4 + 5 - `remember` node + auto-compaction tests."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ class _ScriptedLLM:
             return ""
         return self._responses.pop(0)
 
-    def stream(self, prompt: str):  # pragma: no cover — not used in tests
+    def stream(self, prompt: str):  # pragma: no cover - not used in tests
         return iter([self.invoke(prompt)])
 
 
@@ -403,7 +403,7 @@ class TestAutoCompaction:
             factory, llm=None, org_id=ORG_A, service_id=service.id
         )
         assert report["exact_deleted"] == 1
-        # The newer one must survive — summary "newer".
+        # The newer one must survive - summary "newer".
         async with factory() as db:
             rows = await IncidentMemoryRepo.list_for_org(
                 db, ORG_A, service_id=service.id
@@ -508,7 +508,7 @@ class TestAutoCompaction:
                 ids.append(m.id)
             await db.commit()
 
-        # Try to delete MAX_COMPACTION_OPS + 2 — only MAX_COMPACTION_OPS apply.
+        # Try to delete MAX_COMPACTION_OPS + 2 - only MAX_COMPACTION_OPS apply.
         delete_ops = [
             {"action": "delete", "id": str(i)} for i in ids[: MAX_COMPACTION_OPS + 2]
         ]

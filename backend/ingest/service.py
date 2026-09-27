@@ -1,4 +1,4 @@
-"""Ingest service — orchestrates token validation, adapter dispatch, dedup,
+"""Ingest service - orchestrates token validation, adapter dispatch, dedup,
 and audit logging for ``POST /incidents/ingest``.
 """
 
@@ -153,7 +153,7 @@ async def ingest_incident(
             return IngestResult(
                 success=True,
                 dedup_action="skipped",
-                error="SNS subscription confirmation — SubscribeURL not followed",
+                error="SNS subscription confirmation: SubscribeURL not followed",
             )
 
         # Parsing error
@@ -415,7 +415,7 @@ async def ingest_incident(
         )
         db.add(incident)
         await db.flush()
-        # Apply priority rules — locked at creation per D-021.
+        # Apply priority rules - locked at creation per D-021.
         from backend.paging.service import (
             apply_priority_to_incident,
             page_new_incident,

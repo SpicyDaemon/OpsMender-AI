@@ -1,5 +1,5 @@
 ## Copy to `terraform.tfvars` and fill in your values.
-## Never commit terraform.tfvars — it can carry secret ARNs and CIDR
+## Never commit terraform.tfvars - it can carry secret ARNs and CIDR
 ## allowlists you don't want in git history.
 
 # Identity ────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ allowed_ingress_cidrs = ["0.0.0.0/0"]
 # desired_count    = 2
 # assign_public_ip = false   # leave false when private subnets have a NAT
 
-# Secrets (Secrets Manager ARNs — pre-create these) ──────────────────────
+# Secrets (Secrets Manager ARNs - pre-create these) ──────────────────────
 jwt_secret_arn          = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/jwt-secret-AbCdEf"
 database_url_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:opsmender/database-url-AbCdEf"
 

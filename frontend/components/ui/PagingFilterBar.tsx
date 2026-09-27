@@ -22,7 +22,7 @@ export interface FilterBarMultiSelect {
   options: FilterOption[];
 }
 
-/** Single-select dropdown — for inherently single-choice ranges. */
+/** Single-select dropdown - for inherently single-choice ranges. */
 export interface FilterBarSingleSelect {
   kind: "single";
   id: string;

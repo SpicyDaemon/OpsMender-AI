@@ -1,5 +1,5 @@
 /**
- * MCP Skills page (MCP Skill Studio) — title, New skill, Unassigned
+ * MCP Skills page (MCP Skill Studio) - title, New skill, Unassigned
  * assignment, and Markdown download.
  */
 
@@ -46,7 +46,7 @@ const SKILL = {
   mcp_server_id: null,
   integration_connector_id: null,
   assignment: "unassigned" as const,
-  content_md: "# Tier 2 — Advisory Only\nNo actions allowed.",
+  content_md: "# Tier 2: Advisory Only\nNo actions allowed.",
   focus_areas: [],
   created_at: "2026-06-06T00:00:00Z",
   updated_at: "2026-06-06T00:00:00Z",
@@ -65,7 +65,7 @@ beforeEach(() => {
   apiMocks.getSkillTemplate.mockResolvedValue({
     name: "New MCP Skill (from template)",
     content_md:
-      "default_tier: T2\nrequire_reversible: false\nallow_generic: true\n# template\n## Tier 0 — Autonomous\n## Tier 1 — Approval Required\n## Tier 2 — Advisory Only\n",
+      "default_tier: T2\nrequire_reversible: false\nallow_generic: true\n# template\n## Tier 0: Autonomous\n## Tier 1: Approval Required\n## Tier 2: Advisory Only\n",
     template: "blank",
     templates: [
       {
@@ -102,7 +102,7 @@ describe("MCP Skills page", () => {
     await waitFor(() => expect(apiMocks.getSkillTemplate).toHaveBeenCalled());
     // The modal opens with the template content (Tier sections present).
     await waitFor(() =>
-      expect(screen.getByDisplayValue(/Tier 2 — Advisory Only/)).toBeTruthy(),
+      expect(screen.getByDisplayValue(/Tier 2: Advisory Only/)).toBeTruthy(),
     );
     expect(screen.getByDisplayValue(/require_reversible: false/)).toBeTruthy();
   });
@@ -192,7 +192,7 @@ describe("MCP Skills page", () => {
     apiMocks.generateSkill.mockResolvedValue({
       name: "k8s-prod skill",
       content_md:
-        "---\nversion: \"1\"\n---\n# k8s-prod skill\n## Tier 0 — Autonomous\nGENERATED-CONTENT",
+        "---\nversion: \"1\"\n---\n# k8s-prod skill\n## Tier 0: Autonomous\nGENERATED-CONTENT",
     });
 
     await renderPage();

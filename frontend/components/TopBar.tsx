@@ -104,9 +104,9 @@ export function TopBar({
             <button
               onClick={() => setMenuOpen((o) => !o)}
               // Explicit name: below `md` the visible username span is hidden,
-              // and an initials-avatar contributes no text — without this the
+              // and an initials-avatar contributes no text - without this the
               // button is unnamed on mobile (axe button-name).
-              aria-label={`Account menu — ${userDisplayName(user)}`}
+              aria-label={`Account menu for ${userDisplayName(user)}`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-fg-secondary hover:bg-bg-hover hover:text-fg-primary transition-colors"

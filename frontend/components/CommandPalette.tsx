@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 61 (UX direction "Sprint E") Step 1 — Command Palette.
+ * Sprint 61 (UX direction "Sprint E") Step 1 - Command Palette.
  *
  * Global Cmd+K / Ctrl+K opens a modal palette with type-to-filter
  * search across two categories: Navigate and Actions. Arrow keys
@@ -10,7 +10,7 @@
  *
  * Mounted globally in DashboardLayout next to KeyboardShortcuts so
  * the existing Alt+key navigation keeps working. The palette does
- * not duplicate the Alt+key shortcuts — operators who like
+ * not duplicate the Alt+key shortcuts - operators who like
  * one-handed nav still have them. Cmd+K is for the discovery /
  * fuzzy-search use case ("I forget the route, just take me there").
  */
@@ -74,20 +74,20 @@ const NAVIGATE_ITEMS: Omit<CommandItem, "kind">[] = [
   { id: "n-dashboard", label: "Dashboard", icon: LayoutDashboard, href: "/dashboard", keywords: "home attention queue" },
   { id: "n-incidents", label: "Incidents", icon: AlertTriangle, href: "/dashboard/incidents" },
   { id: "n-approvals", label: "Approvals", icon: CheckSquare, href: "/dashboard/approvals", keywords: "pending tier" },
-  { id: "n-paging", label: "Paging — Teams", icon: Users, href: "/dashboard/paging/teams" },
-  { id: "n-escalation-chains", label: "Paging — Escalation Chains", icon: GitBranch, href: "/dashboard/paging/escalation-chains" },
-  { id: "n-services", label: "Paging — Services", icon: Server, href: "/dashboard/paging/services" },
-  { id: "n-rosters", label: "Paging — Rosters", icon: Repeat, href: "/dashboard/paging/rosters", keywords: "on-call schedule" },
-  { id: "n-maintenance", label: "Paging — Maintenance Windows", icon: Wrench, href: "/dashboard/paging/maintenance-windows" },
-  { id: "n-notifications", label: "Paging — Notifications", icon: Bell, href: "/dashboard/paging/notifications", keywords: "operator delivery viewer updates quiet hours routing chat" },
-  { id: "n-skills", label: "AI Agent — Skills", icon: FileText, href: "/dashboard/skills" },
-  { id: "n-memories", label: "AI Agent — Memories", icon: Brain, href: "/dashboard/memories" },
-  { id: "n-mcp", label: "AI Agent — MCP Servers", icon: Network, href: "/dashboard/mcp-servers" },
-  { id: "n-models", label: "AI Agent — Models", icon: Cpu, href: "/dashboard/models" },
-  { id: "n-reliability", label: "Observe — Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr uptime" },
-  { id: "n-activity", label: "Observe — Activity", icon: Activity, href: "/dashboard/activity", keywords: "audit log" },
-  { id: "n-people", label: "Admin — People", icon: UserCog, href: "/dashboard/people", keywords: "users invites" },
-  { id: "n-config", label: "Admin — Settings", icon: Settings, href: "/dashboard/config", keywords: "runtime retention config" },
+  { id: "n-paging", label: "Paging: Teams", icon: Users, href: "/dashboard/paging/teams" },
+  { id: "n-escalation-chains", label: "Paging: Escalation Chains", icon: GitBranch, href: "/dashboard/paging/escalation-chains" },
+  { id: "n-services", label: "Paging: Services", icon: Server, href: "/dashboard/paging/services" },
+  { id: "n-rosters", label: "Paging: Rosters", icon: Repeat, href: "/dashboard/paging/rosters", keywords: "on-call schedule" },
+  { id: "n-maintenance", label: "Paging: Maintenance Windows", icon: Wrench, href: "/dashboard/paging/maintenance-windows" },
+  { id: "n-notifications", label: "Paging: Notifications", icon: Bell, href: "/dashboard/paging/notifications", keywords: "operator delivery viewer updates quiet hours routing chat" },
+  { id: "n-skills", label: "AI Agent: Skills", icon: FileText, href: "/dashboard/skills" },
+  { id: "n-memories", label: "AI Agent: Memories", icon: Brain, href: "/dashboard/memories" },
+  { id: "n-mcp", label: "AI Agent: MCP Servers", icon: Network, href: "/dashboard/mcp-servers" },
+  { id: "n-models", label: "AI Agent: Models", icon: Cpu, href: "/dashboard/models" },
+  { id: "n-reliability", label: "Observe: Reliability", icon: Activity, href: "/dashboard/reliability", keywords: "sla mttr uptime" },
+  { id: "n-activity", label: "Observe: Activity", icon: Activity, href: "/dashboard/activity", keywords: "audit log" },
+  { id: "n-people", label: "Admin: People", icon: UserCog, href: "/dashboard/people", keywords: "users invites" },
+  { id: "n-config", label: "Admin: Settings", icon: Settings, href: "/dashboard/config", keywords: "runtime retention config" },
 ];
 
 const ACTION_ITEMS: Omit<CommandItem, "kind">[] = [
@@ -214,7 +214,7 @@ export function CommandPalette() {
         (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
       if (isToggle) {
         // Even when focused in an input, Cmd+K should open the
-        // palette — that's the whole point of the shortcut.
+        // palette - that's the whole point of the shortcut.
         e.preventDefault();
         if (open) setOpen(false);
         else openPalette();

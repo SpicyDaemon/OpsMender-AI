@@ -20,7 +20,7 @@ const TRIGGER =
   "flex w-full items-center gap-2 rounded-md border border-border-strong bg-bg-input px-3 py-2 text-sm text-fg-primary transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 /**
- * A select-style dropdown that can render an icon beside each option — which a
+ * A select-style dropdown that can render an icon beside each option - which a
  * native <select> cannot. Keyboard-navigable (arrows, Home/End, typeahead,
  * Enter/Escape) with click-outside dismissal.
  */
@@ -63,7 +63,7 @@ export function IconSelect({
   useEffect(() => {
     if (!open || activeIndex < 0) return;
     const node = listRef.current?.children[activeIndex] as HTMLElement | undefined;
-    // scrollIntoView is unimplemented in jsdom (tests) — guard it.
+    // scrollIntoView is unimplemented in jsdom (tests) - guard it.
     if (typeof node?.scrollIntoView === "function") node.scrollIntoView({ block: "nearest" });
   }, [open, activeIndex]);
 

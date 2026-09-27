@@ -87,7 +87,7 @@ def test_history_series_marks_unknown_buckets():
 
 
 # ---------------------------------------------------------------------------
-# downtime_episodes (v1.2 — outage history)
+# downtime_episodes (v1.2 - outage history)
 # ---------------------------------------------------------------------------
 
 

@@ -8,7 +8,7 @@ ignore-unfixed: true
 # vendored node_modules (picomatch, undici, …) are CLI tooling and are not on
 # the application request path. We keep npm itself current via `npm install -g
 # npm@latest` in the Dockerfile, but do not gate the build on CVEs in deps that
-# npm vendors internally and we cannot pin — that is an upstream-npm release
+# npm vendors internally and we cannot pin - that is an upstream-npm release
 # treadmill. Application code and our own Python/JS deps are still scanned.
 scan:
   skip-dirs:

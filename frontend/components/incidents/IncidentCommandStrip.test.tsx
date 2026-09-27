@@ -174,7 +174,7 @@ describe("IncidentCommandStrip", () => {
       auto_start_status: "queued",
       resolved_tier: 1,
       auto_start_message:
-        "Incident acknowledged. AI session auto-started under T1 — Approval Required.",
+        "Incident acknowledged. AI session auto-started under Tier 1 (Approval Required).",
     });
     renderStrip("open");
     fireEvent.click(screen.getByTestId("action-acknowledge"));
@@ -183,7 +183,7 @@ describe("IncidentCommandStrip", () => {
     );
     await waitFor(() =>
       expect(toastSpies.success).toHaveBeenCalledWith(
-        "Incident acknowledged. AI session auto-started under T1 — Approval Required.",
+        "Incident acknowledged. AI session auto-started under Tier 1 (Approval Required).",
       ),
     );
   });

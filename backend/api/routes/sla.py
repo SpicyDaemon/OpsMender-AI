@@ -647,7 +647,7 @@ async def get_sla_summary(
     avg_uptime = round(sum(uptimes) / len(uptimes), 4) if uptimes else None
 
     # An "SLO warning" is an active SLO whose current actual uptime over its
-    # window is below objective. Warning only — never creates an incident.
+    # window is below objective. Warning only - never creates an incident.
     slos = await SLORepo.list_all(db, org_id, active_only=True)
     warnings = 0
     for slo in slos:
@@ -828,7 +828,7 @@ async def get_slo_recommendations(
     user: User = Depends(get_current_user),
 ):
     """Deterministic, advisory-only recommendations for active SLOs that are
-    breaching or at risk. Never creates incidents or pages anyone — it surfaces
+    breaching or at risk. Never creates incidents or pages anyone - it surfaces
     what to look at and (when the target is linked to a Service) who owns it.
     """
     now = datetime.now(timezone.utc)

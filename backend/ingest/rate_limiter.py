@@ -5,8 +5,8 @@ Each token is allowed ``max_requests`` within a rolling ``window_seconds``
 window.  Thread-safe via ``asyncio.Lock``.
 
 Configure via:
-- ``OPSMENDER_INGEST_RATE_LIMIT``  — max requests per window (default 60)
-- ``OPSMENDER_INGEST_RATE_WINDOW`` — window duration in seconds (default 60)
+- ``OPSMENDER_INGEST_RATE_LIMIT`` - max requests per window (default 60)
+- ``OPSMENDER_INGEST_RATE_WINDOW`` - window duration in seconds (default 60)
 
 Setting ``OPSMENDER_INGEST_RATE_LIMIT=0`` disables rate limiting entirely.
 """
@@ -63,7 +63,7 @@ class IngestRateLimiter:
                 bucket.popleft()
 
             if len(bucket) >= self._max:
-                # Denied — calculate retry-after from the oldest entry
+                # Denied - calculate retry-after from the oldest entry
                 retry_after = bucket[0] + self._window - now
                 return RateLimitResult(
                     allowed=False,
@@ -72,7 +72,7 @@ class IngestRateLimiter:
                     retry_after=max(0.0, retry_after),
                 )
 
-            # Allowed — record this request
+            # Allowed - record this request
             bucket.append(now)
             remaining = self._max - len(bucket)
             return RateLimitResult(

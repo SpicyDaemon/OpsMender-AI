@@ -101,7 +101,7 @@ class TestAcquireAppOnlyToken:
         assert f"client_id={CLIENT}" in body
         assert "scope=https" in body  # graph .default
 
-        # Second call uses the cache — no new request.
+        # Second call uses the cache - no new request.
         tok2 = await acquire_app_only_token(
             tenant_id=TENANT,
             client_id=CLIENT,

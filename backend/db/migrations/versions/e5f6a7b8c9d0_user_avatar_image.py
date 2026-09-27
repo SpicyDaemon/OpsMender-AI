@@ -2,7 +2,7 @@
 
 ``users.avatar_image`` holds the normalized PNG bytes (resized to fit 200x200
 server-side); ``users.avatar_image_updated_at`` records when it last changed
-(cache-busting). Both nullable — absence falls back to the generated initials
+(cache-busting). Both nullable - absence falls back to the generated initials
 avatar. Existing rows are unaffected.
 
 Revision ID: e5f6a7b8c9d0

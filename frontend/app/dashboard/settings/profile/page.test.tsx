@@ -1,5 +1,5 @@
 /**
- * My profile page — fields render from the current user and a profile
+ * My profile page - fields render from the current user and a profile
  * save calls the self-update API.
  */
 
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const refresh = vi.fn().mockResolvedValue(undefined);
-// Stable user reference — a fresh object per call would loop the page's
+// Stable user reference - a fresh object per call would loop the page's
 // init effect (mirrors how the real auth context holds a stable value).
 const MOCK_USER = {
   id: "u-1",

@@ -1,8 +1,8 @@
-"""Auth routes — register and login.
+"""Auth routes - register and login.
 
-POST /auth/register — create a new user
-POST /auth/login    — authenticate and receive a JWT
-GET  /auth/me       — return the current user profile
+POST /auth/register - create a new user
+POST /auth/login - authenticate and receive a JWT
+GET  /auth/me - return the current user profile
 """
 
 from __future__ import annotations
@@ -212,7 +212,7 @@ async def registration_open(
     when self-signup is closed.
 
     Sprint 56: in production with at least one user present,
-    self-registration returns 403 — admins must use the Admin → People
+    self-registration returns 403 - admins must use the Admin → People
     invite flow instead.
     """
 
@@ -304,7 +304,7 @@ async def login(
 ):
     # Accept either the username OR the email address in the "username"
     # field. Most users reflexively type their email into a credentials
-    # form — failing in that case is a real onboarding cliff for no
+    # form - failing in that case is a real onboarding cliff for no
     # security benefit (username uniqueness is enforced separately, and
     # the same 401 is returned for any miss either way).
     identifier = (body.username or "").strip()
@@ -397,7 +397,7 @@ async def update_me(
     user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
-    """Self-service profile edit — username, email, first/last name, avatar
+    """Self-service profile edit - username, email, first/last name, avatar
     color. Username + email uniqueness is enforced."""
     username = body.username.strip() if body.username is not None else None
     email = body.email.lower().strip() if body.email is not None else None
@@ -491,7 +491,7 @@ async def change_my_password(
     user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
-    """Self-service password change — the current password must verify."""
+    """Self-service password change - the current password must verify."""
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -528,7 +528,7 @@ async def list_users(
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_role("admin"))],
-    summary="Create a local user directly (admin only) — no invite link needed",
+    summary="Create a local user directly (admin only, no invite link needed)",
 )
 async def create_user(
     body: UserCreateRequest,
@@ -577,7 +577,7 @@ async def create_user(
 
 
 # ---------------------------------------------------------------------------
-# Sprint 56 — admin People-surface routes
+# Sprint 56 - admin People-surface routes
 # ---------------------------------------------------------------------------
 
 
@@ -793,7 +793,7 @@ async def mint_password_reset(
             f"account. Click the link below within 24 hours to set a new "
             f"password:\n\n"
             f"{url}\n\n"
-            f"If you didn't expect this, ignore this email — your existing "
+            f"If you didn't expect this, ignore this email. Your existing "
             f"password remains active until the token is used.\n"
         )
         attempt = await build_email_channel(settings).send(
@@ -816,7 +816,7 @@ async def mint_password_reset(
     "/users/{user_id}/set-temporary-password",
     response_model=TemporaryPasswordResponse,
     dependencies=[Depends(require_role("admin"))],
-    summary="Set a one-time temporary password (admin only) — Option B reset",
+    summary="Set a one-time temporary password (admin only; option B reset)",
 )
 async def set_temporary_password(
     user_id: uuid.UUID,
@@ -852,7 +852,7 @@ async def consume_password_reset(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public endpoint — the recipient of the one-time URL POSTs their
+    """Public endpoint - the recipient of the one-time URL POSTs their
     new password here. The token is consumed on first successful use.
 
     Note: this route intentionally does not return user information

@@ -112,7 +112,7 @@ export function VoiceSettingsSection() {
         </div>
         <p className="mt-1 text-sm text-fg-secondary">
           Configured via{" "}
-          <span className="font-medium text-fg-primary">Twilio</span> — controls
+          <span className="font-medium text-fg-primary">Twilio</span>. It controls
           SMS delivery and automated voice-call routing for this workspace.
           Default settings are gathered from the{" "}
           <code className="rounded bg-bg-elevated px-1 py-0.5 text-xs">

@@ -13,9 +13,9 @@ OpsMender has a Python backend (FastAPI + LangGraph) and a Next.js static export
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 24+ (the Docker image bundles one — needed locally only if you want to run MCP servers that ship as `npx` packages)
+- Node.js 24+ (the Docker image bundles one, needed locally only if you want to run MCP servers that ship as `npx` packages)
 - [`uv`](https://docs.astral.sh/uv/) for Python dependency management
-- Docker (optional — for running the full stack with Postgres)
+- Docker (optional: for running the full stack with Postgres)
 
 ### Install
 
@@ -33,7 +33,7 @@ cd frontend && npm install
 # backend API (http://localhost:8000) with a file-backed SQLite DB
 uv run python scripts/dev_server.py
 
-# frontend dev server (http://localhost:3000) — proxies /api to :8000
+# frontend dev server (http://localhost:3000): proxies /api to :8000
 cd frontend && npm run dev
 ```
 
@@ -62,7 +62,7 @@ uv run python -m pytest -m integration
 
 ```bash
 cd frontend
-npm run build      # must pass — this is what ships in the Docker image
+npm run build      # must pass - this is what ships in the Docker image
 npm run lint
 ```
 
@@ -88,7 +88,7 @@ Before you open a PR:
 1. Both the backend suite and the frontend build pass locally.
 2. User-visible changes have an entry queued for the next `CHANGELOG.md` release section.
 3. New features have tests. New bug fixes include a regression test.
-4. If you touched the session workflow, tier gate, or audit log, be aware those areas have hard architectural constraints — see the Architecture guardrails below.
+4. If you touched the session workflow, tier gate, or audit log, be aware those areas have hard architectural constraints: see the Architecture guardrails below.
 
 Use the PR template. Reviewers will focus on:
 
@@ -99,14 +99,14 @@ Use the PR template. Reviewers will focus on:
 
 ## Architecture guardrails
 
-OpsMender has a few deliberate invariants — please respect them before proposing changes in these areas:
+OpsMender has a few deliberate invariants: please respect them before proposing changes in these areas:
 
 - **Tier gate is programmatic.** It cannot be bypassed by agent reasoning.
 - **MCP-first.** No provider-specific integrations for infrastructure access.
 - **Skill definitions are org-owned.** The framework never edits or overrides a `SKILL.md`.
 - **Audit on everything.** Every tool call and every state transition is logged.
 
-Proposed changes that conflict with one of these invariants should be raised as an issue first — they need a design discussion before code.
+Proposed changes that conflict with one of these invariants should be raised as an issue first. They need a design discussion before code.
 
 ## Reporting security issues
 

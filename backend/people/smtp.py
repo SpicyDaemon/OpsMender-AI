@@ -1,6 +1,6 @@
 """Best-effort outbound SMTP for invite + password-reset emails.
 
-Sprint 56 ships SMTP as **secondary** delivery — the copy-paste URL
+Sprint 56 ships SMTP as **secondary** delivery - the copy-paste URL
 returned by the route is always the source of truth. SMTP failures log
 a warning and return False; routes never raise.
 

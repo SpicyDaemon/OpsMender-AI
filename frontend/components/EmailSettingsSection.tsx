@@ -76,7 +76,7 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
         from_name: form.from_name || null,
       });
       applySettings(saved);
-      setTestState("idle"); // config changed — prior test result no longer valid
+      setTestState("idle"); // config changed - prior test result no longer valid
       setNotice("SMTP settings saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Save failed.");
@@ -127,7 +127,7 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
           )}
         </div>
         <p className="mt-1 text-sm text-fg-secondary">
-          Highly recommended. The single SMTP setting for this workspace — powers
+          Highly recommended. The single SMTP setting for this workspace. It powers
           invitations, password resets, default user email, scheduled incident
           reports, and email/voice paging.
           {configured && activeHost ? (
@@ -160,7 +160,7 @@ export function EmailSettingsSection({ orgId }: { orgId: string }) {
         </div>
         <div>
           <Label htmlFor="smtp-password">Password</Label>
-          <Input id="smtp-password" type="password" value={form.password} placeholder={hasPassword ? "Saved — leave blank to keep" : ""} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <Input id="smtp-password" type="password" value={form.password} placeholder={hasPassword ? "Saved (leave blank to keep)" : ""} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </div>
         <div>
           <Label htmlFor="smtp-from-name">From name</Label>

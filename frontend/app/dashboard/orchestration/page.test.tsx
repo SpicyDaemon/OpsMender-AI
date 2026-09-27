@@ -1,5 +1,5 @@
 /**
- * Session Orchestration overview — renders per-model occupancy, the queue,
+ * Session Orchestration overview - renders per-model occupancy, the queue,
  * and running sessions from the orchestration API.
  */
 

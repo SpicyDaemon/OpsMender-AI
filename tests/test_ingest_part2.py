@@ -244,7 +244,7 @@ async def test_sns_recovery_then_refire_creates_new_incident(
         )
         assert prior.status == "resolved"
         assert new.status == "open"
-        assert new.title == "[CloudWatch] qa-cpu — ALARM"
+        assert new.title == "[CloudWatch] qa-cpu: ALARM"
         assert new.external_id == prior.external_id == "000000000000:us-east-1:qa-cpu"
         assert await IncidentPageRepo.list_for_incident(db, TEST_ORG_ID, new.id)
 

@@ -53,7 +53,7 @@ export function timeZoneOptions(current?: string | null): string[] {
 
 /**
  * The current UTC offset of `tz` (evaluated at `at`, since offsets shift with
- * DST) as a signed `±HH:MM` string — e.g. `"+00:00"`, `"-05:00"`, `"+05:30"`.
+ * DST) as a signed `±HH:MM` string - e.g. `"+00:00"`, `"-05:00"`, `"+05:30"`.
  * Falls back to `"+00:00"` for an unknown zone.
  */
 export function tzOffsetLabel(tz: string, at: Date = new Date()): string {

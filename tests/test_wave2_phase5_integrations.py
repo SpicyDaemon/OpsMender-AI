@@ -1,4 +1,4 @@
-"""Wave 2 Phase 5 — Gitea, Google Docs, and Statuspage adapter tests."""
+"""Wave 2 Phase 5 - Gitea, Google Docs, and Statuspage adapter tests."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Sprint 56 Step 2 — self-registration close + /auth/registration-open."""
+"""Sprint 56 Step 2 - self-registration close + /auth/registration-open."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ async def _register(client: AsyncClient, *, username: str, email: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Dev mode (set by conftest) — register always works
+# Dev mode (set by conftest) - register always works
 # ---------------------------------------------------------------------------
 
 
@@ -73,7 +73,7 @@ async def test_registration_still_open_in_dev_after_first_user(client):
 
 
 # ---------------------------------------------------------------------------
-# Production mode — register closes after the first user
+# Production mode - register closes after the first user
 # ---------------------------------------------------------------------------
 
 

@@ -202,7 +202,7 @@ class TestProviderRegistry:
         assert registry_mod._ttl_for(None) == 60.0
 
     def test_discover_models_caches_within_ttl(self, monkeypatch):
-        """Sprint 61 follow-up — repeat calls should not hit the live
+        """Sprint 61 follow-up - repeat calls should not hit the live
         provider. /dashboard/models was slow because every page paint
         re-ran the OpenAI + Ollama list calls; the cache short-circuits
         within the 60s TTL."""

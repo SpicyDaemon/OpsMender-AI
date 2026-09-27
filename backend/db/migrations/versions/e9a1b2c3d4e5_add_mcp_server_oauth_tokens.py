@@ -4,20 +4,20 @@ Revision ID: e9a1b2c3d4e5
 Revises: d8e9f0a1b2c3
 Create Date: 2026-05-19 14:00:00.000000
 
-Sprint 42 step 1 — persistence for OAuth 2.1 token bundles obtained
+Sprint 42 step 1 - persistence for OAuth 2.1 token bundles obtained
 from HTTP-transport MCP servers per the Model Context Protocol
 authorization spec (RFC 9728 PRM discovery + RFC 8414 authz server
 metadata + RFC 8707 Resource Indicators + RFC 9207 issuer validation
 + PKCE S256 + refresh-token rotation per OAuth 2.1 §4.3.1).
 
 Schema:
-  * One row per (org_id, mcp_server_id) — enforced by UNIQUE on
+  * One row per (org_id, mcp_server_id) - enforced by UNIQUE on
     ``mcp_server_id`` (which is itself org-scoped via the mcp_servers
     table). Cascade delete on the parent server cleans up the token.
   * ``access_token_encrypted`` + ``refresh_token_encrypted`` use the
     project's Fernet helper (``backend/auth/secrets.py``); both stored
     as URL-safe-base64 ASCII text.
-  * ``refresh_token_encrypted`` is nullable — the MCP authz spec
+  * ``refresh_token_encrypted`` is nullable - the MCP authz spec
     explicitly says clients MUST NOT assume refresh tokens are issued
     (§6.4).
   * ``issuer`` captures the authorization-server issuer recorded at

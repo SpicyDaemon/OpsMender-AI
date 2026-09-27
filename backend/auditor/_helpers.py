@@ -78,7 +78,7 @@ async def _ensure_read_only(ctx: AnalyzerContext, call: CallSpec) -> None:
     otherwise bypass the tier/skill enforcement.
 
     Conservative by default: with no resolved skill, every tool is treated as
-    unknown and blocked — environment scanning requires an MCP Skill that marks
+    unknown and blocked - environment scanning requires an MCP Skill that marks
     its read-only tools ``safe``.
     """
     # Local imports keep the auditor's import graph light and avoid cycles.
@@ -109,7 +109,7 @@ async def _ensure_read_only(ctx: AnalyzerContext, call: CallSpec) -> None:
 
 
 async def execute_call(ctx: AnalyzerContext, call: CallSpec) -> str:
-    # Read-only enforcement BEFORE any MCP execution — the auditor is not an
+    # Read-only enforcement BEFORE any MCP execution - the auditor is not an
     # execution surface and must not run write/remediation tools.
     await _ensure_read_only(ctx, call)
     async with ctx.pool.connect(ctx.org_id, call.server_name) as session:

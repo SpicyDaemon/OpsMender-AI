@@ -39,7 +39,7 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
       setItems(resp.items);
       setFetched(true);
     } catch (err) {
-      // Don't toast on every mount — session memory recall may legitimately
+      // Don't toast on every mount - session memory recall may legitimately
       // be empty for a fresh org. Only log.
       console.warn("memories-used fetch failed", err);
       setFetched(true);
@@ -64,7 +64,7 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
           it.memory.id === updated.id ? { ...it, memory: updated } : it,
         ),
       );
-      toast.success(helpful ? "Thanks — marked helpful" : "Thanks — marked not helpful");
+      toast.success(helpful ? "Thanks, marked as helpful" : "Thanks, marked as not helpful");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -105,7 +105,7 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
           ) : items.length === 0 ? (
             <p className="text-sm text-fg-muted">
               No memories surfaced for this session. The agent had nothing
-              relevant to recall from this service yet — successful sessions
+              relevant to recall from this service yet. Successful sessions
               build memory automatically.
             </p>
           ) : (

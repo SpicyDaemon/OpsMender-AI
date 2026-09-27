@@ -58,7 +58,7 @@ class TestAPIDocsExposure:
         for path in ("/docs", "/redoc", "/openapi.json"):
             response = await _get(app, path)
             # 404 from the API (or the frontend catch-all when a build is
-            # mounted) — anything but the live docs/schema.
+            # mounted) - anything but the live docs/schema.
             assert (
                 response.status_code != 200
                 or "openapi" not in response.text[:200].lower()

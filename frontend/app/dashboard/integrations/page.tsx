@@ -243,7 +243,7 @@ function AdditionalVariables({
                 type={row.secret ? "password" : "text"}
                 value={row.value}
                 placeholder={
-                  row.saved ? "Saved — leave blank to keep" : "value"
+                  row.saved ? "Saved (leave blank to keep)" : "value"
                 }
                 autoComplete="off"
                 onChange={(event) =>
@@ -254,7 +254,7 @@ function AdditionalVariables({
                 className="inline-flex items-center gap-1.5 text-xs text-fg-secondary"
                 title={
                   row.saved
-                    ? "Storage can't change for a saved key — remove and re-add it"
+                    ? "Storage can't change for a saved key. Remove it and add it again."
                     : "Store this value encrypted (write-only)"
                 }
               >
@@ -302,7 +302,7 @@ function StructuredField({
   const id = `integration-${field.group}-${field.name}`;
   const placeholder =
     saved && field.group === "credentials"
-      ? "Saved — leave blank to keep"
+      ? "Saved (leave blank to keep)"
       : (field.placeholder ?? "");
   return (
     <div>

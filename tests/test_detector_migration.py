@@ -164,7 +164,7 @@ class TestPlanMigrations:
             db_session,
             mcp_server_id=server.id,
             name="fast",
-            interval_seconds=60,  # 1 min — should clamp up to 15
+            interval_seconds=60,  # 1 min - should clamp up to 15
         )
         await db_session.commit()
         plans = await plan_migrations(db_session)

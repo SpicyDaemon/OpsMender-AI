@@ -4,7 +4,7 @@ Covers:
 - Graph structure (nodes, edges)
 - Stub node behavior (no LLM)
 - LLM-powered node behavior (with StubLLM / mock)
-- Tier gate (hard programmatic check — core enforcement contract)
+- Tier gate (hard programmatic check - core enforcement contract)
 - Execute node (with mocked MCP session + audit logger)
 - Full graph invocation (end-to-end with and without LLM / MCP)
 - LLM protocol and StubLLM
@@ -172,7 +172,7 @@ class TestGraphStructure:
 
 
 # ---------------------------------------------------------------------------
-# Stub node tests (no LLM — backward compatibility)
+# Stub node tests (no LLM - backward compatibility)
 # ---------------------------------------------------------------------------
 
 
@@ -418,11 +418,11 @@ class TestSummarizeWithLLM:
 
 
 class TestTierGate:
-    """The tier gate is the most critical node — it MUST enforce the
+    """The tier gate is the most critical node - it MUST enforce the
     tier/skill matrix programmatically, not via LLM reasoning."""
 
     def test_safe_action_requires_approval_at_tier_1(self):
-        # New model: Tier 1 is interactive — EVERY write (incl. safe) routes to
+        # New model: Tier 1 is interactive - EVERY write (incl. safe) routes to
         # the approval gate. With no approval service wired (sync gate), the
         # action is blocked pending one rather than auto-approved.
         gate = _build_tier_gate(tier=1, skill_def=_skill_def())
@@ -449,7 +449,7 @@ class TestTierGate:
         assert "approval service" in result["blocked_actions"][0]["block_reason"]
 
     def test_tier_2_advisory_blocks_safe_and_caution(self):
-        # New model: Tier 2 is advisory — even safe/caution actions are blocked.
+        # New model: Tier 2 is advisory - even safe/caution actions are blocked.
         gate = _build_tier_gate(tier=2, skill_def=_skill_def())
         state = _base_state(
             plan=[
@@ -519,7 +519,7 @@ class TestTierGate:
 
     def test_prompt_injection_destructive_plan_is_blocked(self):
         """Prompt-injection scenario: the model is coerced into planning
-        `kubectl delete namespace prod`. Backend enforcement blocks it — the
+        `kubectl delete namespace prod`. Backend enforcement blocks it - the
         action never reaches the approved set (so it is never executed),
         regardless of what the model "decided"."""
         # Even at the most autonomous tier, a generic command tool is blocked.
@@ -620,7 +620,7 @@ class TestTierGate:
 
     async def test_approved_action_parameters_are_bound(self, tmp_path):
         """Parameter binding: the action executed after approval carries exactly
-        the parameters that were proposed/approved — the AI cannot swap them."""
+        the parameters that were proposed/approved - the AI cannot swap them."""
         db_path = tmp_path / "tier1-bind.db"
         engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
         async with engine.begin() as conn:
@@ -769,7 +769,7 @@ class TestTierGate:
 
 
 # ---------------------------------------------------------------------------
-# Full graph invocation — stub mode (no LLM)
+# Full graph invocation - stub mode (no LLM)
 # ---------------------------------------------------------------------------
 
 
@@ -818,7 +818,7 @@ class TestFullGraphStub:
 
 
 # ---------------------------------------------------------------------------
-# Full graph invocation — LLM mode
+# Full graph invocation - LLM mode
 # ---------------------------------------------------------------------------
 
 

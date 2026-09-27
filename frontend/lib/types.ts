@@ -135,7 +135,7 @@ export interface IncidentResponse {
   acknowledged_by_display_name?: string | null;
   escalated_to_user_id?: string | null;
   escalated_to_display_name?: string | null;
-  // AI session state — computed by the list/detail route so the table can show
+  // AI session state - computed by the list/detail route so the table can show
   // an "AI in progress" indicator without a per-incident fetch.
   ai_session_active?: boolean;
   ai_session_status?: SessionStatus | null;
@@ -215,7 +215,7 @@ export interface IncidentTimelineResponse {
   total: number;
 }
 
-// Sprint 61 Step 4 — postmortem authoring.
+// Sprint 61 Step 4 - postmortem authoring.
 export interface IncidentPostmortemResponse {
   incident_id: string;
   postmortem_md: string | null;
@@ -301,7 +301,7 @@ export interface SessionListResponse {
   total: number;
 }
 
-// v2 Phase 3 — session orchestration overview
+// v2 Phase 3 - session orchestration overview
 export interface ModelCapacityRow {
   model_config_id: string;
   name: string;
@@ -458,7 +458,7 @@ export interface ApprovalListResponse {
 // Config
 // ---------------------------------------------------------------------------
 
-// Sprint 56 — admin People-surface request/response types
+// Sprint 56 - admin People-surface request/response types
 export interface UserUpdateRequest {
   role?: "admin" | "operator" | "viewer";
   is_active?: boolean;
@@ -881,7 +881,7 @@ export type NotificationTeamScope = "workspace" | "teams";
 export type BotConnectorLane = "respond" | "track";
 
 // Honest per-platform capability descriptor (see backend bots/capabilities.py).
-// Drives what the Notification Channels UI advertises — it never offers an
+// Drives what the Notification Channels UI advertises - it never offers an
 // action a platform cannot securely support.
 export interface PlatformCapabilities {
   platform: string;

@@ -1,4 +1,4 @@
-"""Tests for backend.db.models — verify ORM models can be created and queried.
+"""Tests for backend.db.models - verify ORM models can be created and queried.
 
 Uses an in-memory SQLite database (via aiosqlite) so no Postgres is needed.
 JSONB columns fall back to SQLAlchemy's JSON type on SQLite automatically.

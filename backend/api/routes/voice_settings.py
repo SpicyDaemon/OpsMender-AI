@@ -138,13 +138,13 @@ async def test_voice_settings(
     user: User = Depends(require_role("admin")),
 ):
     """Validate the active Twilio credentials (saved settings, else env) against
-    the Twilio API. Save changes first — this tests what's in effect."""
+    the Twilio API. Save changes first - this tests what's in effect."""
     settings = await resolve_voice_settings(db, org_id)
     if settings is None:
         return VoiceSettingsTestResponse(
             ok=False,
             message=(
-                "No Twilio credentials are configured — set them above (or via "
+                "No Twilio credentials are configured. Set them above (or via "
                 "the OPSMENDER_TWILIO_* environment variables) and save first."
             ),
         )

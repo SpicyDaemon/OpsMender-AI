@@ -1,7 +1,7 @@
-"""Part 5 — a deactivated user is excluded from on-call resolution + paging.
+"""Part 5 - a deactivated user is excluded from on-call resolution + paging.
 
 The membership row is preserved (history), but ``list_members(active_only=True)``
-— used by on-call resolution and the escalation pager — filters it out, so a
+- used by on-call resolution and the escalation pager - filters it out, so a
 disabled user never resolves as on-call or gets paged.
 """
 

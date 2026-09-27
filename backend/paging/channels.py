@@ -3,15 +3,15 @@
 Each class implements the ``Channel`` protocol in ``backend.paging.dispatch``:
 a single async ``send(recipient, subject, body) -> DeliveryAttempt`` method.
 
-Channels never raise on transport failure — they return a ``DeliveryAttempt``
+Channels never raise on transport failure - they return a ``DeliveryAttempt``
 with ``status="failed"`` + an error string. The dispatcher records every
 attempt as an ``incident_pages`` row.
 
-* ``SlackDMChannel`` — Slack ``chat.postMessage``.
-* ``TeamsDMChannel`` — Teams incoming-webhook style (Microsoft Graph is
+* ``SlackDMChannel`` - Slack ``chat.postMessage``.
+* ``TeamsDMChannel`` - Teams incoming-webhook style (Microsoft Graph is
   deferred to Sprint 37).
-* ``EmailChannel`` — SMTP via stdlib smtplib, wrapped in ``asyncio.to_thread``.
-* ``SMSChannel`` — Twilio Messages API.
+* ``EmailChannel`` - SMTP via stdlib smtplib, wrapped in ``asyncio.to_thread``.
+* ``SMSChannel`` - Twilio Messages API.
 
 All HTTP-based channels accept an optional ``http_client`` factory so tests
 can inject ``httpx.MockTransport``.
@@ -124,13 +124,13 @@ class TeamsDMChannel:
 
 
 class TeamsGraphDMChannel:
-    """Sprint 37 step 2 — Teams DM via Microsoft Graph (app-only auth).
+    """Sprint 37 step 2 - Teams DM via Microsoft Graph (app-only auth).
 
     Recipient must be a Teams chat id that OpsMender's Azure AD app has
     permission to post into (the operator typically pre-creates a chat
     that includes the OpsMender service principal as a member, and
     stores that chat id in the user's notification preferences). Falls
-    back to the connector's ``default_chat_id`` upstream of this class —
+    back to the connector's ``default_chat_id`` upstream of this class -
     we only see the resolved id.
 
     Step 3 will replace the plain HTML body with an adaptive card
@@ -392,7 +392,7 @@ class VoiceChannel:
     """Outbound **phone call** personal-routing medium.
 
     A capability-gated voice provider (today: Twilio Programmable Voice). The
-    abstract :class:`Channel` protocol is the telephony abstraction layer — a
+    abstract :class:`Channel` protocol is the telephony abstraction layer - a
     new voice provider plugs in as another ``key="voice"`` implementation behind
     ``channel_factory`` + the ``voice_call`` capability gate; chat bots that
     cannot place PSTN calls never expose this channel.

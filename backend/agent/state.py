@@ -10,7 +10,7 @@ Design notes
   + ``operator.add`` reducer so that each node's returned list is
   appended to the existing list rather than replacing it.
 * Fields that are *set once* (like ``session_id``, ``tier``) have no
-  reducer — last write wins (but in practice they are set at the start
+  reducer - last write wins (but in practice they are set at the start
   and never overwritten).
 """
 

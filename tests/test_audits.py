@@ -1,4 +1,4 @@
-"""Tests for the Auditor (Sprint 32) — analyzers, repos, runner, and API."""
+"""Tests for the Auditor (Sprint 32) - analyzers, repos, runner, and API."""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Analyzer parsing (pure unit tests — no MCP / DB needed)
+# Analyzer parsing (pure unit tests - no MCP / DB needed)
 # ---------------------------------------------------------------------------
 
 
@@ -343,7 +343,7 @@ class TestRunner:
             assert len(findings) == 1
             assert findings[0].severity == "high"
 
-        # cleanup — re-register the default analyzer so other tests stay green
+        # cleanup - re-register the default analyzer so other tests stay green
         _reset_for_tests()
         import backend.auditor as _a  # noqa: F401
         from backend.auditor import analyzers as _an
@@ -529,7 +529,7 @@ class TestAuditAPI:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 39 step 2 — Scheduled audit runs
+# Sprint 39 step 2 - Scheduled audit runs
 # ---------------------------------------------------------------------------
 
 

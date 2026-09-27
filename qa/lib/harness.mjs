@@ -111,12 +111,12 @@ export class Harness {
     // Console/page errors during a passing step downgrade it to a warning.
     if (status === "pass" && newEvents.length) status = "warn";
     this._record(name, status, Date.now() - t0, error, newEvents, shot);
-    const icon = { pass: "✓", warn: "!", fail: "✗", skip: "–" }[status];
+    const icon = { pass: "✓", warn: "!", fail: "✗", skip: "-" }[status];
     const extra =
       status === "skip"
         ? ` (skipped: ${error})`
         : error
-          ? ` — ${error.message ?? error}`
+          ? `: ${error.message ?? error}`
           : newEvents.length
             ? ` (${newEvents.length} console/network error${newEvents.length > 1 ? "s" : ""})`
             : "";

@@ -12,7 +12,7 @@ from backend.ingest.registry import list_providers
 
 
 # ======================================================================
-# Azure Monitor — availability signal
+# Azure Monitor - availability signal
 # ======================================================================
 
 
@@ -114,7 +114,7 @@ class TestGCPMonitoringAdapter:
         adapter = GCPMonitoringAdapter()
         result = adapter.parse(self._make_payload("open"))
 
-        assert result.title == "[GCP Monitoring] Webserver-Health — CPU usage"
+        assert result.title == "[GCP Monitoring] Webserver-Health: CPU usage"
         assert result.severity == "high"
         assert result.status == "open"
         assert result.external_source == "gcp_monitoring"
@@ -199,7 +199,7 @@ class TestOCIMonitoringAdapter:
         adapter = OCIMonitoringAdapter()
         result = adapter.parse(self._make_payload("FIRING"))
 
-        assert result.title == "[OCI] High-CPU-Utilization — FIRING"
+        assert result.title == "[OCI] High-CPU-Utilization: FIRING"
         assert result.severity == "critical"
         assert result.status == "open"
         assert result.external_source == "oci_monitoring"
@@ -228,12 +228,12 @@ class TestOCIMonitoringAdapter:
                 "status": "FIRING",
             }
         )
-        assert result.title == "[OCI] Disk-Full — FIRING"
+        assert result.title == "[OCI] Disk-Full: FIRING"
         assert result.severity == "medium"  # WARNING maps to medium
 
 
 # ======================================================================
-# Registry — verify new providers are registered
+# Registry - verify new providers are registered
 # ======================================================================
 
 

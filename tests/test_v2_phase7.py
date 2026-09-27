@@ -1,4 +1,4 @@
-"""v2 Phase 7 — resumable session progress + RCA draft from the trail."""
+"""v2 Phase 7 - resumable session progress + RCA draft from the trail."""
 
 from __future__ import annotations
 

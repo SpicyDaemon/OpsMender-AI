@@ -1,4 +1,4 @@
-"""Part 6 — role-based API authorization for Admin / Operator / Viewer.
+"""Part 6 - role-based API authorization for Admin / Operator / Viewer.
 
 Locks the v1 matrix at the backend so access control doesn't rely on hiding UI:
 operators and viewers cannot reach admin management endpoints, and viewers
@@ -79,7 +79,7 @@ async def _headers(client: AsyncClient) -> dict[str, dict[str, str]]:
 async def test_admin_only_mutations_reject_operator_and_viewer(client):
     h = await _headers(client)
 
-    # PUT /config — admin only.
+    # PUT /config - admin only.
     assert (
         await client.put("/config", headers=h["admin"], json={"tier": 2})
     ).status_code == 200
@@ -90,7 +90,7 @@ async def test_admin_only_mutations_reject_operator_and_viewer(client):
         await client.put("/config", headers=h["viewer"], json={"tier": 2})
     ).status_code == 403
 
-    # POST /sla-targets — admin only.
+    # POST /sla-targets - admin only.
     body = {"name": "t1", "kind": "http", "config": {"url": "https://x.test"}}
     assert (
         await client.post("/sla-targets", headers=h["admin"], json=body)
@@ -103,7 +103,7 @@ async def test_admin_only_mutations_reject_operator_and_viewer(client):
         await client.post("/sla-targets", headers=h["viewer"], json=body)
     ).status_code == 403
 
-    # POST /auth/users (create user) — admin only.
+    # POST /auth/users (create user) - admin only.
     nu = {
         "username": "x",
         "email": "x@test.com",
@@ -122,12 +122,12 @@ async def test_admin_only_mutations_reject_operator_and_viewer(client):
 async def test_admin_reads_are_gated(client):
     h = await _headers(client)
 
-    # GET /auth/users — admin + operator, NOT viewer.
+    # GET /auth/users - admin + operator, NOT viewer.
     assert (await client.get("/auth/users", headers=h["admin"])).status_code == 200
     assert (await client.get("/auth/users", headers=h["operator"])).status_code == 200
     assert (await client.get("/auth/users", headers=h["viewer"])).status_code == 403
 
-    # GET /config — admin + operator, NOT viewer.
+    # GET /config - admin + operator, NOT viewer.
     assert (await client.get("/config", headers=h["admin"])).status_code == 200
     assert (await client.get("/config", headers=h["operator"])).status_code == 200
     assert (await client.get("/config", headers=h["viewer"])).status_code == 403
@@ -203,7 +203,7 @@ async def test_incident_create_and_actions_rbac(client):
         "service_id": service.json()["id"],
     }
 
-    # Create incident — admin only (operator + viewer rejected).
+    # Create incident - admin only (operator + viewer rejected).
     admin_create = await client.post("/incidents", headers=h["admin"], json=body)
     assert admin_create.status_code == 201, admin_create.text
     incident_id = admin_create.json()["id"]

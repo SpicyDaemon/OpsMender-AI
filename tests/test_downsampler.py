@@ -183,7 +183,7 @@ class TestRollTo5m:
         r2 = await downsampler.run_once()
 
         assert r1["buckets_5m"] >= 1
-        assert r2["buckets_5m"] == 0  # idempotent -- already created
+        assert r2["buckets_5m"] == 0  # idempotent - already created
 
     @pytest.mark.asyncio
     async def test_suppressed_excluded_from_pct(
@@ -378,7 +378,7 @@ class TestPruneRaw:
             remaining = (await check_db.execute(stmt)).scalars().all()
 
         assert len(remaining) == 1
-        # SQLite strips timezone — make comparison safe
+        # SQLite strips timezone - make comparison safe
         obs = remaining[0].observed_at
         if obs.tzinfo is None:
             obs = obs.replace(tzinfo=timezone.utc)

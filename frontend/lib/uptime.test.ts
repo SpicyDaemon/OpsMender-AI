@@ -22,7 +22,7 @@ describe("formatUptimePct", () => {
   });
 
   it("renders an em dash for null", () => {
-    expect(formatUptimePct(null)).toBe("—");
+    expect(formatUptimePct(null)).toBe("No data");
   });
 });
 

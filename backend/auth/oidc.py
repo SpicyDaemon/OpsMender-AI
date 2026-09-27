@@ -7,9 +7,9 @@ Keycloak, etc.). Discovery results are cached in-process for 10 minutes.
 This intentionally avoids ``authlib`` so that OpsMender keeps its dependency
 surface small. The flow:
 
-1. ``build_authorize_url(config, state, redirect_uri)`` — returns the URL
+1. ``build_authorize_url(config, state, redirect_uri)`` - returns the URL
    the browser should redirect to.
-2. ``exchange_code(config, code, redirect_uri)`` — POSTs the code to the
+2. ``exchange_code(config, code, redirect_uri)`` - POSTs the code to the
    IdP's token endpoint and returns the parsed id_token claims.
 """
 

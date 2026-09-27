@@ -1,5 +1,5 @@
 /**
- * API client — thin fetch wrapper with JWT injection and 401 handling.
+ * API client - thin fetch wrapper with JWT injection and 401 handling.
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
@@ -151,7 +151,7 @@ export async function uploadMyAvatar(file: File): Promise<UserResponse> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  // Don't set Content-Type — the browser adds the multipart boundary.
+  // Don't set Content-Type - the browser adds the multipart boundary.
   const res = await fetch(`${BASE_URL}/auth/me/avatar`, {
     method: "POST",
     body: form,
@@ -262,7 +262,7 @@ import type {
 } from "./types";
 
 export async function listIncidents(params?: {
-  // Categorical filters accept a single value or a list — a list is sent as
+  // Categorical filters accept a single value or a list - a list is sent as
   // repeated query params and OR-matched server-side.
   status?: string | string[];
   severity?: string | string[];
@@ -1248,17 +1248,17 @@ export async function setPrimaryOrganizationDomain(
 
 
 export async function resolveTenant(): Promise<TenantContextResponse> {
-  // Public — no auth required.
+  // Public - no auth required.
   return request<TenantContextResponse>("/tenant/resolve", {}, true);
 }
 
 export async function getRegistrationOpen(): Promise<{ open: boolean }> {
-  // Public — no auth required. Sprint 56 Step 2: login page calls this
+  // Public - no auth required. Sprint 56 Step 2: login page calls this
   // to decide whether to render the register link.
   return request<{ open: boolean }>("/auth/registration-open", {}, true);
 }
 
-// Sprint 56 — admin People-surface helpers
+// Sprint 56 - admin People-surface helpers
 export async function getUser(
   id: string,
 ): Promise<import("./types").UserResponse> {

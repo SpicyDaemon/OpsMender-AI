@@ -23,11 +23,12 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
-from jose import JWTError
 
-from backend.api.auth import decode_access_token
+from backend.api.auth import user_for_session_token
+from backend.api.deps import get_current_session_factory
 from backend.api.schemas import WSMessage
 from backend.auth.api_tokens import API_TOKEN_PREFIX
+from backend.db.models import User
 
 router = APIRouter(tags=["websocket"])
 
@@ -100,6 +101,13 @@ async def publish_user(user_id: uuid.UUID, message: WSMessage) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _session_user(token: str) -> User | None:
+    """The active user a stream's token speaks for. Checked in a short
+    database session so a long-lived stream doesn't hold a connection."""
+    async with get_current_session_factory()() as db:
+        return await user_for_session_token(db, token)
+
+
 @router.websocket("/sessions/{session_id}/stream")
 async def session_stream(
     websocket: WebSocket,
@@ -110,16 +118,7 @@ async def session_stream(
     if token.startswith(API_TOKEN_PREFIX):
         await websocket.close(code=4401)
         return
-    try:
-        payload = decode_access_token(token)
-        if payload.get("token_type") not in (None, "access"):
-            await websocket.close(code=4401)
-            return
-        user_id = payload.get("sub")
-        if user_id is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
-    except (JWTError, ValueError):
+    if await _session_user(token) is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -159,19 +158,11 @@ async def notifications_stream(
     if token.startswith(API_TOKEN_PREFIX):
         await websocket.close(code=4401)
         return
-    try:
-        payload = decode_access_token(token)
-        if payload.get("token_type") not in (None, "access"):
-            await websocket.close(code=4401)
-            return
-        sub = payload.get("sub")
-        if sub is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
-        user_id = uuid.UUID(str(sub))
-    except (JWTError, ValueError):
+    user = await _session_user(token)
+    if user is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
+    user_id = user.id
 
     await websocket.accept()
 

@@ -188,9 +188,19 @@ To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch
 
 1. Go to **Paging & On-call** > **Services**.
 2. Create or open the service that owns the alerts.
-3. Use the service-specific alert intake URL when available. The v1 security model is an embedded unguessable secret in the URL, so external monitors can POST directly without managing separate API-key headers.
-4. The legacy `/dashboard/ingest-tokens` route remains available for existing installs while service-level webhook UX matures.
+3. Creating the service shows its intake URL once: copy it into your monitor
+   then. The URL carries an unguessable secret, so monitors can POST alerts
+   without an API-key header. OpsMender stores only a hash of that secret, so
+   it can't show the URL again; the service list shows a masked hint to admins
+   and operators.
+4. Lost the URL, or think it leaked? Open the service and choose **Rotate
+   URL**. The old URL stops working at once, so update every monitor that
+   posts to it. A service without a URL gets one the same way (**Create
+   URL**).
+5. The legacy `/dashboard/ingest-tokens` route remains available for existing installs while service-level webhook UX matures.
 
-Deleting a service revokes its intake URL. A token that has received alerts
-can be revoked but not deleted, because its delivery log is kept as an audit
-record.
+Deleting a service revokes its intake URL, and so does revoking the URL's
+token on the Ingest Tokens page (rotate to get a new one). A token that has
+received alerts can be revoked but not deleted, because its delivery log is
+kept as an audit record. The access log shows only the first eight
+characters of an intake URL's secret.

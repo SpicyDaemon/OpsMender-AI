@@ -81,6 +81,15 @@ ingress:
       hosts: [opsmender.example.com]
 ```
 
+With ingress enabled, the chart sets `FORWARDED_ALLOW_IPS` from
+`ingress.trustedProxies` (default `"*"`). Every request reaches the app from
+the ingress controller, and sign-in limits count failures per client address
+(see the Auth Guide), so the app has to read the address the ingress forwards.
+Without it, five wrong passwords from anyone would lock an account for
+everyone. The ClusterIP service keeps `"*"` inside the cluster; set it to your
+ingress controller's pod CIDR if other workloads in the cluster aren't
+trusted.
+
 ## Configuration
 
 | Key | Description | Default |
@@ -91,6 +100,7 @@ ingress:
 | `service.type` | Service type | `ClusterIP` |
 | `service.port` | Service port | `8000` |
 | `ingress.enabled` | Create Ingress | `false` |
+| `ingress.trustedProxies` | Sets `FORWARDED_ALLOW_IPS` when ingress is enabled | `"*"` |
 | `persistence.enabled` | PVC for `/app/logs` (audit JSONL fallback) | `true` |
 | `persistence.size` | Logs PVC size | `5Gi` |
 | `postgresql.enabled` | Deploy Bitnami Postgres subchart | `true` |

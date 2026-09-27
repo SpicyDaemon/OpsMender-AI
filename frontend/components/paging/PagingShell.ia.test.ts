@@ -121,14 +121,16 @@ describe("v1 paging IA", () => {
     expect(pagingShellSource).toContain("<MultiSelect");
   });
 
-  it("gives every paging table an edit action and a copyable intake URL", () => {
+  it("gives every paging table an edit action and shows the intake URL once", () => {
     expect(pagingShellSource).toContain("Edit team");
     expect(pagingShellSource).toContain("Edit chain");
     expect(pagingShellSource).toContain("Edit roster");
     expect(pagingShellSource).toContain("Edit window");
     expect(pagingShellSource).toContain("Edit service");
     expect(pagingShellSource).toContain("Alert intake URL");
-    expect(pagingShellSource).toContain("<CopyButton");
+    // Only a hash is stored: the full URL is shown once, on create or rotate.
+    expect(pagingShellSource).toContain("<IntakeUrlOnceDialog");
+    expect(pagingShellSource).toContain("Rotate URL");
   });
 
   it("labels escalation steps as Levels", () => {

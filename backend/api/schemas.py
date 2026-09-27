@@ -2497,7 +2497,9 @@ class ServiceResponse(BaseModel):
         default_factory=dict
     )
     ai_default_tier: Optional[int] = None
+    # The full URL appears only in the create and rotate responses (S-108).
     intake_url: Optional[str] = None
+    intake_url_hint: Optional[str] = None
     external_refs: Optional[dict[str, Any]]
     is_active: bool
     created_at: datetime

@@ -142,7 +142,13 @@ export async function updateMe(
 export async function changeMyPassword(
   body: import("./types").MePasswordChangeRequest,
 ): Promise<void> {
-  await api.post("/auth/me/password", body);
+  // Tokens issued before the change stop working, including this one, so
+  // keep the fresh token the server returns.
+  const resp = await api.post<import("./types").TokenResponse>(
+    "/auth/me/password",
+    body,
+  );
+  if (resp?.access_token) setToken(resp.access_token);
 }
 
 export async function uploadMyAvatar(file: File): Promise<UserResponse> {
@@ -1562,6 +1568,10 @@ export async function updateService(id: string, body: ServiceUpdate): Promise<Se
 }
 export async function deleteService(id: string): Promise<void> {
   return api.del<void>(`/services/${id}`);
+}
+/** Issue a new intake URL; the response carries it this once. */
+export async function rotateServiceIntakeUrl(id: string): Promise<ServiceResponse> {
+  return api.post<ServiceResponse>(`/services/${id}/intake-url`);
 }
 
 export async function listRosters(teamId?: string): Promise<RosterListResponse> {

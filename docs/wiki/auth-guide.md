@@ -148,6 +148,11 @@ Admins reset other users' passwords from the per-user detail page:
 
 Users cannot self-trigger a password reset in v1. It goes through an admin. This is the same "single break-glass channel" pattern as invites and matches the simple-by-default posture.
 
+Changing or resetting a password signs out every earlier session: tokens
+issued before the change stop working on the API and on the live incident and
+notification streams. Someone who changes their own password from their
+profile stays signed in, because the change hands them a fresh token.
+
 ---
 
 ## Optional SMTP delivery

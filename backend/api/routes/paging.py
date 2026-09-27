@@ -115,6 +115,10 @@ def _new_service_intake_token() -> str:
     return f"svc_{secrets.token_urlsafe(32)}"
 
 
+def _intake_path(intake_token: str) -> str:
+    return f"/api/v1/intake/{intake_token}"
+
+
 async def _validate_mcp_servers(
     db: AsyncSession,
     org_id: uuid.UUID,
@@ -379,14 +383,15 @@ async def _service_responses(
     *,
     include_tool_source_overlaps: bool,
 ) -> list[ServiceResponse]:
-    """Build service responses. Only admins and operators get the intake URL,
-    whose embedded secret can post alerts and page the team (KI-047), and the
+    """Build service responses. The full intake URL is never here: only a hash
+    of its secret is stored, and the URL appears once, in the create and rotate
+    responses (S-108). Admins and operators get its masked hint and the
     advisory tool-source overlap warning, which names MCP servers and
     connectors."""
     responses = [ServiceResponse.model_validate(svc) for svc in services]
     if not include_tool_source_overlaps:
         for response in responses:
-            response.intake_url = None
+            response.intake_url_hint = None
         return responses
     if not responses:
         return responses
@@ -411,28 +416,6 @@ async def list_services(
     team_id: uuid.UUID | None = Query(default=None),
 ):
     items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
-    changed = False
-    for svc in items:
-        if not svc.intake_token:
-            intake_token = _new_service_intake_token()
-            await ServiceRepo.update(
-                db,
-                org_id,
-                svc.id,
-                intake_token=intake_token,
-            )
-            await IngestTokenRepo.create(
-                db,
-                org_id,
-                name=f"service-intake:{svc.id}:{secrets.token_hex(4)}",
-                provider="auto",
-                token_hash=hash_token(intake_token),
-                service_id=svc.id,
-            )
-            changed = True
-    if changed:
-        await db.commit()
-        items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
     effective_role = getattr(user, "effective_role", user.role)
     return ServiceListResponse(
         items=await _service_responses(
@@ -497,6 +480,8 @@ async def create_service(
         (response,) = await _service_responses(
             db, org_id, [svc], include_tool_source_overlaps=True
         )
+        # The only time, with rotate, that the full URL is returned (S-108).
+        response.intake_url = _intake_path(intake_token)
         return response
     except IntegrityError as exc:
         await db.rollback()
@@ -601,6 +586,48 @@ async def delete_service(
         raise HTTPException(status_code=404, detail="Service not found")
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/services/{service_id}/intake-url",
+    response_model=ServiceResponse,
+    summary="Create or rotate a service's intake URL",
+)
+async def rotate_service_intake_url(
+    service_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """Issue a new intake URL and return it this once (S-108).
+
+    The old URL stops working at once, so monitors posting to it need the new
+    one. The service's other bound ingest tokens keep working.
+    """
+    svc = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.intake_token_hash:
+        await IngestTokenRepo.revoke_for_service_token(
+            db, org_id, svc.id, svc.intake_token_hash
+        )
+    intake_token = _new_service_intake_token()
+    await ServiceRepo.update(db, org_id, svc.id, intake_token=intake_token)
+    await IngestTokenRepo.create(
+        db,
+        org_id,
+        name=f"service:{svc.id}:{secrets.token_hex(4)}",
+        provider="auto",
+        token_hash=hash_token(intake_token),
+        service_id=svc.id,
+    )
+    await db.commit()
+    rotated = await ServiceRepo.get_by_id(db, org_id, service_id)
+    (response,) = await _service_responses(
+        db, org_id, [rotated], include_tool_source_overlaps=True
+    )
+    response.intake_url = _intake_path(intake_token)
+    return response
 
 
 # ---------------------------------------------------------------------------

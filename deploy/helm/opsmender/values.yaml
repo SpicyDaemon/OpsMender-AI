@@ -46,6 +46,14 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
+  ## Addresses allowed to set X-Forwarded-For (sets FORWARDED_ALLOW_IPS when
+  ## ingress is enabled). Sign-in limits count failures per client address,
+  ## and behind an ingress every request comes from the ingress controller,
+  ## so the app must read the forwarded address. "*" trusts anything that can
+  ## reach the pod; the ClusterIP service keeps that inside the cluster.
+  ## Narrow it to your ingress controller's pod CIDR if other workloads in the
+  ## cluster aren't trusted.
+  trustedProxies: "*"
 
 resources:
   requests:

@@ -86,8 +86,9 @@ Each service has:
 - Owning team.
 - Fixed priority: `P0`, `P1`, `P2`, or `P3`. New services start at `P1`.
 - Enabled state.
-- Generated intake URL (shown to admins and operators only: it carries the
-  secret that lets a monitor post alerts).
+- An intake URL, shown in full once, when it's created or rotated. It carries
+  the secret that lets a monitor post alerts, so only a hash is stored; the
+  list shows admins and operators a masked hint.
 - MCP servers strict allowlist.
 - Up to three ranked Models.
 
@@ -316,7 +317,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 1. Create a team at `/dashboard/paging/teams`.
 2. Create the team's escalation chain at `/dashboard/paging/escalation-chains`.
 3. Create a service at `/dashboard/paging/services`; choose priority, MCP servers, and up to three Models.
-4. Copy the service intake URL and configure your monitor to POST alerts to it.
+4. Copy the intake URL from the dialog that opens after you create the service (it's shown once) and configure your monitor to POST alerts to it.
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.
 7. Configure operator delivery, quiet hours, routing, and chat behavior at

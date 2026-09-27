@@ -1,4 +1,4 @@
-"""Sprint 56 Step 3 — user CRUD + password reset + soft delete."""
+"""Sprint 56 Step 3 - user CRUD + password reset + soft delete."""
 
 from __future__ import annotations
 
@@ -295,7 +295,7 @@ async def test_soft_delete_happy_path(env):
     # Email is scrubbed
     assert "deleted.opsmender.local" in resp.json()["email"]
 
-    # Cannot delete twice (404 — deleted users hidden)
+    # Cannot delete twice (404 - deleted users hidden)
     again = await client.post(f"/auth/users/{target_id}/soft-delete", headers=headers)
     assert again.status_code == 404
 
@@ -356,7 +356,7 @@ async def test_soft_delete_blocks_when_on_roster(env):
 
 
 # ---------------------------------------------------------------------------
-# Direct admin user creation (v1 — no invite link required)
+# Direct admin user creation (v1 - no invite link required)
 # ---------------------------------------------------------------------------
 
 
@@ -644,7 +644,7 @@ async def test_deactivation_removes_roster_membership_and_unblocks_delete(env):
         )
         await db.commit()
 
-    # Deactivate via the route — this should strip the roster membership.
+    # Deactivate via the route - this should strip the roster membership.
     deact = await client.patch(
         f"/auth/users/{target_id}", json={"is_active": False}, headers=headers
     )

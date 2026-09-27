@@ -46,7 +46,7 @@ def _block_id_for_incident(incident_id: uuid.UUID | str) -> str:
 
 
 def build_page_card_text(incident: Incident) -> str:
-    """The fallback ``text`` field — what Slack shows in notifications when
+    """The fallback ``text`` field - what Slack shows in notifications when
     Block Kit can't render (mobile lock screens, screen readers, IFTTT)."""
 
     priority = (incident.priority or "P?").upper()
@@ -64,7 +64,7 @@ def build_page_card_blocks(
 ) -> list[dict[str, Any]]:
     """Block Kit JSON for an actionable page card. ``base_url`` is the
     OpsMender web UI origin (e.g. ``https://opsmender.example.com``); when
-    omitted, the "View in OpsMender" button is dropped (still safe — Sprint
+    omitted, the "View in OpsMender" button is dropped (still safe - Sprint
     36 just degrades to text + the remaining action buttons)."""
 
     block_id = _block_id_for_incident(incident.id)
@@ -77,7 +77,7 @@ def build_page_card_blocks(
 
     heading = "Status update" if status_update else "OpsMender page"
     header_lines = [
-        f"*{emoji} {priority} — {heading}: {title}*",
+        f"*{emoji} {priority} · {heading}: {title}*",
         f"Status: `{status_label}`"
         + (f"  •  Severity: `{severity}`" if severity else ""),
     ]

@@ -4,7 +4,7 @@ secrets).
 Uses Fernet (AES-128-CBC + HMAC-SHA256) from ``cryptography``. The key is
 derived deterministically from ``OPSMENDER_SECRET_KEY`` if set, otherwise from
 ``OPSMENDER_JWT_SECRET`` so existing single-tenant deployments don't need a new
-env var. If neither is set we raise — secrets must never be written to the
+env var. If neither is set we raise - secrets must never be written to the
 DB in plain text.
 """
 
@@ -60,5 +60,5 @@ def decrypt_secret(ciphertext: str) -> str:
         return _fernet().decrypt(ciphertext.encode("ascii")).decode("utf-8")
     except InvalidToken as exc:
         raise ValueError(
-            "Failed to decrypt secret — the encryption key has changed."
+            "Failed to decrypt secret. The encryption key has changed."
         ) from exc

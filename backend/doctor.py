@@ -1,10 +1,10 @@
-"""`opsmender doctor` — production readiness checks (Sprint 43 P0 #3).
+"""`opsmender doctor` - production readiness checks (Sprint 43 P0 #3).
 
 Each check produces a ``CheckResult`` with a status of ``ok``, ``warn``,
 or ``fail``. The CLI runs the checks in order, prints a one-line glyph
 + name + detail for each, and exits non-zero when any check failed.
 
-Checks are intentionally pure — no side effects beyond the connections
+Checks are intentionally pure - no side effects beyond the connections
 they explicitly make (DB ping, MCP transport probe, file touch). The
 CLI is the only place that prints; the functions return data.
 """
@@ -116,7 +116,7 @@ async def check_database(factory: async_sessionmaker | None) -> CheckResult:
         return CheckResult(
             "Database",
             "fail",
-            "No DATABASE_URL resolved — cannot connect.",
+            "No DATABASE_URL resolved, so it can't connect.",
         )
     try:
         async with factory() as session:

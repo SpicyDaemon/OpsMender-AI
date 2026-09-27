@@ -1,16 +1,16 @@
-"""Universal adapter — one ingest endpoint for any alerting tool.
+"""Universal adapter - one ingest endpoint for any alerting tool.
 
 This adapter attempts to extract standard incident fields from arbitrary
 JSON payloads without per-provider code. It works in two layers:
 
-1. **Heuristic pass** — walks the payload looking for common field names
+1. **Heuristic pass** - walks the payload looking for common field names
    (``title``, ``alertname``, ``summary``, ``message``, ``severity`` …) at
    the top level and one-level-deep under common envelope keys
    (``alert``, ``data``, ``payload``, ``event`` …). This handles the vast
    majority of webhook schemas today (Datadog, Grafana, Prometheus
    Alertmanager, Sumo Logic, custom scripts).
 
-2. **LLM fallback signal** — when the heuristics cannot find a usable
+2. **LLM fallback signal** - when the heuristics cannot find a usable
    title or severity, the adapter marks ``needs_llm=True`` on the result.
    The ingest service then invokes an LLM extractor to parse the payload
    from scratch, with the resolved paths cached per payload shape so
@@ -339,7 +339,7 @@ def _find_first(
             not scalar_only or isinstance(value, (str, int, float, bool))
         )
 
-    # Top-level first — preferred
+    # Top-level first - preferred
     for key in keys:
         if key in payload and usable(payload[key]):
             return key, payload[key]
@@ -426,7 +426,7 @@ class UniversalAdapter(IngestAdapter):
 
     Accepts an optional ``field_mapping`` (dot-paths) recorded by the
     ingest service from a previous LLM extraction. When present, that
-    mapping is applied first — heuristics run only for unmapped fields.
+    mapping is applied first - heuristics run only for unmapped fields.
     """
 
     label = "Auto-detect (any webhook)"

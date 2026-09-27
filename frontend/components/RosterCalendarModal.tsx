@@ -94,7 +94,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
   const [range, setRange] = useState<OnCallRangeItem[]>([]);
   const [overrides, setOverrides] = useState<RosterOverrideResponse[]>([]);
   const [users, setUsers] = useState<UserResponse[]>([]);
-  // user_ids on the roster's owning team — coverage is scoped to these.
+  // user_ids on the roster's owning team - coverage is scoped to these.
   const [teamMemberIds, setTeamMemberIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [picking, setPicking] = useState<{ day: Date } | null>(null);
@@ -231,7 +231,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
               const userName = item.user_id
                 ? userNameById.get(item.user_id) ??
                   `${item.user_id.slice(0, 4)}…`
-                : "—";
+                : "Nobody";
               const colorCls = hashColor(item.user_id);
               return (
                 <button
@@ -262,7 +262,7 @@ export function RosterCalendarModal({ roster, onClose, onChange }: Props) {
                     {userName}
                   </span>
                   <span className="text-[10px] tabular-nums opacity-70">
-                    {roster.coverage_start_time}–{roster.coverage_end_time}
+                    {roster.coverage_start_time}-{roster.coverage_end_time}
                   </span>
                   {item.is_override && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium">

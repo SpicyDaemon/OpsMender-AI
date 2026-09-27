@@ -1,4 +1,4 @@
-"""Sprint 56 Step 4 — org invite CRUD + public accept."""
+"""Sprint 56 Step 4 - org invite CRUD + public accept."""
 
 from __future__ import annotations
 

@@ -6,8 +6,8 @@ LangGraph ``execute`` node (Sprint 5) will use.
 
 Execution flow
 --------------
-1. **Pre-log** — ``tool_call_start`` audit entry
-2. **Tier check** — classify the tool via the skill definition, then
+1. **Pre-log** - ``tool_call_start`` audit entry
+2. **Tier check** - classify the tool via the skill definition, then
    check against the active tier
 3. If **blocked** → ``tool_call_blocked`` audit entry → return
 4. If **permitted** → call the MCP tool → ``tool_call_end`` audit entry
@@ -75,7 +75,7 @@ async def audited_tool_call(
     session_id:
         Incident session identifier (for the audit log).
     tier:
-        Active tier (0–3).
+        Active tier (0-3).
     skill_def:
         Loaded skill definition used for classification.
     logger:
@@ -124,7 +124,7 @@ async def audited_tool_call(
             enforcement=enforcement,
         )
 
-    # 3b. Permitted — execute ────────────────────────────────────────
+    # 3b. Permitted - execute ────────────────────────────────────────
     start = time.monotonic()
     try:
         caller = tool_caller or call_tool

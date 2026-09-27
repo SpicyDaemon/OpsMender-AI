@@ -1,4 +1,4 @@
-"""Wave 2 Phase 1 — Zendesk, Freshservice, and Asana adapter tests."""
+"""Wave 2 Phase 1 - Zendesk, Freshservice, and Asana adapter tests."""
 
 from __future__ import annotations
 

@@ -3,14 +3,14 @@
 Implements the binding requirements of the MCP authorization spec
 (`SPEC_VERSION` below pins the snapshot consulted in Session 093):
 
-  * **RFC 9728 — OAuth 2.0 Protected Resource Metadata.** Two discovery
+  * **RFC 9728 - OAuth 2.0 Protected Resource Metadata.** Two discovery
     paths: (1) parse `WWW-Authenticate: Bearer resource_metadata="..."`
     on a 401 from the MCP server, (2) fall back to well-known URIs at
     `<host>/.well-known/oauth-protected-resource[/<path>]`. Both MUST
     be supported per spec §2.3. The PRM document yields the
     ``authorization_servers`` list.
 
-  * **RFC 8414 — Authorization Server Metadata** (with OIDC Discovery
+  * **RFC 8414 - Authorization Server Metadata** (with OIDC Discovery
     fallback). For each authz server, fetch metadata via the standard
     well-known paths and validate ``issuer`` equals the URL used to
     fetch (RFC 8414 §3.3).
@@ -18,19 +18,19 @@ Implements the binding requirements of the MCP authorization spec
   * **PKCE S256.** Clients MUST verify ``code_challenge_methods_supported``
     contains ``S256``; if absent, refuse to proceed (spec §6.1.4).
 
-  * **RFC 8707 — Resource Indicators.** ``resource`` parameter on every
+  * **RFC 8707 - Resource Indicators.** ``resource`` parameter on every
     authorize and token request (canonical MCP server URI).
 
-  * **RFC 9207 — Authorization Server Issuer Identification.** Record
+  * **RFC 9207 - Authorization Server Issuer Identification.** Record
     the ``issuer`` at authorize-request time; validate the ``iss``
     parameter on the redirect.
 
-  * **RFC 7591 — Dynamic Client Registration.** Preferred path when the
+  * **RFC 7591 - Dynamic Client Registration.** Preferred path when the
     authz server publishes a ``registration_endpoint``. Falls back to
     pre-registered ``client_id`` + ``client_secret`` when DCR is
     unavailable.
 
-  * **OAuth 2.1 §4.3.1 — Refresh-token rotation.** ``refresh_access_token``
+  * **OAuth 2.1 §4.3.1 - Refresh-token rotation.** ``refresh_access_token``
     expects a potentially-new refresh_token in the response. Callers
     persist it via ``MCPServerOAuthTokenRepo.rotate``.
 
@@ -64,7 +64,7 @@ SPEC_VERSION = "draft/2026-05-19"
 # code_verifier (for the eventual token exchange), and the original
 # resource indicator (for RFC 8707 consistency).
 STATE_AUDIENCE = "opsmender-mcp-oauth"
-STATE_TTL_SECONDS = 600  # 10 min — covers slow operator-side consent flows
+STATE_TTL_SECONDS = 600  # 10 min - covers slow operator-side consent flows
 
 # PKCE code verifier length: spec says 43-128 URL-safe chars (RFC 7636).
 PKCE_VERIFIER_LENGTH = 64
@@ -109,7 +109,7 @@ class MCPAuthorizationRequiredError(MCPOAuthError):
 class MCPIssuerMismatchError(MCPOAuthError):
     """The redirect's `iss` parameter didn't match the recorded issuer.
 
-    RFC 9207 §2.4 mitigation — protects against mix-up attacks where
+    RFC 9207 §2.4 mitigation - protects against mix-up attacks where
     one authorization server's tokens get accepted by another.
     """
 
@@ -163,7 +163,7 @@ class TokenResponse:
     The spec says public clients **MUST** rotate refresh tokens on every
     refresh (OAuth 2.1 §4.3.1). The caller MUST persist
     ``refresh_token`` from every successful response and discard the
-    prior one — unless ``refresh_token`` is ``None``, in which case the
+    prior one - unless ``refresh_token`` is ``None``, in which case the
     AS opted not to rotate this turn and the prior token stays valid.
     """
 
@@ -237,13 +237,13 @@ def sign_state(
     """Sign a short-lived state JWT carrying the per-request record.
 
     Stored fields:
-      - ``server_id`` — the OpsMender mcp_servers row.
-      - ``issuer`` — recorded authz-server issuer for RFC 9207 validation.
-      - ``cv`` — the PKCE code_verifier (the redirect handler needs it
+      - ``server_id`` - the OpsMender mcp_servers row.
+      - ``issuer`` - recorded authz-server issuer for RFC 9207 validation.
+      - ``cv`` - the PKCE code_verifier (the redirect handler needs it
         to complete the code exchange).
-      - ``res`` — the RFC 8707 resource indicator (must match on token req).
-      - ``org`` — for the tenant boundary check on the callback.
-      - ``cid`` / ``csec`` — short-lived client registration needed for
+      - ``res`` - the RFC 8707 resource indicator (must match on token req).
+      - ``org`` - for the tenant boundary check on the callback.
+      - ``cid`` / ``csec`` - short-lived client registration needed for
         the callback's token exchange when DCR is used.
     """
 
@@ -292,7 +292,7 @@ def parse_www_authenticate(header_value: str | None) -> str | None:
     """Extract the ``resource_metadata`` URL from a `WWW-Authenticate` header.
 
     Returns ``None`` if the header is missing or doesn't carry a
-    ``resource_metadata`` parameter — caller then falls back to the
+    ``resource_metadata`` parameter - caller then falls back to the
     well-known URIs.
     """
 
@@ -367,7 +367,7 @@ async def discover_protected_resource_metadata(
 
     raise MCPOAuthError(
         f"Could not discover Protected Resource Metadata for "
-        f"{mcp_server_url} — tried {len(candidates)} candidates "
+        f"{mcp_server_url} after trying {len(candidates)} candidates "
         f"(last error: {last_error})"
     )
 
@@ -399,7 +399,7 @@ def _parse_prm(body: dict[str, Any]) -> ProtectedResourceMetadata:
 def _well_known_authz_urls(issuer: str) -> list[str]:
     """Build the spec-mandated fallback URIs for authz-server metadata.
 
-    Per spec §2.4 — try in order:
+    Per spec §2.4 - try in order:
       /.well-known/oauth-authorization-server[/<path>]
       /.well-known/openid-configuration[/<path>]
       <path>/.well-known/openid-configuration
@@ -430,7 +430,7 @@ async def fetch_authz_server_metadata(
     response whose ``issuer`` matches the requested URL exactly (RFC
     8414 §3.3). Raises ``MCPPKCENotSupportedError`` when
     ``code_challenge_methods_supported`` is absent or omits ``S256``
-    (spec §6.1.4 — clients MUST refuse to proceed).
+    (spec §6.1.4 - clients MUST refuse to proceed).
     """
 
     factory = http_client_factory or _default_http_client
@@ -462,7 +462,7 @@ async def fetch_authz_server_metadata(
             return metadata
 
     raise MCPOAuthError(
-        f"Could not fetch authorization server metadata for {issuer} — "
+        f"Could not fetch authorization server metadata for {issuer}: "
         f"tried {len(candidates)} candidates (last error: {last_error})"
     )
 
@@ -483,7 +483,7 @@ def _parse_authz_metadata(
 
     code_methods = body.get("code_challenge_methods_supported")
     if not isinstance(code_methods, list) or "S256" not in code_methods:
-        # Spec §6.1.4 — refuse to proceed.
+        # Spec §6.1.4 - refuse to proceed.
         raise MCPPKCENotSupportedError(
             f"Authorization server {issuer} does not advertise S256 PKCE "
             f"(code_challenge_methods_supported={code_methods!r})"
@@ -580,7 +580,7 @@ def build_authorize_url(
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
-        # RFC 8707 — bind the issued token to this specific MCP server URI.
+        # RFC 8707 - bind the issued token to this specific MCP server URI.
         "resource": resource,
     }
     if scopes:
@@ -602,14 +602,14 @@ def verify_redirect_issuer(received_iss: str | None, expected_issuer: str) -> No
     """
 
     if not received_iss:
-        # RFC 9207 §2.3 — when the AS advertises issuer identification,
+        # RFC 9207 §2.3 - when the AS advertises issuer identification,
         # the redirect MUST carry `iss`. We treat absence as a failure
         # because mix-up attacks rely on the legitimate AS not signaling.
         # (Honest AS's that DON'T advertise iss identification are out
         # of scope for the MCP authz spec, which mandates RFC 9207.)
         raise MCPIssuerMismatchError(
             f"Redirect did not include `iss` parameter "
-            f"(expected {expected_issuer!r}) — possible mix-up attack."
+            f"(expected {expected_issuer!r}). This may be a mix-up attack."
         )
     if received_iss != expected_issuer:
         raise MCPIssuerMismatchError(
@@ -681,12 +681,12 @@ async def refresh_access_token(
     """Refresh an access token.
 
     Per OAuth 2.1 §4.3.1, the response may include a *new*
-    ``refresh_token`` — callers MUST persist whichever value comes back
+    ``refresh_token`` - callers MUST persist whichever value comes back
     (use :meth:`MCPServerOAuthTokenRepo.rotate`). When the response
     omits ``refresh_token``, the prior one stays valid.
 
     Raises :class:`MCPAuthorizationRequiredError` on `invalid_grant` /
-    4xx — the operator needs to re-consent.
+    4xx - the operator needs to re-consent.
     """
 
     factory = http_client_factory or _default_http_client
@@ -715,7 +715,7 @@ async def refresh_access_token(
             err = ""
         if err in {"invalid_grant", "invalid_token", "expired_token"}:
             raise MCPAuthorizationRequiredError(
-                f"Refresh rejected ({err}) — operator must re-authorize."
+                f"Refresh rejected ({err}). An operator must re-authorize."
             )
 
     return _parse_token_response(resp, op="refresh")
@@ -735,7 +735,7 @@ def _parse_token_response(resp: httpx.Response, *, op: str) -> TokenResponse:
         except ValueError:
             error = ""
             detail = resp.text[:200]
-        raise MCPOAuthError(f"{op} failed: HTTP {resp.status_code} {error} — {detail}")
+        raise MCPOAuthError(f"{op} failed: HTTP {resp.status_code} {error}: {detail}")
 
     body = resp.json()
     access = body.get("access_token")
@@ -776,7 +776,7 @@ def canonical_resource_uri(mcp_server_url: str) -> str:
     scheme = (parsed.scheme or "https").lower()
     netloc = parsed.netloc.lower()
     path = parsed.path or ""
-    # Strip trailing slash for stability — RFC 8707 examples are
+    # Strip trailing slash for stability - RFC 8707 examples are
     # canonical without it.
     if path.endswith("/") and len(path) > 1:
         path = path.rstrip("/")

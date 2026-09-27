@@ -169,7 +169,7 @@ def build_graph(
     Parameters
     ----------
     tier:
-        Active tier (0–3).  Injected into the tier_gate and plan nodes.
+        Active tier (0-3).  Injected into the tier_gate and plan nodes.
     skill_def:
         Loaded skill definition for tool classification.
     llm:
@@ -260,7 +260,7 @@ def build_graph(
 
     # -- Tier 0 per-node timeouts -------------------------------------------
     # When a Tier 0 time config is supplied, every node is wrapped with a
-    # hard wall clock.  This is the sandbox's second safety gate — the
+    # hard wall clock.  This is the sandbox's second safety gate - the
     # agent cannot hang a session on a single slow LLM call.
     if tier == 0 and tier0_time_config is not None:
         secs = tier0_time_config.max_node_seconds

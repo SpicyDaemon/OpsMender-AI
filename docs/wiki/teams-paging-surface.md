@@ -9,7 +9,7 @@ If you only want the tl;dr: configure Graph credentials and a Bot Framework app
 ID, enable verified Teams actions, link Azure AD object IDs, and send to a Teams
 chat.
 
-> v1 uses **app-only authentication** (Azure AD client-credentials). No user-delegated OAuth, no per-user consent. Slash-command parity will follow in a later sprint — for v1 the adaptive card buttons are the canonical surface.
+> v1 uses **app-only authentication** (Azure AD client-credentials). No user-delegated OAuth, no per-user consent. Slash-command parity will follow in a later sprint, for v1 the adaptive card buttons are the canonical surface.
 
 ---
 
@@ -18,9 +18,9 @@ chat.
 When OpsMender pages you on Teams, the message in the chat carries:
 
 - A bold title with the incident name.
-- A FactSet — Priority, Status, Severity (if set), and the OpsMender incident id.
+- A FactSet: Priority, Status, Severity (if set), and the OpsMender incident id.
 - The first line of the incident description.
-- Four optional Action.Submit buttons — **Acknowledge**, **Resolve**,
+- Four optional Action.Submit buttons: **Acknowledge**, **Resolve**,
   **Escalate**, **Start AI Session**.
 - A **View in OpsMender** `Action.OpenUrl` button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to `/dashboard/incidents/detail?id=…&from=teams`. The incident detail page surfaces a "you opened this from Teams" breadcrumb so the chat origin is never lost.
 
@@ -116,7 +116,7 @@ Missing any of the three Graph env vars → the dispatcher records `delivery_sta
 
 Every operator who should be allowed to click adaptive-card actions needs a `bot_user_links` row mapping their Azure AD object id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`). Clickers without a link get a friendly text reply explaining what's missing.
 
-The Azure AD object id is the value that ends up in `activity.from.aadObjectId` on every inbound invoke — Teams's stable identifier for the user.
+The Azure AD object id is the value that ends up in `activity.from.aadObjectId` on every inbound invoke: Teams's stable identifier for the user.
 
 ---
 
@@ -147,6 +147,6 @@ The Azure AD object id is the value that ends up in `activity.from.aadObjectId` 
 
 See also:
 
-- [Slack as your paging surface](slack-paging-surface.md) — the equivalent guide for Slack.
-- [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
-- `backend/paging/on_call.py` (Paging Model, D-021) — the underlying data model and algorithms.
+- [Slack as your paging surface](slack-paging-surface.md): the equivalent guide for Slack.
+- [Notification Preferences](notification-preferences.md): channels, per-priority routing, quiet hours.
+- `backend/paging/on_call.py` (Paging Model, D-021): the underlying data model and algorithms.

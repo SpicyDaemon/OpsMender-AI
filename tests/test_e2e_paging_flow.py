@@ -1,4 +1,4 @@
-"""Sprint 40 step 1 — full incident-response loop end-to-end.
+"""Sprint 40 step 1 - full incident-response loop end-to-end.
 
 Walks the complete operator path through real HTTP routes:
 
@@ -16,7 +16,7 @@ Walks the complete operator path through real HTTP routes:
       → incident.status flips to "resolved"
 
 This is the canonical happy-path test for the Sprint 33-37 paging surface
-exercised against the real FastAPI app — no monkey-patched engine, no stub
+exercised against the real FastAPI app - no monkey-patched engine, no stub
 channels beyond the channel factory's natural "no env vars → no channels"
 short-circuit (we don't care about delivery here, only state transitions).
 """

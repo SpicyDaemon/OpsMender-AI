@@ -4,16 +4,16 @@ All endpoints are org-scoped via :func:`get_current_org`. Memory is operator-
 and mutation is team-scoped for Operators. Admins may manage every memory.
 
 Routes (prefix ``/memories``):
-- ``GET    /memories``                — list (filter by service_id)
-- ``GET    /memories/{id}``           — detail
-- ``POST   /memories``                — operator manual create
-- ``PUT    /memories/{id}``           — team-scoped operator edit
-- ``DELETE /memories/{id}``           — team-scoped operator delete
-- ``POST   /memories/bulk-delete``    — atomic bulk delete
-- ``POST   /memories/{id}/feedback``  — thumbs up/down (operator + admin)
+- ``GET    /memories`` - list (filter by service_id)
+- ``GET    /memories/{id}`` - detail
+- ``POST   /memories`` - operator manual create
+- ``PUT    /memories/{id}`` - team-scoped operator edit
+- ``DELETE /memories/{id}`` - team-scoped operator delete
+- ``POST   /memories/bulk-delete`` - atomic bulk delete
+- ``POST   /memories/{id}/feedback`` - thumbs up/down (operator + admin)
 
 Also adds (no prefix mounting collision with `/sessions`):
-- ``GET    /sessions/{id}/memories-used`` — surfaced memories for a session
+- ``GET    /sessions/{id}/memories-used`` - surfaced memories for a session
 """
 
 from __future__ import annotations

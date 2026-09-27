@@ -11,7 +11,7 @@ export function fullIntakeUrl(
   publicBaseUrl?: string | null,
 ): string | null {
   if (!intakeUrl) return null;
-  // Already absolute — return as-is.
+  // Already absolute - return as-is.
   if (/^https?:\/\//i.test(intakeUrl)) return intakeUrl;
   const configured = publicBaseUrl?.trim();
   const origin = configured

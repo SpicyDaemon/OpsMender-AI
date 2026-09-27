@@ -5,7 +5,7 @@ import { qaName, qaSlug } from "../lib/config.mjs";
 
 export default {
   id: "services",
-  title: "Paging — services",
+  title: "Paging: services",
   async run(h) {
     const name = qaName("svc");
     const slug = qaSlug("svc");
@@ -27,11 +27,11 @@ export default {
         throw new Error("New service button not found (need admin role?)");
       }
       if (await newBtn.first().isDisabled()) {
-        throw Harness.skip("New service disabled — no team available");
+        throw Harness.skip("New service disabled: no team available");
       }
       await newBtn.first().click();
 
-      // Owning team — prefer the QA team, else leave the default selection.
+      // Owning team - prefer the QA team, else leave the default selection.
       if (h.state.teamName) {
         await h
           .select({ label: h.state.teamName }, { label: "Owning team" })

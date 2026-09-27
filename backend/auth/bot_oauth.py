@@ -1,6 +1,6 @@
 """Slack / Discord OAuth helpers for bot-connector "Connect to …" flows.
 
-Sprint 31 Steps 5–6. Shape mirrors the SAML SP keypair model: client
+Sprint 31 Steps 5-6. Shape mirrors the SAML SP keypair model: client
 credentials live in env (``OPSMENDER_SLACK_OAUTH_CLIENT_ID`` /
 ``OPSMENDER_SLACK_OAUTH_CLIENT_SECRET`` / Discord equivalents), never in the
 DB. The OAuth start route signs a short-lived JWT carrying the
@@ -12,7 +12,7 @@ provider, and writes the resulting tokens into the connector's
 Slack OAuth response (v2):
     https://api.slack.com/methods/oauth.v2.access
     Returns ``access_token`` (bot token, "xoxb-…") plus ``team`` /
-    ``bot_user_id``. Note: signing_secret is **not** returned — it is a
+    ``bot_user_id``. Note: signing_secret is **not** returned - it is a
     per-app constant the operator must still paste manually before
     Slack webhook verification works.
 
@@ -20,7 +20,7 @@ Discord OAuth response (with ``bot`` scope):
     https://discord.com/developers/docs/topics/oauth2#bot-authorization-flow
     Returns ``access_token`` plus ``bot`` token (``access_token``) and
     ``guild`` info. Discord's public_key for interaction signature
-    verification is **not** returned — same caveat as Slack.
+    verification is **not** returned - same caveat as Slack.
 
 Both providers therefore populate the bot token (so the connector can
 send messages) but the operator must still configure the webhook

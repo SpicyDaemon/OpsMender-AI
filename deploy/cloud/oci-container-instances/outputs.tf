@@ -1,5 +1,5 @@
 ## The container instance resource doesn't surface its VNIC's IP
-## directly — read it back via a `data "oci_core_vnic"` lookup keyed by
+## directly - read it back via a `data "oci_core_vnic"` lookup keyed by
 ## the VNIC OCID that the resource does expose.
 
 data "oci_core_vnic" "primary" {

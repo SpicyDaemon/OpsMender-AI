@@ -2,8 +2,8 @@
 
 Centralises all injectable dependencies:
 
-- ``get_db``  — yields an async SQLAlchemy session (set at startup)
-- ``get_config`` — returns the config loader object
+- ``get_db`` - yields an async SQLAlchemy session (set at startup)
+- ``get_config`` - returns the config loader object
 
 The actual session factory is wired in ``app.py`` via the lifespan
 handler.  This module just holds the reference so route modules can
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from backend.mcp.pool import MCPServerPool
 
 # ---------------------------------------------------------------------------
-# Session factory — set at startup by lifespan handler
+# Session factory - set at startup by lifespan handler
 # ---------------------------------------------------------------------------
 
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -35,7 +35,7 @@ def set_session_factory(factory: async_sessionmaker[AsyncSession]) -> None:
 def get_current_session_factory() -> async_sessionmaker[AsyncSession]:
     """Return the process-wide session factory (for background tasks).
 
-    Unlike ``get_db`` this returns the raw factory — useful when a
+    Unlike ``get_db`` this returns the raw factory - useful when a
     coroutine needs to open its own short-lived session outside a
     request/response cycle (e.g. the chat responder).
     """
@@ -51,14 +51,14 @@ def set_mcp_pool(pool: MCPServerPool) -> None:
 
 
 def get_mcp_pool() -> MCPServerPool:
-    """FastAPI dependency — returns the process-wide MCP server pool."""
+    """FastAPI dependency - returns the process-wide MCP server pool."""
     if _mcp_pool is None:
         raise RuntimeError("MCP server pool not initialised")
     return _mcp_pool
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency — yields a DB session and commits/rollbacks.
+    """FastAPI dependency - yields a DB session and commits/rollbacks.
 
     Raises ``RuntimeError`` if called before ``set_session_factory()``.
     """

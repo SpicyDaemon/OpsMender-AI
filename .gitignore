@@ -2,7 +2,7 @@
 .env
 .venv/
 
-# Terraform (deploy/cloud/*) — local init artifacts, state, and secret-bearing values
+# Terraform (deploy/cloud/*) - local init artifacts, state, and secret-bearing values
 **/.terraform/
 **/.terraform.lock.hcl
 **/*.tfstate
@@ -12,7 +12,7 @@
 **/*.auto.tfvars
 !**/terraform.tfvars.example
 
-# Bicep (deploy/cloud/azure-containerapps/) — compiled ARM templates + local param files
+# Bicep (deploy/cloud/azure-containerapps/) - compiled ARM templates + local param files
 deploy/cloud/**/main.json
 deploy/cloud/**/*.bicepparam.local
 
@@ -40,33 +40,33 @@ logs/
 .vscode/
 .idea/
 
-# AI Coding Agents — Claude Code
+# AI Coding Agents - Claude Code
 .claude/
 CLAUDE.local.md
 
-# AI Coding Agents — OpenAI Codex
+# AI Coding Agents - OpenAI Codex
 .codex
 .codex/
 
-# AI Coding Agents — Cline
+# AI Coding Agents - Cline
 .clinerules
 .clinerules/
 .clineignore
 
-# AI Coding Agents — Cursor
+# AI Coding Agents - Cursor
 .cursor/
 .cursorrules
 .cursorignore
 
-# AI Coding Agents — Windsurf
+# AI Coding Agents - Windsurf
 .windsurf/
 .windsurfrules
 
-# AI Coding Agents — Aider
+# AI Coding Agents - Aider
 .aider*
 .aiderignore
 
-# AI Coding Agents — Other / Generic
+# AI Coding Agents - Other / Generic
 .anthropic/
 .gemini/
 .copilot/

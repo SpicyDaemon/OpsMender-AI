@@ -1,4 +1,4 @@
-"""Sprint 53 — data retention pruner.
+"""Sprint 53 - data retention pruner.
 
 Per-org, per-category deletion of rows older than the configured TTL.
 
@@ -49,7 +49,7 @@ MAX_DELETES_PER_CATEGORY = 50_000
 
 A backlog larger than this is split across runs so no single transaction
 holds locks long enough to disrupt live traffic. Defaults to a generous
-50k — the scheduler runs nightly, so a sustained ingest rate of ~500k log
+50k; the scheduler runs nightly, so a sustained ingest rate of ~500k log
 rows/day would still keep pace.
 """
 
@@ -166,7 +166,7 @@ async def prune_org(
 ) -> PrunerRunReport:
     """Run one pruner pass for every category on a single org.
 
-    Memories are intentionally absent from the loop — they're operator- or
+    Memories are intentionally absent from the loop - they're operator- or
     agent-curated, never auto-deleted.
     """
     report = PrunerRunReport(started_at=datetime.now(timezone.utc))
@@ -252,8 +252,8 @@ async def estimate_storage_for_org(
     Counts are exact; byte sizes use conservative per-row averages because
     cross-DB byte-accurate measurement (pg_total_relation_size on Postgres,
     page-size approximations on SQLite) would require dialect branching.
-    For the operator's purpose — sizing storage and spotting unexpected
-    growth — order-of-magnitude estimates are sufficient.
+    For the operator's purpose - sizing storage and spotting unexpected
+    growth - order-of-magnitude estimates are sufficient.
     """
     # Per-row byte estimates (rough; document in the UI).
     avg_bytes_per_row = {
@@ -296,7 +296,7 @@ async def prune_all_orgs(
     *,
     now: datetime | None = None,
 ) -> list[PrunerRunReport]:
-    """Convenience wrapper for the scheduler — runs prune_org per org."""
+    """Convenience wrapper for the scheduler - runs prune_org per org."""
     reports: list[PrunerRunReport] = []
     for org_id in org_ids:
         try:

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // OpsMender manual-QA walkthrough.
 //
-// Drives the real UI end-to-end — login, set up a team / service / escalation
+// Drives the real UI end-to-end - login, set up a team / service / escalation
 // policy / roster, check the roster calendar, exercise notifications, create
-// and resolve an incident, create an SLA target, test a model connection —
+// and resolve an incident, create an SLA target, test a model connection -
 // then logs out. Console errors, unhandled page errors, and 5xx responses are
 // captured per step. A JSON + Markdown report is written to qa/report/.
 //
@@ -35,7 +35,7 @@ try {
 
     // Once authenticated, persist the captured session for cleanup.
     if (feature.id === "auth" && !h.auth) {
-      console.log("   (authentication failed — aborting remaining features)");
+      console.log("   (authentication failed; aborting remaining features)");
       break;
     }
   }

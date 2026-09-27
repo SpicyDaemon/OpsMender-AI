@@ -172,7 +172,7 @@ class TestSLAPoller:
 
     @pytest.mark.asyncio
     async def test_scheduler_selects_active_http_targets_only(self, db: AsyncSession):
-        """The poller's per-tick target query returns active targets only —
+        """The poller's per-tick target query returns active targets only -
         inactive (monitoring-paused) targets are not probed."""
         await SLATargetRepo.create(
             db,
@@ -200,7 +200,7 @@ class TestSLAPoller:
     async def test_automatic_check_records_down_sample_on_failure(
         self, factory, config, db: AsyncSession
     ):
-        """A failing automatic check records a down (up=False) sample — the same
+        """A failing automatic check records a down (up=False) sample - the same
         path the scheduler runs per target each tick."""
         target = await SLATargetRepo.create(
             db,

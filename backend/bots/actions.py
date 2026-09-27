@@ -444,7 +444,7 @@ async def execute_verified_native_action(
 
         These guards run before an invocation row exists, so this audit entry is
         the only record that a signature-verified callback was turned away here.
-        A forged or misconfigured callback must not vanish silently — a channel
+        A forged or misconfigured callback must not vanish silently - a channel
         on a platform that cannot host verified actions is exactly the case
         worth seeing in the audit trail. Recorded under the connector's own org
         so an org-mismatched claim cannot write into the claimed org.

@@ -6,7 +6,7 @@ queued ``audit_runs`` row, fans out through :func:`run_audit`, and
 advances the schedule's ``last_run_at`` / ``next_run_at``.
 
 Mirrors the shape of :class:`backend.paging.scheduler.EscalationScheduler`
-— restart-safe via the schedule's own ``next_run_at`` watermark.
+- restart-safe via the schedule's own ``next_run_at`` watermark.
 """
 
 from __future__ import annotations

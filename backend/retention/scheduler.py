@@ -1,9 +1,9 @@
-"""Sprint 53 — nightly data-retention scheduler.
+"""Sprint 53 - nightly data-retention scheduler.
 
 Sleeps ``poll_interval_seconds`` (default 6h) between passes; each pass
 walks every known org and runs :func:`backend.retention.pruner.prune_org`.
 Defaults to ENABLED so a fresh deployment auto-prunes from day one without
-operator action — operators can disable per-category via Config →
+operator action - operators can disable per-category via Config →
 "Storage & retention," or disable the whole loop via
 ``OPSMENDER_RETENTION_ENABLED=false``.
 

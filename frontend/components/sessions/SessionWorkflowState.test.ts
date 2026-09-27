@@ -25,7 +25,7 @@ describe("deriveStates", () => {
     expect(states.some((s) => s.status === "pending")).toBe(false);
   });
 
-  it("freezes a cancelled session — no current/pulsing step", () => {
+  it("freezes a cancelled session: no current/pulsing step", () => {
     const states = deriveStates({ sessionStatus: "cancelled", events: [] });
     expect(states.some((s) => s.status === "current")).toBe(false);
     expect(states.every((s) => s.status === "pending")).toBe(true);
@@ -54,7 +54,7 @@ describe("workflowHeaderLabel", () => {
 
   it("shows a terminal label with the summary for a cancelled session", () => {
     expect(workflowHeaderLabel("cancelled", null, "AI session queue wait expired.")).toBe(
-      "Cancelled — AI session queue wait expired.",
+      "Cancelled: AI session queue wait expired.",
     );
     expect(workflowHeaderLabel("cancelled", null)).toBe("Cancelled");
     expect(workflowHeaderLabel("timed_out", null, "  ")).toBe("Timed out");

@@ -3,10 +3,10 @@
 Accepts a handful of common image formats, enforces a 5 MB upload ceiling, then
 fits the image within 200x200 (aspect preserved, never upscaled). Output:
 
-* an **animated GIF** stays an animated GIF — every frame is resized so the
+* an **animated GIF** stays an animated GIF - every frame is resized so the
   avatar keeps moving; and
 * everything else is normalized to a **PNG** (which also guarantees the browser
-  can render it — TIFF and some BMP/ICO variants don't render in ``<img>``).
+  can render it - TIFF and some BMP/ICO variants don't render in ``<img>``).
 
 Raises :class:`ValueError` with an operator-friendly message on any rejection.
 """
@@ -112,7 +112,7 @@ def _resize_animated_gif(img: Image.Image) -> bytes:
 def to_data_url(image_bytes: bytes | None) -> str | None:
     """Encode stored avatar bytes as a ``data:`` URL for inline rendering.
 
-    The stored bytes are a normalized PNG, or an animated GIF — sniff which from
+    The stored bytes are a normalized PNG, or an animated GIF - sniff which from
     the magic header so the data URL carries the right media type."""
     if not image_bytes:
         return None

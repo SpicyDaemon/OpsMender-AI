@@ -1,11 +1,11 @@
-"""Ingest endpoints — external incident ingestion (Sprint 14).
+"""Ingest endpoints - external incident ingestion (Sprint 14).
 
-POST /incidents/ingest       — webhook endpoint (token-authed, not JWT)
-GET  /ingest-tokens          — list all ingest tokens (admin)
-POST /ingest-tokens          — create a new token (admin, returns raw token once)
-POST /ingest-tokens/{id}/revoke — revoke / deactivate a token (admin)
-DELETE /ingest-tokens/{id}   — hard-delete a token (admin)
-GET  /ingest-providers       — list available provider adapters
+POST /incidents/ingest - webhook endpoint (token-authed, not JWT)
+GET  /ingest-tokens - list all ingest tokens (admin)
+POST /ingest-tokens - create a new token (admin, returns raw token once)
+POST /ingest-tokens/{id}/revoke - revoke / deactivate a token (admin)
+DELETE /ingest-tokens/{id} - hard-delete a token (admin)
+GET  /ingest-providers - list available provider adapters
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ async def _stop_sessions_on_resolve(
 ) -> None:
     """Stop in-progress AI sessions when a clearing alert resolved an incident.
 
-    Mirrors the operator resolve path — a resolved incident has nothing left
+    Mirrors the operator resolve path - a resolved incident has nothing left
     for the agent to work. Commits the session-stop separately from the ingest
     transaction (which is already committed by the caller)."""
     if not getattr(result, "resolved_existing", False) or result.incident_id is None:
@@ -159,7 +159,7 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
 
 
 # ---------------------------------------------------------------------------
-# Webhook endpoint — token-authed, NOT JWT
+# Webhook endpoint - token-authed, NOT JWT
 # ---------------------------------------------------------------------------
 
 
@@ -288,7 +288,7 @@ async def ingest_webhook(
     if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing ingest token — provide X-OpsMender-Token header or Authorization: Bearer <token>",
+            detail="Missing ingest token. Provide the X-OpsMender-Token header or Authorization: Bearer <token>.",
         )
 
     # Validate token
@@ -361,7 +361,7 @@ async def ingest_webhook(
 
 
 # ---------------------------------------------------------------------------
-# Ingest token management — JWT-authed, admin only
+# Ingest token management - JWT-authed, admin only
 # ---------------------------------------------------------------------------
 
 
@@ -406,7 +406,7 @@ async def create_ingest_token(
     raw = generate_token()
     shape_cache: dict[str, dict[str, str]] | None = None
 
-    # Pre-train the token on a sample payload when provided — so the
+    # Pre-train the token on a sample payload when provided - so the
     # first real webhook of this shape doesn't pay the LLM tax.
     if body.sample_payload and body.provider == "auto":
         from backend.ingest.adapters.universal import UniversalAdapter
@@ -473,7 +473,7 @@ async def learn_ingest_token_shape(
     """Run the heuristic+LLM extractor on a sample payload and save the paths.
 
     Returns the resolved paths and a preview of the incident that would
-    be created. Safe to call repeatedly — idempotent per payload shape.
+    be created. Safe to call repeatedly - idempotent per payload shape.
     """
     tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
     if tok is None:

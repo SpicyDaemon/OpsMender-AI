@@ -2,18 +2,18 @@
 
 When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has three tabs:
 
-- **My Routing** — your personal priority-based routing and quiet hours.
-- **Routing Summary** — a read-only view of how incidents are routed (derived
+- **My Routing**: your personal priority-based routing and quiet hours.
+- **Routing Summary**: a read-only view of how incidents are routed (derived
   from services → escalation chains → rosters → channels). Editable team-level
   routing defaults remain a future candidate.
-- **Notification Channels** — the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
+- **Notification Channels**: the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
-> **Three separate concepts — don't confuse them.**
-> - **Personal Routing (My Routing)** — how *you*, the current on-call operator, get paged.
-> - **Notification Channels** — shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
-> - **Inform reports** — viewers/stakeholders receive on-demand or scheduled
+> **Three separate concepts: don't confuse them.**
+> - **Personal Routing (My Routing)**: how *you*, the current on-call operator, get paged.
+> - **Notification Channels**: shared team/workspace channels that receive incident + AI-session lifecycle updates (not a paging target).
+> - **Inform reports**: viewers/stakeholders receive on-demand or scheduled
 >   CSV/PDF reports from the separate Reports page; never paging.
 
 > **How verified chat actions work.** Every Notification
@@ -35,7 +35,7 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 ---
 
-## 1. My Routing — routing by priority
+## 1. My Routing: routing by priority
 
 Open the **My Routing** tab. Instead of a checkbox matrix, each incident priority is its own row:
 
@@ -60,7 +60,7 @@ Per stage you pick a **channel** and (for non-final stages) a **wait** before th
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered.
 
-**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel — Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more — is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
+**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
@@ -90,9 +90,9 @@ Click **Test notification** (top-right) to send a one-off test to your routed ch
 Quiet hours hold back P1 pages to you during a configured window. (P2 and P3
 don't page at all, and P0 always gets through.) Enable the panel and fill in:
 
-- **Time zone** — any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
-- **Start / End** — local times. Windows wrap midnight correctly (`22:00 → 07:00`).
-- **Days** — the days of week the window applies (e.g. Mon–Fri). Leave all selected for every day.
+- **Time zone**: any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
+- **Start / End**: local times. Windows wrap midnight correctly (`22:00 → 07:00`).
+- **Days**: the days of week the window applies (e.g. Mon-Fri). Leave all selected for every day.
 
 **What always gets through:**
 
@@ -107,7 +107,7 @@ recorded as a skipped delivery with the reason, and the incident timeline
 says who wasn't reached and why. The level's timeout still runs, so the next
 level is paged if nobody acknowledges.
 
-Saving malformed quiet hours or routing is rejected: times must be 00:00–23:59,
+Saving malformed quiet hours or routing is rejected: times must be 00:00-23:59,
 the time zone a valid IANA name, days 0 (Mon) to 6 (Sun), and each priority up
 to three stages. The form keeps the break-through priority at P0; through the
 API, `min_priority_to_break: "P1"` also lets P1 pages through.
@@ -163,10 +163,10 @@ After saving:
 | Endpoint | Who | What |
 |----------|-----|------|
 | `GET /users/me/notification-preferences` | Any user | Returns the caller's pref row; creates an empty one on first call. |
-| `PUT /users/me/notification-preferences` | Any user | Partial update — pass only the keys you want to change. `routing` is `{priority: [{channel_id, delay_seconds}, ...]}` (ordered stages, max 3); legacy `{priority: ["channel_key", ...]}` is still accepted and read as stages. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
+| `PUT /users/me/notification-preferences` | Any user | Partial update: pass only the keys you want to change. `routing` is `{priority: [{channel_id, delay_seconds}, ...]}` (ordered stages, max 3); legacy `{priority: ["channel_key", ...]}` is still accepted and read as stages. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
 | `POST /users/me/notification-preferences/test` | Any user | Sends a one-off test notification to the caller's routed channels; returns per-channel `{channel, status, detail}`. Never fails on per-channel delivery errors. |
 | `GET /organizations/{id}/notification-settings` | Admin | Returns `notification_dedup_window_minutes`. |
-| `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0–1440). |
+| `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0-1440). |
 | `POST /maintenance-windows` | Admin or operator (an operator's window waits for approval) | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`/`scope_ids`, and an optional `rrule` (rejected with 422 if it can't be read or repeats more often than hourly). |
 | `GET /incidents/{id}/paging` | Any user | Returns `suppressed_by_maintenance_window` when applicable. |
 
@@ -177,16 +177,16 @@ After saving:
 The **Notification Channels** tab (Admin) is where delivery adapters are
 configured. Every channel has one or both delivery lanes:
 
-- **Respond** — fast operator-facing delivery and verified actions where the
+- **Respond**: fast operator-facing delivery and verified actions where the
   platform supports them.
-- **Track** — one-way shared lifecycle status for Slack, Microsoft Teams,
+- **Track**: one-way shared lifecycle status for Slack, Microsoft Teams,
   Discord, Google Chat, or AWS EventBridge. Slack, Discord, and Google Chat
   update one post in place; Teams posts follow-ups; EventBridge emits a
   structured event.
 
 Each channel has a friendly name and provider details that live here only.
 
-Adding a channel here makes it immediately routable in **My Routing** with no further changes — the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
+Adding a channel here makes it immediately routable in **My Routing** with no further changes: the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
 
 Each channel has a **Team Scope**:
 

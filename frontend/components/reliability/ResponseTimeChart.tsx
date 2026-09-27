@@ -10,7 +10,7 @@ const LABEL_HEIGHT = 22;
 const HEIGHT = PLOT_HEIGHT + LABEL_HEIGHT;
 
 function formatLatency(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return "No data";
   return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
 }
 

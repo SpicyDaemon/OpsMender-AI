@@ -573,7 +573,7 @@ _CONFIG_FIELDS: dict[str, tuple[IntegrationFieldSpec, ...]] = {
             "Account ID",
             required=True,
             placeholder="1234567",
-            helper="Your New Relic account ID — NerdGraph queries are account-scoped.",
+            helper="Your New Relic account ID. NerdGraph queries are account-scoped.",
         ),
         _config(
             "region",

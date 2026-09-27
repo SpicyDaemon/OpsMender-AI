@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 export default {
   id: "every_source_pages",
-  title: "Paging — priorities and recurring windows",
+  title: "Paging: priorities and recurring windows",
   async run(h) {
     await h.step("a new service starts at P1 and explains which priorities page", async () => {
       await h.goto("/dashboard/paging/services");

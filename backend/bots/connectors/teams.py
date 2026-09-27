@@ -1,6 +1,6 @@
 """Microsoft Teams connector adapter.
 
-For v1 we use **app-only** auth — the operator registers an Azure AD
+For v1 we use **app-only** auth - the operator registers an Azure AD
 app, grants application permissions in the Azure portal, and pastes
 ``tenant_id`` / ``client_id`` / ``client_secret`` here. No browser
 redirect. The :mod:`backend.auth.graph_oauth` helper acquires + caches
@@ -39,7 +39,7 @@ class TeamsAdapter:
                 kind="text",
                 group="credentials",
                 required=True,
-                helper="Directory (tenant) ID for your Azure AD app — found on the app's Overview page.",
+                helper="Directory (tenant) ID for your Azure AD app, found on the app's Overview page.",
                 doc_url="https://learn.microsoft.com/azure/active-directory/develop/howto-create-service-principal-portal",
                 placeholder="00000000-0000-0000-0000-000000000000",
             ),

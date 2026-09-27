@@ -22,7 +22,7 @@ _PHONE_RE = re.compile(r"^\+?[0-9]{6,20}$")
 
 
 def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
-    """Validate an optional phone number — only ``+`` and digits allowed.
+    """Validate an optional phone number - only ``+`` and digits allowed.
 
     Strips spaces/dashes/parentheses/dots (common formatting) before checking,
     so operators can paste "+1 (415) 555-0100" and we store "+14155550100".
@@ -45,7 +45,7 @@ def _normalize_optional_phone(value: Optional[str]) -> Optional[str]:
     if not _PHONE_RE.match(cleaned):
         raise ValueError(
             "Phone number may contain only digits and an optional leading '+' "
-            "(6–20 digits)."
+            "(6-20 digits)."
         )
     return cleaned
 
@@ -218,7 +218,7 @@ class TemporaryPasswordResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Sprint 56 — People surface
+# Sprint 56 - People surface
 # ---------------------------------------------------------------------------
 
 
@@ -250,7 +250,7 @@ class MeUpdateRequest(BaseModel):
 
 
 class MePasswordChangeRequest(BaseModel):
-    """Self-service password change — verify current, set new."""
+    """Self-service password change - verify current, set new."""
 
     current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
@@ -271,7 +271,7 @@ class PasswordResetMintResponse(BaseModel):
 
 
 class PasswordResetConsumeRequest(BaseModel):
-    """Public — recipient consumes the token by setting a new password."""
+    """Public - recipient consumes the token by setting a new password."""
 
     password: str = Field(..., min_length=8)
 
@@ -320,7 +320,7 @@ class InviteListResponse(BaseModel):
 class InviteCreatedResponse(BaseModel):
     """Admin-facing response after minting a new invite.
 
-    ``url`` is the one-time accept link — shown once. ``email_sent`` is
+    ``url`` is the one-time accept link - shown once. ``email_sent`` is
     True only when SMTP is configured AND the message was successfully
     handed to the server.
     """
@@ -450,7 +450,7 @@ class IncidentCreateResponse(IncidentResponse):
 
     Extends the incident record (so ``id`` etc. stay top-level) with the AI
     auto-start outcome. ``auto_start_status``: ``queued`` (a T0 session was
-    scheduled), ``skipped`` (T1/T2 — waits for acknowledgment), or ``failed``
+    scheduled), ``skipped`` (T1/T2 - waits for acknowledgment), or ``failed``
     (e.g. no model configured).
     """
 
@@ -479,7 +479,7 @@ class IncidentCombineResponse(BaseModel):
     stopped_sessions: int
 
 
-# Sprint 61 Step 4 — postmortem authoring surface. The default template
+# Sprint 61 Step 4 - postmortem authoring surface. The default template
 # is returned alongside the stored markdown so a fresh incident's editor
 # can prefill the section headings without the frontend hardcoding the
 # canonical structure.
@@ -490,10 +490,10 @@ Briefly describe what happened and the user-visible impact.
 Who was affected, for how long, and how badly.
 
 ## Timeline
-- HH:MM UTC — first signal
-- HH:MM UTC — acknowledged
-- HH:MM UTC — mitigated
-- HH:MM UTC — fully resolved
+- HH:MM UTC: first signal
+- HH:MM UTC: acknowledged
+- HH:MM UTC: mitigated
+- HH:MM UTC: fully resolved
 
 ## Root cause
 What was the underlying technical cause.
@@ -753,7 +753,7 @@ class ApprovalRequestResponse(BaseModel):
 
 
 class ApprovalRedirectRequest(BaseModel):
-    """Tier 1 redirect — free-text steering the AI folds into its next plan."""
+    """Tier 1 redirect - free-text steering the AI folds into its next plan."""
 
     guidance: str = Field(..., min_length=1, max_length=4000)
 
@@ -767,7 +767,7 @@ class ApprovalListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# In-app notifications (v1.2 — notification center / bell)
+# In-app notifications (v1.2 - notification center / bell)
 # ---------------------------------------------------------------------------
 
 
@@ -1130,7 +1130,7 @@ class SkillGenerateOperation(BaseModel):
     reversible: Optional[bool] = None
     # Tool that undoes this one, with the same parameters. Required (together
     # with reversible=true) for a non-``safe`` tool to clear the Tier 0 safety
-    # floor — see backend/skills/parser.py::tier0_violation_reason.
+    # floor - see backend/skills/parser.py::tier0_violation_reason.
     compensating_inverse: Optional[str] = None
     notes: Optional[str] = None
 
@@ -1473,7 +1473,7 @@ class IngestTokenCreate(BaseModel):
             "dynatrace|appdynamics|loki|generic)$"
         ),
     )
-    # Optional sample payload from the source tool — if supplied, the
+    # Optional sample payload from the source tool - if supplied, the
     # server parses it on create so future payloads with the same shape
     # skip the LLM fallback.
     sample_payload: Optional[dict] = None
@@ -1484,7 +1484,7 @@ class IngestTokenCreate(BaseModel):
 
 
 class IngestTokenResponse(BaseModel):
-    """Returned on list/get — never exposes the raw token."""
+    """Returned on list/get - never exposes the raw token."""
 
     id: uuid.UUID
     name: str
@@ -1499,12 +1499,12 @@ class IngestTokenResponse(BaseModel):
 
 
 class IngestTokenCreatedResponse(BaseModel):
-    """Returned only on creation — includes the raw token once."""
+    """Returned only on creation - includes the raw token once."""
 
     id: uuid.UUID
     name: str
     provider: str
-    token: str  # raw token — shown once, never stored
+    token: str  # raw token - shown once, never stored
     is_active: bool
     created_at: datetime
 
@@ -1675,7 +1675,7 @@ class SLOStatusResponse(BaseModel):
 class SLORecommendation(BaseModel):
     """An advisory recommendation for a breaching / at-risk SLO.
 
-    Read-only guidance only — recommendations never create incidents or page
+    Read-only guidance only - recommendations never create incidents or page
     anyone automatically (that stays an operator decision, per ROADMAP).
     """
 
@@ -1912,7 +1912,7 @@ class UptimeSeriesPoint(BaseModel):
 class UptimeEpisode(BaseModel):
     """A discrete outage episode (a run of down probes) for the outage history.
 
-    ``maintenance`` episodes fell inside a maintenance window — shown for
+    ``maintenance`` episodes fell inside a maintenance window - shown for
     visibility but excluded from the SLA/SLO uptime math.
     """
 
@@ -2030,7 +2030,7 @@ class BotConnectorTestCheck(BaseModel):
 class BotConnectorTestRequest(BaseModel):
     """Optional body for the connector test.
 
-    ``live=False`` (default) runs configuration/readiness checks only — no
+    ``live=False`` (default) runs configuration/readiness checks only - no
     network call, no message sent. ``live=True`` additionally verifies the
     provider connection (where the adapter supports it) and **sends a real test
     message** to ``chat_id`` (or the channel's configured destination).
@@ -2185,7 +2185,7 @@ class OrgSSOConfigCreate(BaseModel):
 
 
 class OrgSSOConfigResponse(BaseModel):
-    """SSO config response — never returns the encrypted client secret."""
+    """SSO config response - never returns the encrypted client secret."""
 
     configured: bool = True
     id: Optional[uuid.UUID] = None
@@ -2209,7 +2209,7 @@ class OrgSSOConfigResponse(BaseModel):
 class OrgSAMLConfigCreate(BaseModel):
     """Create / update payload for per-tenant SAML SSO (Sprint 30).
 
-    Provide exactly one of ``idp_metadata_url`` (preferred — auto-fetched and
+    Provide exactly one of ``idp_metadata_url`` (preferred - auto-fetched and
     cached) or ``idp_metadata_xml`` (raw XML pasted into the form).
     """
 
@@ -2382,8 +2382,8 @@ class AuditFindingRemediateResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Paging (Sprint 33) — teams / services / rosters / priority rules / incident
-# assignments. See docs/PROMPT_CONTEXT.md (D-021 — Paging Model) for the data model.
+# Paging (Sprint 33) - teams / services / rosters / priority rules / incident
+# assignments. See docs/PROMPT_CONTEXT.md (D-021 - Paging Model) for the data model.
 # ---------------------------------------------------------------------------
 
 
@@ -2443,7 +2443,7 @@ class ServiceCreate(BaseModel):
     # Strict allowlist; empty means no MCP servers for this service's sessions.
     mcp_server_ids: list[uuid.UUID] = Field(default_factory=list)
     model_config_ids: list[uuid.UUID] = Field(default_factory=list, max_length=3)
-    # Strict allowlist — empty means no integrations for this service.
+    # Strict allowlist - empty means no integrations for this service.
     allowed_integration_connector_ids: list[uuid.UUID] = Field(default_factory=list)
     # Per-connector action overrides, e.g. {"<id>": {"ticket_lifecycle": false}}.
     integration_action_overrides: dict[str, dict[str, Any]] = Field(
@@ -2719,7 +2719,7 @@ class IncidentAssignRequest(BaseModel):
 
 
 class IncidentBulkActionRequest(BaseModel):
-    """Sprint 50 — bulk action on a set of incidents.
+    """Sprint 50 - bulk action on a set of incidents.
 
     The ``action`` field is the discriminator. ``incident_ids`` is the set
     targeted; the route returns a summary of which ids succeeded and which
@@ -2867,7 +2867,7 @@ class ServiceEscalationChainListResponse(BaseModel):
 
 
 class EscalationStepUpdate(BaseModel):
-    """Sprint 49 — partial update for an escalation step."""
+    """Sprint 49 - partial update for an escalation step."""
 
     timeout_seconds: Optional[int] = Field(default=None, ge=10, le=86400)
     notify_channels: Optional[dict[str, Any]] = None
@@ -2878,7 +2878,7 @@ class EscalationStepUpdate(BaseModel):
 
 
 class EscalationStepReorderRequest(BaseModel):
-    """Sprint 49 — drag-reorder a chain's steps."""
+    """Sprint 49 - drag-reorder a chain's steps."""
 
     step_ids: list[uuid.UUID] = Field(..., min_length=1)
 
@@ -3062,7 +3062,7 @@ class IncidentMemoryUpdate(BaseModel):
     # vs leave it untouched (field omitted from request body).
     service_id: Optional[uuid.UUID] = None
     service_id_set: bool = False
-    # v2 Phase 8 — pin/unpin to protect from bounded-growth eviction.
+    # v2 Phase 8 - pin/unpin to protect from bounded-growth eviction.
     pinned: Optional[bool] = None
 
 

@@ -1,5 +1,5 @@
 ## Copy to `terraform.tfvars` and fill in your values.
-## Never commit terraform.tfvars — secret OCIDs and CIDR allowlists
+## Never commit terraform.tfvars - secret OCIDs and CIDR allowlists
 ## belong in your encrypted backend, not git history.
 
 # Identity ────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ allowed_ingress_cidrs = ["0.0.0.0/0"]
 # container_vcpus_limit          = 4
 # container_restart_policy       = "ALWAYS"
 
-# Secrets (Vault secret OCIDs — pre-create these) ────────────────────────
+# Secrets (Vault secret OCIDs - pre-create these) ────────────────────────
 jwt_secret_ocid          = "ocid1.vaultsecret.oc1.iad.aaaa..."
 database_url_secret_ocid = "ocid1.vaultsecret.oc1.iad.aaaa..."
 

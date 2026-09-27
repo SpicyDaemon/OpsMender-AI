@@ -124,7 +124,7 @@ curl -X POST http://localhost:8000/memories/bulk-delete \
 | Recall | `backend/memory/retrieval.py` |
 | Writeback and compaction | `backend/memory/writeback.py` |
 | Dashboard | `frontend/app/dashboard/memories/page.tsx` |
-| Design invariant | AI incident memory (D-025) — see `backend/memory/` |
+| Design invariant | AI incident memory (D-025): see `backend/memory/` |
 
 ## See also
 

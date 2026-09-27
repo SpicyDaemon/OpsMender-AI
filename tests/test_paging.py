@@ -178,7 +178,7 @@ class TestOnCallAt:
     def test_custom_n_days_rotation(self):
         u1, u2, u3 = (uuid.uuid4() for _ in range(3))
         ctx = self._ctx([u1, u2, u3], pattern="custom_n_days", pattern_length=3)
-        # Day 0–2 → u1, day 3–5 → u2, day 6–8 → u3
+        # Day 0-2 → u1, day 3-5 → u2, day 6-8 → u3
         assert on_call_at(ctx, datetime(2026, 5, 5, 12, tzinfo=timezone.utc)) == u1
         assert on_call_at(ctx, datetime(2026, 5, 7, 12, tzinfo=timezone.utc)) == u2
         assert on_call_at(ctx, datetime(2026, 5, 10, 12, tzinfo=timezone.utc)) == u3
@@ -240,7 +240,7 @@ class TestOnCallAt:
             pattern_length=1,
             time_zone="America/Chicago",
         )
-        # 14:00 UTC on May 5 = 09:00 Chicago — right at handoff. Should be u2.
+        # 14:00 UTC on May 5 = 09:00 Chicago - right at handoff. Should be u2.
         t_utc = datetime(2026, 5, 5, 14, 0, tzinfo=timezone.utc)
         assert on_call_at(ctx, t_utc) == u2
 
@@ -343,7 +343,7 @@ class TestPriority:
             llm_escalation_enabled=True,
             llm_callback=llm_down,
         )
-        # LLM tried to go from P2 → P3 which is a downgrade — ignored.
+        # LLM tried to go from P2 → P3 which is a downgrade - ignored.
         assert down.priority == "P2"
         assert down.llm_escalated is False
 
@@ -621,7 +621,7 @@ class TestPagingAPI:
         assert deleted.status_code == 204
 
     async def test_team_slug_must_be_lowercase(self, client: AsyncClient, auth_headers):
-        """v1 — team slugs are lowercase-only; uppercase is rejected server-side
+        """v1 - team slugs are lowercase-only; uppercase is rejected server-side
         so the value can never persist."""
         upper = await client.post(
             "/teams",
@@ -641,7 +641,7 @@ class TestPagingAPI:
     async def test_team_membership_add_list_remove(
         self, client: AsyncClient, app, auth_headers
     ):
-        """v1 — the team edit form assigns people via add/remove member routes."""
+        """v1 - the team edit form assigns people via add/remove member routes."""
         async with app.state.session_factory() as db:
             member = await UserRepo.create(
                 db,
@@ -682,7 +682,7 @@ class TestPagingAPI:
     async def test_notification_preferences_test_endpoint(
         self, client: AsyncClient, auth_headers
     ):
-        """v1 My Routing — the Test notification button hits this endpoint. It
+        """v1 My Routing - the Test notification button hits this endpoint. It
         never 500s; channels without credentials/destinations are reported as
         skipped rather than failing the request."""
         # Route P0 to email so there is at least one channel to attempt.
@@ -840,7 +840,7 @@ class TestPagingAPI:
                 == 1
             )
             # Strict-MCP consistency: emptying the service's MCP allowlist means
-            # no server is allowed, so no skill-derived tier applies — resolution
+            # no server is allowed, so no skill-derived tier applies - resolution
             # falls through to the org default (2) rather than borrowing the
             # skill policy of an unrelated server. Restore the allowlist afterward
             # so the remaining assertions see the original two-server context.
@@ -1533,7 +1533,7 @@ class TestPagingAPI:
     async def test_on_call_range_powers_calendar(
         self, client: AsyncClient, app, auth_headers
     ):
-        """Sprint 47 — /rosters/{id}/on-call/range returns one item per step
+        """Sprint 47 - /rosters/{id}/on-call/range returns one item per step
         and flags override days distinctly."""
         # Seed a team + roster + two users.
         team = await client.post(
@@ -1627,7 +1627,7 @@ class TestPagingAPI:
     async def test_on_call_range_resolves_from_midnight_start(
         self, client: AsyncClient, app, auth_headers
     ):
-        """Regression: the calendar starts at local midnight, but a 09:00–17:00
+        """Regression: the calendar starts at local midnight, but a 09:00-17:00
         roster must still resolve each day's on-call. Daily steps are sampled
         inside the coverage window, not at the cursor's raw 00:00 time."""
         team = await client.post(
@@ -1679,7 +1679,7 @@ class TestPagingAPI:
 
         from urllib.parse import quote
 
-        # Midnight start — exactly how the calendar modal queries it.
+        # Midnight start - exactly how the calendar modal queries it.
         frm = quote("2026-05-21T00:00:00+00:00", safe="")
         to = quote("2026-05-24T00:00:00+00:00", safe="")
         resp = await client.get(
@@ -1689,7 +1689,7 @@ class TestPagingAPI:
         assert resp.status_code == 200
         items = resp.json()["items"]
         assert len(items) == 4
-        # Every day must resolve to the single member — not None ("—").
+        # Every day must resolve to the single member - not None (" - ").
         assert all(item["user_id"] == str(member.id) for item in items)
 
     async def test_on_call_range_rejects_oversize_request(
@@ -2194,7 +2194,7 @@ class TestPagingAPI:
         self, client: AsyncClient, app, auth_headers
     ):
         """Roster-backed levels expose the coverage window + timezone so the
-        On Call Schedule can render the shift (e.g. 09:00–17:00 in the roster's
+        On Call Schedule can render the shift (e.g. 09:00-17:00 in the roster's
         time zone)."""
         team = await client.post(
             "/teams",
@@ -2386,7 +2386,7 @@ class TestPagingAPI:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 35 Step 7 — Notification preferences + org notification settings
+# Sprint 35 Step 7 - Notification preferences + org notification settings
 # ---------------------------------------------------------------------------
 
 
@@ -2557,7 +2557,7 @@ class TestMaintenanceWindowScopeFields:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 35 Step 10 — Incident paging panel exposes suppression
+# Sprint 35 Step 10 - Incident paging panel exposes suppression
 # ---------------------------------------------------------------------------
 
 
@@ -2788,7 +2788,7 @@ class TestRosterMemberTeamScoping:
         roster_id = await self._make_roster(client, auth_headers, team_id)
         uid = await self._make_user(app, role="operator")
         # Insert a roster member directly (bypassing the route) to simulate
-        # pre-existing invalid data — no team membership.
+        # pre-existing invalid data - no team membership.
         async with app.state.session_factory() as db:
             await RosterRepo.add_member(
                 db,

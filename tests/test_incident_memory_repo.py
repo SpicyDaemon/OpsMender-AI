@@ -1,4 +1,4 @@
-"""Sprint 45 Step 1 — IncidentMemoryRepo tests.
+"""Sprint 45 Step 1 - IncidentMemoryRepo tests.
 
 Covers per-org isolation, retrieval scoring, feedback counters, delete, and
 recall logging.

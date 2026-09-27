@@ -59,7 +59,7 @@ async def resolve_session_tier_for_incident(
 
     # Under the strict per-service MCP allowlist, a service's tier may only be
     # influenced by a server that service actually allows. When the service has
-    # no MCP allowlist (or there is no service), no skill-derived tier applies —
+    # no MCP allowlist (or there is no service), no skill-derived tier applies -
     # resolution falls through to the org default rather than borrowing an
     # unrelated server's skill policy.
     server_id = _service_mcp_server_id(service)

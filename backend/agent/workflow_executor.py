@@ -197,7 +197,7 @@ class WorkflowExecutor:
                     outcome=outcome,
                 )
                 # A template-resolution failure means the step could not even
-                # start — an upstream dependency was skipped or failed. This
+                # start - an upstream dependency was skipped or failed. This
                 # never aborts the workflow; `on_failure` governs tool-action
                 # failures (handled after the tool call below), not unmet input
                 # dependencies. The step is recorded failed and we move on.

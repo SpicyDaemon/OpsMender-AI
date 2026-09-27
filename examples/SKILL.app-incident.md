@@ -16,10 +16,10 @@ tier_policies:
     T2: {enabled: false, mode: blocked}
 operations:
   # ─────────────────────────────────────────────────────────────
-  # Safe (read-only) — diagnosis surface
+  # Safe (read-only): diagnosis surface
   # ─────────────────────────────────────────────────────────────
 
-  # GitHub / source-control MCP — repo + code lookups
+  # GitHub / source-control MCP: repo + code lookups
   - tool: get_repository
     classification: safe
     tiers: *read_tiers
@@ -50,7 +50,7 @@ operations:
     notes: "Grep across the repo to locate the offending symbol"
     tiers: *read_tiers
 
-  # Jira MCP — ticket lookups
+  # Jira MCP: ticket lookups
   - tool: jira_search
     classification: safe
     tiers: *read_tiers
@@ -64,7 +64,7 @@ operations:
     classification: safe
     tiers: *read_tiers
 
-  # Observability MCP — app telemetry for diagnosis
+  # Observability MCP: app telemetry for diagnosis
   - tool: query_logs
     classification: safe
     notes: "Loki / CloudWatch Logs / Datadog Logs query"
@@ -83,9 +83,9 @@ operations:
     tiers: *read_tiers
 
   # ─────────────────────────────────────────────────────────────
-  # Caution (non-destructive writes) — proposes fixes for humans
+  # Caution (non-destructive writes): proposes fixes for humans
   # ─────────────────────────────────────────────────────────────
-  # Code changes never land on a protected branch directly — they
+  # Code changes never land on a protected branch directly. They
   # always go through a PR / MR so a human reviews the diff before
   # merge. Ticket writes are additive (create / comment / transition).
 
@@ -93,15 +93,15 @@ operations:
     classification: caution
     reversible: true
     compensating_inverse: delete_branch
-    notes: "Cuts a fix branch off the default branch — reversible by deleting the branch"
+    notes: "Cuts a fix branch off the default branch: reversible by deleting the branch"
     tiers: *reversible_write_tiers
   - tool: create_or_update_file
     classification: caution
-    notes: "Writes the proposed patch onto the fix branch — only ever the fix branch, never main/master"
+    notes: "Writes the proposed patch onto the fix branch, only ever the fix branch, never main/master"
     tiers: *approval_only_tiers
   - tool: push_files
     classification: caution
-    notes: "Batch variant of create_or_update_file — same constraint: fix branch only"
+    notes: "Batch variant of create_or_update_file: same constraint: fix branch only"
     tiers: *approval_only_tiers
   - tool: create_pull_request
     classification: caution
@@ -147,10 +147,10 @@ operations:
 
   - tool: merge_pull_request
     deny: true
-    notes: "Agent must not merge its own PR — humans approve and merge"
+    notes: "Agent must not merge its own PR: humans approve and merge"
   - tool: merge_merge_request
     deny: true
-    notes: "GitLab equivalent — humans only"
+    notes: "GitLab equivalent: humans only"
   - tool: delete_file
     classification: destructive
     tiers: *approval_only_tiers
@@ -164,13 +164,13 @@ operations:
     deny: true
 ---
 
-# Application Incident Response — Skill Definition
+# Application Incident Response: Skill Definition
 
 This skill profiles an **application-layer** incident response surface,
 distinct from the infra-layer Kubernetes skill in
 [`SKILL.md`](SKILL.md). It is aimed at teams who want OpsMender to help
 triage app bugs, file tickets, and **propose code fixes as pull
-requests / merge requests** — never as direct commits to a protected
+requests / merge requests**, never as direct commits to a protected
 branch.
 
 ## What this skill enables
@@ -178,18 +178,18 @@ branch.
 Wire the matching MCP servers (GitHub or GitLab; Jira; your
 logs/metrics/traces/errors provider) and the agent can:
 
-1. **Diagnose** — pull recent logs, metrics, traces, and error events
+1. **Diagnose**: pull recent logs, metrics, traces, and error events
    for the failing service; locate the offending code via repo search
    and file reads.
-2. **File a Jira ticket** — `jira_create_issue` with the diagnosis,
+2. **File a Jira ticket**: `jira_create_issue` with the diagnosis,
    linked telemetry, severity, and a link back to the OpsMender
    incident. Transition + comment as the investigation progresses.
-3. **Propose a code fix as a PR / MR** — `create_branch` →
+3. **Propose a code fix as a PR / MR**: `create_branch` →
    `create_or_update_file` (or `push_files`) → `create_pull_request`
    (or `create_merge_request`). The PR body carries the diagnosis,
    the reasoning, the test plan, and a back-link to the OpsMender
    incident + Jira ticket.
-4. **Hand off to humans** — request reviewers, comment on the PR, and
+4. **Hand off to humans**: request reviewers, comment on the PR, and
    transition the Jira ticket to *In Review*. The agent stops there.
 
 ## Hard rules baked into the classifications
@@ -211,12 +211,12 @@ removed and any legacy stored `3` is remapped to Tier 2).
 
 | Tier | Diagnosis (safe) | File Jira ticket (caution) | Open PR/MR with fix (caution) | Merge PR/MR (destructive) |
 |------|------------------|----------------------------|-------------------------------|---------------------------|
-| **0 — Autonomous** (sandbox only) | autonomous | blocked | blocked | denied |
-| **1 — Approval Required** | autonomous | after approval | after approval | denied |
-| **2 — Advisory Only** *(default)* | advisory | recommendation only | recommendation only | denied |
+| **0: Autonomous** (sandbox only) | autonomous | blocked | blocked | denied |
+| **1: Approval Required** | autonomous | after approval | after approval | denied |
+| **2: Advisory Only** *(default)* | advisory | recommendation only | recommendation only | denied |
 
 At the default **Tier 2 (Advisory Only)** the agent diagnoses and *recommends* a
-ticket + PR but does not write — a human performs the writes. Move to **Tier 1**
+ticket + PR but does not write: a human performs the writes. Move to **Tier 1**
 to let the agent file the ticket and open the draft PR after operator approval;
 merge operations remain denied at every tier.
 
@@ -231,4 +231,4 @@ tool names if your MCP server uses a consistent prefix.
 Pair this skill with the Kubernetes skill in [`SKILL.md`](SKILL.md) when
 the same agent needs to handle both "the pod is crashlooping" (infra)
 and "the pod is crashlooping because of a null-pointer in `OrderService`"
-(app — fix it in code).
+(app, fix it in code).

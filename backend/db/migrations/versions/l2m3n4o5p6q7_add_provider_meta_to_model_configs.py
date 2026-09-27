@@ -1,6 +1,6 @@
 """Add provider_meta to model_configs.
 
-Sprint 62 Step 2 — provider-specific non-secret settings (starting with
+Sprint 62 Step 2 - provider-specific non-secret settings (starting with
 AWS Bedrock region/profile) need a durable home without forcing a new
 column for every cloud provider integration.
 

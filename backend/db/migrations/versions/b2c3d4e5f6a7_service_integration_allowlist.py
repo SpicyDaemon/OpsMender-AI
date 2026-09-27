@@ -4,8 +4,8 @@
 integration connector ids a service is permitted to use. Empty means NO
 integrations (strict allowlist semantics chosen by the owner).
 
-To preserve behavior for existing deployments — where every service implicitly
-had access to all connectors — this migration backfills each existing service
+To preserve behavior for existing deployments - where every service implicitly
+had access to all connectors - this migration backfills each existing service
 with every integration connector id in its organization. New services start
 empty and must be granted access explicitly.
 

@@ -1,6 +1,6 @@
 // Feature: rosters (on-call rotation). Creates a weekly roster on the QA team.
 // The rotation-members multiselect requires an eligible Admin/Operator member
-// on the team — added during the teams feature.
+// on the team - added during the teams feature.
 
 import { config, qaName } from "../lib/config.mjs";
 
@@ -10,7 +10,7 @@ function today() {
 
 export default {
   id: "rosters",
-  title: "Paging — rosters (on-call)",
+  title: "Paging: rosters (on-call)",
   async run(h) {
     const name = qaName("roster");
     h.state.rosterName = name;
@@ -41,7 +41,7 @@ export default {
       const dateInput = h.page.locator('input[type="date"]').first();
       if (await dateInput.count()) await dateInput.fill(today());
 
-      // Rotation members — tick the current user. The multiselect's aria-label
+      // Rotation members - tick the current user. The multiselect's aria-label
       // may be "Rotation members" or similar; try a couple of variants.
       const picked =
         (await h.checkMultiOption("Rotation members", config.username).catch(() => false)) ||

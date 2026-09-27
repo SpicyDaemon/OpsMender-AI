@@ -81,7 +81,7 @@ def format_voice_menu_twiml(summary: str, action_url: str) -> str:
 
     1 = acknowledge (take ownership), 2 = escalate to the next responder,
     3 = resolve (e.g. a false alarm), * = repeat. No input falls through and
-    hangs up — the escalation chain's timer re-pages as usual.
+    hangs up - the escalation chain's timer re-pages as usual.
     """
     say = (
         f"This is OpsMender. {summary} "

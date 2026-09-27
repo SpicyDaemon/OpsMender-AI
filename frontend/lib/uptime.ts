@@ -8,7 +8,7 @@
 import type { UptimeStatus } from "./types";
 
 /**
- * Format an uptime/SLA percentage (0–100) with adaptive precision:
+ * Format an uptime/SLA percentage (0-100) with adaptive precision:
  *   100      -> "100%"
  *   99.9     -> "99.9%"
  *   99.99    -> "99.99%"
@@ -17,7 +17,7 @@ import type { UptimeStatus } from "./types";
  * decimals so 99.999 never becomes 100.
  */
 export function formatUptimePct(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "—";
+  if (value == null || Number.isNaN(value)) return "No data";
   // Truncate to 3 decimals so 99.9994 -> 99.999 (never rounds up to 100).
   const truncated = Math.floor(value * 1000) / 1000;
   if (truncated >= 100) return "100%";

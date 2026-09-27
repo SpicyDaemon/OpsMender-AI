@@ -58,7 +58,7 @@ export function UptimeBarChart({
   return (
     <div className={className}>
       <div className="flex">
-        {/* Plot (no Y axis — status is conveyed by colour/height + tooltip) */}
+        {/* Plot (no Y axis - status is conveyed by colour/height + tooltip) */}
         <div className="relative flex-1">
           <div
             className="flex items-end gap-px"

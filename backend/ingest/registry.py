@@ -1,4 +1,4 @@
-"""Adapter registry — maps provider keys to adapter classes."""
+"""Adapter registry - maps provider keys to adapter classes."""
 
 from __future__ import annotations
 

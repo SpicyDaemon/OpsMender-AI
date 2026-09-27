@@ -1,5 +1,5 @@
 /**
- * Postmortem page — v1.2 Phase 2 polish.
+ * Postmortem page - v1.2 Phase 2 polish.
  *
  * Section-completeness checklist + "Save candidates to memory" handoff that
  * turns the Memory-candidates bullets into pending memories for review.
@@ -162,8 +162,8 @@ describe("Postmortem page Phase 2 polish", () => {
       "Who was affected, for how long, and how badly.",
       "",
       "## Timeline",
-      "- HH:MM UTC — first signal",
-      "- HH:MM UTC — fully resolved",
+      "- HH:MM UTC: first signal",
+      "- HH:MM UTC: fully resolved",
       "",
       "## Root cause",
       "What was the underlying technical cause.",

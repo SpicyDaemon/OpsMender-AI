@@ -1,4 +1,4 @@
-// OpsMender on Azure Container Apps — Sprint 41 step 2.
+// OpsMender on Azure Container Apps - Sprint 41 step 2.
 //
 // Deploys into an operator-provided resource group. Creates a Log Analytics
 // workspace, a Container Apps managed environment, a user-assigned managed
@@ -11,7 +11,7 @@
 //   - (optional) ACR + image push, OR use the public GHCR image
 //
 // Per locked decision D-023 the OpsMender framework ships zero platform
-// knowledge — this Bicep template is operator-facing infrastructure.
+// knowledge - this Bicep template is operator-facing infrastructure.
 
 targetScope = 'resourceGroup'
 
@@ -61,7 +61,7 @@ param maxReplicas int = 3
 param httpConcurrency int = 50
 
 // ─────────────────────────────────────────────────────────────────────────
-// Secrets — operator pre-creates these in Key Vault. Pass the vault name +
+// Secrets - operator pre-creates these in Key Vault. Pass the vault name +
 // the secret names. The deployment grants the managed identity read access
 // on the vault.
 // ─────────────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ param providerSecretNames object
 param acrServer string = ''
 
 // ─────────────────────────────────────────────────────────────────────────
-// Runtime config — env vars handed to the container.
+// Runtime config - env vars handed to the container.
 // ─────────────────────────────────────────────────────────────────────────
 
 @description('Non-secret env vars forwarded to the container.')
@@ -173,7 +173,7 @@ resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
 // resolves it at startup so no secret material ever lands in template state.
 
 // Constructed deterministically from the vault name so this expression
-// is resolvable at deployment start (Bicep BCP182 — `for` bodies cannot
+// is resolvable at deployment start (Bicep BCP182 - `for` bodies cannot
 // reference runtime properties of `existing` resources).
 var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/'
 

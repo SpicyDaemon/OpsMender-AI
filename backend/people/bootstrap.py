@@ -8,14 +8,14 @@ are both set, create:
 2. An admin user bound to that org.
 
 Runs once at API startup. If any user already exists, the function is a
-no-op — operators who later want to onboard a *new* admin do so through
+no-op - operators who later want to onboard a *new* admin do so through
 the invite flow.
 
 Development convenience: when the resolved environment is development and no
 bootstrap env vars are set, fall back to a default ``admin`` / ``admin123``
 admin so the documented ``docker compose up`` dev flow logs in out of the box
 (matching ``scripts/dev_server.py`` and the README). Production mode never
-seeds a default admin — it requires explicit bootstrap vars.
+seeds a default admin - it requires explicit bootstrap vars.
 """
 
 from __future__ import annotations
@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 
 _USERNAME_RE = re.compile(r"[^a-z0-9_-]+")
 
-# Default dev admin — kept in sync with scripts/dev_server.py and the README.
+# Default dev admin - kept in sync with scripts/dev_server.py and the README.
 _DEV_ADMIN_USERNAME = "admin"
 _DEV_ADMIN_EMAIL = "admin@localhost"
-_DEV_ADMIN_PASSWORD = "admin123"  # noqa: S105 — development-only convenience default
+_DEV_ADMIN_PASSWORD = "admin123"  # noqa: S105 - development-only convenience default
 
 
 def _username_from_email(email: str) -> str:

@@ -1,10 +1,10 @@
-"""MCP Skill Studio — 3-tier skill policy template generator.
+"""MCP Skill Studio - 3-tier skill policy template generator.
 
 Produces a structured Markdown skill policy for the AI Autonomy 3-tier model:
 
-  Tier 0 — Autonomous       (allowed actions, AI action workflow, deny actions)
-  Tier 1 — Approval Required (allow list, ask-approval, deny list)
-  Tier 2 — Advisory Only     (no actions execute — guidance only)
+  Tier 0 - Autonomous       (allowed actions, AI action workflow, deny actions)
+  Tier 1 - Approval Required (allow list, ask-approval, deny list)
+  Tier 2 - Advisory Only     (no actions execute - guidance only)
 
 The Markdown carries YAML front-matter with ``operations`` so the backend tier
 gate (``backend/tiers/enforcement.py``) can classify and enforce tools. The
@@ -92,7 +92,7 @@ def build_skill_from_tools(
     discovered tools (each: ``tool``, ``classification``, optional ``deny`` /
     ``allow_generic`` / ``reversible`` / ``notes``). The front-matter
     ``operations`` block is what the backend tier gate enforces; the prose is
-    human-readable guidance. No LLM is involved — the output is a pure function
+    human-readable guidance. No LLM is involved - the output is a pure function
     of the operator's structured input, so it is reproducible and testable.
     """
     norm = [
@@ -176,9 +176,9 @@ def build_skill_from_tools(
 
 ---
 
-## Tier 0 — Autonomous
+## Tier 0: Autonomous
 
-The AI may execute remediation automatically — **only within this policy, deny
+The AI may execute remediation automatically, **only within this policy, deny
 lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited.
 
 > **Tier 0 safety floor.** `require_reversible: true` requires
@@ -202,7 +202,7 @@ lists, MCP permissions, and backend guardrails.** Most autonomous, not unlimited
 
 ---
 
-## Tier 1 — Approval Required
+## Tier 1: Approval Required
 
 The AI may investigate and propose actions. Safe actions run; destructive /
 high-risk actions pause for operator approval; deny-listed actions never run.
@@ -218,7 +218,7 @@ high-risk actions pause for operator approval; deny-listed actions never run.
 
 ---
 
-## Tier 2 — Advisory Only
+## Tier 2: Advisory Only
 
 **No actions execute.** The AI provides analysis, recommendations, and runbooks,
 and may perform read-only observation. Tier 2 is the **default** for new sessions.
@@ -231,7 +231,7 @@ and may perform read-only observation. Tier 2 is the **default** for new session
 
 ## Deny list (never executes at any tier)
 
-`deny: true` always wins — over classification, allow lists, and Tier 0.
+`deny: true` always wins over classification, allow lists, and Tier 0.
 
 | MCP tool/action | Notes |
 |---|---|
@@ -326,7 +326,7 @@ focus_areas: []
 > **Skills guide the AI. The backend tier gate enforces what can actually run.**
 >
 > AI Autonomy Tier controls how much the agent may do during a session. It is
-> **separate** from incident priority (P0–P3) and user role (Admin/Operator/Viewer).
+> **separate** from incident priority (P0-P3) and user role (Admin/Operator/Viewer).
 
 > ⚠️ **Generic command tools are high-risk.** Tools such as `shell`, `bash`,
 > `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
@@ -338,8 +338,8 @@ focus_areas: []
 
 Action classification (drives the tier gate): `safe` (read-only / low-risk) ·
 `caution` (reversible writes) · `destructive` (high-risk / irreversible) ·
-`unknown` (unclassified — always denied) · generic-execution (auto-detected
-arbitrary-command tools — conservatively guarded). `deny: true` blocks an entry
+`unknown` (unclassified, always denied) · generic-execution (auto-detected
+arbitrary-command tools, conservatively guarded). `deny: true` blocks an entry
 at every tier.
 
 Each executable operation declares `tiers.T0` / `T1` / `T2` with `enabled` and `mode`
@@ -364,10 +364,10 @@ are enforced by `backend/tiers/enforcement.py`; underspecified operations are de
 
 ---
 
-## Tier 0 — Autonomous
+## Tier 0: Autonomous
 
-The AI may execute remediation actions automatically — including rollbacks,
-restarts, failovers, and other destructive operations — **but only within MCP
+The AI may execute remediation actions automatically (including rollbacks,
+restarts, failovers, and other destructive operations), **but only within MCP
 Skill policy, deny lists, MCP permissions, and backend guardrails.** Tier 0 is
 the most autonomous tier; it is **not** unlimited.
 
@@ -406,7 +406,7 @@ _Freeform guidance for autonomous remediation._
 
 ---
 
-## Tier 1 — Approval Required
+## Tier 1: Approval Required
 
 The AI may investigate and propose actions. Execution of write/remediation
 actions must go through the **approval gate** unless explicitly classified as a
@@ -445,12 +445,12 @@ _Freeform guidance for approval-gated response._
 
 ---
 
-## Tier 2 — Advisory Only
+## Tier 2: Advisory Only
 
 **No actions allowed. Advisory mode only.**
 
 The AI provides analysis, recommendations, and runbooks. It may perform
-read-only observation, but **no write/remediation actions execute** — no
+read-only observation, but **no write/remediation actions execute**: no
 restarts, rollbacks, failovers, deletes, or changes to infrastructure, apps, or
 config. Tier 2 is the **default** for new sessions.
 
@@ -467,7 +467,7 @@ run, and clearly label any action that would modify infrastructure.
 
 Use this section when **one** MCP server has access to **multiple** environments
 (e.g. `aws-multi-env-mcp`). Define per-environment expectations. These are
-examples only — define your own environments.
+examples only. Define your own environments.
 
 ```text
 Production:

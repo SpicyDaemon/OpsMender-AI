@@ -4,7 +4,7 @@ import { qaName } from "../lib/config.mjs";
 
 export default {
   id: "reliability",
-  title: "Reliability — SLA targets",
+  title: "Reliability: SLA targets",
   async run(h) {
     const name = qaName("sla");
     h.state.slaName = name;

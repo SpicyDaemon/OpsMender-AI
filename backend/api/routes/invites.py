@@ -1,11 +1,11 @@
-"""Sprint 56 Step 4 — invite routes.
+"""Sprint 56 Step 4 - invite routes.
 
 Two routers exported from this module:
 
 - ``admin_router``: mounted under ``/organizations`` so the admin
   endpoints land at ``/organizations/{org_id}/invites/...``. Requires
   admin role.
-- ``public_router``: mounted under ``/invites``. Public — the recipient
+- ``public_router``: mounted under ``/invites``. Public - the recipient
   doesn't have a session when they click the URL.
 
 Invite tokens follow the same opaque-token pattern as password resets
@@ -108,7 +108,7 @@ def _to_response(invite: OrgInvite) -> InviteResponse:
 
 def _build_invite_url(request: Request, raw_token: str) -> str:
     # The invite-accept page is the Next.js static export served at `/invite`,
-    # which reads the token from `?token=` — a path segment like
+    # which reads the token from `?token=` - a path segment like
     # `/invite/<token>` has no statically-generated route and 404s. Keep this in
     # sync with frontend/app/invite/page.tsx.
     base = _resolve_public_base_url(request)
@@ -322,7 +322,7 @@ async def revoke_invite(
             detail="Invite has already been accepted.",
         )
     if invite.revoked_at is not None:
-        # Idempotent — return the existing state.
+        # Idempotent - return the existing state.
         return _to_response(invite)
     await OrgInviteRepo.mark_revoked(db, invite_id)
     await db.commit()
@@ -351,7 +351,7 @@ async def get_invite(
     db: AsyncSession = Depends(get_db),
 ):
     """Return the invite's safe-to-display fields so the accept page can
-    render. Returns 400 for invalid/expired/used tokens — the page
+    render. Returns 400 for invalid/expired/used tokens - the page
     shows a generic 'this invite is no longer valid' message."""
 
     invite = await OrgInviteRepo.get_by_hash(db, people_tokens.hash_token(token))
@@ -407,7 +407,7 @@ async def accept_invite(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Username '{body.username}' is taken.",
         )
-    # Email conflict check — if a user with this email exists and isn't
+    # Email conflict check - if a user with this email exists and isn't
     # soft-deleted, refuse. Soft-deleted addresses are scrubbed to a
     # sentinel so they don't collide with real emails.
     existing = await UserRepo.get_by_email(db, invite.email)

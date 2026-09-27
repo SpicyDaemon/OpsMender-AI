@@ -402,7 +402,7 @@ async def _try_update_incident_notification(
     """Edit the prior incident message in place when the platform supports it.
 
     Returns ``True`` only when the message was edited and recorded. Returns
-    ``False`` — leaving the caller to post a fresh follow-up message — when the
+    ``False`` - leaving the caller to post a fresh follow-up message - when the
     platform cannot edit, there is no updateable prior message, or the provider
     reports a recoverable edit failure. A recoverable failure is *not* treated
     as a connector error; only the follow-up post records the durable receipt.
@@ -687,8 +687,8 @@ async def _resolve_incident_responder(
 
     Mirrors the incidents route precedence (acknowledged assignment wins,
     otherwise the latest escalation page) without importing the route module.
-    Also surfaces escalation context — the level (latest page step index) and
-    the previous responder paged before the current one — for escalation cards.
+    Also surfaces escalation context - the level (latest page step index) and
+    the previous responder paged before the current one - for escalation cards.
     """
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))

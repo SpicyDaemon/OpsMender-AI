@@ -47,10 +47,10 @@ async def resolve_tenant(
     host: str | None = Header(default=None, alias="Host"),
     x_forwarded_host: str | None = Header(default=None, alias="X-Forwarded-Host"),
 ):
-    """Public — return the single workspace's context (name, branding, SSO).
+    """Public - return the single workspace's context (name, branding, SSO).
 
     OpsMender runs one organization per instance, so this always resolves the
-    sole workspace. That lets the org name/branding render everywhere — the top
+    sole workspace. That lets the org name/branding render everywhere - the top
     bar after login *and* the login/register pages before authentication.
 
     A request whose host matches a registered custom domain is additionally
@@ -519,13 +519,13 @@ async def delete_organization_sso(
 
 
 # ---------------------------------------------------------------------------
-# Per-org SAML configuration (admin only) — Sprint 30
+# Per-org SAML configuration (admin only) - Sprint 30
 # ---------------------------------------------------------------------------
 
 
 def _saml_to_response(row) -> dict:
     """Build a SAML response dict. The IdP metadata XML is intentionally not
-    returned in full — only a flag indicating it exists — to keep the admin
+    returned in full - only a flag indicating it exists - to keep the admin
     UI compact (the XML is often hundreds of lines)."""
     return {
         "id": row.id,

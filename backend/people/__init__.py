@@ -1,4 +1,4 @@
-"""Sprint 56 — admin People surface.
+"""Sprint 56 - admin People surface.
 
 Modules:
 - ``smtp``: best-effort outbound email for invite + password-reset URLs.

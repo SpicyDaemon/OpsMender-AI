@@ -1,5 +1,5 @@
 /**
- * ToolCallCard safety-class chip — renders the SKILL.md classification
+ * ToolCallCard safety-class chip - renders the SKILL.md classification
  * (safe / caution / destructive / unknown) carried on the tool_call WS payload.
  */
 

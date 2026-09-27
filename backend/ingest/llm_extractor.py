@@ -4,7 +4,7 @@ When the heuristic pass cannot resolve a title from an inbound webhook
 payload, this module asks the configured LLM to identify the JSON paths
 for the incident fields. The resolved paths are cached on the token's
 ``shape_cache`` column keyed by a hash of the payload's top-level shape
-— so the next payload with the same shape skips the LLM call entirely.
+- so the next payload with the same shape skips the LLM call entirely.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ Rules:
 "records.0.alert.name").
 - title should be a short human-readable label for the alert.
 - external_id should uniquely identify this alerting condition within its source \
-so OpsMender can deduplicate repeated notifications — prefer stable IDs over timestamps.
+so OpsMender can deduplicate repeated notifications. Prefer stable IDs over timestamps.
 - severity should be a path to a field whose value maps to critical/high/medium/low \
 (priority numbers, sev labels, etc. are fine).
 - status should be a path to a field whose value indicates whether the alert is \
@@ -64,7 +64,7 @@ Payload (abbreviated):
 
 
 def compute_shape_hash(payload: Any) -> str:
-    """Hash the *structure* of a payload — keys and types, not values."""
+    """Hash the *structure* of a payload - keys and types, not values."""
     skeleton = _skeleton(payload)
     serialized = json.dumps(skeleton, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:24]

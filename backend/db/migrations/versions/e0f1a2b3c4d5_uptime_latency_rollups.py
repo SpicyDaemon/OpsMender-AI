@@ -1,4 +1,4 @@
-"""Response-time rollups — latency on downsampled uptime tables (v1.2).
+"""Response-time rollups - latency on downsampled uptime tables (v1.2).
 
 Adds avg/min/max latency columns to ``uptime_samples_5m`` and
 ``uptime_samples_1h`` so response-time history survives raw-sample pruning

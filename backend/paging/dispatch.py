@@ -20,8 +20,8 @@ Pipeline per page:
 4. **Dedup.** For each candidate channel, checks if a sent/failed delivery
    to the same (incident, user, channel) already exists within
    ``organizations.notification_dedup_window_minutes``.
-5. **Delivery.** Calls the channel's ``send`` method. Every attempt — sent,
-   failed, or skipped — is persisted as a fresh ``incident_pages`` row with
+5. **Delivery.** Calls the channel's ``send`` method. Every attempt - sent,
+   failed, or skipped - is persisted as a fresh ``incident_pages`` row with
    the channel key in the ``channel`` column. The original ``recorded`` row
    stays untouched as the chain-engine audit anchor.
 """
@@ -144,7 +144,7 @@ async def evaluate_maintenance_window(
     windows match the incident's service; Roster windows match a page sent
     through that Roster's level (``roster_id``).
 
-    D-021 #1: ``escalate_immediate`` is never downgraded — callers should
+    D-021 #1: ``escalate_immediate`` is never downgraded - callers should
     short-circuit before invoking this if the response mode equals
     ``escalate_immediate``.
     """
@@ -178,7 +178,7 @@ def quiet_hours_block(
 ) -> bool:
     """Returns True if the user's quiet-hours window is active at ``at`` AND
     the incident priority does NOT meet the ``min_priority_to_break``
-    threshold (lower-numbered priority strings break through — P0 is the most
+    threshold (lower-numbered priority strings break through - P0 is the most
     urgent)."""
 
     if not quiet_hours:

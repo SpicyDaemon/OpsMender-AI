@@ -473,7 +473,7 @@ class TestVertexAIProvider:
 
 
 class TestOpenAICompatibleProvider:
-    """Sprint 62 Step 1 — generic OpenAI-API-compatible endpoint."""
+    """Sprint 62 Step 1 - generic OpenAI-API-compatible endpoint."""
 
     def test_requires_base_url(self, monkeypatch):
         _install_fake_openai(monkeypatch)
@@ -501,7 +501,7 @@ class TestOpenAICompatibleProvider:
         assert provider.complete("hi") == "reply:anthropic/claude-3.5-sonnet"
 
     def test_missing_api_key_env_var_raises_when_configured(self, monkeypatch):
-        # If the operator names an env var, we treat it as required —
+        # If the operator names an env var, we treat it as required -
         # silently sending no auth would surprise them.
         _install_fake_openai(monkeypatch)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -523,7 +523,7 @@ class TestOpenAICompatibleProvider:
     def test_list_models_falls_back_to_configured_model_on_error(self, monkeypatch):
         # Local endpoints often don't implement /v1/models. The sprint
         # acceptance criterion says manual model entry must keep working
-        # — so list_models must gracefully fall back instead of raising.
+        # - so list_models must gracefully fall back instead of raising.
         _install_fake_openai(monkeypatch)
         provider = OpenAICompatibleProvider(
             model="my-custom-model",

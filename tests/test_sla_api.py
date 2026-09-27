@@ -661,7 +661,7 @@ class TestUptimeAPI:
 
 
 # ======================================================================
-# Reliability v1 cleanup — enriched targets, uptime windows, summary, SLO precision
+# Reliability v1 cleanup - enriched targets, uptime windows, summary, SLO precision
 # ======================================================================
 
 
@@ -938,7 +938,7 @@ class TestReliabilityV1:
 
 
 class TestSLATargetServiceLink:
-    """v1.2 Phase 6 — SLA target ↔ Service linkage + SLO recommendations."""
+    """v1.2 Phase 6 - SLA target ↔ Service linkage + SLO recommendations."""
 
     async def _seed_service(self, db: AsyncSession) -> uuid.UUID:
         from backend.db.models import Service, Team

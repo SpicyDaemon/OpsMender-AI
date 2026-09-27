@@ -366,7 +366,7 @@ session lifecycle event (`session.created`, `session.awaiting_approval`,
 
 When the connector has the `copilot_chat` capability, every co-pilot
 assistant reply for a session is also relayed back to the Telegram
-chat(s) that originated `/chat <session-id> ...` for that session — this
+chat(s) that originated `/chat <session-id> ...` for that session. This
 closes the round-trip so operators can converse with the co-pilot
 entirely from Telegram. Outbound delivery uses the connector's
 `bot_token` credential and records every send in `bot_action_audit`.
@@ -438,7 +438,7 @@ intermediary (nginx, Caddy, or a small forwarder) to inject:
 X-OpsMender-Webhook-Secret: <webhook_secret>
 ```
 
-Replies are delivered asynchronously through the bridge — Signal does
+Replies are delivered asynchronously through the bridge: Signal does
 not support inline webhook responses. Every send is recorded in
 `bot_action_audit` with `command = "notify:..."` or `"copilot_relay"`.
 

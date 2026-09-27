@@ -1,11 +1,11 @@
 """Slack / Discord OAuth "Connect to …" flow for bot connectors.
 
-Sprint 31 Steps 5–6. Two admin-only routes per supported platform:
+Sprint 31 Steps 5-6. Two admin-only routes per supported platform:
 
-* ``GET /bot-connectors/oauth/{platform}/start?connector_id=…`` — 302
+* ``GET /bot-connectors/oauth/{platform}/start?connector_id=…`` - 302
   redirect to the provider's authorize URL with a signed-JWT ``state``
   carrying the connector_id (5-minute TTL).
-* ``GET /bot-connectors/oauth/{platform}/callback?code=…&state=…`` —
+* ``GET /bot-connectors/oauth/{platform}/callback?code=…&state=…`` -
   verifies the state, exchanges the code for tokens, merges the bot
   token into the connector's ``credentials`` JSON, and redirects back
   to ``/dashboard/paging/notification-channels``.
@@ -21,7 +21,7 @@ import uuid
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse  # noqa: F401 — used by callback
+from fastapi.responses import RedirectResponse  # noqa: F401 - used by callback
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, require_role
@@ -123,7 +123,7 @@ async def start_oauth(
 
 @router.get(
     "/{platform}/callback",
-    summary="OAuth callback — exchanges code for tokens and stores them",
+    summary="OAuth callback: exchanges the code for tokens and stores them",
 )
 async def oauth_callback(
     platform: str,
@@ -187,7 +187,7 @@ async def oauth_callback(
             code=code,
             redirect_uri=redirect_uri,
         )
-    except Exception as exc:  # noqa: BLE001 — provider errors vary widely
+    except Exception as exc:  # noqa: BLE001 - provider errors vary widely
         return _redirect_with(
             {"bot_oauth": "error", "detail": f"Code exchange failed: {exc}"}
         )

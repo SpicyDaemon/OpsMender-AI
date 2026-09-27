@@ -8,15 +8,15 @@ The card carries the same affordances as the Slack equivalent:
 
 * Header (incident title + priority pill + status badge).
 * Body context (incident id + truncated description).
-* Optional signed actions — Acknowledge / Resolve / Escalate / Start AI
-  Session — using
+* Optional signed actions - Acknowledge / Resolve / Escalate / Start AI
+  Session - using
   ``Action.Submit`` with a ``data.action`` field the Bot Framework activity
   endpoint routes through the common verified-action coordinator.
 * An optional "View in OpsMender" ``Action.OpenUrl`` deep-link when
   ``base_url`` is provided (parallels the Slack ``ACTION_VIEW`` button).
 
 Action data shape is intentionally identical to the Slack ``action_id``
-strings — when the inbound endpoint lands in step 4 it can share the
+strings - when the inbound endpoint lands in step 4 it can share the
 same routing helpers.
 """
 

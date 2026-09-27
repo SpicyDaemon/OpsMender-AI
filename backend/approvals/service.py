@@ -264,5 +264,5 @@ class ApprovalService:
             return "Approval rejected by human operator"
         if status == "expired":
             return "Approval timed out before human response"
-        # "redirected" is not a block — the workflow re-plans with guidance.
+        # "redirected" is not a block - the workflow re-plans with guidance.
         return None

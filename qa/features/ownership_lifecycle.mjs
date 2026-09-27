@@ -66,7 +66,7 @@ function strip(h) {
 
 export default {
   id: "ownership_lifecycle",
-  title: "Paging — ownership lifecycle",
+  title: "Paging: ownership lifecycle",
   async run(h) {
     if (!config.livePaging) {
       await h.step("ownership lifecycle checks", async () => {

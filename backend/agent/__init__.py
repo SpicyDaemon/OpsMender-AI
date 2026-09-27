@@ -1,1 +1,1 @@
-# backend/agent — LangGraph workflow for OpsMender AI.
+# backend/agent - LangGraph workflow for OpsMender AI.

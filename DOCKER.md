@@ -20,13 +20,13 @@ On startup the container drops you into a bash shell with the Python + Node tool
 # Start dev environment
 docker compose run --rm opsmender-dev
 
-# Inside the container — run tests
+# Inside the container: run tests
 uv run pytest
 
-# Inside the container — lint
+# Inside the container: lint
 uv run ruff check .
 
-# Inside the container — manually run session script
+# Inside the container: manually run session script
 ./test-session.sh
 ```
 

@@ -1,6 +1,6 @@
 """Audit endpoints.
 
-GET /audit — query audit entries with filtering and pagination.
+GET /audit - query audit entries with filtering and pagination.
 """
 
 from __future__ import annotations

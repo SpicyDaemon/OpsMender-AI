@@ -1,7 +1,7 @@
 [project]
 name = "opsmender"
 version = "1.1.0"
-description = "OpsMender AI — open-source AI incident manager / AI SRE / AI on-call. Tier-gated, MCP-first, human-in-the-loop AI incident response for production infrastructure."
+description = "OpsMender AI: open-source AI incident manager / AI SRE / AI on-call. Tier-gated, MCP-first, human-in-the-loop AI incident response for production infrastructure."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -57,13 +57,13 @@ dependencies = [
     "tzdata>=2025.2",
     # Maintenance Window recurrence (iCalendar RRULE).
     "python-dateutil>=2.9",
-    # SAML 2.0 SP support (Sprint 30). Pulls in xmlsec / lxml — requires
+    # SAML 2.0 SP support (Sprint 30). Pulls in xmlsec / lxml - requires
     # libxmlsec1 + libxml2 native libs at runtime. The Docker image installs
     # these; PyInstaller builds fail-loud if they are missing on the host.
     "python3-saml>=1.16.0",
     "reportlab>=4.4.0",
     # Hardened XML parsing for untrusted inbound webhook bodies (WeCom / Weixin
-    # callbacks) — guards against XXE / billion-laughs entity expansion.
+    # callbacks) - guards against XXE / billion-laughs entity expansion.
     "defusedxml>=0.7.1",
 ]
 

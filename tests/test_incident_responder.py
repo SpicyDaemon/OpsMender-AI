@@ -1,4 +1,4 @@
-"""Part 6 — incident responder/assignment state in the list + detail response."""
+"""Part 6 - incident responder/assignment state in the list + detail response."""
 
 from __future__ import annotations
 

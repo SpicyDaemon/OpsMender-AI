@@ -32,7 +32,7 @@ class BugsnagAdapter(IngestAdapter):
         severity = str(error.get("severity") or "error").lower()
         project = payload.get("project") or {}
         title = (
-            " — ".join(
+            ": ".join(
                 part
                 for part in (
                     str(error.get("exceptionClass") or ""),

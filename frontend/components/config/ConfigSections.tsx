@@ -246,7 +246,7 @@ const LOG_LEVEL_DETAILS = {
   WARNING:
     "Drops INFO chatter; keeps anything the backend marked as a soft error (retries, degraded fallbacks, suppressed deliveries).",
   ERROR:
-    "Drops WARNINGs too. Only real failures land in logs — failed tool calls, dispatcher exceptions, broken integrations.",
+    "Drops WARNINGs too. Only real failures land in logs: failed tool calls, dispatcher exceptions, broken integrations.",
   CRITICAL:
     "Quietest. Only fatal events the operator must see (startup failures, irrecoverable state). Use sparingly; troubleshooting becomes harder.",
 } as const;
@@ -314,9 +314,9 @@ export function TierSection({
             onChange={(e) => setTier(e.target.value)}
             disabled={!canEdit}
           >
-            <option value="0">Tier 0 — Autonomous</option>
-            <option value="1">Tier 1 — Approval Required</option>
-            <option value="2">Tier 2 — Advisory Only</option>
+            <option value="0">Tier 0: Autonomous</option>
+            <option value="1">Tier 1: Approval Required</option>
+            <option value="2">Tier 2: Advisory Only</option>
           </Select>
           <p className="mt-1.5 text-xs text-fg-muted">
             AI autonomy tier controls what the agent can do during incident
@@ -338,14 +338,14 @@ export function TierSection({
             onChange={(e) => setLogLevel(e.target.value)}
             disabled={!canEdit}
           >
-            <option value="DEBUG">DEBUG — capture everything (loudest)</option>
+            <option value="DEBUG">DEBUG: capture everything (loudest)</option>
             <option value="INFO">
-              INFO — normal operation + above (default)
+              INFO: normal operation and above (default)
             </option>
-            <option value="WARNING">WARNING — soft errors + above</option>
-            <option value="ERROR">ERROR — real failures + above</option>
+            <option value="WARNING">WARNING: soft errors and above</option>
+            <option value="ERROR">ERROR: real failures and above</option>
             <option value="CRITICAL">
-              CRITICAL — fatal events only (quietest)
+              CRITICAL: fatal events only (quietest)
             </option>
           </Select>
           <p className="mt-1.5 text-xs text-fg-muted">
@@ -1164,7 +1164,7 @@ export function ModelSection({
         </div>
       )}
 
-      {/* Per-provider availability chips intentionally removed — the
+      {/* Per-provider availability chips intentionally removed - the
           per-row status dot in the saved-config table is the source of
           truth for "is THIS configured model reachable?". The chip row
           duplicated that signal at the abstract provider-type level,
@@ -1305,7 +1305,7 @@ type MCPFormState = {
 };
 
 // Minimal shlex-like split that handles the common case (whitespace
-// separation). Quoted args with spaces are not supported — operators
+// separation). Quoted args with spaces are not supported - operators
 // needing those should use the Import from JSON path instead.
 function splitCommand(input: string): { command: string; args: string[] } {
   const parts = input.trim().split(/\s+/).filter(Boolean);
@@ -2000,7 +2000,7 @@ function ImportMCPJsonModal({
                 key={r.name}
                 className={`text-xs ${r.ok ? "text-status-low" : "text-status-high"}`}
               >
-                <span className="font-mono">{r.name}</span> — {r.message}
+                <span className="font-mono">{r.name}</span>: {r.message}
               </div>
             ))}
           </div>
@@ -2207,7 +2207,7 @@ export function MCPSection({
           return (
             <div className="max-w-full sm:max-w-[28rem]">
               <span className="line-clamp-2 break-all font-mono text-xs text-fg-secondary">
-                {target || "—"}
+                {target || "None"}
               </span>
               {(argsCount > 0 || envCount > 0) && (
                 <p className="mt-1 text-xs text-fg-muted">
@@ -2768,7 +2768,7 @@ function buildBotConnectorPayload(
         }
         if (value) configEntries[field.name] = value;
       } else {
-        // credentials field — only used when credentialMode === "replace"
+        // credentials field - only used when credentialMode === "replace"
         if (form.credentialMode === "replace") {
           const value = form.credentialValues[field.name] ?? "";
           if (field.required && !value) {
@@ -3711,8 +3711,8 @@ function BotConnectorModal({
                     <span>
                       <span className="font-medium text-fg-primary">
                         {check.name.replace(/_/g, " ")}
-                      </span>{" "}
-                      — {check.detail}
+                      </span>
+                      : {check.detail}
                     </span>
                   </li>
                 ))}
@@ -4721,7 +4721,7 @@ export function IngestTokenSection({
               {token.shape_cache_size} learned
             </span>
           ) : (
-            <span className="text-xs text-fg-muted">—</span>
+            <span className="text-xs text-fg-muted">None yet</span>
           ),
       },
       {
@@ -4832,7 +4832,7 @@ export function IngestTokenSection({
           <div className="space-y-4">
             <div className="rounded-lg border border-status-high-border bg-status-high-bg p-4">
               <p className="text-sm font-medium text-status-high">
-                ⚠️ Copy this token now — it will never be shown again.
+                ⚠️ Copy this token now. It won&apos;t be shown again.
               </p>
             </div>
             <div>
@@ -4913,7 +4913,7 @@ export function IngestTokenSection({
               </Select>
               <p className="mt-1 text-xs text-fg-muted">
                 Determines how inbound JSON payloads are parsed into incidents.
-                Use <strong>Auto-detect</strong> for any webhook — the token
+                Use <strong>Auto-detect</strong> for any webhook. The token
                 learns the payload shape on first use.
               </p>
             </div>
@@ -5186,7 +5186,7 @@ const RETENTION_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   bot_action_audit:
     "Inbound bot commands (Slack/Teams ack/take/resolve). Default 90-day TTL.",
   incident_memories:
-    "Operator- and agent-curated lessons. Never auto-deleted — manage manually from /dashboard/memories.",
+    "Operator- and agent-curated lessons. Never auto-deleted; manage them from /dashboard/memories.",
 };
 
 function formatBytes(bytes: number): string {
@@ -5342,11 +5342,11 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
           <p className="mt-2 text-2xl font-semibold tracking-tight text-fg-primary">
             {memoryStorage
               ? `${memoryStorage.row_count} row${memoryStorage.row_count === 1 ? "" : "s"}`
-              : "—"}
+              : "No data"}
           </p>
           <p className="mt-1 text-xs text-fg-muted">
             {memoryStorage
-              ? `~${formatBytes(memoryStorage.estimated_bytes)} — manage at /dashboard/memories`
+              ? `~${formatBytes(memoryStorage.estimated_bytes)}. Manage it at /dashboard/memories.`
               : "Manage at /dashboard/memories"}
           </p>
         </div>
@@ -5405,10 +5405,10 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                     </p>
                   </td>
                   <td className="px-4 py-3 text-right text-fg-primary tabular-nums">
-                    {storage ? storage.row_count.toLocaleString() : "—"}
+                    {storage ? storage.row_count.toLocaleString() : "No data"}
                   </td>
                   <td className="px-4 py-3 text-right text-fg-secondary tabular-nums">
-                    {storage ? formatBytes(storage.estimated_bytes) : "—"}
+                    {storage ? formatBytes(storage.estimated_bytes) : "No data"}
                   </td>
                   <td className="px-4 py-3">
                     {cfg.ttl_days === null ? (
@@ -5425,7 +5425,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                       ? `${formatDateTime(cfg.last_pruned_at)} · ${cfg.last_pruned_count ?? 0} row${
                           (cfg.last_pruned_count ?? 0) === 1 ? "" : "s"
                         }`
-                      : "—"}
+                      : "Never"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
@@ -5509,7 +5509,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-right text-xs text-fg-muted">
-                  —
+                  Never
                 </td>
               </tr>
             )}
@@ -5519,7 +5519,7 @@ export function RetentionSection({ canEdit }: { canEdit: boolean }) {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-fg-muted">
-          Estimated sizes use conservative per-row averages — exact sizes
+          Estimated sizes use conservative per-row averages. Exact sizes
           require Postgres-only system tables. Use the trend over time, not the
           absolute number, to size storage.
         </p>

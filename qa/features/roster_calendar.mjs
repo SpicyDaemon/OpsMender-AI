@@ -6,7 +6,7 @@ import { Harness } from "../lib/harness.mjs";
 
 export default {
   id: "roster-calendar",
-  title: "Paging — roster calendar",
+  title: "Paging: roster calendar",
   async run(h) {
     await h.step("open roster calendar", async () => {
       await h.goto("/dashboard/paging/rosters");

@@ -7,7 +7,7 @@ instructions. It is an **assist**, not an authority:
 
   - The operator reviews and can override every row.
   - Arbitrary-command tools (``shell``, ``kubectl``, ``run_command`` …) are
-    **forced to deny** regardless of what the model returns — the model can
+    **forced to deny** regardless of what the model returns - the model can
     never relax the generic-command guardrail.
   - When the model's classification is *less restrictive* than OpsMender's own
     heuristic, the row is flagged ``needs_review`` so the operator notices the
@@ -80,14 +80,14 @@ Classify each tool by RISK:
 - "caution": reversible writes (restart, scale, update, rollback, cordon).
 - "destructive": high-risk or irreversible (delete, drop, terminate, data loss).
 
-Set "deny": true for tools that must NEVER run automatically — irreversible data \
+Set "deny": true for tools that must NEVER run automatically: irreversible data \
 loss, or arbitrary-command runners (shell, bash, kubectl, run_command, sql, …) \
 whose name does not bound what they can do.
 
 For a tool that could safely run AUTONOMOUSLY (Tier 0): set "reversible": true \
 and set "compensating_inverse" to the exact tool name that undoes it with the \
 same parameters. Only do this when you are confident the inverse exists and is \
-correct — if you cannot confidently name a real inverse, omit \
+correct. If you cannot confidently name a real inverse, omit \
 "compensating_inverse" (do NOT invent one). Prefer this for "caution" tools; for \
 "destructive" tools an autonomous inverse is high-risk and will always be flagged \
 for human review. Never set reversible/inverse on a denied tool.
@@ -192,7 +192,7 @@ def parse_ai_response(
         ai = by_name.get(name.lower())
 
         if ai is None:
-            # Model omitted this tool — keep the deterministic suggestion.
+            # Model omitted this tool - keep the deterministic suggestion.
             out.append(
                 AISuggestedTool(
                     name=name,
@@ -222,7 +222,7 @@ def parse_ai_response(
         needs_review = False
 
         # Hard guardrail: a generic command tool is always denied + destructive,
-        # no matter what the model proposed — and cannot carry Tier 0 metadata.
+        # no matter what the model proposed - and cannot carry Tier 0 metadata.
         if heuristic.generic:
             deny = True
             classification = "destructive"
@@ -247,7 +247,7 @@ def parse_ai_response(
 
         # Flag incomplete Tier 0 metadata: a tool the model marked reversible but
         # for which it could not name a compensating inverse will NOT clear the
-        # Tier 0 floor — surface that for operator review.
+        # Tier 0 floor - surface that for operator review.
         if (
             not deny
             and classification in ("caution", "destructive")

@@ -53,13 +53,13 @@ export function formatTime(input: DateInput): string {
 // Distinct from the data-timestamp family above: these render month/weekday
 // names for calendar navigation and headers, not logged timestamps.
 
-/** "July 2026" — month picker / calendar header. */
+/** "July 2026" - month picker / calendar header. */
 export function formatMonthYear(input: DateInput): string {
   const d = toDate(input);
   return d ? d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "";
 }
 
-/** "Friday, July 4, 2026" — day-detail modal titles. */
+/** "Friday, July 4, 2026" - day-detail modal titles. */
 export function formatDayLong(input: DateInput): string {
   const d = toDate(input);
   return d
@@ -72,7 +72,7 @@ export function formatDayLong(input: DateInput): string {
     : "";
 }
 
-/** "Fri, Jul 4" — compact calendar cell / roster day label. */
+/** "Fri, Jul 4" - compact calendar cell / roster day label. */
 export function formatWeekdayDate(input: DateInput): string {
   const d = toDate(input);
   return d
@@ -84,7 +84,7 @@ export function formatWeekdayDate(input: DateInput): string {
     : "";
 }
 
-/** "Fri" — weekday-only label. */
+/** "Fri" - weekday-only label. */
 export function formatWeekday(input: DateInput): string {
   const d = toDate(input);
   return d ? d.toLocaleDateString(undefined, { weekday: "short" }) : "";

@@ -154,7 +154,7 @@ async def test_operator_can_acknowledge_and_viewer_is_rejected(factory):
 
 async def test_native_resolve_records_lifecycle_comment(factory):
     """A verified native resolve must leave a lifecycle comment on the timeline
-    (parity with the web-UI resolve path — v2 Phase 4/5)."""
+    (parity with the web-UI resolve path - v2 Phase 4/5)."""
     async with factory() as db:
         operator = await _user(db, username="closer", role="operator")
         incident = await IncidentRepo.create(
@@ -448,7 +448,7 @@ async def test_noninteractive_platform_cannot_enter_native_action_path(factory):
             db, TEST_ORG_ID, connector.id, "telegram-action-404"
         )
         assert invocation is None
-        # Refused before admission, so no invocation row exists — but the
+        # Refused before admission, so no invocation row exists - but the
         # refusal itself must still be auditable. A signature-verified callback
         # arriving on a platform that cannot host verified actions is exactly
         # the case an operator needs to see.

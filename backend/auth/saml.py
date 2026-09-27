@@ -2,16 +2,16 @@
 
 Wraps ``python3-saml`` (OneLogin) to keep the surface OpsMender uses small:
 
-* :func:`build_settings` — assemble the dict ``OneLogin_Saml2_Auth`` expects
+* :func:`build_settings` - assemble the dict ``OneLogin_Saml2_Auth`` expects
   from the per-tenant DB row + the global SP keypair from env.
-* :func:`build_authn_request` — return the IdP redirect URL for an
+* :func:`build_authn_request` - return the IdP redirect URL for an
   SP-initiated login (used by ``GET /auth/saml/{slug}/login``).
-* :func:`process_acs` — validate the IdP's POSTed AuthnResponse (signature,
+* :func:`process_acs` - validate the IdP's POSTed AuthnResponse (signature,
   audience, NotOnOrAfter, replay) and extract attributes (used by
   ``POST /auth/saml/{slug}/acs``).
-* :func:`render_sp_metadata` — produce the SP metadata XML the IdP admin
+* :func:`render_sp_metadata` - produce the SP metadata XML the IdP admin
   uploads to set up the integration.
-* :func:`fetch_idp_metadata` — async fetch + 10-minute cache for IdP
+* :func:`fetch_idp_metadata` - async fetch + 10-minute cache for IdP
   metadata URLs; falls back to inline XML when the org provides that
   instead of a URL.
 
@@ -102,9 +102,9 @@ async def fetch_idp_metadata(org: SAMLOrgConfig) -> dict[str, Any]:
 
     Two sources, mutually exclusive:
 
-    * ``idp_metadata_url`` — fetched over HTTPS and cached in-process for
+    * ``idp_metadata_url`` - fetched over HTTPS and cached in-process for
       10 minutes (mirrors the OIDC discovery cache).
-    * ``idp_metadata_xml`` — used verbatim, no fetch.
+    * ``idp_metadata_xml`` - used verbatim, no fetch.
     """
     if org.idp_metadata_url:
         url = org.idp_metadata_url

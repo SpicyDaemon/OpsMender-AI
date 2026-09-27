@@ -1,4 +1,4 @@
-"""In-app notification center (v1.2 — the bell): repo + emit service.
+"""In-app notification center (v1.2 - the bell): repo + emit service.
 
 Covers:
 - ``InAppNotificationRepo`` CRUD: create, list (incl. unread_only + paging),

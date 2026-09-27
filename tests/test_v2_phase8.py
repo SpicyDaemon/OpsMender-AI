@@ -1,4 +1,4 @@
-"""v2 Phase 8 — opt-in bounded memory growth (eviction)."""
+"""v2 Phase 8 - opt-in bounded memory growth (eviction)."""
 
 from __future__ import annotations
 

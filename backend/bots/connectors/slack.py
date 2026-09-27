@@ -17,7 +17,7 @@ from .base import FieldSpec, InboundMessage
 
 
 # Slack chat.update errors that mean the original message can no longer be
-# edited — the notifier should post a fresh follow-up message instead of
+# edited - the notifier should post a fresh follow-up message instead of
 # treating these as hard delivery failures.
 _SLACK_UPDATE_FALLBACK_ERRORS = {
     "message_not_found",

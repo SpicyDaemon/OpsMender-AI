@@ -1,19 +1,19 @@
-"""Sprint 45 Steps 4 + 5 — post-session memory writeback + auto-compaction.
+"""Sprint 45 Steps 4 + 5 - post-session memory writeback + auto-compaction.
 
-Step 4 — `remember` node logic
+Step 4 - `remember` node logic
 ------------------------------
 After ``summarize`` runs on a successful workflow, we ask the LLM to distill
 the session into one short lesson and persist it as an ``incident_memories``
-row. The trigger criteria are intentionally conservative — see
+row. The trigger criteria are intentionally conservative - see
 :func:`should_remember`. Memory must never reward failed or rolled-back
 sessions; the signal we keep is "this approach worked," not "this approach was
 attempted."
 
 The LLM response must be a strict JSON object matching ``MemoryDraft``. On any
-parse failure the function logs and skips — memory is advisory, so a missing
+parse failure the function logs and skips - memory is advisory, so a missing
 write never blocks the session.
 
-Step 5 — auto-compaction
+Step 5 - auto-compaction
 ------------------------
 When an org passes :data:`COMPACTION_THRESHOLD` memories for a single service,
 :func:`maybe_compact` runs one bounded dedup pass. Two layers:
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 COMPACTION_THRESHOLD = 50
 
-# v2 Phase 8 — bounded memory growth (opt-in). Off by default. When enabled and
+# v2 Phase 8 - bounded memory growth (opt-in). Off by default. When enabled and
 # a service's memory count exceeds the configured ceiling, evict the
 # lowest-value memories down to the ceiling. Operator-pinned and high-recall
 # (helpful_count >= EVICTION_PROTECT_HELPFUL) memories are never evicted.
@@ -101,7 +101,8 @@ The summary should cover:
 - What action resolved it
 - Any gotchas to watch for next time
 
-Include 1–5 lowercase hyphenated tags. Severity is a useful tag when present.
+Include 1-5 lowercase hyphenated tags. Severity is a useful tag when present.
+Write the title and summary in plain language. Don't use em dashes.
 
 Session materials:
 
@@ -125,8 +126,8 @@ Return the JSON object only."""
 
 COMPACTION_PROMPT = """\
 You are reviewing accumulated incident-response memories for a single service.
-Identify pairs that are near-duplicates — same root cause, same fix, same
-symptoms — even if worded differently. Return ONLY a JSON array of operations,
+Identify pairs that are near-duplicates (same root cause, same fix, same
+symptoms), even if worded differently. Return ONLY a JSON array of operations,
 no prose around it.
 
 Each operation has the shape:
@@ -155,7 +156,7 @@ class MemoryDraft:
     def from_json(cls, raw: str) -> "MemoryDraft | None":
         """Parse and validate the LLM's JSON response.
 
-        Returns ``None`` on any failure — caller logs and skips.
+        Returns ``None`` on any failure - caller logs and skips.
         """
         text = _strip_code_fence(raw).strip()
         if not text:
@@ -206,7 +207,7 @@ def should_remember(state: dict[str, Any]) -> tuple[bool, str]:
     Criteria:
     - Workflow status is ``completed`` (didn't fail or time out).
     - No top-level ``error`` field is set.
-    - No tool calls errored (block reasons are fine — a blocked Tier-1 action
+    - No tool calls errored (block reasons are fine - a blocked Tier-1 action
       is a successful escalation, not a failure).
     - At least one of ``summary`` or ``diagnosis`` is non-trivial.
     """
@@ -229,7 +230,7 @@ def should_remember(state: dict[str, Any]) -> tuple[bool, str]:
 def _render_actions(state: dict[str, Any]) -> str:
     tool_calls = state.get("tool_calls") or []
     if not tool_calls:
-        return "(none — advisory session)"
+        return "(none; advisory session)"
     lines: list[str] = []
     for tc in tool_calls:
         if not isinstance(tc, dict):
@@ -323,7 +324,7 @@ async def remember_for_session(
 
 
 # ---------------------------------------------------------------------------
-# Step 5 — auto-compaction
+# Step 5 - auto-compaction
 # ---------------------------------------------------------------------------
 
 
@@ -368,7 +369,7 @@ async def maybe_compact(
             )
         )
 
-        # Pass 1 — exact title dedup. Keep the newer one.
+        # Pass 1 - exact title dedup. Keep the newer one.
         by_title: dict[str, IncidentMemory] = {}
         exact_deleted = 0
         for memory in memories:
@@ -387,7 +388,7 @@ async def maybe_compact(
             exact_deleted += 1
         await db.commit()
 
-        # Pass 2 — LLM near-duplicate dedup (bounded, optional).
+        # Pass 2 - LLM near-duplicate dedup (bounded, optional).
         llm_deleted = 0
         if llm is not None:
             remaining = list(by_title.values())
@@ -420,7 +421,7 @@ async def maybe_evict(
     """Opt-in bounded-growth eviction for one service group (v2 Phase 8).
 
     Off by default. When enabled and the group exceeds ``max_total``, evict the
-    least-valuable memories down to the ceiling — oldest by ``last_used_at``
+    least-valuable memories down to the ceiling - oldest by ``last_used_at``
     (falling back to ``created_at``) first. **Never** evicts pinned or
     high-recall (``helpful_count >= protect_helpful``) memories. Returns an
     observable report and logs each eviction. Best-effort; never raises.

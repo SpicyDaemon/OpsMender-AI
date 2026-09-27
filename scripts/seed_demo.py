@@ -539,7 +539,7 @@ async def main():
             )
         )
 
-        # (Legacy WebhookTrigger seeding removed — the model no longer exists;
+        # (Legacy WebhookTrigger seeding removed - the model no longer exists;
         # outbound hooks are handled by Notification Channels / integrations.)
 
         for name, provider, sid in [

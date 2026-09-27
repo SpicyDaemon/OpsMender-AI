@@ -1,4 +1,4 @@
-"""Add People surface — invites, password resets, users.deleted_at (Sprint 56).
+"""Add People surface - invites, password resets, users.deleted_at (Sprint 56).
 
 Revision ID: i9j0k1l2m3n4
 Revises: h8i9j0k1l2m3

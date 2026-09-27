@@ -2,18 +2,18 @@
 
 When an operator discovers an MCP server's tools in the Skill Studio, OpsMender
 suggests a starting classification for each tool from its **name** alone. These
-are *suggestions only* — the operator reviews and overrides them, and the
+are *suggestions only* - the operator reviews and overrides them, and the
 backend tier gate (``backend/tiers/enforcement.py``) is always the execution
 authority. The suggester is deliberately conservative and fail-safe:
 
   - Generic command-execution tools (``shell``, ``kubectl``, ``run_command`` …)
-    are flagged and suggested **deny** — their name does not bound what they do.
+    are flagged and suggested **deny** - their name does not bound what they do.
   - Clear read verbs (``get``/``list``/``describe`` …) → ``safe``.
   - Clear destructive verbs (``delete``/``destroy``/``drop`` …) → ``destructive``.
   - Reversible-write verbs (``restart``/``scale``/``update`` …) → ``caution``.
   - Anything unrecognized → ``caution`` + ``needs_review`` (never silently safe).
 
-This module is pure and deterministic — no network, no LLM.
+This module is pure and deterministic - no network, no LLM.
 """
 
 from __future__ import annotations
@@ -134,7 +134,7 @@ class ClassificationSuggestion:
     classification: str  # "safe" | "caution" | "destructive"
     generic: bool  # arbitrary-command tool (guardrailed)
     deny: bool  # suggest an explicit deny-list entry
-    needs_review: bool  # name was unrecognized — operator should confirm
+    needs_review: bool  # name was unrecognized - operator should confirm
     rationale: str
 
     def as_dict(self) -> dict[str, object]:
@@ -170,7 +170,7 @@ def suggest_classification(tool_name: str) -> ClassificationSuggestion:
             generic=False,
             deny=False,
             needs_review=True,
-            rationale="Empty tool name — review before use.",
+            rationale="Empty tool name. Review before use.",
         )
 
     if is_generic_execution_tool(name):
@@ -180,7 +180,7 @@ def suggest_classification(tool_name: str) -> ClassificationSuggestion:
             deny=True,
             needs_review=True,
             rationale=(
-                "Runs arbitrary commands — its name does not bound what it can "
+                "Runs arbitrary commands; its name does not bound what it can "
                 "do. Suggested deny; opt out only for a narrowly-scoped wrapper."
             ),
         )
@@ -208,7 +208,7 @@ def suggest_classification(tool_name: str) -> ClassificationSuggestion:
             generic=False,
             deny=False,
             needs_review=False,
-            rationale=f"'{verb}' suggests a reversible write — review reversibility.",
+            rationale=f"'{verb}' suggests a reversible write. Review reversibility.",
         )
 
     return ClassificationSuggestion(
@@ -216,5 +216,5 @@ def suggest_classification(tool_name: str) -> ClassificationSuggestion:
         generic=False,
         deny=False,
         needs_review=True,
-        rationale="Unrecognized action — defaulting to caution; classify it.",
+        rationale="Unrecognized action, so it defaults to caution. Classify it.",
     )

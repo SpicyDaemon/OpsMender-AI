@@ -1,4 +1,4 @@
-"""Tests for backend.tiers.sandbox — Tier 0 allowlist enforcement."""
+"""Tests for backend.tiers.sandbox - Tier 0 allowlist enforcement."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ class TestCallToolGate:
     async def test_blocked_even_if_destructive_was_marked_reversible_later(
         self, mixed_skill
     ):
-        """Allowlist is frozen at construction — mutating the skill does not unlock tools."""
+        """Allowlist is frozen at construction - mutating the skill does not unlock tools."""
         sandbox = Tier0Sandbox.from_skill(
             mixed_skill, available_tools=[_tool("get_pods")]
         )

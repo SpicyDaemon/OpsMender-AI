@@ -1,4 +1,4 @@
-"""In-app notification center (v1.2 — the per-user bell).
+"""In-app notification center (v1.2 - the per-user bell).
 
 Public surface is :func:`emit_notification` / :func:`emit_to_users` plus the
 category constants. Callers raise notifications; persistence, per-category

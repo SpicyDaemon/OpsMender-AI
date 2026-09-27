@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# OpsMender AI — Docker Compose
+# OpsMender AI - Docker Compose
 #
 # One compose file, dev or production mode is selected via .env:
 #
@@ -62,7 +62,7 @@ services:
       # pointing at an external Postgres (RDS, Cloud SQL, on-prem) just
       # edit OPSMENDER_DATABASE_URL in .env.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-    # Canonical entry point — backend API + static frontend on the same port.
+    # Canonical entry point - backend API + static frontend on the same port.
     ports:
       - "8000:8000"
     volumes:

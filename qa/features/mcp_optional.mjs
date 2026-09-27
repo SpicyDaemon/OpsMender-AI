@@ -30,7 +30,7 @@ async function requestJson(h, method, route, data) {
 
 export default {
   id: "mcp_optional",
-  title: "v1.1 — MCP-optional service acceptance",
+  title: "v1.1: MCP-optional service acceptance",
   async run(h) {
     const connectorName = qaName("native-github");
     const serviceName = qaName("integration-only");

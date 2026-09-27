@@ -5,7 +5,7 @@ lessons the author wants to feed into AI incident memory. This module pulls thos
 bullets out of the markdown so the postmortem route can turn each into a
 ``pending`` incident memory (which then flows through the Phase 1 review queue).
 
-Pure + deterministic — no DB, no LLM.
+Pure + deterministic - no DB, no LLM.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def _is_placeholder(text: str) -> bool:
     if _ITALIC_PLACEHOLDER_RE.match(text):
         return True
     # A lone ellipsis / dash placeholder.
-    if text in {"...", "…", "-", "—"}:
+    if text in {"...", "…", "-", "\u2014"}:
         return True
     return False
 

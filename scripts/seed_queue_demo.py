@@ -10,7 +10,7 @@ This talks to whatever database your server is configured to use
 (``OPSMENDER_DATABASE_URL`` / config). IMPORTANT: it must reach the SAME
 database the running server uses. If the app runs in Docker, the configured DB
 host is usually a compose service name that does not resolve from your host
-shell — run the script INSIDE the container, or point it at the published port.
+shell - run the script INSIDE the container, or point it at the published port.
 
 Usage (PowerShell):
     # A) Run inside the backend container (DB host resolves there):
@@ -80,7 +80,7 @@ async def seed(factory) -> None:
     async with factory() as db:
         org = await _first(db, select(Organization).order_by(Organization.created_at))
         if org is None:
-            print("No organization found — create one through the app first.")
+            print("No organization found. Create one through the app first.")
             return
         service = await _first(db, select(Service).where(Service.org_id == org.id))
         model = await _first(
@@ -161,7 +161,7 @@ async def clean(factory) -> None:
         )
 
         # Bulk-delete child-first via table metadata (dialect-agnostic, and it
-        # avoids the ORM relationship cascade — a force-started demo session may
+        # avoids the ORM relationship cascade - a force-started demo session may
         # have written audit_entries whose session_id is NOT NULL, which a
         # cascade would try to null and fail on). Tables that reference a session
         # go first, then tables that reference an incident, then the incidents.

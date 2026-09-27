@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 59 (UX direction "Sprint C") Step 1 — Operations Dashboard.
+ * Sprint 59 (UX direction "Sprint C") Step 1 - Operations Dashboard.
  *
  * Replaces the historical "redirect to /dashboard/incidents" behavior
  * with a real index page that immediately answers the questions an
@@ -69,7 +69,7 @@ import { formatRelative } from "@/lib/formatDate";
 import { isStaleActiveSession } from "@/lib/sessionFreshness";
 
 /**
- * Sprint 61 Step 3 — layout-specific skeleton rows shared by the
+ * Sprint 61 Step 3 - layout-specific skeleton rows shared by the
  * dashboard panels. Each block matches the eventual row geometry so the
  * panel doesn't shift when content arrives.
  */
@@ -358,7 +358,7 @@ export default function DashboardIndex() {
   );
 
   // Group rosters by team for the On-call coverage panel. Teams without
-  // a roster still show — operators need to know they have a coverage
+  // a roster still show - operators need to know they have a coverage
   // gap. Username lookups use the loaded users list (best-effort; a
   // miss shows the short uuid instead so the row never collapses).
   const userById = useMemo(
@@ -413,7 +413,7 @@ export default function DashboardIndex() {
   }, [services, incidents, teamById]);
 
   // Top services by open-incident count (then by last activity).
-  // Hidden when no service has any open incidents — silence is good.
+  // Hidden when no service has any open incidents - silence is good.
   const serviceHealthRows = useMemo(() => {
     return serviceStats
       .filter((row) => row.openCount > 0)
@@ -432,7 +432,7 @@ export default function DashboardIndex() {
       .slice(0, 5);
   }, [serviceStats]);
 
-  // Sprint 59 Step 5 — MTTR rolling-window medians. MTTR uses
+  // Sprint 59 Step 5 - MTTR rolling-window medians. MTTR uses
   // Resolution duration for incidents that were resolved within each window.
   const mttr = useMemo(() => {
     return {
@@ -453,7 +453,7 @@ export default function DashboardIndex() {
     };
   }, [incidents]);
 
-  // Sprint 59 Step 4 — Recent activity feed. Scope per owner decision:
+  // Sprint 59 Step 4 - Recent activity feed. Scope per owner decision:
   // incident lifecycle + tool-blocks only. We synthesize the lifecycle
   // events from the incidents array (no dedicated events table) plus
   // the blocked audit entries from the parallel /audit fetch. Merge,
@@ -546,7 +546,7 @@ export default function DashboardIndex() {
 
       {role === "admin" ? <SetupChecklist /> : null}
 
-      {/* Attention Queue — four cards at the top of the page */}
+      {/* Attention Queue - four cards at the top of the page */}
       <section
         aria-label="Attention queue"
         className={`mt-4 grid gap-4 ${
@@ -645,7 +645,7 @@ export default function DashboardIndex() {
         ) : null}
       </section>
 
-      {/* Secondary band — quick links + light counters */}
+      {/* Secondary band - quick links + light counters */}
       <section className="mt-6 grid gap-4 sm:grid-cols-3">
         <QuickStat
           label="Open incidents"
@@ -675,7 +675,7 @@ export default function DashboardIndex() {
         />
       </section>
 
-      {/* MTTA rolling-window tiles — Sprint 59 follow-up. Three tiles for
+      {/* MTTA rolling-window tiles - Sprint 59 follow-up. Three tiles for
           24h / 7d / 30d, mirroring the MTTR family below. */}
       <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
@@ -704,7 +704,7 @@ export default function DashboardIndex() {
                 {label}
               </p>
               <p className="mt-1.5 text-2xl font-semibold tabular-nums text-fg-primary">
-                {stat ? fmtDuration(stat.medianMs) : "—"}
+                {stat ? fmtDuration(stat.medianMs) : "No data"}
               </p>
               <p className="mt-0.5 text-[11px] text-fg-muted">
                 {stat
@@ -716,7 +716,7 @@ export default function DashboardIndex() {
         </div>
       </section>
 
-      {/* MTTR rolling-window tiles — Sprint 59 Step 5. Three tiles for
+      {/* MTTR rolling-window tiles - Sprint 59 Step 5. Three tiles for
           24h / 7d / 30d. */}
       <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
@@ -745,7 +745,7 @@ export default function DashboardIndex() {
                 {label}
               </p>
               <p className="mt-1.5 text-2xl font-semibold tabular-nums text-fg-primary">
-                {stat ? fmtDuration(stat.medianMs) : "—"}
+                {stat ? fmtDuration(stat.medianMs) : "No data"}
               </p>
               <p className="mt-0.5 text-[11px] text-fg-muted">
                 {stat
@@ -757,7 +757,7 @@ export default function DashboardIndex() {
         </div>
       </section>
 
-      {/* On-call coverage — Sprint 59 Step 2. Per-team current on-call
+      {/* On-call coverage - Sprint 59 Step 2. Per-team current on-call
           resolved via the team's roster(s). Teams without a roster
           surface as coverage gaps. */}
       <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
@@ -810,7 +810,7 @@ export default function DashboardIndex() {
                   {tr.length === 0 ? (
                     <p className="flex items-center gap-1.5 text-[11px] text-status-medium">
                       <CalendarOff size={11} />
-                      No roster — coverage gap
+                      No roster (coverage gap)
                     </p>
                   ) : (
                     <ul className="space-y-1">
@@ -857,7 +857,7 @@ export default function DashboardIndex() {
         </div>
       </section>
 
-      {/* Service health + Noisy services — Sprint 59 Step 3. Two
+      {/* Service health + Noisy services - Sprint 59 Step 3. Two
           side-by-side panels driven by the already-loaded incidents
           list. Service health = services with open incidents, sorted
           by open count then last activity. Noisy services = top 5
@@ -879,7 +879,7 @@ export default function DashboardIndex() {
             metricTone: row.openCount >= 3 ? "critical" : "high",
             footnote: row.lastIncidentAt
               ? `Last activity ${formatRelative(row.lastIncidentAt)}`
-              : "—",
+              : "No activity yet",
           }))}
         />
         <ServicePanel
@@ -897,15 +897,15 @@ export default function DashboardIndex() {
             metricTone: row.last24hCount >= 5 ? "critical" : "medium",
             footnote: row.lastIncidentAt
               ? `Last incident ${formatRelative(row.lastIncidentAt)}`
-              : "—",
+              : "No incidents yet",
           }))}
         />
       </section>
 
-      {/* Recent activity feed — Sprint 59 Step 4. Incident lifecycle
+      {/* Recent activity feed - Sprint 59 Step 4. Incident lifecycle
           (open / resolve / close) synthesized from the incidents
           array + tool blocks pulled from /audit?permitted=false. No
-          backend changes — just merge + sort + render. */}
+          backend changes - just merge + sort + render. */}
       <section className="mt-6 rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-4 py-3 sm:px-5 sm:py-4">
           <div className="flex items-center gap-2">

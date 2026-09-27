@@ -1,10 +1,10 @@
-"""Sprint 53 — data retention / garbage collection routes.
+"""Sprint 53 - data retention / garbage collection routes.
 
 Endpoints (admin-only for writes; admin-or-operator can read):
 
-- ``GET    /retention``         — per-category status, defaults, last-run stamps, storage estimates.
-- ``PUT    /retention``         — bulk set TTLs (ttl_days = null disables a category).
-- ``POST   /retention/run``     — manual one-shot pruner run for the active org.
+- ``GET    /retention`` - per-category status, defaults, last-run stamps, storage estimates.
+- ``PUT    /retention`` - bulk set TTLs (ttl_days = null disables a category).
+- ``POST   /retention/run`` - manual one-shot pruner run for the active org.
 """
 
 from __future__ import annotations

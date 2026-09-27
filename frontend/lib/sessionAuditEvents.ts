@@ -47,7 +47,7 @@ export function auditEntryToSessionEvent(
       label: entry.tool_name ?? "unknown",
       detail:
         phase === "blocked"
-          ? `BLOCKED — ${entry.block_reason ?? "Policy denied this operation"}`
+          ? `BLOCKED: ${entry.block_reason ?? "Policy denied this operation"}`
           : JSON.stringify(entry.tool_parameters ?? {}, null, 2),
       ts,
       durationMs: entry.duration_ms ?? undefined,

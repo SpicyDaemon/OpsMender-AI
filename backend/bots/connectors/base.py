@@ -20,7 +20,7 @@ class FieldSpec:
 
     ``group`` decides which JSON blob on ``BotConnector`` the value is
     persisted under: ``"credentials"`` is the encrypted secret bag,
-    ``"config"`` is the non-secret JSON. ``kind`` is a UI hint —
+    ``"config"`` is the non-secret JSON. ``kind`` is a UI hint -
     ``secret`` renders as a password input with show/hide, ``select``
     requires ``options``, ``textarea`` is a multi-line text input.
     """

@@ -7,9 +7,9 @@ Provides:
 - FastAPI dependencies: ``get_current_user``, ``require_role``
 
 Configuration is driven by environment variables:
-- ``OPSMENDER_JWT_SECRET``  — signing key (required in production)
-- ``OPSMENDER_JWT_ALGORITHM`` — default ``HS256``
-- ``OPSMENDER_JWT_EXPIRE_MINUTES`` — default ``60``
+- ``OPSMENDER_JWT_SECRET`` - signing key (required in production)
+- ``OPSMENDER_JWT_ALGORITHM`` - default ``HS256``
+- ``OPSMENDER_JWT_EXPIRE_MINUTES`` - default ``60``
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _auth_config():
 
 
 # ---------------------------------------------------------------------------
-# Password hashing (bcrypt directly — passlib broken on Python 3.12+)
+# Password hashing (bcrypt directly - passlib broken on Python 3.12+)
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Dependency — returns the authenticated ``User`` or raises 401."""
+    """Dependency - returns the authenticated ``User`` or raises 401."""
     credentials_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
@@ -172,7 +172,7 @@ async def get_current_org(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> uuid.UUID:
-    """Dependency — returns the active organization ID for the request.
+    """Dependency - returns the active organization ID for the request.
 
     OpsMender now runs as a single-workspace instance. ``org_id`` remains in
     the schema as an internal boundary, but requests no longer switch orgs via

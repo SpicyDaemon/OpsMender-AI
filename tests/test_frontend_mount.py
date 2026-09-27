@@ -33,7 +33,7 @@ FRONTEND_OUT = PROJECT_ROOT / "frontend" / "out"
 
 pytestmark = pytest.mark.skipif(
     not (FRONTEND_OUT / "index.html").is_file(),
-    reason="frontend/out/ not built — run `npx next build` in frontend/ first",
+    reason="frontend/out/ not built; run `npx next build` in frontend/ first",
 )
 
 
@@ -137,7 +137,7 @@ class TestFrontendMount:
 
     async def test_rsc_payload_served_as_x_component(self, client: AsyncClient):
         """RSC navigation payloads (.txt) must be text/x-component, not
-        text/plain — otherwise the App Router client rejects them and every
+        text/plain - otherwise the App Router client rejects them and every
         in-app navigation becomes a full-page reload."""
         payloads = list(FRONTEND_OUT.rglob("*.txt"))
         if not payloads:

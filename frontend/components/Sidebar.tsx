@@ -43,7 +43,7 @@ type NavItem = {
   /**
    * When true, the active-state match requires `pathname === href`
    * (not `startsWith`). Use this for href values that are prefixes
-   * of other routes — e.g. `/dashboard` would otherwise light up on
+   * of other routes - e.g. `/dashboard` would otherwise light up on
    * every child page.
    */
   exact?: boolean;
@@ -69,7 +69,7 @@ export function navItemVisibleForRole(
 /**
  * Roles allowed to access a dashboard path, derived from the nav model so the
  * route guard and the sidebar stay in sync. Returns ``null`` when the path is
- * unrestricted (no matching gated nav item — e.g. self-service settings).
+ * unrestricted (no matching gated nav item - e.g. self-service settings).
  * Uses the most specific (longest) matching nav href.
  */
 export function requiredRolesForPath(pathname: string): string[] | null {
@@ -99,7 +99,7 @@ export function buildNavGroups(): NavGroup[] {
       ],
     },
     {
-      // Paging configuration is workspace setup — admin only.
+      // Paging configuration is workspace setup - admin only.
       id: "paging",
       label: "Paging & On-call",
       items: [
@@ -460,7 +460,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   })).filter((group) => group.items.length > 0);
 
   // When the sidebar is fully collapsed (icon-only), groups don't render
-  // their headers — we just stream the items as a flat icon list because
+  // their headers - we just stream the items as a flat icon list because
   // there's no room for the labels.
   const flatVisibleItems = visibleGroups.flatMap((g) => g.items);
 

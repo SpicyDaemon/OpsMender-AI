@@ -2,8 +2,8 @@ This guide covers the core configuration and integration points for administrato
 
 For authentication see two dedicated guides:
 
-- **[Auth Guide](auth-guide.md)** — default email + admin-invite flow used by ~95% of self-hosted installs.
-- **[Advanced Auth Guide](advanced-auth-guide.md)** — optional OIDC, SAML, and custom-domain login behavior for the single workspace.
+- **[Auth Guide](auth-guide.md)**: default email + admin-invite flow used by ~95% of self-hosted installs.
+- **[Advanced Auth Guide](advanced-auth-guide.md)**: optional OIDC, SAML, and custom-domain login behavior for the single workspace.
 
 For day-to-day user-lifecycle operations (invites, password resets, deactivation, soft delete, bootstrap admins, auth-method badges) see the [People Guide](people-guide.md).
 
@@ -14,7 +14,7 @@ OpsMender ships **simple by default, enterprise-ready underneath**.
 - **Default mode** (`OPSMENDER_ADVANCED_AUTH_ENABLED=false`): one workspace, email + admin invites, three roles (`admin` / `operator` / `viewer`), no org switcher in the TopBar. Full details in [Auth Guide](auth-guide.md).
 - **Advanced auth** (`OPSMENDER_ADVANCED_AUTH_ENABLED=true`, or an already-configured provider): OIDC / SAML forms surface in **Settings -> Workspace**; custom domains can show the right login buttons before authentication. Full details in [Advanced Auth Guide](advanced-auth-guide.md).
 
-Existing configured SSO/SAML providers keep working regardless of the flag — settings never silently disappear when the flag flips off (D-027 "settings never silently disappear" rule).
+Existing configured SSO/SAML providers keep working regardless of the flag: settings never silently disappear when the flag flips off (D-027 "settings never silently disappear" rule).
 
 ## 2. Runtime Configuration
 
@@ -66,7 +66,7 @@ Per Sprint 62 design, OpsMender stores only the **environment variable name** fo
 To add a model config:
 
 1. Click **New model config**.
-2. Select your provider — only the fields that provider needs are shown (e.g. OpenAI-compatible shows Base URL; Azure OpenAI shows both Base URL and API Version; Bedrock shows AWS Region + optional AWS Profile; Vertex AI shows GCP Project + GCP Location).
+2. Select your provider: only the fields that provider needs are shown (e.g. OpenAI-compatible shows Base URL; Azure OpenAI shows both Base URL and API Version; Bedrock shows AWS Region + optional AWS Profile; Vertex AI shows GCP Project + GCP Location).
 3. For Bedrock, enter the AWS Region first, then click **Refresh Catalog** if you want the live Bedrock model list for that region/profile.
 4. For Vertex AI, enter the GCP Project + Location first, then click **Refresh Catalog** if you want the live `google/...`, `anthropic/...`, and `meta/...` model suggestions for that project/location.
 5. Pick a model from the discovered catalog, or click **Type manual model ID** if discovery is unavailable or the model isn't reported (e.g. a proxy that doesn't implement `/v1/models`).

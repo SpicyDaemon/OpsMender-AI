@@ -17,18 +17,18 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 helm dependency build ./deploy/helm/opsmender
 
-# 2. Helm 4 no longer auto-extracts subchart .tgz archives — extract manually.
+# 2. Helm 4 no longer auto-extracts subchart .tgz archives: extract manually.
 #    (Skip this step on Helm 3; it expands the archive automatically.)
 ( cd ./deploy/helm/opsmender/charts && tar -xzf postgresql-*.tgz )
 
 # 3. Install. The chart generates a fresh OPSMENDER_JWT_SECRET on first
-#    install and preserves it across upgrades — no `openssl rand` needed.
+#    install and preserves it across upgrades: no `openssl rand` needed.
 helm install opsmender ./deploy/helm/opsmender \
   --namespace opsmender --create-namespace \
   --set secrets.ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ```
 
-> **Verified on Helm 4.2.0:** `helm template opsmender ./deploy/helm/opsmender` renders 13 Kubernetes manifests (ServiceAccount, Secret, ConfigMap, PVC, Service, Deployment for the app; plus Bitnami Postgres ServiceAccount/Secret/ConfigMap/Service/StatefulSet/Headless/Network policies — set `--set postgresql.enabled=false` for BYO Postgres deployments).
+> **Verified on Helm 4.2.0:** `helm template opsmender ./deploy/helm/opsmender` renders 13 Kubernetes manifests (ServiceAccount, Secret, ConfigMap, PVC, Service, Deployment for the app; plus Bitnami Postgres ServiceAccount/Secret/ConfigMap/Service/StatefulSet/Headless/Network policies, set `--set postgresql.enabled=false` for BYO Postgres deployments).
 
 Port-forward and open:
 

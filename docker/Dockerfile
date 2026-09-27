@@ -1,10 +1,10 @@
-# OpsMender AI — single container (frontend + backend)
+# OpsMender AI - single container (frontend + backend)
 #
 # Four stages:
-#   1. frontend-builder  — Node 24, produces /app/frontend/out (static export)
-#   2. node-runtime      — Node 24 slim, provides node/npm/npx for the runtime
-#   3. backend-builder   — Python 3.12, installs deps into /app/.venv via uv
-#   4. runtime           — slim Python image, copies venv + Node + static export + source
+#   1. frontend-builder - Node 24, produces /app/frontend/out (static export)
+#   2. node-runtime - Node 24 slim, provides node/npm/npx for the runtime
+#   3. backend-builder - Python 3.12, installs deps into /app/.venv via uv
+#   4. runtime - slim Python image, copies venv + Node + static export + source
 #
 # Result: one image, one port (8000), one process (uvicorn).
 # FastAPI serves /api/* (all existing routes) and falls through to the static
@@ -45,7 +45,7 @@ FROM python:3.12-slim AS backend-builder
 
 WORKDIR /app
 
-# Build deps for xmlsec / lxml (required by python3-saml). Build-time only —
+# Build deps for xmlsec / lxml (required by python3-saml). Build-time only -
 # the runtime stage installs the runtime libxmlsec1 / libxml2 packages.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -83,7 +83,7 @@ RUN apt-get update \
         libxmlsec1-openssl \
  && rm -rf /var/lib/apt/lists/*
 
-# Node.js — copied from the node-runtime stage so npx-based MCP servers
+# Node.js - copied from the node-runtime stage so npx-based MCP servers
 # (e.g. `npx -y @anthropic/mcp-server-k8s`) work without the user having
 # to install Node separately.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node

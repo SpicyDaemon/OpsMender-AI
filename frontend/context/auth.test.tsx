@@ -1,5 +1,5 @@
 /**
- * Auth context — v1 browser session behavior.
+ * Auth context - v1 browser session behavior.
  *
  * Covers the QA-facing contract that a stored token keeps the user logged in
  * across a reload-like initialization, that a successful login does NOT clear
@@ -57,7 +57,7 @@ function Probe() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // logout navigates via window.location.href — stub it so jsdom doesn't warn.
+  // logout navigates via window.location.href - stub it so jsdom doesn't warn.
   Object.defineProperty(window, "location", {
     value: { href: "" },
     writable: true,

@@ -23,7 +23,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 |---------|-----------------|
 | `/dashboard/incidents/detail` | Smaller heading on phones (`text-xl` vs. `text-3xl`). Header padding tightens (`px-4 py-4` vs. `px-6 py-6`). The sticky command strip keeps the top actions reachable during scroll, the incident timeline becomes one vertical feed instead of separate session cards, and the timeline header shortens the "New Session" label to "New" on small screens. |
 | Pending-approval card on `/dashboard/sessions/detail` | Approve / Reject buttons move from a right-hand column to a 2-column grid below the JSON action context on phones, so each button gets ~50% of the screen width and is comfortable to thumb-tap. |
-| Escalation chain step editor on `/dashboard/paging/escalation-chains` | The fixed `120px / 1fr / 120px / auto` 4-column grid collapses to a single column on phones — every field gets the full width. |
+| Escalation chain step editor on `/dashboard/paging/escalation-chains` | The fixed `120px / 1fr / 120px / auto` 4-column grid collapses to a single column on phones: every field gets the full width. |
 
 ---
 
@@ -31,9 +31,9 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 
 For mobile-first responders we recommend:
 
-1. **Enable Slack DM or Teams DM** in `Paging → Notifications`. Each surface ships push to your phone — `Push notifications` already work without any extra OpsMender wiring.
+1. **Enable Slack DM or Teams DM** in `Paging → Notifications`. Each surface ships push to your phone: `Push notifications` already work without any extra OpsMender wiring.
 2. **Set quiet hours with a P0 breakthrough**. Page yourself only at night for true sev-0 pages so phone fatigue doesn't burn you out.
-3. **Use the chat surface for ack / take / resolve**. The web UI is for the long-tail tasks — reading logs, approving a Tier-1 action that needs more context, marking the post-mortem owner.
+3. **Use the chat surface for ack / take / resolve**. The web UI is for the long-tail tasks: reading logs, approving a Tier-1 action that needs more context, marking the post-mortem owner.
 
 ---
 
@@ -47,7 +47,7 @@ Before relying on this in production, a real-device smoke test is the only way t
 - [ ] On the paging page, open the Escalation Chain step editor. Confirm Type / Target / Timeout each take the full screen width on a phone.
 - [ ] Tap **View in OpsMender** from a real Slack page card. Confirm the detail page loads with the `?from=slack` breadcrumb.
 
-If any of these fail, file an issue with a screenshot — most of the remaining mobile cleanup will be incremental tuning of Tailwind breakpoints.
+If any of these fail, file an issue with a screenshot: most of the remaining mobile cleanup will be incremental tuning of Tailwind breakpoints.
 
 ---
 
@@ -55,7 +55,7 @@ If any of these fail, file an issue with a screenshot — most of the remaining 
 
 These surfaces still target tablet+ and may show overflow on phones:
 
-- `/dashboard/config`, AI Agent setup pages (`/dashboard/models`, `/dashboard/mcp-servers`), and advanced setup aliases such as `/dashboard/ingest-tokens` — operator setup, not a runtime path.
+- `/dashboard/config`, AI Agent setup pages (`/dashboard/models`, `/dashboard/mcp-servers`), and advanced setup aliases such as `/dashboard/ingest-tokens`: operator setup, not a runtime path.
 - `/dashboard/organizations` (super-admin only).
 - `/dashboard/skills`, `/dashboard/scans` (authoring surfaces).
 - The full session-detail split view (event stream + co-pilot chat) is usable but cramped on phones. Use the incident-detail page's "Open in sidecar" surface on tablet+ for the rich view.
@@ -66,6 +66,6 @@ These will land iteratively. The Sprint 38 goal was the **respond-to-a-page** pa
 
 See also:
 
-- [Slack as your paging surface](slack-paging-surface.md) — push delivery + button actions in Slack.
-- [Teams as your paging surface](teams-paging-surface.md) — push delivery + adaptive cards in Teams.
-- [Notification Preferences](notification-preferences.md) — channels, per-priority routing, quiet hours.
+- [Slack as your paging surface](slack-paging-surface.md): push delivery + button actions in Slack.
+- [Teams as your paging surface](teams-paging-surface.md): push delivery + adaptive cards in Teams.
+- [Notification Preferences](notification-preferences.md): channels, per-priority routing, quiet hours.

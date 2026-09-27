@@ -119,7 +119,7 @@ function PeopleSurface() {
   const [invitesLoading, setInvitesLoading] = useState(true);
   // v1 is local-auth only by default. Surface SSO/SAML affordances (the auth
   // method column + filter) only when advanced auth is enabled or already
-  // configured — matching the D-027 rule used elsewhere.
+  // configured - matching the D-027 rule used elsewhere.
   const [advancedAuth, setAdvancedAuth] = useState(false);
   const [newUserOpen, setNewUserOpen] = useState(false);
   const [mintedInvite, setMintedInvite] = useState<{
@@ -211,8 +211,8 @@ function PeopleSurface() {
         const resp = await resendInvite(orgId, invite.id);
         toast.success(
           resp.email_sent
-            ? "Invite resent — new link also available below"
-            : "Invite reissued — copy the new link below",
+            ? "Invite resent. The new link is also below."
+            : "Invite reissued. Copy the new link below.",
         );
         onInviteCreated(resp, "resent");
       } catch (err) {
@@ -488,12 +488,12 @@ function PeopleTable({
 
 
 // ---------------------------------------------------------------------------
-// Create user modal (direct admin creation — no invite link required)
+// Create user modal (direct admin creation - no invite link required)
 // ---------------------------------------------------------------------------
 
 
 function randomTempPassword(): string {
-  // 16 url-safe chars — enough entropy for a temporary password the admin
+  // 16 url-safe chars - enough entropy for a temporary password the admin
   // hands off and the user rotates on first login.
   const bytes = new Uint8Array(12);
   (globalThis.crypto ?? window.crypto).getRandomValues(bytes);
@@ -609,7 +609,7 @@ function CreateUserForm({
       await navigator.clipboard.writeText(form.password);
       toast.success("Temporary password copied");
     } catch {
-      toast.error("Copy failed — select and copy manually.");
+      toast.error("Copy failed. Select the text and copy it manually.");
     }
   }, [form.password, toast]);
 
@@ -659,9 +659,9 @@ function CreateUserForm({
               setForm({ ...form, role: e.target.value as UserCreateRequest["role"] })
             }
           >
-            <option value="viewer">Viewer — read-only</option>
-            <option value="operator">Operator — can drive sessions</option>
-            <option value="admin">Admin — full access</option>
+            <option value="viewer">Viewer (read-only)</option>
+            <option value="operator">Operator (can drive sessions)</option>
+            <option value="admin">Admin (full access)</option>
           </Select>
         </div>
         <div>
@@ -685,7 +685,7 @@ function CreateUserForm({
             </Button>
           </div>
           <p className="mt-1 text-xs text-fg-muted">
-            Share this with the user — they can log in and change it later.
+            Share this with the user. They can log in and change it later.
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm text-fg-primary">
@@ -738,7 +738,7 @@ function InviteUserForm({
 
   const submit = useCallback(async () => {
     if (!orgId) {
-      setError("No active organization — refresh and try again.");
+      setError("No active organization. Refresh and try again.");
       return;
     }
     if (!form.email) {
@@ -751,8 +751,8 @@ function InviteUserForm({
       const resp = await createInvite(orgId, form);
       toast.success(
         resp.email_sent
-          ? "Invite sent — link also available below"
-          : "Invite created — copy the link below",
+          ? "Invite sent. The link is also below."
+          : "Invite created. Copy the link below.",
       );
       onCreated(resp);
     } catch (err) {
@@ -803,9 +803,9 @@ function InviteUserForm({
               })
             }
           >
-            <option value="viewer">Viewer — read-only</option>
-            <option value="operator">Operator — can drive sessions</option>
-            <option value="admin">Admin — full access</option>
+            <option value="viewer">Viewer (read-only)</option>
+            <option value="operator">Operator (can drive sessions)</option>
+            <option value="admin">Admin (full access)</option>
           </Select>
         </div>
         {error && <FormError message={error} />}
@@ -824,7 +824,7 @@ function InviteUserForm({
 
 
 // ---------------------------------------------------------------------------
-// Minted-invite modal — shown once after a successful create
+// Minted-invite modal - shown once after a successful create
 // ---------------------------------------------------------------------------
 
 
@@ -851,7 +851,7 @@ function MintedInviteModal({
       await navigator.clipboard.writeText(payload.url);
       toast.success("Invite link copied");
     } catch {
-      toast.error("Copy failed — select and copy manually.");
+      toast.error("Copy failed. Select the text and copy it manually.");
     }
   }, [payload, toast]);
 
@@ -868,8 +868,8 @@ function MintedInviteModal({
           {mode === "resent" ? "Share the new link with " : "Share this link with "}
           <span className="font-medium text-fg-primary">
             {payload.invite.email}
-          </span>{" "}
-          — it expires {fmtDate(payload.invite.expires_at)}.
+          </span>
+          . It expires {fmtDate(payload.invite.expires_at)}.
         </p>
 
         <div className="space-y-2 rounded-md border border-border-default bg-bg-elevated p-3">
@@ -896,7 +896,7 @@ function MintedInviteModal({
           </p>
         ) : (
           <p className="text-sm text-fg-muted">
-            SMTP is not configured — share the link via Slack, email, or whatever channel you prefer.
+            SMTP isn&apos;t configured, so share the link via Slack, email, or whatever channel you prefer.
           </p>
         )}
 

@@ -20,27 +20,27 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "OpsMender — OpsMender AI",
+    default: "OpsMender",
     template: "%s | OpsMender",
   },
   description:
-    "Open-source AI-powered incident response framework with tiered access controls. Connect AI agents to infrastructure via MCP servers.",
+    "Open-source incident response with tiered access controls for AI agents. Connect agents to your infrastructure through MCP servers.",
   icons: {
     icon: { url: "/OpsMender-Dark.png", type: "image/png", sizes: "605x588" },
     apple: { url: "/OpsMender-Dark.png", sizes: "180x180" },
   },
   openGraph: {
-    title: "OpsMender — OpsMender AI",
+    title: "OpsMender",
     description:
-      "Open-source AI-powered incident response framework with tiered access controls.",
+      "Open-source incident response with tiered access controls for AI agents.",
     type: "website",
-    images: [{ url: "/OpsMender-Dark.png", width: 605, height: 588, alt: "OpsMender — OpsMender AI" }],
+    images: [{ url: "/OpsMender-Dark.png", width: 605, height: 588, alt: "OpsMender logo" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "OpsMender — OpsMender AI",
+    title: "OpsMender",
     description:
-      "Open-source AI-powered incident response framework with tiered access controls.",
+      "Open-source incident response with tiered access controls for AI agents.",
     images: ["/OpsMender-Dark.png"],
   },
 };

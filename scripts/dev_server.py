@@ -1,5 +1,5 @@
 """
-Dev-mode backend launcher — no Postgres required.
+Dev-mode backend launcher - no Postgres required.
 
 Loads the shared env-based config, picks the same DB fallback chain
 as the app, creates all tables, seeds an admin user, then starts
@@ -19,7 +19,7 @@ from dataclasses import replace
 # Place project root on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Sprint 43 P0 #4 — opt into the development bypass so the production
+# Sprint 43 P0 #4 - opt into the development bypass so the production
 # default-secret guard does not refuse to start the local dev server.
 os.environ.setdefault("OPSMENDER_DEPLOYMENT_MODE", "development")
 
@@ -50,7 +50,7 @@ async def bootstrap():
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
     # Seed default organization, admin user, and the user→org link row.
-    # Idempotent — runs on every startup so older local DBs that pre-date the
+    # Idempotent - runs on every startup so older local DBs that pre-date the
     # multi-tenancy refactor get backfilled without a manual reset.
     async with factory() as session:
         # 1. Default org

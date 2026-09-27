@@ -1,4 +1,4 @@
-"""Per-user in-app notification center (v1.2 — the bell).
+"""Per-user in-app notification center (v1.2 - the bell).
 
 Every endpoint is scoped to the authenticated user within the current org, so
 a user only ever sees and mutates their own notifications. No role gate: any

@@ -2,9 +2,9 @@
 
 Three routes mirror the OIDC flow under ``/auth/saml/{slug}``:
 
-* ``GET  /auth/saml/{slug}/login``    — SP-initiated AuthnRequest redirect.
-* ``POST /auth/saml/{slug}/acs``      — Assertion Consumer Service.
-* ``GET  /auth/saml/{slug}/metadata`` — SP metadata XML (for IdP admins).
+* ``GET  /auth/saml/{slug}/login`` - SP-initiated AuthnRequest redirect.
+* ``POST /auth/saml/{slug}/acs`` - Assertion Consumer Service.
+* ``GET  /auth/saml/{slug}/metadata`` - SP metadata XML (for IdP admins).
 
 JIT user provisioning + allowed-email-domain enforcement reuses the same
 shape as the OIDC flow in :mod:`backend.api.routes.sso`.
@@ -150,7 +150,7 @@ async def saml_metadata(
 
 @router.get("/{slug}/login")
 async def saml_login(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
-    """SP-initiated SSO — redirect the browser to the IdP."""
+    """SP-initiated SSO - redirect the browser to the IdP."""
     sp = _sp_keypair_or_503()
     org, org_cfg, _row = await _resolve_active_saml(db, slug)
     try:

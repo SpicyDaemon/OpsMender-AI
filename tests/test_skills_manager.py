@@ -1,4 +1,4 @@
-"""Tests for Sprint 12 Feature 3 — skill manager.
+"""Tests for Sprint 12 Feature 3 - skill manager.
 
 Covers:
 - SkillRepo CRUD + mcp_server fallback chain
@@ -641,9 +641,9 @@ class TestMCPSkillStudio:
         body = resp.json()
         assert "content_md" in body and "name" in body
         md = body["content_md"]
-        assert "Tier 0 — Autonomous" in md
-        assert "Tier 1 — Approval Required" in md
-        assert "Tier 2 — Advisory Only" in md
+        assert "Tier 0: Autonomous" in md
+        assert "Tier 1: Approval Required" in md
+        assert "Tier 2: Advisory Only" in md
         assert "require_reversible: false" in md
         assert "allow_generic: true" in md
         assert "default_tier: T2" in md
@@ -669,7 +669,7 @@ class TestMCPSkillStudio:
         assert dl.status_code == 200
         assert dl.headers["content-type"].startswith("text/markdown")
         assert "attachment" in dl.headers.get("content-disposition", "")
-        assert "Tier 2 — Advisory Only" in dl.text
+        assert "Tier 2: Advisory Only" in dl.text
 
     async def test_assignment_round_trips_through_api(self, client, auth_headers):
         tmpl = (await client.get("/skills/template", headers=auth_headers)).json()
@@ -725,7 +725,7 @@ class TestSessionTierDefault:
 
 
 # ---------------------------------------------------------------------------
-# Phase F — MCP Skill Studio generator (suggest + generate)
+# Phase F - MCP Skill Studio generator (suggest + generate)
 # ---------------------------------------------------------------------------
 
 from contextlib import asynccontextmanager  # noqa: E402
@@ -1042,7 +1042,7 @@ class TestSkillStudioRoutes:
 
 
 # ---------------------------------------------------------------------------
-# Phase F follow-up — AI-assisted classification (Skill Studio "AI assist")
+# Phase F follow-up - AI-assisted classification (Skill Studio "AI assist")
 # ---------------------------------------------------------------------------
 
 import json as _json  # noqa: E402
@@ -1108,7 +1108,7 @@ class TestAiAssistParser:
         assert kubectl.needs_review is True
 
     def test_downgrade_vs_heuristic_is_flagged(self):
-        # Model marks delete_pod "safe" — less restrictive than the destructive
+        # Model marks delete_pod "safe" - less restrictive than the destructive
         # heuristic → needs_review.
         resp = self._resp(
             tools=[{"name": "delete_pod", "classification": "safe", "rationale": "x"}]
@@ -1228,7 +1228,7 @@ class TestAiSuggestRoute:
 
 
 # ---------------------------------------------------------------------------
-# v1.1 correctness fix — Skill Studio Tier 0 safety metadata (reversible +
+# v1.1 correctness fix - Skill Studio Tier 0 safety metadata (reversible +
 # compensating_inverse round-trip through generator → parser → enforcement).
 # ---------------------------------------------------------------------------
 

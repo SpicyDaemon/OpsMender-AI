@@ -229,8 +229,8 @@ def render_pdf(report: IncidentReport) -> bytes:
     summary = [
         ["Metric", "Value"],
         ["Incidents", report.metrics["total_incidents"]],
-        ["Median MTTA (seconds)", report.metrics["mtta_seconds"] or "—"],
-        ["Median MTTR (seconds)", report.metrics["mttr_seconds"] or "—"],
+        ["Median MTTA (seconds)", report.metrics["mtta_seconds"] or "No data"],
+        ["Median MTTR (seconds)", report.metrics["mttr_seconds"] or "No data"],
         ["SLO-breach incidents", report.metrics["slo_breach_incidents"]],
         ["Maintenance windows", report.metrics["maintenance_windows"]],
     ]
@@ -251,9 +251,9 @@ def render_pdf(report: IncidentReport) -> bytes:
         incident_rows.append(
             [
                 row["created_at"][:10],
-                row["priority"] or "—",
+                row["priority"] or "None",
                 row["status"],
-                row["service"] or "—",
+                row["service"] or "None",
                 Paragraph(row["title"], styles["BodyText"]),
             ]
         )

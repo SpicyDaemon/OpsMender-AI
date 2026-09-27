@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 58 (UX direction "Sprint B") Step 1 — Session workflow-state header.
+ * Sprint 58 (UX direction "Sprint B") Step 1 - Session workflow-state header.
  *
  * Surfaces the current LangGraph workflow stage in operator-friendly
  * language so the AI never feels like an opaque chat box. The eight
@@ -9,7 +9,7 @@
  * `backend/agent/graph.py` (`recall`, `observe`, `diagnose`, `plan`,
  * `tier_gate`, `execute`, `verify`, `summarize`, `remember`) plus the
  * session-level `awaiting_approval` status. `recall` and `remember` are
- * folded into Observing and Summarizing respectively — operators don't
+ * folded into Observing and Summarizing respectively - operators don't
  * need to see those as primary states. `tier_gate` is not a primary
  * state either; it shows as a brief sub-state badge when active.
  *
@@ -105,7 +105,7 @@ const NODE_TO_STATE: Record<string, WorkflowStateKey> = {
   observe: "observe",
   diagnose: "diagnose",
   plan: "plan",
-  // tier_gate is intentionally not in this map — it's a sub-state, not a
+  // tier_gate is intentionally not in this map - it's a sub-state, not a
   // primary stage. The host page already styles tier_gate events.
   execute: "execute",
   verify: "verify",
@@ -120,7 +120,7 @@ function nodeFromEvent(ev: { kind: string; label: string }): string | null {
   return ev.label.toLowerCase().replace(/\s+/g, "_");
 }
 
-/** Non-completed terminal statuses — the run ended without finishing. */
+/** Non-completed terminal statuses - the run ended without finishing. */
 function isFrozenTerminal(status: WorkflowStateInputs["sessionStatus"]): boolean {
   return (
     status === "failed" ||
@@ -163,7 +163,7 @@ export function deriveStates(
   } else if (inputs.sessionStatus === "awaiting_approval") {
     current = "awaiting_approval";
   } else {
-    // sessionStatus === "active" | "queued" — the most recent node is current.
+    // sessionStatus === "active" | "queued" - the most recent node is current.
     for (let i = inputs.events.length - 1; i >= 0; i--) {
       const node = nodeFromEvent(inputs.events[i]);
       const mapped = node ? NODE_TO_STATE[node] : null;
@@ -205,7 +205,7 @@ const TERMINAL_LABELS: Partial<Record<WorkflowStateInputs["sessionStatus"], stri
 /**
  * Header label for the workflow state. A live session shows its current
  * stage; a frozen terminal session shows a terminal word plus its summary
- * ("Cancelled — queue wait expired"); an active session with no events yet
+ * ("Cancelled - queue wait expired"); an active session with no events yet
  * shows "Initializing…".
  */
 export function workflowHeaderLabel(
@@ -217,7 +217,7 @@ export function workflowHeaderLabel(
   const terminal = TERMINAL_LABELS[status];
   if (terminal) {
     const s = (summary ?? "").trim();
-    return s ? `${terminal} — ${s}` : terminal;
+    return s ? `${terminal}: ${s}` : terminal;
   }
   return "Initializing…";
 }
@@ -231,7 +231,7 @@ interface Props {
   events: WorkflowStateInputs["events"];
   /** Optional Tier number for the small badge on the right. */
   tier?: number | null;
-  /** Session summary — used to enrich the terminal-state header label. */
+  /** Session summary - used to enrich the terminal-state header label. */
   summary?: string | null;
 }
 
@@ -270,7 +270,7 @@ export function SessionWorkflowState({ sessionStatus, events, tier, summary }: P
         )}
       </div>
 
-      {/* Pipeline strip — horizontal on lg+, wraps on smaller. */}
+      {/* Pipeline strip - horizontal on lg+, wraps on smaller. */}
       <ol
         className="flex flex-wrap items-center gap-2 sm:gap-3"
         aria-label="Workflow pipeline"

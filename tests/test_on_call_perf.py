@@ -1,14 +1,14 @@
-"""Sprint 40 step 2 — on_call_at performance pass.
+"""Sprint 40 step 2 - on_call_at performance pass.
 
 Goal: prove the deterministic on-call resolver stays comfortably fast at
 the scale the spec calls out (1k rosters × 50 members). The function is
-pure, so we don't need a DB — we just build 1000 in-memory snapshots and
+pure, so we don't need a DB - we just build 1000 in-memory snapshots and
 call ``on_call_at`` on each, walking a few different timestamps.
 
 Budget: 1000 calls × 4 timestamps = 4000 invocations should land well
 under 500 ms total on a modest dev machine. If this regresses, the most
 likely culprit is the per-call ``sorted(members)`` allocation or the
-``_parse_handoff`` reparse on every invocation — both addressed in this
+``_parse_handoff`` reparse on every invocation - both addressed in this
 module's accompanying micro-optimizations.
 """
 
@@ -66,7 +66,7 @@ class TestOnCallPerf:
 
         assert miss == 0, "every roster has 50 members, so no result should be None"
         # 4000 invocations should finish well under 500ms on CI hardware.
-        # If this trips, the function has regressed — investigate the hot
+        # If this trips, the function has regressed - investigate the hot
         # path (likely sorted/parse_handoff per call) before bumping the bound.
         assert elapsed < 0.5, (
             f"on_call_at slowed down: 4000 calls took {elapsed * 1000:.1f}ms "

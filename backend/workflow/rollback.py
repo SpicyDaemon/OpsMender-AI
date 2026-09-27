@@ -1,8 +1,8 @@
 """Tier 0 rollback engine (Sprint 17, rollback pillar).
 
 Given a session's recorded tool-call history, replay each tool's
-compensating inverse in reverse order.  Every attempt — success, skip
-(no inverse declared), or failure — is recorded via the existing audit
+compensating inverse in reverse order.  Every attempt - success, skip
+(no inverse declared), or failure - is recorded via the existing audit
 logger so the trail is preserved.
 
 Design notes
@@ -14,7 +14,7 @@ Design notes
 * **Reverse order is load-bearing.**  If a session cordoned a node then
   drained it, we need to uncordon *after* the drain is reversed, not
   before.
-* **Best effort.**  One failed inverse does not abort the rest — the
+* **Best effort.**  One failed inverse does not abort the rest - the
   remaining inverses still run.  The returned :class:`RollbackReport`
   tells the caller exactly what happened.
 * **Parametric inverses are a known limitation.**  We pass the original
@@ -150,7 +150,7 @@ async def replay_compensating_inverses(
         Used only for audit logging so the rollback trail links back to
         the owning session.
     tool_calls:
-        The session's ``tool_calls`` list — the same schema produced by
+        The session's ``tool_calls`` list - the same schema produced by
         the execute node (see :class:`backend.agent.state.ToolCallRecord`).
     skill_def:
         Source of truth for the ``compensating_inverse`` annotation.
@@ -158,7 +158,7 @@ async def replay_compensating_inverses(
         Awaitable that performs the MCP tool call.  The engine does not
         import the MCP client directly so tests can inject a mock.
     audit_logger:
-        Optional — a ``PgAuditLogger`` or JSONL ``AuditLogger``.  When
+        Optional - a ``PgAuditLogger`` or JSONL ``AuditLogger``.  When
         provided, each rollback attempt logs a ``tool_call_start`` /
         ``tool_call_end`` pair (or ``tool_call_blocked`` for skips).  The
         ``tool_parameters`` dict carries a reserved ``_rollback_of`` key
@@ -228,14 +228,14 @@ async def replay_compensating_inverses(
 
 
 # ---------------------------------------------------------------------------
-# Audit wiring helpers — accept sync or async loggers, shrug off failures
+# Audit wiring helpers - accept sync or async loggers, shrug off failures
 # ---------------------------------------------------------------------------
 
 
 async def _call_logger(logger: Any, method_name: str, **kwargs: Any) -> None:
     """Invoke ``logger.method_name(**kwargs)`` whether sync or async.
 
-    Best-effort — a broken audit logger must not abort a rollback.
+    Best-effort - a broken audit logger must not abort a rollback.
     """
     if logger is None:
         return

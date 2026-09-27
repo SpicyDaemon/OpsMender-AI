@@ -1,10 +1,10 @@
-# Auth Guide (default — single workspace, email + invite)
+# Auth Guide (default, single workspace, email + invite)
 
 This is the default OpsMender auth model: one workspace, email + password, admin-issued invites, three roles (admin / operator / viewer). It's what 95% of self-hosted installs run on, and it's what a fresh `docker run` lands you in.
 
-If you need **SSO (OIDC) or SAML**, those features are still in the product — they live in Settings for the single workspace so the default install stays simple. See [Advanced Auth Guide](advanced-auth-guide.md).
+If you need **SSO (OIDC) or SAML**, those features are still in the product. They live in Settings for the single workspace so the default install stays simple. See [Advanced Auth Guide](advanced-auth-guide.md).
 
-> **Companion guide:** [People Guide](people-guide.md) covers day-to-day People-page operations (invites, password resets, soft delete, etc.) in detail. This page is the conceptual auth model — who can sign in, how accounts are created, what changes when you opt in to advanced features.
+> **Companion guide:** [People Guide](people-guide.md) covers day-to-day People-page operations (invites, password resets, soft delete, etc.) in detail. This page is the conceptual auth model, who can sign in, how accounts are created, what changes when you opt in to advanced features.
 
 ---
 
@@ -13,8 +13,8 @@ If you need **SSO (OIDC) or SAML**, those features are still in the product — 
 1. **First admin** is created during install via two env vars (the "bootstrap admin" pattern). After this, public self-signup is closed.
 2. **All other users arrive via invite.** Admins open `/dashboard/people` and create an invite for each user, choosing the role at invite time.
 3. **Users accept invites** at a one-time URL, pick a password, and they're signed in.
-4. **Admins manage users** from the People page — change role, deactivate, reset password, soft-delete.
-5. **Roles gate behavior** — `admin` can do everything, `operator` can run incident response + change runtime state, `viewer` is read-only.
+4. **Admins manage users** from the People page: change role, deactivate, reset password, soft-delete.
+5. **Roles gate behavior**: `admin` can do everything, `operator` can run incident response + change runtime state, `viewer` is read-only.
 
 That's the entire default model. No tenant picker, no org switcher in the TopBar.
 
@@ -29,7 +29,7 @@ OPSMENDER_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD=replace-me-on-first-login
 ```
 
-After this row exists, public self-signup is closed — the only path to a new account is an admin invite.
+After this row exists, public self-signup is closed: the only path to a new account is an admin invite.
 
 If you skip the bootstrap env vars, the first user to register via `/register` becomes the admin (legacy escape hatch). Most production installs should set the env vars and never leave self-signup open.
 Public registration asks only for email + password; OpsMender derives a
@@ -130,7 +130,7 @@ Default-mode invite flow (full details in [People Guide §4](people-guide.md)):
 5. The recipient opens the URL, picks a username + password, and is signed into OpsMender as the role you chose.
 
 Invites are single-use and expire after **72 hours**. Lost or expired? Use the
-**resend** action on a pending row — it revokes the old token and mints a fresh
+**resend** action on a pending row. It revokes the old token and mints a fresh
 one.
 
 After sign-in, dashboard links use plain `/dashboard/...` paths. The instance
@@ -146,7 +146,7 @@ Admins reset other users' passwords from the per-user detail page:
 2. OpsMender mints a one-time reset URL. If SMTP is configured the user gets an email; if not, copy the URL and send it manually.
 3. The recipient opens the URL, picks a new password, and signs in.
 
-Users cannot self-trigger a password reset in v1 — it goes through an admin. This is the same "single break-glass channel" pattern as invites and matches the simple-by-default posture.
+Users cannot self-trigger a password reset in v1. It goes through an admin. This is the same "single break-glass channel" pattern as invites and matches the simple-by-default posture.
 
 ---
 
@@ -171,7 +171,7 @@ Also set this so links in emails point at the right host:
 OPSMENDER_PUBLIC_BASE_URL=https://opsmender.example.com
 ```
 
-The invite-created and reset-mint modals always tell you which delivery path happened: **Sent** / **Failed** / **Not configured**. SMTP failure is logged but never blocks the operation — the URL is always available.
+The invite-created and reset-mint modals always tell you which delivery path happened: **Sent** / **Failed** / **Not configured**. SMTP failure is logged but never blocks the operation: the URL is always available.
 
 ---
 
@@ -179,7 +179,7 @@ The invite-created and reset-mint modals always tell you which delivery path hap
 
 | Action | When to use | Reversible? |
 |--------|-------------|-------------|
-| **Deactivate** | User is on leave, has been suspended, or shouldn't be able to sign in right now. Their history stays clickable; they keep showing up in user pickers as inactive. | Yes — reactivate from the per-user page. |
+| **Deactivate** | User is on leave, has been suspended, or shouldn't be able to sign in right now. Their history stays clickable; they keep showing up in user pickers as inactive. | Yes: reactivate from the per-user page. |
 | **Soft delete** | User has left the org. Login is blocked, sensitive fields are scrubbed, but historical attribution (audit entries, incident assignments, etc.) is preserved. | No. |
 
 Soft delete has prerequisites that the People page walks you through (deactivated + zero roster memberships). The detail walkthrough is in [People Guide §6](people-guide.md).
@@ -210,7 +210,7 @@ Set up details and operator flow live in [Advanced Auth Guide](advanced-auth-gui
 
 ## Related guides
 
-- [People Guide](people-guide.md) — day-to-day People-page operations: invites, password resets, soft delete, troubleshooting matrix.
-- [Advanced Auth Guide](advanced-auth-guide.md) — SSO (OIDC), SAML, and custom-domain login behavior.
-- [Getting Started](getting-started.md) — first local boot and first login.
-- [Administrator Guide](admin-guide.md) — everything else: runtime config, MCP, integrations, models.
+- [People Guide](people-guide.md): day-to-day People-page operations: invites, password resets, soft delete, troubleshooting matrix.
+- [Advanced Auth Guide](advanced-auth-guide.md): SSO (OIDC), SAML, and custom-domain login behavior.
+- [Getting Started](getting-started.md): first local boot and first login.
+- [Administrator Guide](admin-guide.md): everything else: runtime config, MCP, integrations, models.

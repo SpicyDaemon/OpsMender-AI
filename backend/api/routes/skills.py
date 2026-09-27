@@ -76,7 +76,7 @@ async def _ai_complete(
     """Run a single completion against the org's default model.
 
     Raises ``HTTPException(503)`` when no model is configured or the provider
-    cannot be reached — the Skill Studio falls back to the heuristic path.
+    cannot be reached - the Skill Studio falls back to the heuristic path.
     Isolated so tests can monkeypatch the model call.
     """
     from backend.auditor._helpers import resolve_provider_kwargs
@@ -352,9 +352,9 @@ async def discover_skill_tools(
     user: User = Depends(require_role("admin")),
 ):
     """Connect to a saved MCP server, list its tools, and suggest a starting
-    classification for each (Skill Studio generator step 1–4).
+    classification for each (Skill Studio generator step 1-4).
 
-    Suggestions are heuristic and conservative — the operator reviews/overrides
+    Suggestions are heuristic and conservative - the operator reviews/overrides
     them, and the backend tier gate remains the execution authority.
     """
     if (body.mcp_server_id is None) == (body.integration_connector_id is None):
@@ -470,7 +470,7 @@ async def generate_skill(
     """Deterministically build a 3-tier MCP Skill Markdown from the operator's
     reviewed tool classifications (Skill Studio generator step 7).
 
-    The result is not persisted — the caller loads it into the editor to review,
+    The result is not persisted - the caller loads it into the editor to review,
     edit, then save (Unassigned by default) or download. The generated YAML
     front-matter is validated by the same parser the tier gate uses.
     """

@@ -1,7 +1,7 @@
 """Default analyzer shipped with the Auditor (Sprint 32 + simplification pass).
 
 A single ``EnvironmentScanAnalyzer`` is the only analyzer registered out of
-the box. It is intentionally platform-agnostic — it ships zero knowledge of
+the box. It is intentionally platform-agnostic - it ships zero knowledge of
 Kubernetes, ECS, Cloud Run, systemd, or any specific runtime. The operator
 brings the MCP server; the analyzer asks the model to look at what that
 server exposes and summarize anything concerning into structured findings.
@@ -11,11 +11,11 @@ platform-specific behavior is encoded by the operator either:
 
 * in the MCP server itself (which tools it exposes), or
 * in the SKILL.md attached to that server (which operations are safe to
-  observe, and — optionally — what *focus areas* the LLM should weight
+  observe, and - optionally - what *focus areas* the LLM should weight
   the scan toward).
 
 Operator-authored example adapters for kube-score / istioctl-analyze live
-in :mod:`backend.auditor.example_analyzers` for reference only — they are
+in :mod:`backend.auditor.example_analyzers` for reference only - they are
 not registered by default.
 """
 
@@ -70,7 +70,7 @@ class EnvironmentScanAnalyzer(Analyzer):
 
     PROMPT = (
         "You are an SRE auditor inspecting a deployed environment. You only "
-        "see what the configured MCP server exposes — the framework knows "
+        "see what the configured MCP server exposes. The framework knows "
         "nothing about the underlying platform (Kubernetes / ECS / Azure / "
         "GCP / OCI / monolithic VMs / etc.).\n\n"
         "{focus_block}\n\n"
@@ -163,6 +163,6 @@ async def _load_focus_areas(
         return []
     try:
         definition = parse_skill(skill.content_md, fmt="md")
-    except Exception:  # noqa: BLE001 — parsing must never break the scan
+    except Exception:  # noqa: BLE001 - parsing must never break the scan
         return []
     return list(getattr(definition, "focus_areas", []) or [])

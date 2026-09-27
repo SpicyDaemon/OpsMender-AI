@@ -52,7 +52,7 @@ export default function TargetDetailPage() {
 type Uptime = SLATargetUptimeResponse | null;
 
 function formatLatency(value: number | null | undefined): string {
-  if (value == null) return "—";
+  if (value == null) return "No data";
   return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
 }
 
@@ -104,7 +104,7 @@ function TargetDetailContent() {
   const load = useCallback(async () => {
     setLoading(true);
     // Resolve the target first. If it 404s (bad/stale id) we bail immediately
-    // and render the Target-Not-Found state — firing the uptime/SLO/response
+    // and render the Target-Not-Found state - firing the uptime/SLO/response
     // requests for a nonexistent id just floods the console with 404s.
     let targetData: SLATargetResponse;
     try {
@@ -149,7 +149,7 @@ function TargetDetailContent() {
   useEffect(() => { load(); }, [load]);
 
   // The history/response-time strips follow their window selectors, but must
-  // only fetch once the target is confirmed to exist — otherwise a bad id
+  // only fetch once the target is confirmed to exist - otherwise a bad id
   // triggers extra 404s alongside the Target-Not-Found state.
   useEffect(() => {
     if (!id || !target) return;
@@ -355,7 +355,7 @@ function TargetDetailContent() {
           <div className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Last Check</p>
             <p className="mt-2 text-2xl font-semibold text-fg-primary">
-              {target?.last_check_at ? formatTime(target.last_check_at) : "—"}
+              {target?.last_check_at ? formatTime(target.last_check_at) : "Never"}
             </p>
             <p className="mt-3 border-t border-border-subtle pt-3 text-xs text-fg-secondary">
               {target?.last_check_at ? formatDate(target.last_check_at) : "No checks recorded yet"}

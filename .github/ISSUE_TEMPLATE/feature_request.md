@@ -12,7 +12,7 @@ assignees: []
 
 ## Proposed solution
 
-<!-- How would you like it to work? Be concrete — API shape, UI flow, CLI command, etc. -->
+<!-- How would you like it to work? Be concrete: API shape, UI flow, CLI command, etc. -->
 
 ## Alternatives considered
 
@@ -28,7 +28,7 @@ Before filing, please confirm this isn't already ruled out by one of OpsMender's
 
 - [ ] I am not asking for the agent to bypass the tier gate.
 - [ ] I am not asking for a provider-specific native integration for infrastructure access (use MCP).
-- [ ] I am not asking for multi-tenancy (Phase 4 — deferred).
+- [ ] I am not asking for multi-tenancy (Phase 4, deferred).
 
 ## Anything else?
 

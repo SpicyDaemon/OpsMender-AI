@@ -77,7 +77,7 @@ def _at(day: int, hh: int, mm: int, tz="UTC", month=9, year=2026) -> datetime:
     return datetime(year, month, day, hh, mm, tzinfo=ZoneInfo(tz))
 
 
-# ── R01–R04: the shift boundary is the handoff time ─────────────────────────
+# ── R01-R04: the shift boundary is the handoff time ─────────────────────────
 
 
 def test_r01_round_the_clock_roster_switches_at_the_handoff_not_midnight():
@@ -138,7 +138,7 @@ def test_r04_edges_are_deterministic():
     assert on_call_at(_ctx("09:00", "09:00", members=(A, C)), _at(22, 12, 0)) == C
 
 
-# ── R04–R06 with the database: overrides and the shared loader ──────────────
+# ── R04-R06 with the database: overrides and the shared loader ──────────────
 
 
 @dataclass

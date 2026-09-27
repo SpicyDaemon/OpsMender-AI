@@ -108,7 +108,7 @@ async def _make_service_incident(factory, *, team_name="Platform", slug="platfor
 
 
 # ---------------------------------------------------------------------------
-# Message content (unit) — authenticated link, no public action URL
+# Message content (unit) - authenticated link, no public action URL
 # ---------------------------------------------------------------------------
 
 
@@ -395,7 +395,7 @@ class TestIncidentEventFanOut:
     async def test_update_fallback_posts_followup_message(self, factory, monkeypatch):
         """When the provider cannot edit (edit window closed, message gone),
         the notifier posts a fresh follow-up message instead of dropping the
-        update — and records a second receipt."""
+        update - and records a second receipt."""
 
         class FallbackAdapter:
             platform = "slack"

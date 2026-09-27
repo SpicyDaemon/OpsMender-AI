@@ -1,4 +1,4 @@
-"""Add audit_runs and audit_findings (Sprint 32 — Auditor v1).
+"""Add audit_runs and audit_findings (Sprint 32 - Auditor v1).
 
 Revision ID: d1e2f3a4b5c6
 Revises: c0f3a4b5d6e7

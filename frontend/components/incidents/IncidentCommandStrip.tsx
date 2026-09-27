@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint A Step 1 — Incident Command Strip.
+ * Sprint A Step 1 - Incident Command Strip.
  *
  * Sticky action bar at the top of the incident detail page. Surfaces
  * the lifecycle actions the operator needs at-a-glance: Acknowledge,
@@ -17,7 +17,7 @@
  * | resolved     | Create postmortem                                    |
  *
  * Approve / Reject + Escalate land in Sprint A step 2 (right-rail
- * context) and Sprint B (governed AI) — they need state the detail
+ * context) and Sprint B (governed AI) - they need state the detail
  * page doesn't currently surface (pending approvals + chain state).
  */
 

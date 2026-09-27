@@ -1,4 +1,4 @@
-"""Wave 2 Phase 3 — Jenkins, CircleCI, and Azure Pipelines tests."""
+"""Wave 2 Phase 3 - Jenkins, CircleCI, and Azure Pipelines tests."""
 
 from __future__ import annotations
 

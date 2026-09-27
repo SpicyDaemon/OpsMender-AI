@@ -1,4 +1,4 @@
-# OpsMender — Product Showcase Site
+# OpsMender: Product Showcase Site
 
 Static marketing/showcase site built with [Astro](https://astro.build) + [Tailwind CSS](https://tailwindcss.com).
 Deployed to GitHub Pages from the `main` branch.
@@ -37,7 +37,7 @@ The live site will be available at:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SITE_BASE` | `/` | Base path — set to repo name for project Pages |
+| `SITE_BASE` | `/` | Base path: set to repo name for project Pages |
 | `SITE_URL` | `https://example.com` | Canonical origin for OG/meta tags |
 
 ## Screenshot placeholders

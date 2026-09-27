@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((u) => setUser(u))
       // Don't clear the token here. A genuine 401 is already handled inside
       // `request()` (it clears the token and redirects to /login). This catch
-      // only fires for non-auth failures — a transient network error or a
+      // only fires for non-auth failures - a transient network error or a
       // getMe aborted because we're mid-redirect. Clearing the token in those
       // cases logged the user out spuriously; leaving it lets the page
       // re-hydrate.

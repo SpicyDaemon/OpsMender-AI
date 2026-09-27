@@ -5,7 +5,7 @@ import { config } from "../lib/config.mjs";
 
 export default {
   id: "auth",
-  title: "Authentication — login",
+  title: "Authentication: login",
   async run(h) {
     await h.step("login page renders", async () => {
       await h.goto("/login");

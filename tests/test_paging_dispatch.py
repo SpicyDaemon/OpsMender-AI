@@ -136,7 +136,7 @@ class TestQuietHours:
         )
 
     def test_block_inside_window(self):
-        # 22:00–06:00 UTC, P2 incident at 23:00 UTC — blocked.
+        # 22:00-06:00 UTC, P2 incident at 23:00 UTC - blocked.
         at = datetime(2026, 5, 15, 23, 0, tzinfo=timezone.utc)
         quiet = {
             "weekday_start": "22:00",
@@ -521,7 +521,7 @@ class TestDispatchPipeline:
             await db.commit()
         assert [a.status for a in second.attempts] == ["skipped"]
         assert second.attempts[0].error == "dedup"
-        assert len(slack.calls) == 1  # still one — no second send
+        assert len(slack.calls) == 1  # still one - no second send
 
     async def test_dedup_window_can_be_customized(self, session_factory):
         # Set org dedup window to 1 minute; backdate the first send to 2 minutes ago.
@@ -628,7 +628,7 @@ class TestDispatchPipeline:
             )
             await db.commit()
 
-        # factory returns None for slack_dm — org hasn't wired up Slack.
+        # factory returns None for slack_dm - org hasn't wired up Slack.
         async with session_factory() as db:
             inc_loaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
             user_loaded = await UserRepo.get_by_id(db, user.id)

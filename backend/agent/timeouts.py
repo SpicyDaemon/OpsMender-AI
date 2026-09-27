@@ -4,14 +4,14 @@ Sprint 17 (time-limits pillar).
 
 Two gates:
 
-* **Per-node wall clock** — each node is wrapped with ``asyncio.wait_for``.
+* **Per-node wall clock** - each node is wrapped with ``asyncio.wait_for``.
   If the node exceeds ``max_node_seconds`` the wrapper returns a
   structured timeout verdict (partial state update:
   ``status="timed_out"``, ``error=...``).  The graph still advances
-  linearly — downstream nodes are free to short-circuit on the state
-  flag — but the offending node cannot stall the whole session on its
+  linearly - downstream nodes are free to short-circuit on the state
+  flag - but the offending node cannot stall the whole session on its
   own.
-* **Session wall clock** — the caller wraps the entire ``graph.ainvoke``
+* **Session wall clock** - the caller wraps the entire ``graph.ainvoke``
   in ``ainvoke_with_session_timeout``.  On timeout the helper returns a
   best-effort state dict carrying ``status="timed_out"``.
 
@@ -60,13 +60,13 @@ def wrap_node_with_timeout(
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
     """Return an async node wrapper enforcing a per-node time limit.
 
-    The returned callable is always async — LangGraph handles sync and
+    The returned callable is always async - LangGraph handles sync and
     async nodes transparently, so upgrading the signature to async is
     safe.  The wrapped function may be sync or async.
 
     Sync functions are offloaded to the default executor so the timeout
     is observed at the event-loop level.  The underlying thread is not
-    forcibly terminated on timeout — Python offers no portable way — but
+    forcibly terminated on timeout - Python offers no portable way - but
     the timeout state update still propagates and the graph advances.
     """
 

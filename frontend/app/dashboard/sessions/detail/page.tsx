@@ -76,7 +76,7 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Terminal statuses — the session has ended and nothing is live. The header
+ * Terminal statuses - the session has ended and nothing is live. The header
  * must not show a "Live" pill, a running countdown, an "Initializing…"
  * workflow state, or a "Waiting for events…" stream for any of these.
  */
@@ -123,7 +123,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
       );
       continue;
     }
-    // List item — render the `*`/`-` marker as a real bullet glyph so raw
+    // List item - render the `*`/`-` marker as a real bullet glyph so raw
     // markdown list stars never show in the bubble.
     const listMatch = lines[i].match(/^(\s*)[*-]\s+(.*)$/);
     if (listMatch) {
@@ -147,7 +147,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
   return result;
 }
 
-// Drop orphan emphasis markers that survive tokenization — malformed LLM
+// Drop orphan emphasis markers that survive tokenization - malformed LLM
 // markdown (e.g. "**Severity:* Medium", where the bold was opened with `**`
 // but closed with a single `*`) otherwise leaks literal `*`/`_` into the
 // bubble. Matched, well-formed spans never reach this because they're
@@ -242,7 +242,7 @@ type EventKind = SessionEventKind;
 type LogEvent = SessionLogEvent;
 
 function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
-  // Chat messages are handled separately — skip from the event log.
+  // Chat messages are handled separately - skip from the event log.
   if (msg.type === "chat_message_user" || msg.type === "chat_message_assistant") {
     return null;
   }
@@ -268,7 +268,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
         label: `${msg.data.tool_name ?? "unknown"}`,
         detail:
           msg.data.permitted === false
-            ? `BLOCKED — ${msg.data.block_reason ?? ""}`
+            ? `BLOCKED: ${msg.data.block_reason ?? ""}`
             : JSON.stringify(msg.data.parameters ?? {}, null, 2),
         ts,
         durationMs: typeof msg.data.duration_ms === "number" ? msg.data.duration_ms : undefined,
@@ -438,7 +438,7 @@ function SessionPageContent() {
   const [interceptError, setInterceptError] = useState("");
   const [redirectDrafts, setRedirectDrafts] = useState<Record<string, string>>({});
   // Sprint 58 Step 3: loaded once for ToolCallCard's best-effort
-  // tool-name → MCP-server-name lookup. A miss just renders "—".
+  // tool-name → MCP-server-name lookup. A miss just renders " - ".
   const [mcpServers, setMcpServers] = useState<MCPServerResponse[]>([]);
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [modelSwitching, setModelSwitching] = useState(false);
@@ -480,7 +480,7 @@ function SessionPageContent() {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
   }, []);
 
-  // Initial load — session + incident + chat history. MCP servers fetched
+  // Initial load - session + incident + chat history. MCP servers fetched
   // alongside for ToolCallCard's best-effort name lookup; failures don't
   // block the page.
   useEffect(() => {
@@ -520,7 +520,7 @@ function SessionPageContent() {
             const inc = await getIncident(s.incident_id);
             if (!cancelled) setIncident(inc);
           } catch {
-            // ignore — incident may have been deleted
+            // ignore - incident may have been deleted
           }
         }
         const [history, auditHistory] = await Promise.all([
@@ -768,7 +768,7 @@ function SessionPageContent() {
   const inputPlaceholder = useMemo(() => {
     if (!canChat) return "Chat is read-only for viewers.";
     if (session && isTerminalStatus(session.status)) {
-      return "This session has ended — chat is read-only.";
+      return "This session has ended. Chat is read-only.";
     }
     return "Add context or ask anything…";
   }, [canChat, session]);
@@ -806,7 +806,7 @@ function SessionPageContent() {
 
   const isSyntheticTest = incident?.external_source === "opsmender-test";
 
-  // Rollback replays compensating inverses from audit metadata — only
+  // Rollback replays compensating inverses from audit metadata - only
   // meaningful for a tier-0 session that actually reached execution. A
   // still-queued session, or one cancelled out of the queue, never ran any
   // remediation, so there is nothing to roll back.
@@ -956,7 +956,7 @@ function SessionPageContent() {
               <p className="text-xs text-fg-secondary">
                 {session.status === "queued"
                   ? "Cancel this queued session before it starts."
-                  : "Intercept this running session — stop the AI, or override into a less-autonomous tier and take control."}
+                  : "Intercept this running session: stop the AI, or switch to a less autonomous tier and take control."}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -1132,7 +1132,7 @@ function SessionPageContent() {
 
       {/* Split view: event stream + co-pilot chat. On mobile the two panels
           stack as full-width blocks with their own bounded height (below), in
-          normal page flow — the grid only fills remaining height at lg+, where
+          normal page flow - the grid only fills remaining height at lg+, where
           the panels scroll internally instead of the page. */}
       <div className="grid min-h-[32rem] grid-cols-1 gap-4 lg:min-h-[36rem] lg:grid-cols-[3fr_2fr]">
         {/* Event stream */}
@@ -1494,7 +1494,7 @@ function RollbackModal({
 }
 
 // ---------------------------------------------------------------------------
-// ChatBubble — with markdown rendering, code blocks, copy buttons
+// ChatBubble - with markdown rendering, code blocks, copy buttons
 // ---------------------------------------------------------------------------
 
 function ChatBubble({ message }: { message: SessionMessageResponse }) {

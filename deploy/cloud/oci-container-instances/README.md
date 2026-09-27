@@ -1,8 +1,8 @@
-# OpsMender on Oracle Cloud Infrastructure — Container Instances
+# OpsMender on Oracle Cloud Infrastructure: Container Instances
 
-Reference Terraform recipe for deploying OpsMender as an OCI Container Instance with a public IP (or, optionally, fronted by an operator-provisioned Network Load Balancer). **Sprint 41 step 4** — closes the multi-cloud deployment recipes round (AWS ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layered on top of `ghcr.io/spicydaemon/opsmender-ai`.
+Reference Terraform recipe for deploying OpsMender as an OCI Container Instance with a public IP (or, optionally, fronted by an operator-provisioned Network Load Balancer). **Sprint 41 step 4**: closes the multi-cloud deployment recipes round (AWS ECS, Azure Container Apps, GCP Cloud Run, OCI Container Instances) layered on top of `ghcr.io/spicydaemon/opsmender-ai`.
 
-Per locked decision **D-023**, the OpsMender framework ships zero platform-specific knowledge. This recipe is operator-facing — it sets up the surrounding OCI resources (Container Instance, NSG, log group) that run the canonical Docker image.
+Per locked decision **D-023**, the OpsMender framework ships zero platform-specific knowledge. This recipe is operator-facing. It sets up the surrounding OCI resources (Container Instance, NSG, log group) that run the canonical Docker image.
 
 ## What this recipe creates
 
@@ -16,7 +16,7 @@ Per locked decision **D-023**, the OpsMender framework ships zero platform-speci
 
 ## Secrets caveat
 
-> **Secrets land in Terraform state.** This recipe fetches each Vault secret's value at apply time via `data "oci_secrets_secretbundle"` and injects it as a plain environment variable on the Container Instance. That value is persisted in Terraform state. Always use an encrypted remote backend (OCI Object Storage with KMS encryption, or Terraform Cloud) for production — never commit state files, and never run `terraform apply` against a stateless local backend with real secrets.
+> **Secrets land in Terraform state.** This recipe fetches each Vault secret's value at apply time via `data "oci_secrets_secretbundle"` and injects it as a plain environment variable on the Container Instance. That value is persisted in Terraform state. Always use an encrypted remote backend (OCI Object Storage with KMS encryption, or Terraform Cloud) for production, never commit state files, and never run `terraform apply` against a stateless local backend with real secrets.
 >
 > A more secure alternative would be to mount Instance Principals on the Container Instance and pull from Vault at startup, but that requires a custom container entrypoint that OpsMender doesn't ship today. Filed as a future tightening if operators ask for it.
 
@@ -26,8 +26,8 @@ Per locked decision **D-023**, the OpsMender framework ships zero platform-speci
 - **OCI CLI** authenticated against the target tenancy. `oci setup config` produces `~/.oci/config`; Terraform's OCI provider reads it automatically.
 - An existing **compartment**, **VCN**, and **subnet**. For a public-IP instance the subnet must be public (have an Internet Gateway in its route table). For a private instance, a NAT gateway is required so the container can pull from GHCR and reach the LLM provider.
 - An existing **OCI Vault** with three secrets:
-  - `opsmender-jwt-secret` — `openssl rand -hex 32`.
-  - `opsmender-database-url` — `postgresql+asyncpg://user:pass@host:5432/opsmender`.
+  - `opsmender-jwt-secret`: `openssl rand -hex 32`.
+  - `opsmender-database-url`: `postgresql+asyncpg://user:pass@host:5432/opsmender`.
   - At least one provider key (e.g. `opsmender-anthropic-key`).
 - A reachable **Postgres 16+** instance (OCI Database for PostgreSQL or self-managed).
 - An **availability domain** name in the chosen region. List with:
@@ -84,7 +84,7 @@ URL=$(terraform output -raw dashboard_url)
 curl -sS "$URL/health/ready"
 
 # Wire container stdout to the OCI Logging log group this recipe created.
-# (One-time, post-apply — could be folded into the recipe but kept out
+# (One-time, post-apply: could be folded into the recipe but kept out
 # to keep the baseline small.)
 LOG_GROUP_ID=$(terraform output -raw log_group_id)
 oci logging log create \
@@ -106,10 +106,10 @@ For TLS, layer an OCI Load Balancer (Layer 7) in front of the NLB, or terminate 
 ### Rolling a new image tag
 
 ```bash
-# Option A — change container_image in terraform.tfvars and re-apply.
+# Option A: change container_image in terraform.tfvars and re-apply.
 terraform apply -auto-approve
 
-# Option B — recreate the container in-place (faster).
+# Option B: recreate the container in-place (faster).
 oci container-instances container-instance restart \
   --container-instance-id $(terraform output -raw container_instance_id)
 ```
@@ -120,7 +120,7 @@ OCI Container Instances accept image pull credentials via `image_pull_secrets`, 
 
 ### Scaling out
 
-OCI Container Instances run as single instances — there is no native autoscaling. The production pattern is:
+OCI Container Instances run as single instances. There is no native autoscaling. The production pattern is:
 
 1. Deploy N instances by running this Terraform module N times (one workspace per instance), or wrap the module call in `for_each` over a list of names.
 2. Front them with an OCI Network Load Balancer.
@@ -132,7 +132,7 @@ OCI Container Instances run as single instances — there is no native autoscali
 terraform destroy
 ```
 
-Terraform removes the Container Instance, the NSG, and the log group. It does **not** delete your VCN, subnet, Vault, Vault secrets, or Postgres database — those were inputs, not module-managed resources.
+Terraform removes the Container Instance, the NSG, and the log group. It does **not** delete your VCN, subnet, Vault, Vault secrets, or Postgres database. Those were inputs, not module-managed resources.
 
 ## Architecture summary
 
@@ -166,8 +166,8 @@ Terraform removes the Container Instance, the NSG, and the log group. It does **
 
 ## Related
 
-- [AWS ECS recipe](../aws-ecs/) — Fargate via Terraform.
-- [Azure Container Apps recipe](../azure-containerapps/) — Bicep template.
-- [GCP Cloud Run recipe](../gcp-cloud-run/) — `service.yaml`.
-- [Helm chart](../../helm/opsmender/) — any flavor of Kubernetes including OCI's OKE.
-- [TASKS.md — Sprint 41](../../../docs/TASKS.md) — the broader cloud-recipes plan.
+- [AWS ECS recipe](../aws-ecs/): Fargate via Terraform.
+- [Azure Container Apps recipe](../azure-containerapps/): Bicep template.
+- [GCP Cloud Run recipe](../gcp-cloud-run/): `service.yaml`.
+- [Helm chart](../../helm/opsmender/): any flavor of Kubernetes including OCI's OKE.
+- [TASKS.md: Sprint 41](../../../docs/TASKS.md): the broader cloud-recipes plan.

@@ -20,7 +20,7 @@ interface SLOModalProps {
 const PRESET_VALUES = SLO_WINDOW_OPTIONS.map((o) => o.value);
 
 /**
- * v1 SLO editor — name, target %, window, enabled. Burn-rate alerting and
+ * v1 SLO editor - name, target %, window, enabled. Burn-rate alerting and
  * error-budget math are intentionally not exposed here (too SRE-heavy for v1);
  * the backend fields remain and are simply left unset. SLO breaches show as a
  * warning on the Reliability dashboard and never create incidents in v1.
@@ -83,7 +83,7 @@ export function SLOModal({ open, onClose, onSaved, targetId, initialData }: SLOM
         name: form.name.trim(),
         objective_pct: objective,
         window_seconds: windowSeconds,
-        // v1: no burn-rate alerting — breaches are warning-only, never paging.
+        // v1: no burn-rate alerting - breaches are warning-only, never paging.
         burn_alert_threshold: null,
         is_active: form.is_active,
       };

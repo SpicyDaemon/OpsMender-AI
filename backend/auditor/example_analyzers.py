@@ -1,4 +1,4 @@
-"""Example operator-authored analyzers — NOT registered by default.
+"""Example operator-authored analyzers - NOT registered by default.
 
 These classes are kept as documentation of how an operator can write a
 domain-specific analyzer that wraps a known MCP tool with deterministic
@@ -27,7 +27,7 @@ from backend.auditor.base import Analyzer, AnalyzerContext, FindingDraft
 
 
 # ---------------------------------------------------------------------------
-# kube-score (example — Kubernetes-specific)
+# kube-score (example - Kubernetes-specific)
 # ---------------------------------------------------------------------------
 
 
@@ -36,7 +36,7 @@ class KubeScoreAnalyzer(Analyzer):
 
     Expected MCP tool conventions: a tool that scores a manifest set and
     returns a JSON array where each element has ``object_meta`` and
-    ``checks``. The parser is intentionally tolerant — any shape that maps
+    ``checks``. The parser is intentionally tolerant - any shape that maps
     to a list of dicts with ``check_name`` + ``grade`` works.
     """
 
@@ -45,7 +45,7 @@ class KubeScoreAnalyzer(Analyzer):
     description = (
         "Example Kubernetes-specific analyzer. Scores manifests via "
         "kube-score and surfaces grade < 10 checks. Not registered by "
-        "default — operator must opt in."
+        "default; the operator must opt in."
     )
 
     GRADE_TO_SEVERITY = {
@@ -123,22 +123,22 @@ class KubeScoreAnalyzer(Analyzer):
 
 
 # ---------------------------------------------------------------------------
-# istioctl analyze (example — Istio-specific)
+# istioctl analyze (example - Istio-specific)
 # ---------------------------------------------------------------------------
 
 
 class IstioctlAnalyzeAnalyzer(Analyzer):
     """Example: wrap ``istioctl analyze -n <ns> -o json``.
 
-    Not registered by default — operator must opt in.
+    Not registered by default - operator must opt in.
     """
 
     key = "istioctl-analyze"
     label = "istioctl analyze"
     description = (
         "Example Istio-specific analyzer. Runs istioctl analyze against a "
-        "namespace and reports each diagnostic. Not registered by default — "
-        "operator must opt in."
+        "namespace and reports each diagnostic. Not registered by default; "
+        "the operator must opt in."
     )
 
     LEVEL_TO_SEVERITY = {

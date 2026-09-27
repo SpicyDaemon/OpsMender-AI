@@ -1,4 +1,4 @@
-"""v1 safety hardening — generic-tool guardrail, deny-list precedence, approval
+"""v1 safety hardening - generic-tool guardrail, deny-list precedence, approval
 routing, and conservative defaults at the backend tier gate.
 
 These lock in the guarantee that the AI cannot execute beyond the selected tier
@@ -153,7 +153,7 @@ operations:
 def test_empty_skill_denies_write_actions_at_every_tier():
     sd = _skill()  # no operations at all
     for tier in (0, 1, 2):
-        # Unknown (unclassified) write-like action is denied — never silently run.
+        # Unknown (unclassified) write-like action is denied - never silently run.
         assert check("delete_pod", tier, sd).permitted is False
 
 
@@ -170,7 +170,7 @@ def test_destructive_blocked_at_tier_2():
 
 
 # ---------------------------------------------------------------------------
-# Auditor (Environment Scans) — read-only execution gate (Part 1 bypass fix)
+# Auditor (Environment Scans) - read-only execution gate (Part 1 bypass fix)
 # ---------------------------------------------------------------------------
 
 
@@ -264,7 +264,7 @@ operations:
 
 def test_malformed_yaml_fails_closed():
     # Invalid YAML front-matter raises rather than silently producing a
-    # permissive skill — the session runner therefore fails closed (no exec).
+    # permissive skill - the session runner therefore fails closed (no exec).
     bad = """---
 version: 1
 operations: [ this is : not valid yaml :::
@@ -340,7 +340,7 @@ operations:
     async with factory() as db:
         # The server-specific skill wins: under the global skill restart_service
         # would be permitted (caution @ Tier 1); under the resolved skill it is
-        # deny-listed and therefore blocked — proving server-specific precedence.
+        # deny-listed and therefore blocked - proving server-specific precedence.
         effective = await load_skill_for_mcp_server(db, _ORG, srv.id)
         assert effective.is_denied("restart_service") is True
         assert check("restart_service", 1, effective).permitted is False

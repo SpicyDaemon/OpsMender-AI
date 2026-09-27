@@ -1,5 +1,5 @@
 /**
- * Roster coverage-override picker — team scoping + copy.
+ * Roster coverage-override picker - team scoping + copy.
  *
  * v1 follow-up: overrides must be limited to the same eligible Admin/Operator
  * members of the roster's team as rotation members. The picker reuses

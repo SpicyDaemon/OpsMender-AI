@@ -233,14 +233,14 @@ admin-only**.
 Each day cell shows the **full coverage picture**: every escalation chain of
 the selected team as a caption with its **Level 1 / 2 / 3 chips**. Each chip
 shows the level, the on-call person (color-coded, consistent across days), and
-that level's **shift window in the roster's own time zone** — for example
-`L1 · on-call · 09:00–17:00 EDT`. Days under a maintenance window show a
+that level's **shift window in the roster's own time zone**, for example
+`L1 · on-call · 09:00-17:00 EDT`. Days under a maintenance window show a
 maintenance marker.
 
 Use the **Show times in** dropdown (left of the month navigation) to re-express
-every shift in a time zone of your choosing — rosters store their own zone
-(usually UTC) and the calendar converts on the fly (a `09:00–17:00 UTC` shift
-reads `04:00–12:00 CDT` when viewed in US Central), with a ⁺¹/⁻¹ marker when a
+every shift in a time zone of your choosing: rosters store their own zone
+(usually UTC) and the calendar converts on the fly (a `09:00-17:00 UTC` shift
+reads `04:00-12:00 CDT` when viewed in US Central), with a ⁺¹/⁻¹ marker when a
 converted time crosses midnight. This only changes what you see, not the
 schedule. Every time-zone dropdown in the app also shows the zone's current UTC
 offset, e.g. `America/Chicago (-05:00)`.
@@ -252,7 +252,7 @@ Interactions (admin):
   current person; pick who **covers** instead and, optionally, a **Through**
   date to cover a whole span in one action (the "cover a teammate who is out for the week" flow). This writes a roster override for the chosen day(s). Levels
   that point directly at a user (not a roster) are shown but not reassignable
-  here — edit the escalation chain instead.
+  here: edit the escalation chain instead.
 - **Click a day background** (not a chip) to open the day detail: every
   chain's levels with the resolved person, shift window, and status, plus a
   **Replace** shortcut per roster-backed level and an inline maintenance

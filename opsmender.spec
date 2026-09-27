@@ -29,7 +29,7 @@ datas = [
     ("backend/db/migrations", "backend/db/migrations"),
     ("examples/SKILL.md", "examples"),
 ]
-# `skills/` is optional — only present if an operator has dropped built-in
+# `skills/` is optional - only present if an operator has dropped built-in
 # skill definitions into it before building.
 if os.path.isdir("skills"):
     datas.append(("skills", "skills"))

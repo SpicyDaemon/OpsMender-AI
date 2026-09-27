@@ -1,4 +1,4 @@
-"""Tests for ``backend.mcp.oauth`` — the OAuth 2.1 + PKCE client for
+"""Tests for ``backend.mcp.oauth`` - the OAuth 2.1 + PKCE client for
 HTTP-transport MCP servers (Sprint 42 step 3).
 
 Every network interaction is mocked via ``httpx.MockTransport``. The
@@ -7,17 +7,17 @@ client without touching the production default.
 
 Coverage map:
 
-  * PKCE generator             — 1 test
-  * State JWT                  — 3 tests
-  * WWW-Authenticate parsing   — 2 tests
-  * PRM discovery              — 4 tests
-  * Authz server metadata      — 4 tests
-  * Dynamic Client Registration — 2 tests
-  * Authorize URL              — 2 tests
-  * RFC 9207 issuer validation — 3 tests
-  * Code exchange              — 3 tests
-  * Refresh                    — 4 tests
-  * Canonical resource URI     — 2 tests
+  * PKCE generator - 1 test
+  * State JWT - 3 tests
+  * WWW-Authenticate parsing - 2 tests
+  * PRM discovery - 4 tests
+  * Authz server metadata - 4 tests
+  * Dynamic Client Registration - 2 tests
+  * Authorize URL - 2 tests
+  * RFC 9207 issuer validation - 3 tests
+  * Code exchange - 3 tests
+  * Refresh - 4 tests
+  * Canonical resource URI - 2 tests
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class TestPKCE:
     def test_verifier_in_spec_range_and_challenge_is_s256(self):
         pair = generate_pkce_pair()
 
-        # RFC 7636 §4.1 — verifier length 43-128, URL-safe alphabet.
+        # RFC 7636 §4.1 - verifier length 43-128, URL-safe alphabet.
         assert 43 <= len(pair.code_verifier) <= 128
         allowed = set(
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
@@ -360,7 +360,7 @@ class TestAuthzServerMetadata:
             "issuer": "https://auth.example.com",
             "authorization_endpoint": "https://auth.example.com/authorize",
             "token_endpoint": "https://auth.example.com/token",
-            # `S256` deliberately absent — spec §6.1.4 says REFUSE.
+            # `S256` deliberately absent - spec §6.1.4 says REFUSE.
             "code_challenge_methods_supported": ["plain"],
         }
 
@@ -463,7 +463,7 @@ class TestAuthorizeURL:
         assert params["state"] == "state-token-jwt"
         assert params["code_challenge"] == "challenge-value"
         assert params["code_challenge_method"] == "S256"
-        # RFC 8707 — resource MUST be included.
+        # RFC 8707 - resource MUST be included.
         assert params["resource"] == "https://mcp.example.com/mcp"
 
     def test_scopes_joined_with_spaces(self):
@@ -616,7 +616,7 @@ class TestRefresh:
         assert result.refresh_token == "rt-new"
 
     async def test_success_without_refresh_token_returns_none(self):
-        """OAuth 2.1 §4.3.1 — AS may omit refresh_token; caller keeps prior."""
+        """OAuth 2.1 §4.3.1 - AS may omit refresh_token; caller keeps prior."""
 
         def handler(req: httpx.Request) -> httpx.Response:
             return httpx.Response(

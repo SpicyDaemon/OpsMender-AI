@@ -344,7 +344,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     # -- Security response headers -------------------------------------------
     # Conservative browser hardening for every response (API + served
     # frontend). Deliberately no CSP/HSTS here: CSP needs tuning against the
-    # Next.js bundle, and HSTS is only meaningful behind TLS — both belong to
+    # Next.js bundle, and HSTS is only meaningful behind TLS - both belong to
     # the operator's reverse proxy.
     @app.middleware("http")
     async def _security_headers(request, call_next):  # type: ignore[no-untyped-def]
@@ -480,7 +480,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         content, status_code = await readiness_status(app)
         return JSONResponse(content=content, status_code=status_code)
 
-    # -- Frontend (static export) — MUST be registered last so API routes win
+    # - Frontend (static export) - MUST be registered last so API routes win
     if deployment.mode == "monolith" or deployment.service_role == "api":
         from backend.api.static import mount_frontend
 

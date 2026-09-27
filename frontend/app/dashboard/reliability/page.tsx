@@ -264,7 +264,7 @@ export default function ReliabilityPage() {
                   >
                     Paging maintenance windows
                   </Link>
-                  {" "}— also suppresses paging.
+                  , so it also suppresses paging.
                 </p>
               </div>
               <Button

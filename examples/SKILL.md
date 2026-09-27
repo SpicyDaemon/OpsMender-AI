@@ -47,13 +47,13 @@ operations:
     tiers: *read_tiers
 
   # --- Caution (non-destructive writes) ---
-  # `reversible: true` is the Tier 0 safety floor — only reversible ops run
+  # `reversible: true` is the Tier 0 safety floor, only reversible ops run
   # autonomously at Tier 0.  `compensating_inverse` names the tool the
   # rollback engine invokes to undo this one (same parameters).
   - tool: scale_deployment
     classification: caution
     reversible: true
-    notes: "Changes replica count — reversible but impacts capacity (inverse is parametric, not auto-rolled-back)"
+    notes: "Changes replica count: reversible but impacts capacity (inverse is parametric, not auto-rolled-back)"
     tiers: *approval_only_tiers
   - tool: cordon_node
     classification: caution
@@ -69,11 +69,11 @@ operations:
     tiers: *reversible_write_tiers
   - tool: rollout_restart
     classification: caution
-    notes: "Restarts pods in a rolling fashion — no direct inverse"
+    notes: "Restarts pods in a rolling fashion: no direct inverse"
     tiers: *approval_only_tiers
   - tool: apply_configmap
     classification: caution
-    notes: "Updates config — may affect running workloads"
+    notes: "Updates config: may affect running workloads"
     tiers: *approval_only_tiers
   - tool: annotate_*
     classification: caution
@@ -85,7 +85,7 @@ operations:
   # --- Destructive ---
   - tool: delete_pod
     classification: destructive
-    notes: "Terminates a pod — will be recreated by controller if managed"
+    notes: "Terminates a pod: will be recreated by controller if managed"
     tiers: *approval_only_tiers
   - tool: delete_deployment
     classification: destructive
@@ -108,7 +108,7 @@ operations:
     notes: "Arbitrary command execution inside a container"
 ---
 
-# Kubernetes Production — Skill Definition
+# Kubernetes Production: Skill Definition
 
 This file defines explicit per-operation policies for a Kubernetes production
 environment. The backend tier gate applies the active tier to each matching
@@ -127,11 +127,11 @@ operation before execution.
 OpsMender uses a **3-tier AI Autonomy model** (Tier 2 is the default). The
 explicit policies above combine with the selected tier at the backend tier gate:
 
-- **Tier 2 — Advisory Only** *(default)* — analysis and recommendations only;
+- **Tier 2: Advisory Only** *(default)*: analysis and recommendations only;
   operation policies use advisory or blocked modes, so remediation does not run.
-- **Tier 1 — Approval Required** — read-only operations run autonomously;
+- **Tier 1: Approval Required**: read-only operations run autonomously;
   writes require operator approval; deny-listed/unknown operations are denied.
-- **Tier 0 — Autonomous** *(non-prod/sandbox only — hard time limits)* — may
+- **Tier 0: Autonomous** *(non-prod/sandbox only, hard time limits)*: may
   execute autonomously within skill policy and the Tier 0 reversible-only floor;
   deny-listed/unknown/generic actions are still blocked.
 
@@ -142,7 +142,7 @@ explicit policies above combine with the selected tier at the backend tier gate:
 Copy this file and modify it for your environment. Add or remove tools to
 match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
 
-## Tier 0 — Autonomous
+## Tier 0: Autonomous
 
 ### Custom Instructions
 
@@ -150,7 +150,7 @@ match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
 - Prefer the smallest reversible action that addresses the confirmed cause.
 - Verify recovery after every write and stop if health degrades.
 
-## Tier 1 — Approval Required
+## Tier 1: Approval Required
 
 ### Custom Instructions
 
@@ -158,7 +158,7 @@ match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
 - State the exact target, expected impact, and rollback before asking approval.
 - Treat ambiguous operator guidance as a request to clarify, not authorization.
 
-## Tier 2 — Advisory Only
+## Tier 2: Advisory Only
 
 ### Custom Instructions
 
@@ -168,7 +168,7 @@ match the MCP server you're using. Wildcard patterns (`*`, `?`) are supported.
 
 ## Related examples
 
-- [`SKILL.app-incident.md`](SKILL.app-incident.md) — application-layer
+- [`SKILL.app-incident.md`](SKILL.app-incident.md): application-layer
   incident response: diagnose with logs/metrics/traces, file Jira
   tickets, and propose code fixes as GitHub PRs / GitLab MRs (never
   direct merges).

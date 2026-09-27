@@ -30,7 +30,7 @@ class PgAuditLogger:
     db:
         An async SQLAlchemy session.  The caller is responsible for
         calling ``await db.commit()`` at the appropriate transaction
-        boundary — this logger only flushes.
+        boundary - this logger only flushes.
     """
 
     def __init__(self, db: AsyncSession, org_id: uuid.UUID) -> None:

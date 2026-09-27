@@ -77,7 +77,7 @@ async def auto_import(
                 raw = path.read_text(encoding="utf-8")
                 conversion = convert_legacy_skill_content(raw)
                 _ = loads(conversion.content)
-            except Exception as exc:  # noqa: BLE001 — surface to caller
+            except Exception as exc:  # noqa: BLE001 - surface to caller
                 logger.warning("skills.auto_import: skip %s (%s)", path, exc)
                 result.failed.append((str(path), str(exc)))
                 continue

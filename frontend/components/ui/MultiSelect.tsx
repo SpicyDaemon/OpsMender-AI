@@ -17,7 +17,7 @@ export interface MultiSelectOption {
  * above a searchable checkbox list.
  *
  * When `ordered` is set, the selected array preserves selection order and
- * each chip gains move up / move down controls — used for ordered preference
+ * each chip gains move up / move down controls - used for ordered preference
  * lists (allowed MCP servers) and ordered rotations (roster members).
  */
 export function MultiSelect({

@@ -24,7 +24,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </a>
         <LiveEventsProvider>
           <div className="relative flex h-screen overflow-hidden bg-bg-base">
-            {/* Ambient brand backdrop — mirrors the login (AuthShell) gradient:
+            {/* Ambient brand backdrop - mirrors the login (AuthShell) gradient:
                 a blue glow at top and a warm glow at bottom-right. The sidebar
                 and top bar are opaque, so it reads through the main canvas. */}
             <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.12),transparent_28%)]" />

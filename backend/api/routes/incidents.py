@@ -1,8 +1,8 @@
 """Incident endpoints.
 
-POST /incidents        — create a new incident
-GET  /incidents        — list incidents (filterable, paginated)
-GET  /incidents/{id}   — get single incident with sessions
+POST /incidents - create a new incident
+GET  /incidents - list incidents (filterable, paginated)
+GET  /incidents/{id} - get single incident with sessions
 """
 
 from __future__ import annotations
@@ -166,11 +166,11 @@ async def _notify_channels(
     Must be called *after* the incident change is committed so the background
     delivery (which opens its own DB session) sees the new state.
 
-    We first check — on the already-committed request session — whether any
+    We first check - on the already-committed request session - whether any
     enabled channel even wants notifications. Only then do we spawn the
     fire-and-forget delivery task. This keeps the hot path cheap and, crucially,
     avoids opening a second concurrent session when there is nothing to deliver.
-    Never raises into the request path — channel delivery is non-critical.
+    Never raises into the request path - channel delivery is non-critical.
     """
     try:
         connectors = await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
@@ -258,7 +258,7 @@ def _assignment_body(assigned_by: str, actor_label: str | None) -> str | None:
 
 def _user_display(user) -> tuple[str | None, str | None]:
     """(display_name, email) for a user, or (None, None) when the user is
-    missing or soft-deleted — the frontend then renders 'Deleted user <id>'."""
+    missing or soft-deleted - the frontend then renders 'Deleted user <id>'."""
     if user is None or getattr(user, "deleted_at", None) is not None:
         return None, None
     full = f"{user.first_name or ''} {user.last_name or ''}".strip()
@@ -274,7 +274,7 @@ def _resolve_ai_session(sessions) -> tuple[bool, str | None]:
 
     ``sessions`` is the incident's sessions newest-first. An in-progress session
     (`active` / `awaiting_approval`) wins; otherwise the most recent session's
-    status is reported. Returns ``(ai_session_active, ai_session_status)`` —
+    status is reported. Returns ``(ai_session_active, ai_session_status)`` -
     ``(False, None)`` when the incident has never had a session.
     """
     if not sessions:
@@ -296,7 +296,7 @@ def _resolve_responder_from(
     """Resolve responder/assignment state from already-fetched rows.
 
     Acknowledged (active assignment) wins; otherwise the latest escalation page
-    is the current target — ``awaiting`` at the first level, ``escalated`` after.
+    is the current target - ``awaiting`` at the first level, ``escalated`` after.
     ``pages`` must be ordered oldest-first (latest page last).
     """
     latest = pages[-1] if pages else None
@@ -491,9 +491,9 @@ async def create_incident(
 
 
 _TIER_LABEL = {
-    0: "T0 — Autonomous",
-    1: "T1 — Approval Required",
-    2: "T2 — Advisory Only",
+    0: "Tier 0 (Autonomous)",
+    1: "Tier 1 (Approval Required)",
+    2: "Tier 2 (Advisory Only)",
 }
 _AUTO_START_REASON_PRETTY = {
     "no_enabled_model": "no enabled model configured",
@@ -507,7 +507,7 @@ def _auto_start_message(
 
     ``context`` is ``"created"`` (incident creation) or ``"acknowledged"``.
     """
-    label = _TIER_LABEL.get(tier, f"T{tier}")
+    label = _TIER_LABEL.get(tier, f"Tier {tier}")
     verb = "created" if context == "created" else "acknowledged"
     if status == "queued":
         return f"Incident {verb}. AI session auto-started under {label}."
@@ -532,7 +532,7 @@ async def _resolve_auto_start_on_create(
 
     Returns ``(status, reason, tier)``: ``queued`` (T0 session scheduled),
     ``skipped`` (T1/T2 → waits for ACK), or ``failed`` (e.g. no model). Never
-    raises — incident creation must succeed regardless of the auto-start outcome.
+    raises - incident creation must succeed regardless of the auto-start outcome.
     """
     try:
         policy = await load_auto_start_policy(
@@ -585,7 +585,7 @@ async def _resolve_auto_start_on_create(
             )
         _log.info("incident.auto_start: queued incident=%s tier=%s", incident.id, tier)
         return ("queued", None, tier)
-    except Exception:  # noqa: BLE001 — never block incident creation
+    except Exception:  # noqa: BLE001 - never block incident creation
         _log.exception("incident.auto_start: resolve_failed incident=%s", incident.id)
         return ("failed", "auto_start_error", 2)
 
@@ -605,7 +605,7 @@ async def _resolve_auto_start_on_ack(
             db, org_id, request.app.state.config, incident=incident
         )
         return ("skipped", "auto_start_deferred_to_manual_start", policy.session_tier)
-    except Exception:  # noqa: BLE001 — never block acknowledgment
+    except Exception:  # noqa: BLE001 - never block acknowledgment
         _log.exception(
             "incident.ack_auto_start: resolve_failed incident=%s", incident.id
         )
@@ -707,7 +707,7 @@ async def list_incidents(
     severity = [s for s in (severity or []) if s in allowed_severities] or None
     source = [s for s in (source or []) if s in allowed_sources] or None
 
-    # Merged (combined) incidents are folded away — hidden from the default list
+    # Merged (combined) incidents are folded away - hidden from the default list
     # unless the caller explicitly asks for status=merged.
     exclude_statuses = ["merged"]
 
@@ -953,7 +953,7 @@ async def get_incident_postmortem(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(get_current_user),
 ):
-    """Sprint 61 Step 4 — return the operator-authored postmortem.
+    """Sprint 61 Step 4 - return the operator-authored postmortem.
 
     Returns the stored markdown (``null`` when none), the last edit
     timestamp, and a canonical section template so a fresh editor can
@@ -984,7 +984,7 @@ async def draft_incident_postmortem(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    """v2 Phase 7 — assemble a postmortem draft from the persisted session
+    """v2 Phase 7 - assemble a postmortem draft from the persisted session
     progress (observations / diagnosis / plan) + lifecycle. Deterministic and
     LLM-free; returns the draft for the editor to prefill (does not save)."""
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
@@ -1013,7 +1013,7 @@ async def put_incident_postmortem(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    """Sprint 61 Step 4 — write the postmortem markdown.
+    """Sprint 61 Step 4 - write the postmortem markdown.
 
     Passing an empty or whitespace-only string clears the postmortem.
     Operator role required; viewers can read but not edit.
@@ -1545,7 +1545,7 @@ async def get_incident_timeline(
             )
         )
 
-    # v1.2 — operator comments on the timeline.
+    # v1.2 - operator comments on the timeline.
     comments = await IncidentCommentRepo.list_for_incident(db, org_id, incident_id)
     for comment in comments:
         author_label = None
@@ -1568,7 +1568,7 @@ async def get_incident_timeline(
             )
         )
 
-    # v1.2 — notification history: every incident channel post is a timeline event.
+    # v1.2 - notification history: every incident channel post is a timeline event.
     receipts = await IncidentNotificationReceiptRepo.list_for_incident(
         db, org_id, incident_id
     )
@@ -1815,8 +1815,8 @@ async def bulk_incident_action(
     matches the per-incident `/assign` route.
 
     Acknowledge = acknowledge for the current user (or ``user_id``) through
-    the same path as ``/incidents/{id}/ack`` — paging stops and the owner
-    holds the lock — AND advance status from ``open`` → ``in_progress``.
+    the same path as ``/incidents/{id}/ack`` - paging stops and the owner
+    holds the lock - AND advance status from ``open`` → ``in_progress``.
     Reassign changes the owner the same way. Resolved and merged incidents
     are reported as failures.
 
@@ -1922,7 +1922,7 @@ async def bulk_incident_action(
             ],
         )
 
-    # Role gate for reassign — match the per-incident /assign route.
+    # Role gate for reassign - match the per-incident /assign route.
     if action == "reassign":
         if body.user_id is None:
             raise HTTPException(
@@ -2062,7 +2062,7 @@ async def combine_incidents(
     Each secondary's comments move to the primary (so the combined timeline
     reads as one), its in-progress AI sessions are stopped, its active
     assignment is released, and it transitions to a terminal ``merged`` state
-    pointing at the primary — it is never deleted, so the audit trail and
+    pointing at the primary - it is never deleted, so the audit trail and
     external fingerprint survive. A system note is added to the primary for each
     folded incident, plus the operator's optional ``note``.
     """
@@ -2277,7 +2277,7 @@ async def ack_incident(
         new_status="acknowledged",
     )
     # T1/T2 sessions start on acknowledgment (T0 already started at creation).
-    # Duplicate acks are safe — an active session short-circuits this.
+    # Duplicate acks are safe - an active session short-circuits this.
     auto_status, reason, tier = await _resolve_auto_start_on_ack(
         request, db, org_id, incident
     )

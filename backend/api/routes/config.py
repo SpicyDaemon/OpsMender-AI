@@ -1,7 +1,7 @@
 """Config endpoints.
 
-GET  /config — read current system configuration
-PUT  /config — update config (admin only)
+GET  /config - read current system configuration
+PUT  /config - update config (admin only)
 """
 
 from __future__ import annotations
@@ -213,7 +213,7 @@ async def update_config(
         )
         # Apply live to the running process. Log level is process-global, so a
         # save here takes effect immediately without a restart (single-workspace
-        # assumption — see backend/logging_config.py).
+        # assumption - see backend/logging_config.py).
         configure_logging(body.logging_level)
     if body.alert_grouping_default is not None:
         await OrganizationRepo.update(

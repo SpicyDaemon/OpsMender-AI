@@ -3,9 +3,9 @@
 Two endpoints share the same signing-secret verification, external identity
 mapping, active-user checks, and Admin/Operator RBAC:
 
-* ``POST /bot/slack/interactions`` — receives ``block_actions`` button
+* ``POST /bot/slack/interactions`` - receives ``block_actions`` button
   clicks from the page card built by :mod:`backend.paging.slack_cards`.
-* ``POST /bot/slack/commands`` — receives slash command invocations
+* ``POST /bot/slack/commands`` - receives slash command invocations
   (``/ack``, ``/take``, ``/release``, ``/resolve``, ``/snooze``,
   ``/status``).
 
@@ -156,7 +156,7 @@ async def slack_interactions(
 
     if payload.get("type") != "block_actions":
         # Other interactivity types (view_submission, shortcut, …) aren't
-        # used by paging cards yet — ack so Slack stops retrying.
+        # used by paging cards yet - ack so Slack stops retrying.
         return JSONResponse({"ok": True})
 
     actions = payload.get("actions") or []
@@ -165,7 +165,7 @@ async def slack_interactions(
     action_id = actions[0].get("action_id")
 
     if action_id == ACTION_VIEW:
-        # Pure link button — Slack already opened the URL.
+        # Pure link button - Slack already opened the URL.
         return JSONResponse({"ok": True})
 
     incident_id = parse_incident_id_from_action(payload)
@@ -352,7 +352,7 @@ async def _handle_slash(
         lines = ["*Active pages:*"]
         for state, inc in rows:
             lines.append(
-                f"• {_fmt_incident(inc)} — status `{state.status}`, "
+                f"• {_fmt_incident(inc)}: status `{state.status}`, "
                 f"step {state.current_step_index}"
             )
         return _ephemeral("\n".join(lines))
@@ -427,7 +427,7 @@ async def _handle_slash(
         seconds = _parse_duration(remainder)
         if seconds is None:
             return _ephemeral(
-                "Usage: `/snooze <duration>` — examples: `30m`, `2h`, `1d` (up to `7d`)."
+                "Usage: `/snooze <duration>`, for example `30m`, `2h` or `1d` (up to `7d`)."
             )
         now = datetime.now(timezone.utc)
         # One snooze path for Slack and (later) the web: an unacknowledged
@@ -460,16 +460,16 @@ async def _handle_slash(
         owner = f"<@{active.assigned_to}>" if active else "unassigned"
         if state is None:
             return _ephemeral(
-                f"*{incident.title}* — status `{incident.status}`, no chain. "
+                f"*{incident.title}*: status `{incident.status}`, no chain. "
                 f"Owner: {owner}."
             )
         due = (
             state.next_step_due_at.strftime("%Y-%m-%d %H:%M UTC")
             if state.next_step_due_at
-            else "—"
+            else "not scheduled"
         )
         return _ephemeral(
-            f"*{incident.title}* — chain `{state.status}`, "
+            f"*{incident.title}*: chain `{state.status}`, "
             f"step {state.current_step_index}, next due {due}. "
             f"Owner: {owner}."
         )

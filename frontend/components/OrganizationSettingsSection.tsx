@@ -262,7 +262,7 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
     }
   }
 
-  // Turn SSO off entirely — remove whichever config exists.
+  // Turn SSO off entirely - remove whichever config exists.
   async function disableSso() {
     if (!confirm("Disable single sign-on? Members will sign in with email + password.")) {
       setSsoMethod(sso ? "oidc" : saml ? "saml" : "disabled");
@@ -390,7 +390,7 @@ export function OrganizationSettingsSection({ orgId }: { orgId: string }) {
         </div>
         <p className="mb-3 text-xs text-fg-muted">
           Optional. Let members sign in through your identity provider. Pick one
-          method — OpenID Connect (OIDC) or SAML.
+          method: OpenID Connect (OIDC) or SAML.
         </p>
 
         <div className="max-w-xs">

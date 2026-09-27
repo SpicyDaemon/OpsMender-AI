@@ -25,7 +25,7 @@ from backend.api.schemas import (
     BotUserLinkListResponse,
     BotUserLinkResponse,
 )
-import backend.bots  # noqa: F401 — triggers adapter registry side-effect
+import backend.bots  # noqa: F401 - triggers adapter registry side-effect
 from backend.bots.capabilities import (
     display_name,
     get_platform_capabilities,
@@ -377,7 +377,7 @@ def _connector_config_checks(
             )
         )
 
-    # Destination — a notifications channel with no chat target silently
+    # Destination - a notifications channel with no chat target silently
     # delivers nowhere, so surface it as a warning operators can act on.
     if "notifications" in capabilities:
         target = _resolve_test_chat_id(connector, requested_chat_id)
@@ -395,7 +395,7 @@ def _connector_config_checks(
                 )
             )
 
-    # Team scope — informational. The resolver collapses an empty/invalid team
+    # Team scope - informational. The resolver collapses an empty/invalid team
     # list back to workspace, so flag the case where the channel *meant* to be
     # team-scoped but no valid teams survived (it would silently go workspace-wide).
     scope, team_ids = _connector_team_scope(connector)
@@ -416,7 +416,7 @@ def _connector_config_checks(
     else:
         checks.append(_check("team_scope", "pass", "Workspace-wide channel."))
 
-    # Native-action readiness — only meaningful for verified-callback platforms.
+    # Native-action readiness - only meaningful for verified-callback platforms.
     caps = get_platform_capabilities(connector.platform)
     if connector.native_actions_enabled:
         if not (caps and caps.interactive_actions):
@@ -702,7 +702,7 @@ async def test_bot_connector(
     target_chat_id = _resolve_test_chat_id(connector, request.chat_id)
     live_message_sent = False
 
-    # Only attempt a live check when configuration is sound — no point calling a
+    # Only attempt a live check when configuration is sound - no point calling a
     # provider with missing credentials.
     config_ok = not any(c.level == "fail" for c in checks)
     if request.live and config_ok:
@@ -723,7 +723,7 @@ async def test_bot_connector(
                     if ok
                     else _check("connection", "fail", f"Connection failed: {err}")
                 )
-            # Live delivery — actually send a message to the resolved destination.
+            # Live delivery - actually send a message to the resolved destination.
             if not any(c.level == "fail" for c in checks):
                 if not target_chat_id:
                     checks.append(
@@ -748,7 +748,7 @@ async def test_bot_connector(
                             connector,
                             chat_id=target_chat_id,
                             text=(
-                                "OpsMender test message — your Notification Channel "
+                                "OpsMender test message: your Notification Channel "
                                 "is configured correctly."
                             ),
                         )
@@ -820,7 +820,7 @@ async def delete_bot_connector(
 
 
 # ---------------------------------------------------------------------------
-# Bot user links — map external chat-platform identities to OpsMender users
+# Bot user links - map external chat-platform identities to OpsMender users
 # ---------------------------------------------------------------------------
 
 

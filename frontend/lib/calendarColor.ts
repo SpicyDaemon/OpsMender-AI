@@ -6,7 +6,7 @@
 // Each entry pairs a dark-theme treatment (light text on a translucent tint,
 // the default) with a `light:` override (dark text on a light tint) so chips
 // stay >=4.5:1 in both themes. The app flips themes via `[data-theme]`, which
-// the `light:` custom-variant (see globals.css) keys off — not `dark:`/media.
+// the `light:` custom-variant (see globals.css) keys off - not `dark:`/media.
 const USER_COLORS = [
   "bg-purple-500/20 border-purple-400 text-purple-100 light:bg-purple-500/15 light:border-purple-500 light:text-purple-900",
   "bg-emerald-500/20 border-emerald-400 text-emerald-100 light:bg-emerald-500/15 light:border-emerald-600 light:text-emerald-900",

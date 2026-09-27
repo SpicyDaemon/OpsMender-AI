@@ -66,7 +66,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
         label: `Tool: ${msg.data.tool_name ?? "unknown"}`,
         detail:
           msg.data.permitted === false
-            ? `Blocked — ${msg.data.block_reason ?? ""}`
+            ? `Blocked: ${msg.data.block_reason ?? ""}`
             : JSON.stringify(msg.data.parameters ?? {}, null, 2),
         ts,
       };
@@ -299,7 +299,7 @@ export function IncidentSessionSidecar({
 
   const inputPlaceholder = useMemo(() => {
     if (!canChat) return "Chat is read-only for viewers.";
-    if (session?.status === "completed") return "Session complete — chat is still open.";
+    if (session?.status === "completed") return "Session complete. Chat is still open.";
     return "Ask the co-pilot or add context…";
   }, [canChat, session?.status]);
 

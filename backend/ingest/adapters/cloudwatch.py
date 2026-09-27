@@ -1,9 +1,9 @@
 """CloudWatch Alarms via SNS adapter.
 
 Handles two SNS message types:
-- ``SubscriptionConfirmation`` — returns the ``SubscribeURL`` so the
+- ``SubscriptionConfirmation`` - returns the ``SubscribeURL`` so the
   caller can auto-confirm.
-- ``Notification`` — parses the embedded CloudWatch alarm JSON.
+- ``Notification`` - parses the embedded CloudWatch alarm JSON.
 
 Signature verification is left to the caller / infrastructure layer
 (e.g. an ALB or API Gateway validates SNS signatures before OpsMender).
@@ -64,7 +64,7 @@ class CloudWatchAdapter(IngestAdapter):
         region = message.get("Region", "unknown")
         account = message.get("AWSAccountId", "unknown")
 
-        title = f"[CloudWatch] {alarm_name} — {new_state}"
+        title = f"[CloudWatch] {alarm_name}: {new_state}"
         description = (
             f"**Alarm:** {alarm_name}\n"
             f"**State:** {new_state}\n"
@@ -81,7 +81,7 @@ class CloudWatchAdapter(IngestAdapter):
         # Fingerprint: alarm name + account + region
         external_id = f"{account}:{region}:{alarm_name}"
 
-        # Emit an availability signal — CloudWatch alarms map naturally
+        # Emit an availability signal - CloudWatch alarms map naturally
         # to up/down: OK = up, ALARM/INSUFFICIENT_DATA = down.
         availability = AvailabilitySignal(
             target_name=alarm_name,

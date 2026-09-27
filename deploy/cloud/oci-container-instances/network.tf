@@ -31,7 +31,7 @@ resource "oci_core_network_security_group_security_rule" "ingress" {
   }
 }
 
-# Egress to anywhere — the container needs to reach GHCR (image pull),
+# Egress to anywhere - the container needs to reach GHCR (image pull),
 # the LLM provider, Postgres, and operator MCP servers.
 resource "oci_core_network_security_group_security_rule" "egress" {
   network_security_group_id = oci_core_network_security_group.this.id

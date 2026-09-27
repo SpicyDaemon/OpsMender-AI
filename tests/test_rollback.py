@@ -1,4 +1,4 @@
-"""Tests for backend.workflow.rollback — Tier 0 compensating-inverse replay."""
+"""Tests for backend.workflow.rollback - Tier 0 compensating-inverse replay."""
 
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ class TestFailureHandling:
         assert report.attempted == 2
         assert report.succeeded == 1
         assert report.failed == 1
-        # Reverse order — n2 first (failed), then n1 (succeeded).
+        # Reverse order - n2 first (failed), then n1 (succeeded).
         assert report.steps[0].original_tool == "cordon_node"
         assert report.steps[0].status == "failed"
         assert "first boom" in (report.steps[0].error or "")

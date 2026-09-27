@@ -51,7 +51,7 @@ async def resolve_oauth_access_token(
 
     Checks token expiry against ``OAUTH_REFRESH_MARGIN_SECONDS`` and
     refreshes automatically when the token is about to expire.  Rotation
-    (OAuth 2.1 §4.3.1) is handled transparently — the new refresh token
+    (OAuth 2.1 §4.3.1) is handled transparently - the new refresh token
     is persisted via ``MCPServerOAuthTokenRepo.rotate`` before this
     function returns.
 
@@ -100,7 +100,7 @@ async def resolve_oauth_access_token(
     if not needs_refresh:
         return access_token
 
-    # Token is within the expiry margin — attempt to refresh.
+    # Token is within the expiry margin - attempt to refresh.
     if not refresh_token:
         await MCPServerOAuthTokenRepo.delete_for_server(db, org_id, mcp_server_id)
         raise MCPAuthorizationRequiredError(
@@ -138,7 +138,7 @@ async def resolve_oauth_access_token(
             http_client_factory=http_client_factory,
         )
     except MCPAuthorizationRequiredError:
-        # Invalid grant — clear the stale token row so the status pill
+        # Invalid grant - clear the stale token row so the status pill
         # immediately shows "reconnect needed" on the next Config page load.
         await MCPServerOAuthTokenRepo.delete_for_server(db, org_id, mcp_server_id)
         raise
@@ -165,11 +165,11 @@ def _resolve_node_command(command: str) -> str:
 
     Resolution order:
 
-    1. **``OPSMENDER_NODE_PATH``** — if set, look for the command inside that
+    1. **``OPSMENDER_NODE_PATH``** - if set, look for the command inside that
        directory first.  This lets operators point at a custom Node install
        (e.g. a bundled portable runtime placed next to the ``opsmender`` binary).
-    2. **System ``$PATH``** — standard lookup via :func:`shutil.which`.
-    3. **Fail-loud** — raise :class:`MCPClientError` with a human-readable
+    2. **System ``$PATH``** - standard lookup via :func:`shutil.which`.
+    3. **Fail-loud** - raise :class:`MCPClientError` with a human-readable
        install hint so the user isn't left staring at a cryptic *"file not
        found"* from the subprocess layer.
 
@@ -192,7 +192,7 @@ def _resolve_node_command(command: str) -> str:
         logger.debug("Resolved %s via PATH → %s", command, resolved)
         return resolved
 
-    # 3. Not found — fail with a helpful message.
+    # 3. Not found - fail with a helpful message.
     raise MCPClientError(
         f"'{command}' is not installed or not on PATH.\n\n"
         "npx-based MCP servers (e.g. @anthropic/mcp-server-k8s) require "

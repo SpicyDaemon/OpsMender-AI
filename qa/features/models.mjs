@@ -6,7 +6,7 @@ import { config, qaName } from "../lib/config.mjs";
 
 export default {
   id: "models",
-  title: "AI — model configs",
+  title: "AI: model configs",
   async run(h) {
     await h.step("models page loads", async () => {
       await h.goto("/dashboard/models");

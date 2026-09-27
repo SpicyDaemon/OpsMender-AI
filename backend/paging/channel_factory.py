@@ -2,7 +2,7 @@
 
 Reads optional notification credentials from the process env and returns a
 ``ChannelFactory`` that the dispatcher can use to fan pages out. Channels with
-unconfigured credentials simply return ``None`` from the factory — the
+unconfigured credentials simply return ``None`` from the factory - the
 dispatcher records a ``skipped`` row with reason ``channel_unconfigured``.
 
 The factory remains the env bootstrap for legacy delivery keys. Voice/SMS can
@@ -19,7 +19,7 @@ Env vars consumed:
 * ``OPSMENDER_TWILIO_ACCOUNT_SID`` (+ ``OPSMENDER_TWILIO_AUTH_TOKEN``,
   ``OPSMENDER_TWILIO_FROM_NUMBER``)
 * ``OPSMENDER_TEAMS_GRAPH_TENANT_ID`` (+ ``OPSMENDER_TEAMS_GRAPH_CLIENT_ID``,
-  ``OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET``) — Sprint 37 step 2. When all
+  ``OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET``) - Sprint 37 step 2. When all
   three are set, the ``teams_dm_graph`` channel key resolves to a
   ``TeamsGraphDMChannel`` that posts via Graph ``chats/{id}/messages``.
 """

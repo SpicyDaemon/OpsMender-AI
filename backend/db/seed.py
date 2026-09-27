@@ -1,4 +1,4 @@
-"""Dev seed script — populates a fresh database with sample data.
+"""Dev seed script - populates a fresh database with sample data.
 
 Usage::
 

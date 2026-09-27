@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 57 Step 2 — Incident Context Rail.
+ * Sprint 57 Step 2 - Incident Context Rail.
  *
  * Right-side panel surfacing the operational context an on-call
  * operator needs at a glance:
@@ -14,7 +14,7 @@
  *   Pending approvals         (count of pending approval requests
  *                              across the incident's sessions)
  *   AI tier                   (tier of the most recent active session,
- *                              else "—")
+ *                              else " - ")
  *
  * The component fetches its own supplemental data (services, teams,
  * users, chain state, approvals) so the parent detail page doesn't
@@ -216,7 +216,7 @@ export function IncidentContextRail({
             </Row>
           ) : (
             <Row icon={Users} label="Team">
-              <Muted>—</Muted>
+              <Muted>None</Muted>
             </Row>
           )}
 

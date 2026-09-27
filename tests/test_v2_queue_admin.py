@@ -1,4 +1,4 @@
-"""v2 queue admin — purge / cancel-one / reprioritize (queue_rank) repo behavior."""
+"""v2 queue admin - purge / cancel-one / reprioritize (queue_rank) repo behavior."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ async def test_rank_overrides_priority_in_drain_order(factory):
         order = await SessionRepo.list_queued_for_drain(db, ORG_ID)
         assert [s.id for s in order] == [p0.id, p3.id]
 
-        # Rank the P3 to the front — it now drains before the P0.
+        # Rank the P3 to the front - it now drains before the P0.
         lo, hi = await SessionRepo.queue_rank_bounds(db, ORG_ID)
         assert (lo, hi) == (None, None)
         await SessionRepo.set_queue_rank(db, ORG_ID, p3.id, rank=-1)

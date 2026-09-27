@@ -48,7 +48,7 @@ class TestCheck:
         assert check("get_pods", 1, skill_def).permitted is True
 
     def test_safe_denied_tier_2_advisory(self, skill_def):
-        # New model: Tier 2 is advisory only — no remediation executes.
+        # New model: Tier 2 is advisory only - no remediation executes.
         r = check("get_pods", 2, skill_def)
         assert r.permitted is False
         assert "advisory" in r.reason
@@ -100,7 +100,7 @@ class TestCheck:
 
     # --- Tier normalization (3-tier model) ---
     def test_out_of_range_tier_clamps_to_advisory(self, skill_def):
-        # Any out-of-range tier clamps to the safest tier (2 — advisory), never
+        # Any out-of-range tier clamps to the safest tier (2 - advisory), never
         # to a more permissive tier. No exception is raised.
         r = check("get_pods", 5, skill_def)
         assert r.tier == 2
@@ -212,5 +212,5 @@ class TestTier0SandboxFloor:
             ],
         )
         assert check("rollout_restart", 1, sd).permitted is True
-        # Tier 2 is advisory — caution actions never execute.
+        # Tier 2 is advisory - caution actions never execute.
         assert check("rollout_restart", 2, sd).permitted is False

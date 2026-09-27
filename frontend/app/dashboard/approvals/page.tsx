@@ -80,7 +80,7 @@ function approvalEmptyStateCopy(statusFilter: ApprovalStatus | "") {
     return {
       title: "No approvals yet",
       description:
-        "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat — this is the catch-up inbox.",
+        "Tier 1 actions that need human sign-off show up here. You can also approve them directly from the session detail page or your chat. This is the catch-up inbox.",
       showTestAction: true,
     };
   }
@@ -318,7 +318,7 @@ export default function ApprovalsPage() {
           className="mb-4 w-full flex items-center gap-2 rounded-lg border border-status-medium-border bg-status-medium-bg/50 px-4 py-2.5 text-sm text-status-medium font-medium hover:bg-status-medium-bg/70 transition-colors"
         >
           <Clock size={14} />
-          {pendingCount} approval{pendingCount > 1 ? "s" : ""} waiting for review — click to view
+          {pendingCount} approval{pendingCount > 1 ? "s" : ""} waiting for review. Click to view.
         </button>
       )}
 
@@ -556,7 +556,7 @@ export default function ApprovalsPage() {
                           {timeUntil(a.expires_at)}
                         </span>
                       ) : (
-                        <span className="text-xs text-fg-muted">—</span>
+                        <span className="text-xs text-fg-muted">No expiry</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

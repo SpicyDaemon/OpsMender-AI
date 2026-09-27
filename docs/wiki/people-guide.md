@@ -28,8 +28,8 @@ Open **Admin → People** in the sidebar.
 
 There are two tabs:
 
-- **Users** — everyone who already has an OpsMender account in your current organization.
-- **Invites** — pending, accepted, expired, or revoked invite links for that organization.
+- **Users**: everyone who already has an OpsMender account in your current organization.
+- **Invites**: pending, accepted, expired, or revoked invite links for that organization.
 
 The People surface is organization-scoped. If your account belongs to more than one org, the active org in the topbar switcher determines which users and invites you see.
 
@@ -39,9 +39,9 @@ The People surface is organization-scoped. If your account belongs to more than 
 
 Each user row shows an **Auth method** badge:
 
-- **Local** — the user signs in with a username and password managed by OpsMender. This is the default in single-workspace installs.
-- **OIDC** — the user was provisioned through the org's OpenID Connect provider, shown as `oidc:<org-slug>`. Only appears when OIDC is configured for the tenant.
-- **SAML** — the user was provisioned through the org's SAML 2.0 provider, shown as `saml:<org-slug>`. Only appears when SAML is configured for the tenant.
+- **Local**: the user signs in with a username and password managed by OpsMender. This is the default in single-workspace installs.
+- **OIDC**: the user was provisioned through the org's OpenID Connect provider, shown as `oidc:<org-slug>`. Only appears when OIDC is configured for the tenant.
+- **SAML**: the user was provisioned through the org's SAML 2.0 provider, shown as `saml:<org-slug>`. Only appears when SAML is configured for the tenant.
 
 Clicking an **OIDC** or **SAML** badge deep-links into **Workspace Settings** and opens the matching auth configuration modal. That is the fastest way to answer "which IdP owns this user?"
 
@@ -90,9 +90,9 @@ If SMTP is configured, OpsMender also attempts to email the invite automatically
 
 The invite-created modal always tells you which path happened:
 
-- **Sent** — SMTP succeeded.
-- **Failed** — SMTP was configured, but delivery failed. Copy the URL and send it manually.
-- **Not configured** — no SMTP settings were present, so manual delivery is expected.
+- **Sent**: SMTP succeeded.
+- **Failed**: SMTP was configured, but delivery failed. Copy the URL and send it manually.
+- **Not configured**: no SMTP settings were present, so manual delivery is expected.
 
 ---
 
@@ -240,8 +240,8 @@ That keeps day-to-day identity in your IdP while preserving an OpsMender-native 
 
 ## 12. Related guides
 
-- [Auth Guide](auth-guide.md) — the default auth model: single workspace, email + admin invite, three roles.
-- [Advanced Auth Guide](advanced-auth-guide.md) — optional OIDC + SAML + custom-domain login behavior.
-- [Administrator Guide](admin-guide.md) — runtime config, MCP, integrations, models.
-- [Getting Started](getting-started.md) — first local boot and first login.
-- [Notification Preferences](notification-preferences.md) — channel routing for a specific operator.
+- [Auth Guide](auth-guide.md): the default auth model: single workspace, email + admin invite, three roles.
+- [Advanced Auth Guide](advanced-auth-guide.md): optional OIDC + SAML + custom-domain login behavior.
+- [Administrator Guide](admin-guide.md): runtime config, MCP, integrations, models.
+- [Getting Started](getting-started.md): first local boot and first login.
+- [Notification Preferences](notification-preferences.md): channel routing for a specific operator.

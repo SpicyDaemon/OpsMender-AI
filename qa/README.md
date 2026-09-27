@@ -4,7 +4,7 @@ An end-to-end **manual-QA walkthrough** that drives the real operator console
 in a browser the way a person would: it logs in, sets up a team, a service, an
 escalation policy and an on-call roster, opens the roster calendar, exercises
 the notifications surface, creates and resolves an incident, creates an SLA
-target, runs the AI model "Test connection", and finally logs out — capturing
+target, runs the AI model "Test connection", and finally logs out: capturing
 **every console error, unhandled page error, and HTTP 5xx** along the way and
 writing a pass/fail report.
 
@@ -107,7 +107,7 @@ All configuration is via environment variables (or a gitignored
 | `QA_LIVE_PAGING` | `false` | Run the checks whose Escalation Chains page real accounts: intake recovery/collision and the ownership lifecycle (**disposable instance only**). `QA_INTAKE_PAGING` is the earlier name and still works. |
 | `QA_CREATE_MODEL` | `false` | Create a model config during the run (needs the `QA_MODEL_*` params). |
 | `QA_TEST_MODEL_CONNECTION` | `true` | Click "Test" on the first saved model config. |
-| `QA_MODEL_PROVIDER` / `QA_MODEL_ID` / `QA_MODEL_KEY_ENV` / `QA_MODEL_BASE_URL` | openai / gpt-4o-mini / OPENAI_API_KEY / — | Params for `QA_CREATE_MODEL`. |
+| `QA_MODEL_PROVIDER` / `QA_MODEL_ID` / `QA_MODEL_KEY_ENV` / `QA_MODEL_BASE_URL` | openai / gpt-4o-mini / OPENAI_API_KEY / none | Params for `QA_CREATE_MODEL`. |
 | `QA_FEATURES` | _(all)_ | Comma-separated feature ids to run. |
 | `QA_REPORT_DIR` | `qa/report` | Where reports + screenshots are written. |
 
@@ -115,15 +115,15 @@ All configuration is via environment variables (or a gitignored
 
 Written to `qa/report/` (gitignored):
 
-- `qa-report.md` — human-readable per-step results, with captured errors and
+- `qa-report.md`: human-readable per-step results, with captured errors and
   screenshot paths for failures.
-- `qa-report.json` — the same data, machine-readable.
-- `screenshots/` — full-page screenshots captured at each failing step.
+- `qa-report.json`: the same data, machine-readable.
+- `screenshots/`: full-page screenshots captured at each failing step.
 
 ## Safety notes
 
 - The walkthrough **creates real data** (a team, service, chain, roster, SLA
-  target, and a — by default synthetic — incident) in whatever instance you
+  target, and an incident, synthetic by default) in whatever instance you
   point it at. Everything is named with the `QA_RUN_ID` prefix so it's easy to
   find and delete. Set `QA_CLEANUP=true` to remove it automatically.
 - Pointing it at a **production** instance can page on-call people (a real

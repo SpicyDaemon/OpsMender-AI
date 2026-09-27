@@ -4,7 +4,7 @@ State machine for ``incident_chain_states``:
 
 ```
 [no row]
-   │  start_chain(incident_id, chain_id) — fires step 0
+   │  start_chain(incident_id, chain_id) - fires step 0
    ▼
 [running, step=N] ──tick: level timeout──► fires step N+1 (additive)
    │                                        └─ no step N+1: [exhausted]
@@ -32,7 +32,7 @@ The logical marker is keyed by incident, user, level and round. A handoff or
 definition edit increments the round; physical delivery rows retain it.
 The only 15-minute deadline is the assignee's inactivity lock.
 
-The engine never blocks on real notification delivery — it writes
+The engine never blocks on real notification delivery - it writes
 ``incident_pages`` rows with ``channel='recorded'`` and Sprint 35 wires the
 actual channels.
 """
@@ -163,7 +163,7 @@ async def _fire_step(
     When ``channel_factory`` is provided, each newly-recorded page row is
     immediately fanned out to the dispatcher (Sprint 35), which records one
     additional ``incident_pages`` row per delivery attempt. When omitted,
-    only the audit-anchor ``recorded`` row is written — preserving the
+    only the audit-anchor ``recorded`` row is written - preserving the
     Sprint 34 behavior.
     """
 
@@ -257,7 +257,7 @@ async def _notify_escalation(
     just-fired page row) and handed to a fire-and-forget text delivery, so the
     background task never has to re-read state that the caller has not yet
     committed. Only spawns the task when an enabled ``notifications`` channel
-    exists — keeps the hot path cheap and side-effect-free when there is
+    exists - keeps the hot path cheap and side-effect-free when there is
     nothing to deliver. Never raises into the escalation engine.
     """
     try:
@@ -735,7 +735,7 @@ async def tick(
 ) -> StepFireResult | None:
     """Advance the chain for ``incident_id`` if anything about it is due.
 
-    Idempotent — safe to call repeatedly. Returns the fire result of the
+    Idempotent - safe to call repeatedly. Returns the fire result of the
     newly-fired step, or None if nothing fired.
     """
 
@@ -1188,7 +1188,7 @@ async def tick_all_due(
     at: datetime | None = None,
     channel_factory: ChannelFactory | None = None,
 ) -> int:
-    """Scheduler entry point — act on every chain with something due.
+    """Scheduler entry point - act on every chain with something due.
 
     Returns the number of state rows that changed.
     """

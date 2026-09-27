@@ -51,7 +51,7 @@ function formatPercent(value: number): string {
 }
 
 function formatSeconds(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return "No data";
   if (value < 60) return `${Math.round(value)}s`;
   const minutes = Math.floor(value / 60);
   const seconds = Math.round(value % 60);

@@ -42,7 +42,7 @@ import { formatDate } from "@/lib/formatDate";
 const GLOBAL_SERVICE = "__global";
 
 function fmtDate(iso: string | null) {
-  if (!iso) return "—";
+  if (!iso) return "Never";
   return formatDate(iso);
 }
 
@@ -69,7 +69,7 @@ function summaryPreview(md: string): string {
     .trim();
 }
 
-/** "data-integrity" → "Data integrity" — display-only; stored value unchanged. */
+/** "data-integrity" → "Data integrity" - display-only; stored value unchanged. */
 function tagLabel(tag: string): string {
   const t = tag.replace(/[-_]/g, " ").trim();
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : tag;
@@ -216,7 +216,7 @@ export default function MemoriesPage() {
               )}
             </div>
           ) : (
-            <span className="text-fg-muted">—</span>
+            <span className="text-fg-muted">None</span>
           ),
         searchable: true,
       },
@@ -638,7 +638,7 @@ function MemoryEditor({
             value={serviceId}
             onChange={(e) => setServiceId(e.target.value)}
           >
-            <option value="">(global — applies to any service)</option>
+            <option value="">Global (applies to any service)</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

@@ -459,7 +459,7 @@ async def _resolve_mcp_context(
     # having no service context at all. It must not borrow a global/example
     # skill: connector tools bring their own capability-derived policy, and
     # unknown operations remain denied. This covers both an explicitly empty
-    # allowlist and one whose servers are all inactive or deleted — in the
+    # allowlist and one whose servers are all inactive or deleted - in the
     # latter case the session has no MCP tools either, so inheriting an
     # unrelated skill's default tier and operations would be equally wrong.
     if mcp_server_ids is not None and not allowed_names:
@@ -556,7 +556,7 @@ async def _allowed_integration_ids_for_incident(
 
     Returns ``None`` when there is no service context (no incident or no
     service) so the runtime keeps its prior all-connectors behavior. When the
-    incident's service exists, returns the set of its allowed connector ids —
+    incident's service exists, returns the set of its allowed connector ids -
     possibly **empty**, which means the service may use no integrations at all
     (strict-allowlist semantics)."""
 
@@ -605,8 +605,8 @@ async def _record_advisory_only_status(
 ) -> dict[str, Any]:
     """Persist a non-error transcript line for a service with no tool sources."""
     content = (
-        "No MCP servers and no integration tools are available for this service "
-        "— running advisory-only."
+        "No MCP servers and no integration tools are available for this service, "
+        "so the session runs advisory-only."
     )
     async with factory() as db:
         message = await SessionMessageRepo.create(
@@ -632,7 +632,7 @@ async def _record_advisory_only_status(
 
 def _progress_snapshot(result: dict[str, Any]) -> dict[str, Any] | None:
     """Build a resumable progress snapshot from the final graph state (v2 Phase
-    7) — the findings/decisions a revisitor or postmortem draft needs. Returns
+    7) - the findings/decisions a revisitor or postmortem draft needs. Returns
     None when the graph produced nothing worth persisting."""
     snapshot: dict[str, Any] = {}
     for key in ("observations", "diagnosis", "plan", "workflow_result", "rollback"):
@@ -823,7 +823,7 @@ async def _run_session_workflow_inner(
         )
 
         incident_description = _build_incident_description(incident, pending_messages)
-        # v1.2 Phase 5 — ground the agent in the incident's service (name,
+        # v1.2 Phase 5 - ground the agent in the incident's service (name,
         # priority, description, allowed MCP servers) from the first observe.
         service_context = await _service_context_for_incident(
             factory,
@@ -886,7 +886,7 @@ async def _run_session_workflow_inner(
             "node_event_publisher": lambda node_name, status, _payload=None: (
                 _publish_node_event(session_id, node_name, status)
             ),
-            # Sprint 45 — feed memory into the graph so the recall node can
+            # Sprint 45 - feed memory into the graph so the recall node can
             # query org + service scope. service_id may be None for unbound
             # incidents; recall handles that case (global memories still
             # surface).
@@ -1117,8 +1117,8 @@ def cancel_session_workflow(app: FastAPI, *, session_id: uuid.UUID) -> bool:
     """Hard-abort the running workflow task for *session_id* (intercept).
 
     Returns True if a live (not-yet-finished) task was found and cancelled.
-    Cancellation raises ``CancelledError`` inside the workflow, which — unlike a
-    normal exception — is **not** caught by the runner's ``except Exception``
+    Cancellation raises ``CancelledError`` inside the workflow, which - unlike a
+    normal exception - is **not** caught by the runner's ``except Exception``
     block, so the runner does not overwrite the terminal status the caller sets
     (e.g. ``stopped``). Does not await: the caller sets state authoritatively.
     """
@@ -1147,11 +1147,11 @@ async def stop_incident_sessions(
 
     Used when an incident is resolved: there's no value (and, at Tier 0, real
     risk) in the agent continuing to work a closed-out incident. Mirrors the
-    ``/sessions/{id}/stop`` intercept for each running session — cancels the
+    ``/sessions/{id}/stop`` intercept for each running session - cancels the
     workflow task, expires dangling pending approvals, sets the session to
     ``stopped`` (with ``ended_at``), and emits a ``session_end`` WS event.
 
-    Does not commit — the caller commits as part of the resolve transaction.
+    Does not commit - the caller commits as part of the resolve transaction.
     Never raises: stopping sessions must not block the resolve. Returns the
     number of sessions stopped.
     """

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sprint 61 Step 4 — postmortem authoring surface.
+ * Sprint 61 Step 4 - postmortem authoring surface.
  *
  * Operator-facing markdown editor for an incident's postmortem. The
  * backend stores a single markdown blob; this page provides a textarea
@@ -156,7 +156,7 @@ function normalizeBody(body: string): string {
 }
 
 /**
- * A section counts as "filled" once it has real content — not the italic/comment
+ * A section counts as "filled" once it has real content - not the italic/comment
  * scaffolding, and not the unedited default template prose. The template (from
  * the API) is passed so its stock placeholder paragraphs (e.g. "Briefly describe
  * what happened…") don't count as authored content, which otherwise showed a
@@ -191,7 +191,7 @@ function parseMemoryCandidates(md: string): string[] {
     const text = m[1].trim();
     if (!text) continue;
     if (/^_.*_$/.test(text)) continue;
-    if (["...", "…", "-", "—"].includes(text)) continue;
+    if (["...", "…", "-", "\u2014"].includes(text)) continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -207,7 +207,7 @@ function fmtTimestamp(iso: string | null): string {
 
 function renderMarkdownPreview(md: string): React.ReactNode {
   // Minimal preview: H2 headings + paragraphs + bullet lists.
-  // The full Markdown surface lives elsewhere — this is just enough to
+  // The full Markdown surface lives elsewhere - this is just enough to
   // verify the section structure before saving.
   const lines = md.split("\n");
   const nodes: React.ReactNode[] = [];
@@ -456,7 +456,7 @@ function IncidentPostmortemContent() {
       setDraft(result.draft);
       setMode("edit");
       if (result.source_session_ids.length === 0) {
-        toast.info("No AI sessions on this incident yet — drafted from lifecycle only.");
+        toast.info("No AI sessions on this incident yet, so the draft uses the lifecycle only.");
       } else {
         toast.success(
           `Drafted from ${result.source_session_ids.length} AI session(s).`,
@@ -567,7 +567,7 @@ function IncidentPostmortemContent() {
                 variant="secondary"
                 onClick={handleDraftFromSessions}
                 loading={draftingFromSessions}
-                title="Assemble a draft from this incident's AI sessions — observations, diagnosis, and proposed actions — mapped onto the postmortem sections."
+                title="Assemble a draft from this incident's AI sessions (observations, diagnosis, and proposed actions), mapped onto the postmortem sections."
               >
                 <Bot size={14} /> Draft from sessions
               </Button>

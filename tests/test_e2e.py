@@ -2,7 +2,7 @@
 
 Exercises the full REST chain: auth → incident → session → approval →
 executed tool call → audit query. Uses an in-memory SQLite DB, a StubLLM,
-and a mocked MCP session — no external services are contacted.
+and a mocked MCP session - no external services are contacted.
 
 The flow mirrors how an operator would drive a Tier 1 session from the
 dashboard: they start a session, the tier gate creates approval rows, the
@@ -212,7 +212,7 @@ class TestE2EIncidentFlow:
         assert sess_resp.status_code == 201, sess_resp.text
         session_id = uuid.UUID(sess_resp.json()["id"])
 
-        # 4. Drive the tier gate — a destructive action requires approval.
+        # 4. Drive the tier gate - a destructive action requires approval.
         skill_def = load_skill_def(SKILL_MD)
         approval_service = ApprovalService(
             factory, org_id=TEST_ORG_ID, poll_interval_seconds=0.01
@@ -319,7 +319,7 @@ class TestE2EIncidentFlow:
             assert entry["session_id"] == str(session_id)
 
         # 10. The operator closes the session via REST (conventional
-        #     shutdown — just flips status + summary).
+        #     shutdown - just flips status + summary).
         async with factory() as db:
             session = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
             assert session is not None

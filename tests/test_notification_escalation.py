@@ -1,4 +1,4 @@
-"""Staged notification escalation — parsing, engine, ack/resolve stop."""
+"""Staged notification escalation - parsing, engine, ack/resolve stop."""
 
 from __future__ import annotations
 
@@ -343,7 +343,7 @@ class TestEngine:
 
 
 # ---------------------------------------------------------------------------
-# Default sender — channel resolution
+# Default sender - channel resolution
 # ---------------------------------------------------------------------------
 
 

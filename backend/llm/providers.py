@@ -201,13 +201,13 @@ class OpenAIProvider:
 class OpenAICompatibleProvider:
     """Provider for any OpenAI-API-compatible endpoint.
 
-    Sprint 62 Step 1 — covers vLLM, LM Studio, OpenRouter, Together,
+    Sprint 62 Step 1 - covers vLLM, LM Studio, OpenRouter, Together,
     Groq, Fireworks, Anyscale, and most local OpenAI-shape runtimes
     with one provider shape. The OpenAI SDK is reused; only the
     construction constraints differ:
 
       * ``base_url`` is required (this is what makes the endpoint
-        "custom" — without it the operator should use the plain
+        "custom" - without it the operator should use the plain
         ``openai`` provider).
       * ``api_key_env_var`` is optional. Some local endpoints
         (vLLM behind a private network, LM Studio's default
@@ -215,7 +215,7 @@ class OpenAICompatibleProvider:
         all; we send a placeholder when none is configured so the SDK
         doesn't raise.
       * ``list_models`` falls back to ``[self.model]`` if the endpoint
-        does not implement ``/v1/models`` — manual model entry must
+        does not implement ``/v1/models`` - manual model entry must
         keep working per the sprint acceptance criteria.
     """
 
@@ -250,7 +250,7 @@ class OpenAICompatibleProvider:
 
         # The OpenAI SDK requires _some_ truthy api_key string even for
         # keyless endpoints. Send a placeholder when the operator hasn't
-        # configured one — local runtimes ignore it.
+        # configured one - local runtimes ignore it.
         self._client = openai.OpenAI(
             api_key=api_key or "no-key",
             base_url=self.base_url,
@@ -268,7 +268,7 @@ class OpenAICompatibleProvider:
         yield self.complete(prompt)
 
     def list_models(self) -> list[str]:
-        # 2s discovery cap matches the OpenAI provider — discovery is on
+        # 2s discovery cap matches the OpenAI provider - discovery is on
         # the page-load hot path. If the endpoint doesn't implement
         # /v1/models, fall back to the configured model so manual entry
         # keeps working.

@@ -1,4 +1,4 @@
-"""Analyzer registry — discoverable list of built-in + plugin analyzers."""
+"""Analyzer registry - discoverable list of built-in + plugin analyzers."""
 
 from __future__ import annotations
 

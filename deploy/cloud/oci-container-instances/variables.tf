@@ -28,7 +28,7 @@ variable "availability_domain" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Networking — operator-provided. The module never creates a VCN.
+## Networking - operator-provided. The module never creates a VCN.
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "vcn_id" {
@@ -58,7 +58,7 @@ variable "allowed_ingress_cidrs" {
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "container_image" {
-  description = "Container image to run. Defaults to the public GHCR image published by the release workflow. For private OCIR images, pre-create an auth token and set `image_pull_secret_id` (out of scope for this baseline recipe — OCI Container Instances supports image pull secrets via `image_pull_secrets[].secret_type=BASIC` referencing a Vault secret)."
+  description = "Container image to run. Defaults to the public GHCR image published by the release workflow. For private OCIR images, pre-create an auth token and set `image_pull_secret_id` (out of scope for this baseline recipe; OCI Container Instances supports image pull secrets via `image_pull_secrets[].secret_type=BASIC` referencing a Vault secret)."
   type        = string
   default     = "ghcr.io/spicydaemon/opsmender-ai:latest"
 }
@@ -111,9 +111,9 @@ variable "container_restart_policy" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Secrets — operator pre-creates these in OCI Vault. Pass the secret
+## Secrets - operator pre-creates these in OCI Vault. Pass the secret
 ## OCIDs. The module fetches each at apply time and injects as plain env
-## vars on the Container Instance. **Secrets land in Terraform state** —
+## vars on the Container Instance. **Secrets land in Terraform state** -
 ## use an encrypted remote backend (OCI Object Storage with KMS, or
 ## Terraform Cloud).
 ## ─────────────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ variable "provider_secret_ocids" {
 }
 
 ## ─────────────────────────────────────────────────────────────────────────
-## Runtime config — non-secret env vars handed to the container.
+## Runtime config - non-secret env vars handed to the container.
 ## ─────────────────────────────────────────────────────────────────────────
 
 variable "extra_environment" {

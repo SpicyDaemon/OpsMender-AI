@@ -583,7 +583,7 @@ async def _run_check(cfg: Config) -> int:
     pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
     try:
         servers = await pool.list_servers(active_only=True)
-        print(f"Config OK — {len(servers)} MCP server(s) available\n")
+        print(f"Config OK: {len(servers)} MCP server(s) available\n")
 
         if not servers:
             print(
@@ -597,7 +597,7 @@ async def _run_check(cfg: Config) -> int:
         for server in servers:
             name, ok, detail = await _check_server(server)
             status = "OK" if ok else "FAIL"
-            print(f"  [{status}] {name} ({server.transport}) — {detail}")
+            print(f"  [{status}] {name} ({server.transport}): {detail}")
             if not ok:
                 all_ok = False
 
@@ -1086,7 +1086,7 @@ def _validate_config(cfg: Config, args: argparse.Namespace) -> int:
             print(f"  x {err}")
         return 1
 
-    print("Validation OK — configuration is valid.")
+    print("Validation OK. The configuration is valid.")
     return 0
 
 
@@ -1296,7 +1296,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         audit_logger.log_session_start(session_id, tier)
 
         # 7. Build and invoke the workflow graph.
-        # Tier 0 sessions get hard per-node + session wall clocks — see
+        # Tier 0 sessions get hard per-node + session wall clocks - see
         # backend/agent/timeouts.py.
         from backend.agent.timeouts import (
             Tier0TimeConfig,
@@ -1479,7 +1479,7 @@ def _print_result(result: dict) -> None:
         for action in blocked:
             name = action.get("tool_name", "?")
             reason = action.get("block_reason", "unknown")
-            print(f"  ✗ {name} — {reason}")
+            print(f"  ✗ {name}: {reason}")
 
     if tool_calls:
         print("\nExecuted tool calls:")
@@ -1527,7 +1527,7 @@ def _run_serve(args: argparse.Namespace) -> int:
     if sqlite_evaluation:
         os.environ["OPSMENDER_ENVIRONMENT"] = "development"
         print(
-            "SQLite is for local evaluation only — configure "
+            "SQLite is for local evaluation only. Configure "
             "OPSMENDER_DATABASE_URL with PostgreSQL for production."
         )
 
@@ -1588,7 +1588,7 @@ def _run_serve(args: argparse.Namespace) -> int:
 async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
     """Plan (and optionally apply) a Detector → Audit Schedule migration.
 
-    Sprint 39 step 3 — print the proposed migration in a readable table,
+    Sprint 39 step 3 - print the proposed migration in a readable table,
     then exit. With ``--apply``, persist ``audit_schedules`` rows for
     every applicable plan (collisions and unresolvable MCP servers are
     skipped with a noted reason).
@@ -1624,7 +1624,7 @@ async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
     for plan in plans:
         marker = "  ⨯" if plan.skip_reason else "  ✓"
         print(f"{marker} {plan.name}")
-        print(f"      MCP server:    {plan.mcp_server_name or '— missing —'}")
+        print(f"      MCP server:    {plan.mcp_server_name or 'missing'}")
         print(f"      Interval:      every {plan.interval_minutes} min")
         print(f"      Active:        {plan.is_active}")
         if plan.focus_areas:
@@ -1635,7 +1635,7 @@ async def _run_detectors_migrate(cfg: Config, args: argparse.Namespace) -> int:
 
     if not args.apply:
         print(
-            "(Dry run — nothing was written. Re-run with --apply to persist "
+            "(Dry run: nothing was written. Re-run with --apply to persist "
             "the audit_schedules rows.)"
         )
         return 0
@@ -1674,10 +1674,10 @@ async def _run_doctor(cfg: Config) -> int:
         if engine is not None:
             await engine.dispose()
 
-    print("OpsMender doctor -- production readiness checks")
+    print("OpsMender doctor: production readiness checks")
     print()
     for result in results:
-        print(f"  {result.glyph} {result.name} -- {result.detail}")
+        print(f"  {result.glyph} {result.name}: {result.detail}")
     print()
 
     rc = doctor_module.exit_code(results)
@@ -1699,7 +1699,7 @@ async def _resolve_mcp_org_id(
 
     Precedence: ``--org-id`` argument, then ``OPSMENDER_MCP_JSON_ORG_ID``
     env var, then the only org in the DB when exactly one exists.
-    Returns ``(org_id, error_message)`` — exactly one is non-None.
+    Returns ``(org_id, error_message)`` - exactly one is non-None.
     """
 
     from backend.db.repos import OrganizationRepo
@@ -1745,7 +1745,7 @@ async def _run_mcp(cfg: Config, args: argparse.Namespace) -> int:
             print(f"opsmender mcp: {err}", file=sys.stderr)
             return 2
 
-        # CLI invocations bypass the OPSMENDER_MCP_JSON_SYNC opt-in flag —
+        # CLI invocations bypass the OPSMENDER_MCP_JSON_SYNC opt-in flag -
         # the operator just typed the command, that's consent enough.
         syncer = MCPJSONSyncer(factory, path=path, enabled=True)
 
@@ -1761,7 +1761,7 @@ async def _run_mcp(cfg: Config, args: argparse.Namespace) -> int:
             dry_run=not args.apply,
         )
 
-        print(f"mcp reload — file={path} org={org_id}")
+        print(f"mcp reload: file={path} org={org_id}")
         print(f"  created: {len(result.created)}")
         for name in result.created:
             print(f"    + {name}")
@@ -1780,7 +1780,7 @@ async def _run_mcp(cfg: Config, args: argparse.Namespace) -> int:
                 print(f"    ! {msg}")
 
         if not args.apply:
-            print("(Dry run — nothing was written. Re-run with --apply to commit.)")
+            print("(Dry run: nothing was written. Re-run with --apply to commit.)")
         if result.errors:
             return 1
         return 0
@@ -1792,7 +1792,7 @@ def _run_saml_gen_sp_keys(args: argparse.Namespace) -> int:
     """Emit a self-signed SP keypair (PEM cert + key) to stdout.
 
     Designed for ``opsmender saml gen-sp-keys``. The output is meant to be copied into
-    ``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY`` in the operator's secret store —
+    ``OPSMENDER_SAML_SP_CERT`` / ``OPSMENDER_SAML_SP_KEY`` in the operator's secret store -
     we never persist it to disk on the user's behalf to avoid silent leakage.
     """
     try:
@@ -1851,7 +1851,7 @@ def main(argv: list[str] | None = None) -> None:
         print(importlib.metadata.version("opsmender"))
         sys.exit(0)
 
-    # `serve` doesn't need the Config object loaded eagerly — the FastAPI app
+    # `serve` doesn't need the Config object loaded eagerly - the FastAPI app
     # factory reads its own AppConfig inside uvicorn's worker. Loading it here
     # would couple CLI startup to ~optional dependencies like asyncpg.
     if args.command == "serve":
@@ -1898,11 +1898,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "saml":
         if args.saml_command == "gen-sp-keys":
             sys.exit(_run_saml_gen_sp_keys(args))
-        # No subcommand — print saml help.
+        # No subcommand - print saml help.
         _build_parser().parse_args(["saml", "--help"])
         sys.exit(0)
 
-    # No subcommand — print help
+    # No subcommand - print help
     _build_parser().print_help()
 
 

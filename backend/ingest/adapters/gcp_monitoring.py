@@ -63,7 +63,7 @@ class GCPMonitoringAdapter(IngestAdapter):
         # Build display title and description
         title = f"[GCP Monitoring] {policy_name}"
         if condition_name:
-            title += f" — {condition_name}"
+            title += f": {condition_name}"
 
         desc_text = (
             f"**Policy:** {policy_name}\n"
@@ -97,7 +97,7 @@ class GCPMonitoringAdapter(IngestAdapter):
         # Fingerprint: incident_id is globally unique
         external_id = incident_id or f"{policy_name}:{resource_name}"
 
-        # Availability signal — closed=up, open/acknowledged=down
+        # Availability signal - closed=up, open/acknowledged=down
         availability = AvailabilitySignal(
             target_name=policy_name,
             up=(state == "closed"),

@@ -23,7 +23,7 @@ from backend.ingest.adapters.universal import (
 
 
 # ======================================================================
-# Unit tests — helper functions
+# Unit tests - helper functions
 # ======================================================================
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
@@ -80,7 +80,7 @@ class TestToLatencyMs:
 
 
 # ======================================================================
-# Unit tests — CloudWatch adapter availability
+# Unit tests - CloudWatch adapter availability
 # ======================================================================
 
 
@@ -117,7 +117,7 @@ class TestCloudWatchAvailability:
 
 
 # ======================================================================
-# Unit tests — Universal adapter availability detection
+# Unit tests - Universal adapter availability detection
 # ======================================================================
 
 
@@ -222,7 +222,7 @@ class TestUniversalAvailability:
 
 
 # ======================================================================
-# Integration test — ingest service writes uptime_samples
+# Integration test - ingest service writes uptime_samples
 # ======================================================================
 
 

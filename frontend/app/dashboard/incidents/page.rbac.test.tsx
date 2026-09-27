@@ -1,5 +1,5 @@
 /**
- * Part 1/8 — New Incident + Fire Test Incident are admin-only on the Incidents
+ * Part 1/8 - New Incident + Fire Test Incident are admin-only on the Incidents
  * page; Operators and Viewers don't see them.
  */
 

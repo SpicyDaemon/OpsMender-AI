@@ -114,7 +114,7 @@ def build_incident_message(
             lines.append(f"Responder: Escalated to {name}")
         else:
             lines.append("Responder: Unassigned")
-        # Escalation context — shown when present (escalation cards carry it).
+        # Escalation context - shown when present (escalation cards carry it).
         level = responder.get("escalation_level")
         if level:
             lines.append(f"Escalation level: {level}")

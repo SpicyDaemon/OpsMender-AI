@@ -1,5 +1,5 @@
 /**
- * Modal — tall content must stay reachable.
+ * Modal - tall content must stay reachable.
  *
  * Regression guard for the bug where a modal taller than the viewport
  * overflowed off-screen with no scroll, hiding the footer actions (you had to

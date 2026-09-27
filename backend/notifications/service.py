@@ -1,4 +1,4 @@
-"""In-app notification center service (v1.2 — the bell).
+"""In-app notification center service (v1.2 - the bell).
 
 Central entry point for raising a per-user in-app notification. It:
 
@@ -12,7 +12,7 @@ Design notes:
 - **Never raises into the caller.** A notification is a side effect; a failure
   to record one must not break an incident transition or an approval.
 - **Mute** suppresses the notification entirely (the user opted out).
-- **Quiet hours** suppress only the *live push* — the row is still stored so
+- **Quiet hours** suppress only the *live push* - the row is still stored so
   the user catches up when they next open the bell.
 - The caller owns the transaction boundary (emit only flushes), matching the
   rest of the repo layer.
@@ -35,7 +35,7 @@ from backend.db.repos import InAppNotificationRepo, UserNotificationPrefRepo
 logger = logging.getLogger(__name__)
 
 
-# Coarse categories — the unit a user mutes against. Fine-grained
+# Coarse categories - the unit a user mutes against. Fine-grained
 # ``event_type`` strings (e.g. "incident.assigned") map onto one of these.
 CATEGORY_INCIDENT = "incident"
 CATEGORY_APPROVAL = "approval"

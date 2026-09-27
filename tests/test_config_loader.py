@@ -107,7 +107,7 @@ class TestConfigLoad:
         assert cfg.tiers["default"] == 3
 
     def test_people_visibility_flags_default_to_false(self, tmp_path):
-        """Sprint 64 — both visibility flags default to false so a fresh
+        """Sprint 64 - both visibility flags default to false so a fresh
         install lands on the simple-by-default auth UX."""
         env_file = tmp_path / ".env"
         env_file.write_text("")
@@ -115,7 +115,7 @@ class TestConfigLoad:
         assert cfg.people.advanced_auth_enabled is False
 
     def test_advanced_auth_enabled_reads_env_flag(self, tmp_path):
-        """Sprint 64 — operators opt in to SSO/SAML admin surfaces via
+        """Sprint 64 - operators opt in to SSO/SAML admin surfaces via
         OPSMENDER_ADVANCED_AUTH_ENABLED. The flag is a visibility hint
         only; SSO/SAML runtime routes keep working regardless."""
         env_file = tmp_path / ".env"

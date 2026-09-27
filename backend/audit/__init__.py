@@ -1,1 +1,1 @@
-# backend/audit — Audit logging for OpsMender AI.
+# backend/audit - Audit logging for OpsMender AI.

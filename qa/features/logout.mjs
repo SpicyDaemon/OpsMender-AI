@@ -5,7 +5,7 @@ import { config } from "../lib/config.mjs";
 
 export default {
   id: "logout",
-  title: "Authentication — logout",
+  title: "Authentication: logout",
   async run(h) {
     await h.step("sign out", async () => {
       await h.goto("/dashboard");

@@ -200,7 +200,7 @@ export default function ProfileSettingsPage() {
               )}
             </div>
             <p className="mt-1 text-xs text-fg-muted">
-              PNG, JPG, GIF, BMP, ICO, or TIFF up to 5 MB — resized to fit
+              PNG, JPG, GIF, BMP, ICO, or TIFF up to 5 MB. Resized to fit
               200×200.
             </p>
           </div>

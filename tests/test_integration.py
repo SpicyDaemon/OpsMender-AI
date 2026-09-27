@@ -2,10 +2,10 @@
 
 Two categories:
 
-1. **Simulated** (always runs) — mocked MCP session + StubLLM, validates the
+1. **Simulated** (always runs) - mocked MCP session + StubLLM, validates the
    full wiring from CLI through graph to audit log.
 
-2. **Live** (requires real K8s MCP server) — marked ``@pytest.mark.integration``,
+2. **Live** (requires real K8s MCP server) - marked ``@pytest.mark.integration``,
    skipped unless ``--run-integration`` is passed to pytest.
    Requires: kubectl configured, npx available,
    ``@anthropic/mcp-server-k8s`` working.
@@ -74,10 +74,10 @@ def _make_plan_llm(actions: list[dict]) -> StubLLM:
 
 
 class TestSimulatedEndToEnd:
-    """Full pipeline with mocked MCP + StubLLM — validates wiring."""
+    """Full pipeline with mocked MCP + StubLLM - validates wiring."""
 
     async def test_full_pipeline_with_safe_actions(self, tmp_path):
-        """At Tier 1, every write — including a safe action — is routed through
+        """At Tier 1, every write - including a safe action - is routed through
         the approval gate; once the operator approves, it executes. (Advisory
         Tier 2 would block it outright.)"""
         audit_path = tmp_path / "audit.jsonl"
@@ -101,7 +101,7 @@ class TestSimulatedEndToEnd:
         logger = AuditLogger(audit_path)
         logger.log_session_start(sid, 1)
 
-        # Tier 1 is interactive — supply an approval service that approves so
+        # Tier 1 is interactive - supply an approval service that approves so
         # the safe action proceeds to execution.
         import uuid as _uuid
         from datetime import datetime as _dt
@@ -163,7 +163,7 @@ class TestSimulatedEndToEnd:
         assert "tool_call_end" in types
 
     async def test_all_actions_blocked_at_tier_2_advisory(self, tmp_path):
-        """Tier 2 is advisory only — every planned remediation action is
+        """Tier 2 is advisory only - every planned remediation action is
         blocked by the tier gate (read-only observation happens earlier in the
         observe node, not the plan/execute phase)."""
         audit_path = tmp_path / "audit.jsonl"
@@ -205,7 +205,7 @@ class TestSimulatedEndToEnd:
         )
 
         assert result["status"] == "completed"
-        # Advisory tier: nothing from the plan executes — both actions blocked.
+        # Advisory tier: nothing from the plan executes - both actions blocked.
         assert len(result["approved_actions"]) == 0
         assert len(result["blocked_actions"]) == 2
         blocked_tools = {a["tool_name"] for a in result["blocked_actions"]}
@@ -215,7 +215,7 @@ class TestSimulatedEndToEnd:
         assert len(result["tool_calls"]) == 0
 
     async def test_tier_3_blocks_everything(self, tmp_path):
-        """Legacy Tier 3 normalizes to advisory Tier 2 — all actions blocked."""
+        """Legacy Tier 3 normalizes to advisory Tier 2 - all actions blocked."""
         audit_path = tmp_path / "audit.jsonl"
         skill_def = load_skill_def("examples/SKILL.md")
 
@@ -396,7 +396,7 @@ class TestLiveK8sMCP:
         logger = AuditLogger(audit_path)
 
         async with connect(k8s_server) as session:
-            # Use stub LLM — we're testing MCP integration, not LLM quality
+            # Use stub LLM - we're testing MCP integration, not LLM quality
             llm = _make_plan_llm(
                 [
                     {
@@ -421,7 +421,7 @@ class TestLiveK8sMCP:
                 {
                     "session_id": "live-test-001",
                     "tier": 2,
-                    "incident_description": "Live integration test — list pods",
+                    "incident_description": "Live integration test: list pods",
                 }
             )
 

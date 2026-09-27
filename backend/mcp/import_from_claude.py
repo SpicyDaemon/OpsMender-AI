@@ -2,9 +2,9 @@
 
 Claude Code stores MCP servers in two places:
 
-* ``~/.claude.json`` — top-level ``projects`` map keyed by absolute
+* ``~/.claude.json`` - top-level ``projects`` map keyed by absolute
   project path; each project may carry its own ``mcpServers`` block.
-* ``.mcp.json`` (or any path the operator points at) — the project-
+* ``.mcp.json`` (or any path the operator points at) - the project-
   scope shape, ``{"mcpServers": {...}}``, which matches OpsMender's
   own file mirror byte-for-byte.
 
@@ -13,7 +13,7 @@ This module discovers either form and produces a normalized
 checklist in Sprint 43, or a future ``opsmender mcp import``
 subcommand) can hand to ``MCPServerRepo.create``.
 
-No DB writes happen here — these helpers are pure parsing.
+No DB writes happen here - these helpers are pure parsing.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def default_user_config_path() -> Path:
 
 
 def default_project_config_path(cwd: Path | None = None) -> Path:
-    """``<cwd>/.mcp.json`` — the project-scope file."""
+    """``<cwd>/.mcp.json`` - the project-scope file."""
     return (cwd or Path.cwd()) / ".mcp.json"
 
 
@@ -130,7 +130,7 @@ def parse(path: Path) -> list[ImportableServer]:
 
     out: list[ImportableServer] = []
 
-    # Project-scope shape — simple `mcpServers` block at the root.
+    # Project-scope shape - simple `mcpServers` block at the root.
     direct = raw.get("mcpServers")
     if isinstance(direct, dict):
         for name, entry in direct.items():
@@ -138,7 +138,7 @@ def parse(path: Path) -> list[ImportableServer]:
                 continue
             out.append(_entry_to_importable(name, entry, source=f"claude:{path}"))
 
-    # User-scope shape — `projects[<path>].mcpServers`.
+    # User-scope shape - `projects[<path>].mcpServers`.
     projects = raw.get("projects")
     if isinstance(projects, dict):
         for project_path, project_cfg in projects.items():

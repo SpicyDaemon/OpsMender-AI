@@ -1,15 +1,15 @@
-"""Pure uptime/SLA metric helpers (Sprint — Reliability v1 cleanup).
+"""Pure uptime/SLA metric helpers (Sprint - Reliability v1 cleanup).
 
 These functions operate on plain sample sequences so they can be unit-tested
 without a database. A "sample" is anything with ``observed_at`` (aware
-datetime), ``up`` (bool), and ``suppressed`` (bool) attributes — the
+datetime), ``up`` (bool), and ``suppressed`` (bool) attributes - the
 ``UptimeSample`` ORM rows satisfy this, as do lightweight stand-ins in tests.
 
 Conventions (kept consistent with the existing poller/repo):
 - The poller records one sample per probe; uptime math treats each
   non-suppressed sample as covering ``SAMPLE_INTERVAL_SECONDS`` of wall clock.
 - Suppressed samples (recorded during a maintenance window) are **excluded**
-  from the uptime percentage and from downtime — i.e. maintenance windows are
+  from the uptime percentage and from downtime - i.e. maintenance windows are
   excluded from SLA impact, not merely silenced.
 """
 
@@ -41,7 +41,7 @@ class _Sample(Protocol):
 def uptime_stats(samples: Sequence[_Sample]) -> dict[str, Any]:
     """Aggregate uptime over *samples*.
 
-    Returns ``uptime_pct`` (0–100, rounded to 4 dp so 99.999 survives),
+    Returns ``uptime_pct`` (0-100, rounded to 4 dp so 99.999 survives),
     ``total_samples``, ``up_samples``, ``downtime_seconds``,
     ``suppressed_seconds``.
     """
@@ -73,7 +73,7 @@ def uptime_stats(samples: Sequence[_Sample]) -> dict[str, Any]:
 def count_down_events(samples: Sequence[_Sample]) -> int:
     """Number of distinct downtime events (a run of consecutive down samples).
 
-    Suppressed samples are ignored — they neither start nor break a run, so a
+    Suppressed samples are ignored - they neither start nor break a run, so a
     maintenance window doesn't fabricate or split a failure.
     """
     events = 0
@@ -95,7 +95,7 @@ def mtbf_seconds(samples: Sequence[_Sample]) -> float | None:
 
     Defined as total operational (up) time divided by the number of downtime
     events. Returns ``None`` when there were no failures in the window (nothing
-    to average over — the UI shows this as "no downtime").
+    to average over - the UI shows this as "no downtime").
     """
     failures = count_down_events(samples)
     if failures == 0:
@@ -109,13 +109,13 @@ def downtime_episodes(samples: Sequence[_Sample]) -> list[dict[str, Any]]:
     """Collapse consecutive down samples into discrete outage episodes.
 
     Each episode carries:
-      - ``started_at`` — observed_at of the first down sample in the run
-      - ``ended_at``   — observed_at of the recovery (first up) sample, or
+      - ``started_at`` - observed_at of the first down sample in the run
+      - ``ended_at`` - observed_at of the recovery (first up) sample, or
         ``None`` when the outage is still ongoing (run reaches the last sample)
-      - ``duration_seconds`` — ``count_of_down_samples * SAMPLE_INTERVAL_SECONDS``
+      - ``duration_seconds`` - ``count_of_down_samples * SAMPLE_INTERVAL_SECONDS``
         (consistent with ``uptime_stats`` downtime), or for an ongoing outage the
         elapsed time from the start to the last observed sample
-      - ``maintenance`` — True when *every* down sample in the run was suppressed
+      - ``maintenance`` - True when *every* down sample in the run was suppressed
         (the outage fell entirely inside a maintenance window). Maintenance
         episodes are surfaced for visibility but are excluded from the SLA/SLO
         uptime math (``uptime_stats`` already drops suppressed samples).
@@ -166,11 +166,11 @@ def history_series(
 ) -> list[dict[str, Any]]:
     """Bucket *samples* into a fixed number of equal time slices for a strip.
 
-    Each bucket carries ``ts`` (bucket start), ``up_pct`` (0–100 over
+    Each bucket carries ``ts`` (bucket start), ``up_pct`` (0-100 over
     non-suppressed samples in the bucket), and ``status``:
-      - ``"unknown"`` — no samples landed in the bucket
-      - ``"up"``      — every non-suppressed sample was up
-      - ``"down"``    — at least one non-suppressed sample was down
+      - ``"unknown"`` - no samples landed in the bucket
+      - ``"up"`` - every non-suppressed sample was up
+      - ``"down"`` - at least one non-suppressed sample was down
     A bucket containing only suppressed samples is ``"unknown"`` (excluded).
     """
     buckets = max(1, buckets)

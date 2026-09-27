@@ -1,4 +1,4 @@
-"""Wave 2 Phase 4 — infrastructure automation adapter tests."""
+"""Wave 2 Phase 4 - infrastructure automation adapter tests."""
 
 from __future__ import annotations
 

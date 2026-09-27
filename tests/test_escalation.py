@@ -239,14 +239,14 @@ class TestStateMachine:
             )
             await db.commit()
 
-            # Before timeout — tick does nothing.
+            # Before timeout - tick does nothing.
             before = now + timedelta(seconds=15)
             result = await _esc.tick(
                 db, TEST_ORG_ID, incident_id=incident.id, at=before
             )
             assert result is None
 
-            # After timeout — step 1 fires.
+            # After timeout - step 1 fires.
             after = now + timedelta(seconds=45)
             result = await _esc.tick(db, TEST_ORG_ID, incident_id=incident.id, at=after)
             await db.commit()
@@ -256,7 +256,7 @@ class TestStateMachine:
             pages = await IncidentPageRepo.list_for_incident(
                 db, TEST_ORG_ID, incident.id
             )
-            # Step 0 page (u1) plus step 1 page (u2) — additive.
+            # Step 0 page (u1) plus step 1 page (u2) - additive.
             assert {p.user_id for p in pages} == {u1, u2}
 
     async def test_chain_exhausts_after_final_step(self, app):
@@ -459,7 +459,7 @@ class TestStateMachine:
                 at=now,
             )
             await db.commit()
-            # Jump 20 minutes ahead — past the 15-min hard deadline.
+            # Jump 20 minutes ahead - past the 15-min hard deadline.
             later = now + timedelta(minutes=20)
             await _esc.tick(db, TEST_ORG_ID, incident_id=incident.id, at=later)
             await db.commit()
@@ -522,7 +522,7 @@ class TestStateMachine:
             )
             await db.commit()
 
-            # Manually re-fire step 0 — should not duplicate.
+            # Manually re-fire step 0 - should not duplicate.
             already = await IncidentPageRepo.already_paged(
                 db,
                 TEST_ORG_ID,
@@ -612,7 +612,7 @@ class TestEscalationAPI:
         )
         assert link.status_code == 201
 
-        # v1 — the service form reads the linked chain back via the new GET.
+        # v1 - the service form reads the linked chain back via the new GET.
         listed = await client.get(
             f"/services/{svc.id}/escalation-chains", headers=auth_headers
         )
@@ -624,7 +624,7 @@ class TestEscalationAPI:
     async def test_step_user_target_validation(
         self, client: AsyncClient, app, auth_headers
     ):
-        """v1 — escalation levels can target a user; a bogus user 400s."""
+        """v1 - escalation levels can target a user; a bogus user 400s."""
         team_id = await _make_team(app, name="user-target-team")
         chain = await client.post(
             "/escalation-chains",
@@ -658,7 +658,7 @@ class TestEscalationAPI:
         assert ok.status_code == 201
 
     async def test_step_inline_patch(self, client: AsyncClient, app, auth_headers):
-        """Sprint 49 — PATCH a step's timeout (and channels) without
+        """Sprint 49 - PATCH a step's timeout (and channels) without
         re-creating it."""
         team_id = await _make_team(app, name="patch-team")
         u1 = await _make_user(app, username="patch-user")
@@ -697,7 +697,7 @@ class TestEscalationAPI:
         assert ghost.status_code == 404
 
     async def test_chain_reorder_steps(self, client: AsyncClient, app, auth_headers):
-        """Sprint 49 — drag-reorder support via POST reorder-steps."""
+        """Sprint 49 - drag-reorder support via POST reorder-steps."""
         team_id = await _make_team(app, name="reorder-team")
         u1 = await _make_user(app, username="r-u1")
         u2 = await _make_user(app, username="r-u2")
@@ -761,7 +761,7 @@ class TestEscalationAPI:
                 headers=auth_headers,
             )
 
-        # Try to reorder with a single id — must reject.
+        # Try to reorder with a single id - must reject.
         bad = await client.post(
             f"/escalation-chains/{chain_id}/reorder-steps",
             json={"step_ids": [str(uuid.uuid4())]},
@@ -770,7 +770,7 @@ class TestEscalationAPI:
         assert bad.status_code == 400
 
     async def test_chain_where_used(self, client: AsyncClient, app, auth_headers):
-        """Sprint 49 — GET /escalation-chains/{id}/services."""
+        """Sprint 49 - GET /escalation-chains/{id}/services."""
         team_id = await _make_team(app, name="whereused-team")
         async with app.state.session_factory() as db:
             svc_a = await ServiceRepo.create(
@@ -853,7 +853,7 @@ class TestEscalationAPI:
             await db.commit()
 
             # Create an incident that should match the P0 rule. We have to
-            # set service_id by hand for now — the REST create body doesn't
+            # set service_id by hand for now - the REST create body doesn't
             # take service_id yet (Sprint 35 follow-up).
             inc = await IncidentRepo.create(
                 db,
@@ -1201,7 +1201,7 @@ async def _drain_background(predicate, *, max_ticks=100):
 
     Uses a small real delay (not ``sleep(0)``) because the fire-and-forget
     delivery awaits aiosqlite I/O on a worker thread, which needs wall-clock
-    time to complete — tight ``sleep(0)`` spins would never let it finish.
+    time to complete - tight ``sleep(0)`` spins would never let it finish.
     """
     for _ in range(max_ticks):
         if predicate():

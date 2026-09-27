@@ -3,9 +3,9 @@
 Log verbosity is a **process-global** concern. The effective level is sourced
 in this order (later wins):
 
-  1. ``OPSMENDER_LOG_LEVEL`` env var / ``.env`` — applied at process start.
+  1. ``OPSMENDER_LOG_LEVEL`` env var / ``.env`` - applied at process start.
   2. The persisted ``logging_level`` runtime-config override saved from the
-     dashboard Config page — applied at startup once the DB is reachable, and
+     dashboard Config page - applied at startup once the DB is reachable, and
      again **live** whenever an admin saves a new value.
 
 Before this module existed, ``OPSMENDER_LOG_LEVEL`` was read into config but
@@ -27,7 +27,7 @@ _DEFAULT_LEVEL = "INFO"
 
 # uvicorn installs these loggers with their own handlers + ``propagate=False``.
 # Setting their level explicitly is what makes the dashboard setting govern
-# HTTP access logs (the "GET /config 200 OK" lines) too — not just OpsMender's
+# HTTP access logs (the "GET /config 200 OK" lines) too - not just OpsMender's
 # own loggers.
 _UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 

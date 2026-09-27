@@ -4,7 +4,7 @@ output "alb_dns_name" {
 }
 
 output "alb_zone_id" {
-  description = "ALB hosted zone ID — pair with the DNS name when creating a Route 53 ALIAS record."
+  description = "ALB hosted zone ID. Pair it with the DNS name when creating a Route 53 ALIAS record."
   value       = aws_lb.this.zone_id
 }
 

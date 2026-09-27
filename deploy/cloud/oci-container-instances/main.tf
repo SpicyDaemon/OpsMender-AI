@@ -1,14 +1,14 @@
 ## OCI Container Instance + Logging.
 ##
 ## Container Instances run a single container per instance (or a small
-## sidecar set). There is no native autoscaling — scale by deploying
+## sidecar set). There is no native autoscaling - scale by deploying
 ## additional instances behind an OCI Network Load Balancer (operator-
 ## provisioned, out of scope for this baseline recipe).
 ##
 ## Secrets handling: this recipe fetches Vault secret values at apply
 ## time via `data "oci_secrets_secretbundle"` and injects them as plain
 ## environment variables on the container. **Secret material lands in
-## Terraform state** — use an encrypted remote backend (OCI Object
+## Terraform state** - use an encrypted remote backend (OCI Object
 ## Storage with KMS, or Terraform Cloud) for production deployments.
 ##
 ## A more secure alternative would be to mount Vault credentials via

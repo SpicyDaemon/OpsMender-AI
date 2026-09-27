@@ -243,12 +243,10 @@ class IntegrationToolRuntime:
         """Build the integration tool surface for one org.
 
         ``allowed_connector_ids`` is the strict per-service integration
-        allowlist. When it is ``None`` (no service context - e.g. a session not
-        bound to an incident/service) every enabled connector is exposed, which
-        preserves prior behavior. When it is a set (including an **empty** set)
-        only connectors in that set are exposed - an empty allowlist therefore
-        yields no integration tools at all, which is the strict-allowlist
-        semantics services opt into."""
+        allowlist. Sessions always pass a set: their service's allowlist, or
+        an empty set when there is no service (S-107), and an empty set yields
+        no integration tools at all. ``None`` exposes every enabled connector;
+        only authoring tools such as the Skill Studio generator use it."""
 
         async with factory() as db:
             connectors = await IntegrationConnectorRepo.list_for_org(

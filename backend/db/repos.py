@@ -12,6 +12,7 @@ Usage::
 """
 
 from __future__ import annotations
+import hashlib
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -3089,20 +3090,40 @@ class IngestTokenRepo:
         return result.scalars().first()
 
     @staticmethod
-    async def get_active_for_service_token(
+    async def get_for_service_token(
         db: AsyncSession,
         org_id: uuid.UUID,
         service_id: uuid.UUID,
         token_hash: str,
     ) -> IngestToken | None:
-        """Resolve the token embedded in a service URL, regardless of other tokens."""
-        stmt = select(IngestToken).where(
-            IngestToken.org_id == org_id,
-            IngestToken.service_id == service_id,
-            IngestToken.token_hash == token_hash,
-            IngestToken.is_active,
+        """The token row behind a service URL, active or revoked."""
+        stmt = (
+            select(IngestToken)
+            .where(
+                IngestToken.org_id == org_id,
+                IngestToken.service_id == service_id,
+                IngestToken.token_hash == token_hash,
+            )
+            .order_by(IngestToken.is_active.desc())
         )
-        return (await db.execute(stmt)).scalar_one_or_none()
+        return (await db.execute(stmt)).scalars().first()
+
+    @staticmethod
+    async def revoke_for_service_token(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        service_id: uuid.UUID,
+        token_hash: str,
+    ) -> None:
+        """Revoke the token behind a service URL; the service's other bound
+        tokens keep working."""
+        await db.execute(
+            update(IngestToken)
+            .where(IngestToken.org_id == org_id)
+            .where(IngestToken.service_id == service_id)
+            .where(IngestToken.token_hash == token_hash)
+            .values(is_active=False)
+        )
 
     @staticmethod
     async def list_all(
@@ -5918,6 +5939,15 @@ class TeamRepo:
         return set((await db.execute(stmt)).scalars().all())
 
 
+def _intake_secret_columns(raw: str) -> dict[str, str]:
+    """What a service keeps of its intake URL's secret: the SHA-256 hash that
+    ingest_tokens also uses, and the first eight characters as a hint."""
+    return {
+        "intake_token_hash": hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        "intake_token_hint": raw[:8],
+    }
+
+
 class ServiceRepo:
     @staticmethod
     async def create(
@@ -5947,7 +5977,7 @@ class ServiceRepo:
             description=description,
             priority=priority,
             alert_grouping=alert_grouping,
-            intake_token=intake_token,
+            **(_intake_secret_columns(intake_token) if intake_token else {}),
             mcp_server_ids=mcp_server_ids or [],
             model_config_ids=model_config_ids or [],
             allowed_integration_connector_ids=allowed_integration_connector_ids or [],
@@ -5986,9 +6016,11 @@ class ServiceRepo:
     async def get_by_intake_token(
         db: AsyncSession, intake_token: str
     ) -> Service | None:
+        """The service whose intake URL carries *intake_token*."""
+        token_hash = _intake_secret_columns(intake_token)["intake_token_hash"]
         return (
             await db.execute(
-                select(Service).where(Service.intake_token == intake_token)
+                select(Service).where(Service.intake_token_hash == token_hash)
             )
         ).scalar_one_or_none()
 
@@ -6044,7 +6076,7 @@ class ServiceRepo:
         if alert_grouping is not None:
             values["alert_grouping"] = alert_grouping
         if intake_token is not None:
-            values["intake_token"] = intake_token
+            values.update(_intake_secret_columns(intake_token))
         if mcp_server_ids_provided:
             values["mcp_server_ids"] = mcp_server_ids or []
         if model_config_ids_provided:

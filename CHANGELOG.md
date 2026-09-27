@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Skills from the template use "## Tier 0: Autonomous" headings; Skills
   with the older headings still parse. The AI is asked to write plainly
   and skip em dashes, too. Incidents already stored keep their titles.
+- **Sessions without a service get no integrations.** A service's allowlist is
+  what grants integration tools, so an incident with no service (a manual P2
+  or P3, or an SLO with no service) no longer gets every enabled connector.
+- **Helm sets `FORWARDED_ALLOW_IPS` when ingress is enabled**, from the new
+  `ingress.trustedProxies` value (default `"*"`). Behind an ingress every
+  request comes from the ingress controller, so without it sign-in limits
+  counted everyone as one address and five wrong passwords locked an account
+  for everyone. Narrow it to your ingress controller's pod CIDR if other
+  workloads in the cluster aren't trusted.
 
 ### Fixed
 
@@ -187,6 +196,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Intake URLs are stored as a hash and shown once.** A service's intake URL
+  carries the secret that lets a monitor post alerts and page a team, and it
+  used to be stored as plain text. Now only a hash is kept; the full URL is
+  shown once, when the service is created or an admin rotates it (**Rotate
+  URL**, `POST /services/{id}/intake-url`). Existing URLs keep working.
+  `GET /services` returns a masked `intake_url_hint` to admins and operators
+  instead of `intake_url`. The access log shows only the first eight
+  characters of the secret, and revoking the URL's ingest token now retires
+  the URL instead of failing or quietly re-enabling it.
+- **A password change or reset ends older sessions.** Tokens issued before an
+  admin reset, a reset link or a self-service change stop working on the API,
+  the live streams and a pending MFA challenge. `POST /auth/me/password` now
+  returns a fresh token (200) instead of 204, so whoever changed their own
+  password stays signed in. The live streams also refuse a deactivated
+  user's token.
 - **A deny rule wins wherever it appears in a Skill.** A `deny: true` entry
   written below a broad glob such as `*` was ignored, so the denied tool ran
   autonomously at Tier 0 and Tier 1; connector Skills had the same gap. Deny

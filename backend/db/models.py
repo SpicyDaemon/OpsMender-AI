@@ -2080,9 +2080,13 @@ class Service(Base):
     alert_grouping: Mapped[str] = mapped_column(
         String(10), default="inherit", nullable=False
     )
-    intake_token: Mapped[str | None] = mapped_column(
-        String(160), unique=True, nullable=True
+    # Only a hash of the intake URL's secret is kept (S-108); the full URL is
+    # shown once, on create and on rotate. The hint is the token's first
+    # characters, so an admin can tell which URL a monitor uses.
+    intake_token_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True
     )
+    intake_token_hint: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Strict allowlist of MCP server ids this service's sessions may use. Empty
     # means no MCP tools are available for sessions attached to the service.
     mcp_server_ids: Mapped[list[str]] = mapped_column(
@@ -2118,10 +2122,10 @@ class Service(Base):
     __table_args__ = (UniqueConstraint("org_id", "slug", name="uq_service_slug"),)
 
     @property
-    def intake_url(self) -> str | None:
-        if not self.intake_token:
+    def intake_url_hint(self) -> str | None:
+        if not self.intake_token_hint:
             return None
-        return f"/api/v1/intake/{self.intake_token}"
+        return f"/api/v1/intake/{self.intake_token_hint}…"
 
 
 class Roster(Base):

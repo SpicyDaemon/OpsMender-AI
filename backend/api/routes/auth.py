@@ -51,6 +51,7 @@ from backend.api.schemas import (
     MePasswordChangeRequest,
     MeUpdateRequest,
     TemporaryPasswordResponse,
+    TokenResponse,
     UserCreateRequest,
     UserListResponse,
     UserResponse,
@@ -483,7 +484,7 @@ async def delete_my_avatar(
 
 @router.post(
     "/me/password",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=TokenResponse,
     summary="Change the current user's own password",
 )
 async def change_my_password(
@@ -491,7 +492,12 @@ async def change_my_password(
     user: User = Depends(reject_api_tokens),
     db: AsyncSession = Depends(get_db),
 ):
-    """Self-service password change - the current password must verify."""
+    """Self-service password change. The current password must verify.
+
+    Every token issued before the change stops working (S-109), including the
+    one making this request, so the response carries a fresh token and the
+    person who changed their password stays signed in.
+    """
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -506,6 +512,7 @@ async def change_my_password(
     target.must_change_password = False
     target.password_changed_at = datetime.now(timezone.utc)
     await db.commit()
+    return TokenResponse(access_token=create_access_token(target.id, target.role))
 
 
 @router.get(

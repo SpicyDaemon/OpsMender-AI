@@ -551,21 +551,20 @@ async def _allowed_integration_ids_for_incident(
     factory,
     org_id: uuid.UUID,
     incident,
-) -> set[uuid.UUID] | None:
+) -> set[uuid.UUID]:
     """Resolve a session's strict integration allowlist.
 
-    Returns ``None`` when there is no service context (no incident or no
-    service) so the runtime keeps its prior all-connectors behavior. When the
-    incident's service exists, returns the set of its allowed connector ids -
-    possibly **empty**, which means the service may use no integrations at all
-    (strict-allowlist semantics)."""
+    The incident's service decides which connectors its sessions may use; an
+    empty set means none. Without a service (no incident, no service, or a
+    deleted one) there is nothing to allow, so the session gets no
+    integrations (S-107). It used to get every enabled connector."""
 
     if incident is None or getattr(incident, "service_id", None) is None:
-        return None
+        return set()
     async with factory() as db:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
     if service is None:
-        return None
+        return set()
     allowed: set[uuid.UUID] = set()
     for raw in getattr(service, "allowed_integration_connector_ids", None) or []:
         try:

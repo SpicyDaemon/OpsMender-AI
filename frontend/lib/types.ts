@@ -1835,7 +1835,10 @@ export interface ServiceResponse {
   allowed_integration_connector_ids: string[];
   integration_action_overrides: Record<string, Record<string, boolean>>;
   ai_default_tier?: number | null;
+  /** Full URL: only in the create and rotate responses (shown once). */
   intake_url: string | null;
+  /** Masked, e.g. "/api/v1/intake/svc_F8Gn…"; admins and operators only. */
+  intake_url_hint?: string | null;
   external_refs: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;

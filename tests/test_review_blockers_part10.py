@@ -151,15 +151,20 @@ async def test_a_stored_connector_skill_deny_after_a_glob_blocks_at_runtime(
         assert check(create, tier, merged).permitted is False
 
 
-# ── KI-047: intake URLs for admins and operators only ──────────────────────
+# ── KI-047: viewers get nothing of the intake URL ──────────────────────────
 
 
 async def test_viewers_do_not_get_intake_urls(
     app, client: AsyncClient, admin_headers, viewer_headers
 ):
+    # Since Part 12 (S-108) nobody gets the full URL from the list: it is shown
+    # once, on create and on rotate. Admins keep a masked hint; viewers don't.
     await _create_paged_service(client, app, admin_headers, name="Secret")
     as_admin = await client.get("/services", headers=admin_headers)
     as_viewer = await client.get("/services", headers=viewer_headers)
     assert as_viewer.status_code == 200
-    assert all(item["intake_url"] for item in as_admin.json()["items"])
-    assert all(item["intake_url"] is None for item in as_viewer.json()["items"])
+    assert all(item["intake_url"] is None for item in as_admin.json()["items"])
+    assert all(item["intake_url_hint"] for item in as_admin.json()["items"])
+    for item in as_viewer.json()["items"]:
+        assert item["intake_url"] is None
+        assert item["intake_url_hint"] is None

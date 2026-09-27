@@ -61,6 +61,10 @@ spec:
                   name: {{ include "opsmender.secretName" . }}
                   key: OPSMENDER_DATABASE_URL
             {{- end }}
+            {{- if and .Values.ingress.enabled .Values.ingress.trustedProxies }}
+            - name: FORWARDED_ALLOW_IPS
+              value: {{ .Values.ingress.trustedProxies | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

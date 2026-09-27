@@ -503,7 +503,10 @@ async def test_change_my_password(env):
         headers=headers,
         json={"current_password": "securepass123", "new_password": "brand-new-pass-1"},
     )
-    assert ok.status_code == 204
+    assert ok.status_code == 200
+    # The response carries a fresh token so the user stays signed in (S-109).
+    fresh = {"Authorization": f"Bearer {ok.json()['access_token']}"}
+    assert (await client.get("/auth/me", headers=fresh)).status_code == 200
 
     # Old password no longer works; new one does.
     old_login = await client.post(
@@ -552,8 +555,9 @@ async def test_created_user_must_change_password_then_clears(env):
         headers=user_headers,
         json={"current_password": "temp-pass-123", "new_password": "chosen-pass-1"},
     )
-    assert changed.status_code == 204
-    me2 = await client.get("/auth/me", headers=user_headers)
+    assert changed.status_code == 200
+    fresh = {"Authorization": f"Bearer {changed.json()['access_token']}"}
+    me2 = await client.get("/auth/me", headers=fresh)
     assert me2.json()["must_change_password"] is False
 
 

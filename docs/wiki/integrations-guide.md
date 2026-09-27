@@ -33,6 +33,9 @@ MCP is optional when a Service's active native integration connectors already
 provide the tools the incident needs. A Service with an empty MCP allowlist can
 start an AI session and use those integration tools directly.
 
+The Service's allowlist is what grants integration tools, so an incident with
+no Service gets none.
+
 The safety model does not change:
 
 - every connector capability has a conservative built-in tier policy;

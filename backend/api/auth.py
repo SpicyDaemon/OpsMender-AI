@@ -149,23 +149,50 @@ async def get_current_user(
         setattr(user, "effective_role", token_row.role)
         return user
 
-    try:
-        payload = decode_access_token(token)
-        if payload.get("token_type") not in (None, "access"):
-            raise credentials_exc
-        user_id_str: str | None = payload.get("sub")
-        if user_id_str is None:
-            raise credentials_exc
-        user_id = uuid.UUID(user_id_str)
-    except (JWTError, ValueError):
-        raise credentials_exc
-
-    user = await UserRepo.get_by_id(db, user_id)
-    if user is None or not user.is_active:
+    user = await user_for_session_token(db, token)
+    if user is None:
         raise credentials_exc
     setattr(user, "api_token_name", None)
     setattr(user, "effective_role", user.role)
     return user
+
+
+async def user_for_session_token(db: AsyncSession, token: str) -> User | None:
+    """The active user a session JWT speaks for, or ``None``.
+
+    A token issued before the user's last password change or reset no longer
+    counts, so a stolen token stops working with the old password (S-109).
+    Shared by HTTP requests and the WebSocket streams.
+    """
+    try:
+        payload = decode_access_token(token)
+        if payload.get("token_type") not in (None, "access"):
+            return None
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except (JWTError, ValueError):
+        return None
+    user = await UserRepo.get_by_id(db, user_id)
+    if user is None or not user.is_active or user.deleted_at is not None:
+        return None
+    if issued_before_password_change(payload.get("iat"), user):
+        return None
+    return user
+
+
+def issued_before_password_change(issued_at: Any, user: User) -> bool:
+    """True when a token's ``iat`` predates the user's last password change.
+
+    ``iat`` holds whole seconds, so the comparison uses whole seconds: the
+    token minted right after a change, in the same second, still counts.
+    """
+    changed = user.password_changed_at
+    if changed is None:
+        return False
+    try:
+        issued = int(issued_at)
+    except (TypeError, ValueError):
+        return True
+    return issued < int(_aware(changed).timestamp())
 
 
 async def get_current_org(

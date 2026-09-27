@@ -12,6 +12,7 @@ from backend.api.auth import (
     create_access_token,
     decode_access_token,
     get_current_org,
+    issued_before_password_change,
     reject_api_tokens,
     require_role,
 )
@@ -161,6 +162,7 @@ async def verify_mfa(
             raise ValueError("wrong token type")
         user_id: uuid.UUID | None = uuid.UUID(payload["sub"])
     except (JWTError, KeyError, TypeError, ValueError):
+        payload = {}
         user_id = None
 
     # Wrong codes count per user and per address (KI-014).
@@ -181,6 +183,8 @@ async def verify_mfa(
             user is None
             or not user.is_active
             or user.deleted_at is not None
+            # A challenge started before a password change is stale (S-109).
+            or issued_before_password_change(payload.get("iat"), user)
             or row is None
             or row.enabled_at is None
         ):

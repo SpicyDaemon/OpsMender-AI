@@ -15,10 +15,8 @@ import {
   BellOff,
   Calendar,
   CalendarDays,
-  Check,
   ChevronDown,
   ChevronUp,
-  Copy,
   GitBranch,
   Info,
   ListOrdered,
@@ -62,6 +60,7 @@ import {
   deleteEscalationStep,
   deleteRoster,
   deleteService,
+  rotateServiceIntakeUrl,
   deleteTeam,
   getConfig,
   getEscalationChainCalendar,
@@ -145,6 +144,7 @@ import {
   keepRosterMembersOnTeam,
 } from "@/lib/rosterEligibility";
 import { fullIntakeUrl } from "@/lib/intake";
+import { IntakeUrlHint, IntakeUrlOnceDialog } from "@/components/paging/IntakeUrl";
 import { formatDate, formatDateTime, formatWeekdayDate } from "@/lib/formatDate";
 import { alertGroupingLabel } from "@/lib/displayNames";
 
@@ -213,29 +213,6 @@ function normalizeSlugInput(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
 }
 
-/** Inline copy-to-clipboard button used beside intake URLs. */
-function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      title={`Copy ${label.toLowerCase()}`}
-      aria-label={`Copy ${label.toLowerCase()}`}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {
-          /* clipboard unavailable - non-fatal */
-        }
-      }}
-    >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-    </Button>
-  );
-}
 
 const PRIORITY_VARIANT: Record<Priority, string> = {
   P0: "critical",
@@ -762,6 +739,8 @@ function ServicesPanel({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ServiceResponse | null>(null);
   const [publicBaseUrl, setPublicBaseUrl] = useState<string | null>(null);
+  // The full intake URL comes back once, on create or rotate (S-108).
+  const [shownUrl, setShownUrl] = useState<{ name: string; url: string } | null>(null);
   const emptyForm = {
     name: "",
     slug: "",
@@ -969,6 +948,9 @@ function ServicesPanel({
           slug: form.slug,
         });
         serviceId = created.id;
+        if (created.intake_url) {
+          setShownUrl({ name: created.name, url: created.intake_url });
+        }
       }
       await reconcileChainLink(serviceId, form.escalation_chain_id);
       setOpen(false);
@@ -976,6 +958,29 @@ function ServicesPanel({
       setForm({ ...emptyForm, team_id: teams[0]?.id ?? "" });
       onChange();
       toast.success(editing ? "Service updated" : "Service created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const rotateIntake = async (service: ServiceResponse) => {
+    const hadUrl = Boolean(service.intake_url_hint);
+    if (
+      hadUrl &&
+      !confirm(
+        "Rotate this intake URL? The current URL stops working now, so update every alerting system that posts to it.",
+      )
+    ) {
+      return;
+    }
+    try {
+      const rotated = await rotateServiceIntakeUrl(service.id);
+      setEditing(rotated);
+      if (rotated.intake_url) {
+        setShownUrl({ name: rotated.name, url: rotated.intake_url });
+      }
+      onChange();
+      toast.success(hadUrl ? "Intake URL rotated" : "Intake URL created");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -1183,21 +1188,10 @@ function ServicesPanel({
     {
       id: "intake",
       label: "Alert Intake",
-      accessor: (r) => r.service.intake_url ?? "",
-      cell: (r) => {
-        const full = fullIntakeUrl(r.service.intake_url, publicBaseUrl);
-        if (!full) {
-          return <span className="text-[11px] text-fg-muted">not generated</span>;
-        }
-        return (
-          <span className="inline-flex max-w-[22rem] items-center gap-1">
-            <span className="truncate font-mono text-[11px] text-fg-secondary" title={full}>
-              {full}
-            </span>
-            <CopyButton value={full} label="intake URL" />
-          </span>
-        );
-      },
+      accessor: (r) => r.service.intake_url_hint ?? "",
+      cell: (r) => (
+        <IntakeUrlHint hint={r.service.intake_url_hint} publicBaseUrl={publicBaseUrl} />
+      ),
     },
     {
       id: "team",
@@ -1729,21 +1723,30 @@ function ServicesPanel({
           </label>
           {editing &&
             (() => {
-              const full = fullIntakeUrl(editing.intake_url, publicBaseUrl);
-              if (!full) return null;
+              const hint = fullIntakeUrl(editing.intake_url_hint, publicBaseUrl);
               return (
                 <div>
                   <Label>Alert intake URL</Label>
                   <div className="flex items-center gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2">
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-secondary" title={full}>
-                      {full}
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-secondary">
+                      {hint ?? "No URL yet"}
                     </span>
-                    <CopyButton value={full} label="intake URL" />
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => rotateIntake(editing)}
+                      >
+                        {hint ? "Rotate URL" : "Create URL"}
+                      </Button>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-fg-muted">
                     Point CloudWatch / Azure / GCP / OCI and other alerting
-                    systems here. POST alerts to associate them with this
-                    service.
+                    systems here. The full URL is shown once, when it&apos;s
+                    created; rotating makes a new one and the old one stops
+                    working.
                   </p>
                 </div>
               );
@@ -1756,6 +1759,12 @@ function ServicesPanel({
           </div>
         </div>
       </Modal>
+
+      <IntakeUrlOnceDialog
+        shown={shownUrl}
+        publicBaseUrl={publicBaseUrl}
+        onClose={() => setShownUrl(null)}
+      />
     </section>
   );
 }

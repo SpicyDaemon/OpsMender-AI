@@ -11,6 +11,7 @@ GET  /ingest-providers - list available provider adapters
 from __future__ import annotations
 
 import asyncio
+import secrets
 import uuid
 from typing import Any
 
@@ -187,14 +188,20 @@ async def service_intake_webhook(
             detail="Service intake endpoint not found",
         )
 
-    token = await IngestTokenRepo.get_active_for_service_token(
+    token = await IngestTokenRepo.get_for_service_token(
         db, service.org_id, service.id, hash_token(service_token)
     )
+    if token is not None and not token.is_active:
+        # An admin revoked this URL's token: honour it (rotate for a new URL).
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Service intake endpoint not found",
+        )
     if token is None:
         token = await IngestTokenRepo.create(
             db,
             service.org_id,
-            name=f"service:{service.id}",
+            name=f"service:{service.id}:{secrets.token_hex(4)}",
             provider="auto",
             token_hash=hash_token(service_token),
             service_id=service.id,

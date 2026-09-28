@@ -21,7 +21,7 @@
  * page doesn't currently surface (pending approvals + chain state).
  */
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Check,
   CheckCircle2,
@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Label, Textarea } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/context/auth";
 import {
@@ -65,6 +67,8 @@ interface Props {
   ownerLabel?: string | null;
   /** A live request to take the incident over from its owner. */
   pendingTakeover?: PendingTakeover | null;
+  /** The server-authorized force path for an admin or service teammate. */
+  canForceTake?: boolean;
   /** Optional: collapses extra status pills on narrow viewports. */
   className?: string;
 }
@@ -76,12 +80,15 @@ export function IncidentCommandStrip({
   onChanged,
   ownerLabel,
   pendingTakeover = null,
+  canForceTake = false,
   className,
 }: Props) {
   const toast = useToast();
   const navigateDashboard = useDashboardNavigation();
   const { user } = useAuth();
   const [busy, setBusy] = useState<string | null>(null);
+  const [forceOpen, setForceOpen] = useState(false);
+  const [forceReason, setForceReason] = useState("");
 
   const status = incident.status as Status;
   const isOpen = status === "open";
@@ -138,7 +145,7 @@ export function IncidentCommandStrip({
     try {
       if (isAssignedToSomeoneElse) {
         await takeIncident(incident.id);
-        toast.success(`Asked ${owner} to hand it over. They have five minutes.`);
+        toast.success(`Asked ${owner} to hand it over. The request expires in five minutes.`);
       } else {
         // The server rejects stale assignment data if another owner got here first.
         await assignIncident(incident.id);
@@ -149,7 +156,7 @@ export function IncidentCommandStrip({
       if ((err as { status?: number }).status === 409 && !isAssignedToSomeoneElse) {
         try {
           await takeIncident(incident.id);
-          toast.success("Asked the new owner to hand it over. They have five minutes.");
+          toast.success("Asked the new owner to hand it over. The request expires in five minutes.");
           await onChanged();
         } catch (inner) {
           toast.error(inner instanceof Error ? inner.message : String(inner));
@@ -167,20 +174,23 @@ export function IncidentCommandStrip({
       () => takeIncident(incident.id, { confirm: true }),
       `Handed over to ${pendingTakeover?.username ?? "them"}`,
     );
-  const handleForceTake = () => {
-    if (
-      !confirm(
-        `Take over from ${owner} now, without waiting for them to hand it over?`,
-      )
-    ) {
-      return;
+  async function handleForceTake(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = forceReason.trim();
+    if (!reason) return;
+    setBusy("force");
+    try {
+      await takeIncident(incident.id, { force: true, reason });
+      toast.success("You now own this incident. The previous owner was notified.");
+      setForceOpen(false);
+      setForceReason("");
+      await onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
     }
-    void run(
-      "force",
-      () => takeIncident(incident.id, { force: true }),
-      "You now own this incident",
-    );
-  };
+  }
   const handleRelease = () =>
     run("release", () => releaseIncident(incident.id), "Released ownership");
   const handleResolve = () =>
@@ -221,6 +231,7 @@ export function IncidentCommandStrip({
   };
 
   return (
+    <>
     <div
       className={[
         "sticky top-0 z-20 -mx-4 mb-4 border-b border-border-subtle bg-bg-base/85 px-4 py-3 backdrop-blur-md supports-[backdrop-filter]:bg-bg-base/75 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
@@ -306,12 +317,12 @@ export function IncidentCommandStrip({
             </Button>
           )}
 
-          {!isResolved && isAssignedToSomeoneElse && user?.role === "admin" && (
+          {!isResolved && isAssignedToSomeoneElse && canForceTake && (
             <Button
               size="sm"
               variant="ghost"
               disabled={!!busy}
-              onClick={handleForceTake}
+              onClick={() => setForceOpen(true)}
               data-testid="action-force-take"
               title={`Take over from ${owner} without waiting for them`}
             >
@@ -419,5 +430,39 @@ export function IncidentCommandStrip({
         </div>
       </div>
     </div>
+    <Modal
+      open={forceOpen}
+      onClose={() => { if (!busy) setForceOpen(false); }}
+      title={`Force take from ${owner}`}
+    >
+      <form onSubmit={handleForceTake} className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Ownership changes immediately. {owner} will be notified, and your
+          reason will appear on the incident timeline.
+        </p>
+        <div>
+          <Label htmlFor="force-take-reason" required>Reason</Label>
+          <Textarea
+            id="force-take-reason"
+            value={forceReason}
+            onChange={(event) => setForceReason(event.target.value)}
+            placeholder="Emergency database errors are causing rising 5xx responses"
+            maxLength={500}
+            required
+            autoFocus
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setForceOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" disabled={!!busy || !forceReason.trim()} data-testid="confirm-force-take">
+            {busy === "force" ? <Loader2 size={14} className="animate-spin" /> : null}
+            Force take
+          </Button>
+        </div>
+      </form>
+    </Modal>
+    </>
   );
 }

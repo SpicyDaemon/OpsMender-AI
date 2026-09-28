@@ -1201,20 +1201,25 @@ async def test_l06_only_the_current_owner_can_confirm(world):
     assert await _owner(world.app, incident_id) == world.level2
 
 
-async def test_l06_only_an_admin_can_force(world):
+async def test_l06_only_an_admin_can_force_without_a_service(world):
     incident_id = await _pending_takeover(world)
     resp = await world.client.post(
         f"/incidents/{incident_id}/take",
-        json={"force": True},
+        json={"force": True, "reason": "The owner is unavailable."},
         headers=await _headers(world.client, "lc-l3"),
     )
     assert resp.status_code == 403
     resp = await world.client.post(
-        f"/incidents/{incident_id}/take", json={"force": True}, headers=world.admin
+        f"/incidents/{incident_id}/take",
+        json={"force": True, "reason": "The owner is unavailable."},
+        headers=world.admin,
     )
     assert resp.status_code == 200, resp.text
     assert await _owner(world.app, incident_id) == world.admin_id
-    assert any("admin force" in c for c in await _comments(world.app, incident_id))
+    assert any(
+        "The owner is unavailable." in c
+        for c in await _comments(world.app, incident_id)
+    )
 
 
 async def test_l06_an_unanswered_request_expires_without_a_transfer(world):
@@ -1251,7 +1256,7 @@ async def test_l06_cross_workspace_incidents_are_invisible(world):
     await _user(world.app, "lc-outsider", role="admin", org_id=OTHER_ORG_ID)
     resp = await world.client.post(
         f"/incidents/{incident_id}/take",
-        json={"force": True},
+        json={"force": True, "reason": "The owner is unavailable."},
         headers=await _headers(world.client, "lc-outsider"),
     )
     assert resp.status_code == 404

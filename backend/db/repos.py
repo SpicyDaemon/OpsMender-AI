@@ -6607,7 +6607,11 @@ class IncidentCommentRepo:
 class IncidentAssignmentRepo:
     @staticmethod
     async def get_active(
-        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> IncidentAssignment | None:
         stmt = (
             select(IncidentAssignment)
@@ -6618,6 +6622,8 @@ class IncidentAssignmentRepo:
             )
             .order_by(IncidentAssignment.assigned_at.desc())
         )
+        if for_update:
+            stmt = stmt.with_for_update()
         return (await db.execute(stmt)).scalars().first()
 
     @staticmethod

@@ -23,6 +23,7 @@ from backend.db.repos import (
     MCPServerRepo,
     ServiceEscalationChainRepo,
     ServiceRepo,
+    TeamRepo,
 )
 from backend.paging import escalation as _esc
 from tests.test_ownership_lifecycle import (
@@ -309,6 +310,82 @@ async def test_the_paging_panel_drops_an_expired_request(world):
         await world.client.get(f"/incidents/{incident_id}/paging", headers=world.admin)
     ).json()
     assert panel["pending_takeover"] is None
+
+
+async def test_teammate_can_force_take_with_a_reason_and_notify_owner(world):
+    incident_id = await _service_incident(world)
+    await _own(world, incident_id, world.level1)
+    level2 = await _headers(world.client, "lc-l2")
+    level3 = await _headers(world.client, "lc-l3")
+    async with world.app.state.session_factory() as db:
+        incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        service = await ServiceRepo.get_by_id(db, TEST_ORG_ID, incident.service_id)
+        await TeamRepo.add_member(
+            db, TEST_ORG_ID, service.team_id, user_id=world.level2
+        )
+        await db.commit()
+
+    missing_reason = await world.client.post(
+        f"/incidents/{incident_id}/take", json={"force": True}, headers=level2
+    )
+    assert missing_reason.status_code == 422
+    blank_reason = await world.client.post(
+        f"/incidents/{incident_id}/take",
+        json={"force": True, "reason": "  "},
+        headers=level2,
+    )
+    assert blank_reason.status_code == 422
+    outsider = await world.client.post(
+        f"/incidents/{incident_id}/take",
+        json={"force": True, "reason": "Urgent escalation"},
+        headers=level3,
+    )
+    assert outsider.status_code == 403
+    # Being on the service team is not enough if the current owner is not.
+    denied = await world.client.post(
+        f"/incidents/{incident_id}/take",
+        json={"force": True, "reason": "Urgent escalation"},
+        headers=level2,
+    )
+    assert denied.status_code == 403
+    panel = (
+        await world.client.get(f"/incidents/{incident_id}/paging", headers=level2)
+    ).json()
+    assert panel["can_force_take"] is False
+    assert await _owner(world.app, incident_id) == world.level1
+
+    async with world.app.state.session_factory() as db:
+        await TeamRepo.add_member(
+            db, TEST_ORG_ID, service.team_id, user_id=world.level1
+        )
+        await db.commit()
+    panel = (
+        await world.client.get(f"/incidents/{incident_id}/paging", headers=level2)
+    ).json()
+    assert panel["can_force_take"] is True
+    assert (
+        await world.client.get(f"/incidents/{incident_id}/paging", headers=level3)
+    ).json()["can_force_take"] is False
+
+    requested = await world.client.post(
+        f"/incidents/{incident_id}/take", json={}, headers=level2
+    )
+    assert requested.status_code == 200
+    reason = "Emergency database errors are causing rising 5xx responses."
+    forced = await world.client.post(
+        f"/incidents/{incident_id}/take",
+        json={"force": True, "reason": f"  {reason}  "},
+        headers=level2,
+    )
+    assert forced.status_code == 200, forced.text
+    assert await _owner(world.app, incident_id) == world.level2
+    assert (await _state(world.app, incident_id)).pending_takeover_user_id is None
+    assert any(reason in note for note in await _comments(world.app, incident_id))
+    async with world.app.state.session_factory() as db:
+        inbox = await InAppNotificationRepo.list_for_user(db, TEST_ORG_ID, world.level1)
+    notices = [n for n in inbox if n.event_type == "incident.force_takeover"]
+    assert len(notices) == 1
+    assert reason in notices[0].body
 
 
 # S-103: one MCP server per service

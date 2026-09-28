@@ -2006,6 +2006,7 @@ export interface IncidentPagingPanelResponse {
   suppressed_by_maintenance_window: SuppressedByMaintenanceWindow | null;
   /** Someone asked the owner to hand the incident over. */
   pending_takeover?: PendingTakeover | null;
+  can_force_take?: boolean;
 }
 
 export interface PendingTakeover {

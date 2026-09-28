@@ -99,6 +99,12 @@ export default {
         token,
         data: { name: qaName("lifecycle-team"), slug: qaSlug("lifecycle-team") },
       });
+      for (const userId of [s.me.id, s.other.id]) {
+        await api(h.request, "post", `/teams/${team.id}/members`, {
+          token,
+          data: { user_id: userId },
+        });
+      }
       const esc = await api(h.request, "post", "/escalation-chains", {
         token,
         data: { name: qaName("lifecycle-chain"), team_id: team.id },
@@ -274,6 +280,30 @@ export default {
         await strip(h).getByRole("button", { name: `Hand over to ${s.otherName}` }).click();
         await expectEventually(async () => (await owner(h, t.id)) === s.other.id);
         await capture(h, "lifecycle-consent-take");
+      } finally {
+        await h.page.evaluate((token) => localStorage.setItem("opsmender_token", token), h.auth.token);
+        await h.goto("/dashboard/incidents");
+      }
+    });
+
+    await h.step("a teammate force-takes with a reason and the owner is notified", async () => {
+      const t = await newIncident("lifecycle-force-take");
+      await api(h.request, "post", `/incidents/${t.id}/ack`, {
+        token: h.auth.token,
+        data: { via: "web_ui" },
+      });
+      const reason = "Emergency database errors are causing rising 5xx responses.";
+      try {
+        await h.page.evaluate((token) => localStorage.setItem("opsmender_token", token), s.otherToken);
+        await openIncident(h, t.id, t.title);
+        await strip(h).getByRole("button", { name: "Force take" }).click();
+        await h.page.getByRole("textbox", { name: "Reason" }).fill(reason);
+        await h.page.getByTestId("confirm-force-take").click();
+        await expectEventually(async () => (await owner(h, t.id)) === s.other.id);
+        await h.page.evaluate((token) => localStorage.setItem("opsmender_token", token), h.auth.token);
+        await openIncident(h, t.id, t.title);
+        await h.expectText(reason);
+        await capture(h, "lifecycle-force-take");
       } finally {
         await h.page.evaluate((token) => localStorage.setItem("opsmender_token", token), h.auth.token);
         await h.goto("/dashboard/incidents");

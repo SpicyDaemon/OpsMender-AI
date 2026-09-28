@@ -78,7 +78,7 @@ and TOTP are there when you need them.
   plus Email / SMS / Voice Call delivery and per-incident channels; the voice
   IVR keypad does 1 acknowledge / 2 escalate / 3 resolve. Reopening a resolved
   paging incident starts a new round; taking an owned incident requests its
-  owner's consent.
+  owner's consent, with a reasoned force option for admins and teammates.
 - **Shared incident tracking**: update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.

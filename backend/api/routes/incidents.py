@@ -242,7 +242,7 @@ def _to_session_response(session) -> SessionResponse:
 def _assignment_title(assigned_by: str) -> str:
     if assigned_by == "self_ack":
         return "Ownership acknowledged"
-    if assigned_by == "admin_force":
+    if assigned_by in ("admin_force", "team_force"):
         return "Ownership force-taken"
     if assigned_by == "manual":
         return "Ownership reassigned"
@@ -254,7 +254,7 @@ def _assignment_body(assigned_by: str, actor_label: str | None) -> str | None:
         return None
     if assigned_by == "self_ack":
         return f"{actor_label} acknowledged the page and became the current owner."
-    if assigned_by == "admin_force":
+    if assigned_by in ("admin_force", "team_force"):
         return f"{actor_label} force-took the incident from the command surface."
     if assigned_by == "manual":
         return f"{actor_label} was assigned as the current owner."
@@ -1735,6 +1735,18 @@ async def get_incident_paging(
         ),
         suppressed_by_maintenance_window=suppressed,
         pending_takeover=await _pending_takeover(db, org_id, incident_id),
+        can_force_take=(
+            await _esc.can_force_takeover(
+                db,
+                org_id,
+                incident=incident,
+                active=assignment,
+                actor_id=user.id,
+                is_admin=user.role == "admin",
+            )
+            if user.role in ("admin", "operator")
+            else False
+        ),
     )
 
 
@@ -2384,7 +2396,7 @@ async def ack_incident(
 @router.post(
     "/{incident_id}/take",
     response_model=IncidentChainPanelResponse,
-    summary="Request soft-takeover, confirm one, or admin-force",
+    summary="Request takeover, confirm one, or force-take with a reason",
 )
 async def take_incident(
     incident_id: uuid.UUID,
@@ -2399,14 +2411,34 @@ async def take_incident(
 
     _ensure_open(incident)
     if body.force:
-        if user.role != "admin":
+        reason = (body.reason or "").strip()
+        if not reason:
             raise HTTPException(
-                status_code=403,
-                detail="Force-takeover requires admin",
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Explain why you need to force-take this incident.",
             )
-        await _esc.handle_force_takeover(
-            db, org_id, incident_id=incident_id, admin_id=user.id
+        result = await _esc.handle_force_takeover(
+            db,
+            org_id,
+            incident_id=incident_id,
+            actor_id=user.id,
+            reason=reason,
+            is_admin=user.role == "admin",
         )
+        if result != "taken":
+            await db.rollback()
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_403_FORBIDDEN
+                    if result == "forbidden"
+                    else status.HTTP_409_CONFLICT
+                ),
+                detail={
+                    "forbidden": "Only an admin or a member of the owner's service team can force-take this incident.",
+                    "not_owned_by_other": "Nobody else owns this incident. Use Take instead.",
+                    "closed": "The incident is closed.",
+                }[result],
+            )
     elif body.confirm:
         # Only the current owner can hand the incident over (KI-032).
         result = await _esc.handle_takeover_confirm(

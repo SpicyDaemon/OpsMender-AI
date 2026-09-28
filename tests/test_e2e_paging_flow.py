@@ -371,7 +371,10 @@ class TestIncidentResponseLoop:
         take_resp = await client.post(
             f"/incidents/{incident_id}/take",
             headers=headers,
-            json={"force": True},
+            json={
+                "force": True,
+                "reason": "The incident needs immediate intervention.",
+            },
         )
         assert take_resp.status_code == 200, take_resp.text
 

@@ -2771,6 +2771,7 @@ class IncidentPagingPanelResponse(BaseModel):
     assignment: Optional[IncidentAssignmentResponse]
     suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
     pending_takeover: Optional[PendingTakeoverResponse] = None
+    can_force_take: bool = False
 
 
 class IncidentTimelineItemResponse(BaseModel):
@@ -3026,7 +3027,8 @@ class IncidentAckRequest(BaseModel):
 
 class IncidentTakeRequest(BaseModel):
     confirm: bool = False  # true = confirm a pending soft-takeover
-    force: bool = False  # true = admin force-takeover
+    force: bool = False  # true = force-takeover with a reason
+    reason: Optional[str] = Field(default=None, max_length=500)
 
 
 # ---------------------------------------------------------------------------

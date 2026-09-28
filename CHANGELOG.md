@@ -14,7 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeline says whether paging restarted or why nobody was paged.
 - **Takeover consent in the incident page.** Take on another person's incident
   asks its owner to hand it over; the owner receives an Inbox notice and can
-  confirm within five minutes. An admin can force a takeover.
+  confirm within five minutes. The request then expires without changing
+  ownership. An admin, or an operator on the current owner's service team,
+  can force a takeover immediately with a required reason; the former owner
+  is notified and the reason appears on the timeline.
 - **Cross-service alert collision notice.** When a provider-scoped alert is
   absorbed by another service's active incident, the receiving service's
   Escalation Chain responders get one Inbox notice (their Inbox mute

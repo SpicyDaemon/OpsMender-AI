@@ -223,9 +223,11 @@ collect call status elsewhere.
 
 **Taking over from someone.** **Take over** on an incident someone else owns
 asks them to hand it over and sends an Inbox notice. The owner can confirm
-with **Hand over** within five minutes; an unanswered request expires. An
-admin can use **Force take** to take ownership immediately, which is recorded
-on the timeline. Taking an unowned incident still assigns it immediately.
+with **Hand over** within five minutes; an unanswered request expires without
+changing ownership. An admin, or an operator who belongs to the same service
+team as the current owner, can use **Force take** immediately. They must enter
+a reason. The former owner gets an Inbox notice, and the reason appears on
+the timeline. Taking an unowned incident still assigns it immediately.
 
 ---
 

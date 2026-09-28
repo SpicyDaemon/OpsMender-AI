@@ -1890,7 +1890,7 @@ export async function ackIncident(
 
 export async function takeIncident(
   incidentId: string,
-  options: { confirm?: boolean; force?: boolean } = {},
+  options: { confirm?: boolean; force?: boolean; reason?: string } = {},
 ): Promise<IncidentChainPanelResponse> {
   return api.post<IncidentChainPanelResponse>(
     `/incidents/${incidentId}/take`,

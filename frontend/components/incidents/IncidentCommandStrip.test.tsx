@@ -3,7 +3,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
-import type { IncidentAssignmentResponse, IncidentResponse } from "@/lib/types";
+import type {
+  IncidentAssignmentResponse,
+  IncidentResponse,
+  PendingTakeover,
+} from "@/lib/types";
 
 const push = vi.fn();
 const role = { current: "operator" };
@@ -33,6 +37,7 @@ const apiMocks = vi.hoisted(() => ({
   bulkIncidentAction: vi.fn(),
   deleteIncident: vi.fn(),
   releaseIncident: vi.fn(),
+  takeIncident: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -71,6 +76,8 @@ function renderStrip(
   status: IncidentResponse["status"],
   assignment: IncidentAssignmentResponse | null = null,
   ownerLabel?: string | null,
+  pendingTakeover?: PendingTakeover | null,
+  canForceTake = false,
 ) {
   return render(
     <IncidentCommandStrip
@@ -79,6 +86,8 @@ function renderStrip(
       onStartSession={vi.fn()}
       onChanged={vi.fn()}
       ownerLabel={ownerLabel}
+      pendingTakeover={pendingTakeover}
+      canForceTake={canForceTake}
     />,
   );
 }
@@ -118,6 +127,92 @@ describe("IncidentCommandStrip", () => {
     expect(screen.getByText("Owner: sre-alex")).toBeTruthy();
     expect(screen.getByTestId("action-start-session")).toBeTruthy();
     expect(screen.getByTestId("action-resolve")).toBeTruthy();
+  });
+
+  it("requests a handover directly when someone else owns the incident", async () => {
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex");
+
+    fireEvent.click(screen.getByTestId("action-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1"),
+    );
+    expect(apiMocks.assignIncident).not.toHaveBeenCalled();
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "Asked sre-alex to hand it over. The request expires in five minutes.",
+    );
+  });
+
+  it("requests a handover if another owner claims an apparently unowned incident", async () => {
+    apiMocks.assignIncident.mockRejectedValue(
+      Object.assign(new Error("Owner holds the incident"), { status: 409 }),
+    );
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress");
+
+    fireEvent.click(screen.getByTestId("action-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1"),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "Asked the new owner to hand it over. The request expires in five minutes.",
+    );
+  });
+
+  it("shows the pending request to the owner and lets them hand over", async () => {
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-me"), "me", {
+      user_id: "user-other",
+      username: "sre-alex",
+      expires_at: "2026-09-27T20:00:00Z",
+    });
+
+    fireEvent.click(screen.getByTestId("action-hand-over"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1", {
+        confirm: true,
+      }),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith("Handed over to sre-alex");
+  });
+
+  it("shows a pending request to its requester and disables another Take", () => {
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex", {
+      user_id: "user-me",
+      username: "me",
+      expires_at: "2026-09-27T20:00:00Z",
+    });
+    expect(screen.getByTestId("action-take").textContent).toContain(
+      "Takeover requested",
+    );
+    expect((screen.getByTestId("action-take") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("lets an authorized teammate force take only after entering a reason", async () => {
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex", null, true);
+
+    fireEvent.click(screen.getByTestId("action-force-take"));
+    expect(screen.getByText("Force take from sre-alex")).toBeTruthy();
+    expect((screen.getByTestId("confirm-force-take") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Reason"), {
+      target: { value: "  Emergency database errors are rising.  " },
+    });
+    fireEvent.click(screen.getByTestId("confirm-force-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1", {
+        force: true,
+        reason: "Emergency database errors are rising.",
+      }),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "You now own this incident. The previous owner was notified.",
+    );
+  });
+
+  it("hides force take when the server says this operator cannot use it", () => {
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex");
+    expect(screen.queryByTestId("action-force-take")).toBeNull();
   });
 
   it("shows only postmortem in the resolved state", () => {

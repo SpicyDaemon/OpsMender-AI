@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reopen pages again.** Reopening a resolved P0 or P1 incident starts a new
+  escalation round at the first level and releases its former owner. The
+  timeline says whether paging restarted or why nobody was paged.
+- **Takeover consent in the incident page.** Take on another person's incident
+  asks its owner to hand it over; the owner receives an Inbox notice and can
+  confirm within five minutes. The request then expires without changing
+  ownership. An admin, or an operator on the current owner's service team,
+  can force a takeover immediately with a required reason; the former owner
+  is notified and the reason appears on the timeline.
 - **Cross-service alert collision notice.** When a provider-scoped alert is
   absorbed by another service's active incident, the receiving service's
   Escalation Chain responders get one Inbox notice (their Inbox mute
@@ -29,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One MCP server per service.** The service editor selects one server; the
+  API rejects several with 422. Existing services that list several show a
+  warning, and saving keeps the selected one.
 - **P0 and P1 page; P2 and P3 notify.** P3 incidents now notify, like P2,
   instead of getting the unused "auto resolve" mode. New services default to
   P1, and the service form explains which priorities page. Existing

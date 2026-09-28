@@ -76,7 +76,9 @@ and TOTP are there when you need them.
 - **Similar alert grouping**: optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
 - **On-call paging**: verified Slack, Teams, and Discord incident actions,
   plus Email / SMS / Voice Call delivery and per-incident channels; the voice
-  IVR keypad does 1 acknowledge / 2 escalate / 3 resolve.
+  IVR keypad does 1 acknowledge / 2 escalate / 3 resolve. Reopening a resolved
+  paging incident starts a new round; taking an owned incident requests its
+  owner's consent, with a reasoned force option for admins and teammates.
 - **Shared incident tracking**: update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.

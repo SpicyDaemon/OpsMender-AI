@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Incident
 from backend.db.repos import (
+    IncidentAssignmentRepo,
     PriorityRuleRepo,
     ServiceRepo,
 )
@@ -221,3 +222,44 @@ async def page_new_incident(
     await mirror_incident_to_slack_channel(
         db, org_id, incident=incident, base_url=os.environ.get("OPSMENDER_PUBLIC_URL")
     )
+
+
+async def page_reopened_incident(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident
+) -> None:
+    """Page again when a resolved incident is reopened (S-115).
+
+    Resolving stopped the chain. A reopened incident that pages (P0 or P1)
+    starts a new round from the first level, and nobody owns it until
+    someone acknowledges. Either way the timeline says what happened.
+    """
+
+    from backend.paging import escalation
+    from backend.paging.channel_factory import build_channel_factory
+    from backend.services.incident_timeline import record_lifecycle_comment
+
+    await IncidentAssignmentRepo.release(db, org_id, incident.id)
+    if incident.response_mode not in ("page", "escalate_immediate"):
+        body = (
+            "Reopened. This incident notifies instead of paging, so nobody was paged."
+        )
+    else:
+        link = await escalation.select_chain_for_incident(
+            db, org_id, service_id=incident.service_id, priority=incident.priority
+        )
+        if link is None:
+            body = (
+                "Reopened. No escalation chain matches this service and "
+                "priority; no responder was paged."
+            )
+        else:
+            await escalation.restart_chain_for_handoff(
+                db,
+                org_id,
+                incident_id=incident.id,
+                chain_id=link.chain_id,
+                mode=incident.response_mode,
+                channel_factory=build_channel_factory(),
+            )
+            body = "Reopened. Paging started again from the first level."
+    await record_lifecycle_comment(db, org_id, incident_id=incident.id, body=body)

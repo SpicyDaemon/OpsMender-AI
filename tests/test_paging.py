@@ -759,26 +759,31 @@ class TestPagingAPI:
             json={"name": "Service MCP", "slug": f"svc-mcp-{uuid.uuid4().hex[:6]}"},
             headers=auth_headers,
         )
-        service = await client.post(
-            "/services",
-            json={
-                "team_id": team.json()["id"],
-                "name": "AWS Prod Critical",
-                "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
-                "priority": "P0",
-                "mcp_server_ids": [str(second.id), str(first.id)],
-                "model_config_ids": [
-                    str(second_model.id),
-                    str(first_model.id),
-                ],
-                "ai_default_tier": 0,
-            },
-            headers=auth_headers,
-        )
+        payload = {
+            "team_id": team.json()["id"],
+            "name": "AWS Prod Critical",
+            "slug": f"aws-prod-critical-{uuid.uuid4().hex[:6]}",
+            "priority": "P0",
+            "mcp_server_ids": [str(second.id), str(first.id)],
+            "model_config_ids": [str(second_model.id), str(first_model.id)],
+            "ai_default_tier": 0,
+        }
+        # A session connects to one MCP server, so saving two is refused (S-103).
+        refused = await client.post("/services", json=payload, headers=auth_headers)
+        assert refused.status_code == 422
+        assert "one MCP server" in refused.json()["detail"]
+        payload["mcp_server_ids"] = [str(second.id)]
+        service = await client.post("/services", json=payload, headers=auth_headers)
         assert service.status_code == 201, service.text
         data = service.json()
         assert data["priority"] == "P0"
-        assert data["mcp_server_ids"] == [str(second.id), str(first.id)]
+        assert data["mcp_server_ids"] == [str(second.id)]
+        # A service saved before the rule may still list two, and sessions use
+        # the first. Recreate that shape for the resolution checks below.
+        async with app.state.session_factory() as db:
+            legacy = await ServiceRepo.get_by_id(db, TEST_ORG_ID, uuid.UUID(data["id"]))
+            legacy.mcp_server_ids = [str(second.id), str(first.id)]
+            await db.commit()
         assert data["model_config_ids"] == [
             str(second_model.id),
             str(first_model.id),

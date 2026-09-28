@@ -400,7 +400,9 @@ class TestStateMachine:
                 db,
                 TEST_ORG_ID,
                 incident_id=incident.id,
-                admin_id=u2,
+                actor_id=u2,
+                reason="The active owner is unavailable.",
+                is_admin=True,
             )
             await db.commit()
             active = await IncidentAssignmentRepo.get_active(
@@ -963,20 +965,29 @@ class TestEscalationAPI:
             inc = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
             assert inc.acknowledged_at == first_ack
 
-    async def test_force_takeover_requires_admin_role(
+    async def test_admin_force_takeover_requires_an_owner_and_reason(
         self, client: AsyncClient, app, auth_headers
     ):
+        previous_owner = await _make_user(app, username="force-owner")
         async with app.state.session_factory() as db:
             inc = await IncidentRepo.create(db, TEST_ORG_ID, title="t", description="d")
+            await IncidentAssignmentRepo.assign(
+                db, TEST_ORG_ID, incident_id=inc.id, user_id=previous_owner
+            )
             await db.commit()
             incident_id = inc.id
 
-        resp = await client.post(
+        missing_reason = await client.post(
             f"/incidents/{incident_id}/take",
             json={"force": True},
             headers=auth_headers,
         )
-        # Registered user is the first user → admin. Force should succeed.
+        assert missing_reason.status_code == 422
+        resp = await client.post(
+            f"/incidents/{incident_id}/take",
+            json={"force": True, "reason": "Owner is unavailable."},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
 
 

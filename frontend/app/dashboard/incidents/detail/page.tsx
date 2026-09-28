@@ -320,6 +320,8 @@ function IncidentDetailContent() {
         onStartSession={() => setShowSession(true)}
         onChanged={reload}
         ownerLabel={ownerLabel}
+        pendingTakeover={pagingPanel?.pending_takeover ?? null}
+        canForceTake={pagingPanel?.can_force_take ?? false}
       />
 
       {incident.merged_into_incident_id && (

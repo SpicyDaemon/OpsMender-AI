@@ -18,7 +18,8 @@ State machine for ``incident_chain_states``:
    └─ resolve or merge (any live state) ──► [cancelled]
 
 handle_takeover_request ─► pending for five minutes; only the current
-owner can confirm (handle_takeover_confirm); an admin can force it; an
+owner can confirm (handle_takeover_confirm); an admin or eligible teammate
+can force it with a reason; an
 unanswered request expires on the next tick without a transfer.
 ```
 
@@ -48,6 +49,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.db.models import Incident, IncidentAssignment
 from backend.db.repos import (
     BotConnectorRepo,
     chain_is_live,
@@ -58,6 +60,7 @@ from backend.db.repos import (
     IncidentRepo,
     EscalationChainRepo,
     RosterRepo,
+    ServiceRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
     UserRepo,
@@ -1069,6 +1072,13 @@ async def handle_takeover_request(
         return "noop"
     if state is None:
         return "requires_admin"
+    expires = _aware(state.pending_takeover_expires_at)
+    if (
+        state.pending_takeover_user_id == requester_id
+        and expires is not None
+        and now < expires
+    ):
+        return "pending"
     state.pending_takeover_user_id = requester_id
     state.pending_takeover_expires_at = now + timedelta(
         seconds=SOFT_TAKEOVER_WINDOW_SECONDS
@@ -1080,6 +1090,19 @@ async def handle_takeover_request(
         incident_id=incident_id,
         body="Requested to take over the incident.",
         author_user_id=requester_id,
+    )
+    # The owner is the one who confirms, so tell them (S-112).
+    requester = await _username(db, requester_id)
+    await emit_to_users(
+        db,
+        org_id,
+        [active.assigned_to],
+        event_type="incident.takeover_requested",
+        category=CATEGORY_INCIDENT,
+        title=f"{requester} asked to take over: {incident.title}",
+        body="Open the incident to hand it over. The request lasts five minutes.",
+        link=f"/dashboard/incidents/detail?id={incident_id}",
+        incident_id=incident_id,
     )
     return "pending"
 
@@ -1135,37 +1158,98 @@ async def handle_takeover_confirm(
     return "closed" if outcome.status == "closed" else "confirmed"
 
 
+async def can_force_takeover(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident: Incident,
+    active: IncidentAssignment | None,
+    actor_id: uuid.UUID,
+    is_admin: bool,
+) -> bool:
+    """Admins or two members of the service's team can transfer ownership."""
+
+    if active is None or active.assigned_to == actor_id:
+        return False
+    if is_admin:
+        return True
+    if incident.service_id is None:
+        return False
+    service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+    if service is None:
+        return False
+    return await TeamRepo.is_member(
+        db, org_id, service.team_id, actor_id
+    ) and await TeamRepo.is_member(db, org_id, service.team_id, active.assigned_to)
+
+
 async def handle_force_takeover(
     db: AsyncSession,
     org_id: uuid.UUID,
     *,
     incident_id: uuid.UUID,
-    admin_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    reason: str,
+    is_admin: bool,
     at: datetime | None = None,
-) -> bool:
-    """Admin force-takeover, recorded as ``admin_force`` on the assignment and
-    on the incident timeline. Returns False for a resolved or merged
-    incident."""
+) -> str:
+    """Transfer ownership with a reason and notify the previous owner."""
+
+    reason = reason.strip()
+    if not reason:
+        raise ValueError("Force-takeover needs a reason")
+    await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident_id, for_update=True
+    )
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if _closed(incident):
+        return "closed"
+    active = await IncidentAssignmentRepo.get_active(
+        db, org_id, incident_id, for_update=True
+    )
+    if active is None or active.assigned_to == actor_id:
+        return "not_owned_by_other"
+    if not await can_force_takeover(
+        db,
+        org_id,
+        incident=incident,
+        active=active,
+        actor_id=actor_id,
+        is_admin=is_admin,
+    ):
+        return "forbidden"
+    previous_owner_id = active.assigned_to
 
     outcome = await acknowledge(
         db,
         org_id,
         incident_id=incident_id,
-        assignee_id=admin_id,
-        via="admin_force",
-        assigned_by="admin_force",
+        assignee_id=actor_id,
+        via="force_takeover",
+        assigned_by="admin_force" if is_admin else "team_force",
         replace_owner=True,
-        note="Took over the incident (admin force).",
+        note=f"Force-took the incident. Reason: {reason}",
         at=at,
     )
     if outcome.status == "closed":
-        return False
+        return "closed"
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     if state is not None:
         state.pending_takeover_user_id = None
         state.pending_takeover_expires_at = None
         await db.flush()
-    return True
+    await emit_to_users(
+        db,
+        org_id,
+        [previous_owner_id],
+        event_type="incident.force_takeover",
+        category=CATEGORY_INCIDENT,
+        title=f"{await _username(db, actor_id)} took over: {incident.title}",
+        body=f"Reason: {reason}",
+        link=f"/dashboard/incidents/detail?id={incident_id}",
+        incident_id=incident_id,
+    )
+    return "taken"
 
 
 async def cancel_chain(

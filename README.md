@@ -111,7 +111,9 @@ and TOTP are there when you need them.
   collisions surface an informational notice to the receiving team.
 - **AI incident memory**: lessons from past incidents injected into the agent's prompt; advisory, workspace-scoped, operator-curated.
 - **Reliability / SLA**: HTTP/TCP uptime checks, response-time history, SLO-breach recommendations.
-- **Audit everything**: every tool call, approval, rollback, and state transition recorded.
+- **Audit everything**: tool calls, approval decisions, tier overrides, and
+  workspace configuration changes appear in Activity. Configuration entries
+  identify the actor and changed entity with a redacted before/after summary.
 - **Supply-chain security baseline**: CycloneDX SBOM generation, high/critical
   container scanning, CodeQL, Dependabot, and digest-only image-signing
   guidance are included for self-hosted security review.

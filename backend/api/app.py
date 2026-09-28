@@ -348,7 +348,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     # the operator's reverse proxy.
     @app.middleware("http")
     async def _security_headers(request, call_next):  # type: ignore[no-untyped-def]
+        from backend.audit.admin_changes import audit_uncaptured_change
+
         response = await call_next(request)
+        await audit_uncaptured_change(request, status_code=response.status_code)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(

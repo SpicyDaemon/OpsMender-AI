@@ -37,6 +37,9 @@ const FETCH_LIMIT = 500;
 const TYPE_FILTER_OPTIONS = [
   { value: "session_start", label: "Session started" },
   { value: "session_end", label: "Session ended" },
+  { value: "admin_change", label: "Configuration change" },
+  { value: "approval_decision", label: "Approval decision" },
+  { value: "tier_override", label: "Tier override" },
   { value: "pre", label: "Tool call" },
   { value: "post", label: "Tool result" },
 ];
@@ -66,7 +69,7 @@ function entryTimeMs(entry: AuditEntryResponse) {
 }
 
 function shortSessionId(sessionId: string | null) {
-  return sessionId ? `${sessionId.slice(0, 8)}…` : "System";
+  return sessionId ? `${sessionId.slice(0, 8)}…` : "Workspace activity";
 }
 
 function countLabel(count: number) {
@@ -354,12 +357,7 @@ export default function ActivityPage() {
         sortable: true,
         searchable: true,
         filterChips: {
-          options: [
-            { value: "session_start", label: "Session started" },
-            { value: "session_end", label: "Session ended" },
-            { value: "pre", label: "Tool call" },
-            { value: "post", label: "Tool result" },
-          ],
+          options: TYPE_FILTER_OPTIONS,
           valueOf: (entry) => entry.entry_type,
         },
       },
@@ -490,7 +488,7 @@ export default function ActivityPage() {
         <EmptyState
           icon={BookOpen}
           title="No audit entries yet"
-          description="Every MCP tool call, permitted or blocked, is recorded here once sessions start running. Fire a test incident to generate a first session and watch tool calls land here."
+          description="Configuration changes, approval decisions, and session tool calls appear here as they happen."
           learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
           learnMoreLabel="Operator guide"
           action={
@@ -800,7 +798,9 @@ function ExpandedAuditRow({ entry }: { entry: AuditEntryResponse }) {
       <div className="space-y-3">
         <div>
           <p className="font-medium text-fg-secondary mb-1.5">Session ID</p>
-          <p className="font-mono text-fg-primary select-all">{entry.session_id}</p>
+          <p className="font-mono text-fg-primary select-all">
+            {entry.session_id ?? "Workspace-wide"}
+          </p>
         </div>
         {entry.block_reason && (
           <div className="rounded-lg border border-status-critical-border bg-status-critical-bg/30 p-3">

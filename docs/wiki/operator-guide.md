@@ -79,6 +79,10 @@ session and its tool audit history.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
+- Workspace activity also shows configuration changes, approval decisions, and
+  session tier overrides. Configuration entries identify the actor, route,
+  entity, and changed fields; sensitive values are redacted. Expand an entry
+  to inspect its before/after summary.
 - It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor: see [postmortem-guide.md](postmortem-guide.md).
 
 ## 7. Writing Postmortems

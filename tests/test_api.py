@@ -3940,6 +3940,16 @@ class TestSessions:
         assert body["id"] == sid
         assert body["tier"] == 1
         assert body["status"] == "active"
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="tier_override"
+            )
+        assert len(rows) == 1
+        assert rows[0].tool_parameters["actor_id"]
+        assert rows[0].result == {
+            "before": {"tier": 0},
+            "after": {"tier": 1},
+        }
 
     async def test_override_cannot_increase_autonomy(
         self, client: AsyncClient, auth_headers
@@ -8948,3 +8958,193 @@ class TestVoiceAck:
         async with app.state.session_factory() as db:
             incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
             assert incident.status == "resolved"
+
+
+class TestAdminChangeAudit:
+    async def test_password_reset_mint_has_fallback_audit(
+        self, app, client, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            target = await UserRepo.create(
+                db,
+                username="reset-target",
+                email="reset-target@test.com",
+                password_hash="unused-test-hash",
+                primary_org_id=TEST_ORG_ID,
+            )
+            target_id = target.id
+            await db.commit()
+        minted = await client.post(
+            f"/auth/users/{target_id}/reset-password", headers=auth_headers
+        )
+        assert minted.status_code == 200, minted.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert any(
+            row.tool_parameters["route"] == "/auth/users/{user_id}/reset-password"
+            and row.tool_parameters["entity"] == "users"
+            and row.tool_parameters["entity_id"] == str(target_id)
+            for row in rows
+        )
+        assert minted.json()["url"] not in str(
+            [(row.tool_parameters, row.result) for row in rows]
+        )
+
+    async def test_user_role_change_records_actor_and_role_transition(
+        self, app, client, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            target = await UserRepo.create(
+                db,
+                username="audit-target",
+                email="audit-target@test.com",
+                password_hash="unused-test-hash",
+                primary_org_id=TEST_ORG_ID,
+            )
+            target_id = target.id
+            await db.commit()
+        updated = await client.patch(
+            f"/auth/users/{target_id}",
+            headers=auth_headers,
+            json={"role": "operator"},
+        )
+        assert updated.status_code == 200, updated.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        role_change = next(
+            row
+            for row in rows
+            if row.tool_parameters["entity"] == "users"
+            and row.tool_parameters["entity_id"] == str(target_id)
+        )
+        assert role_change.tool_parameters["actor_id"] != str(target_id)
+        assert role_change.result["before"]["role"] == "viewer"
+        assert role_change.result["after"]["role"] == "operator"
+
+    async def test_organization_update_uses_workspace_id(
+        self, app, client, auth_headers
+    ):
+        updated = await client.put(
+            f"/organizations/{TEST_ORG_ID}",
+            headers=auth_headers,
+            json={"name": "Renamed workspace"},
+        )
+        assert updated.status_code == 200, updated.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert any(
+            row.tool_parameters["entity"] == "organizations"
+            and row.tool_parameters["entity_id"] == str(TEST_ORG_ID)
+            for row in rows
+        )
+
+    async def test_credential_values_are_absent_from_audit(
+        self, app, client, auth_headers
+    ):
+        marker = "audit-test-credential-value"
+        created = await client.post(
+            "/mcp-servers",
+            headers=auth_headers,
+            json={
+                "name": "audit-source",
+                "transport": "http",
+                "url": "https://example.invalid/mcp",
+                "token": marker,
+                "env_vars": {"CREDENTIAL": marker},
+            },
+        )
+        assert created.status_code == 201, created.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert any(row.tool_parameters["entity"] == "mcp_servers" for row in rows)
+        assert marker not in str([(row.tool_parameters, row.result) for row in rows])
+
+    async def test_team_create_and_direct_update(self, app, client, auth_headers):
+        created = await client.post(
+            "/teams",
+            headers=auth_headers,
+            json={"name": "Primary", "slug": "primary"},
+        )
+        assert created.status_code == 201, created.text
+        team_id = created.json()["id"]
+        updated = await client.put(
+            f"/teams/{team_id}",
+            headers=auth_headers,
+            json={"name": "Secondary"},
+        )
+        assert updated.status_code == 200, updated.text
+
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        team_rows = [row for row in rows if row.tool_parameters["entity"] == "teams"]
+        assert len(team_rows) == 2
+        create, update = reversed(team_rows)
+        assert create.tool_parameters["route"] == "/teams"
+        assert update.tool_parameters["route"] == "/teams/{team_id}"
+        assert create.tool_parameters["actor_id"]
+        assert create.tool_parameters["entity_id"] == team_id
+        assert update.result["fields"] == ["name"]
+        assert update.result["before"]["name"] == "<set>"
+        assert update.result["after"]["name"] == "<set>"
+        assert "Primary" not in str(team_rows)
+        assert "Secondary" not in str(team_rows)
+
+    async def test_failed_mutation_has_no_audit_entry(self, app, client, auth_headers):
+        missing = await client.put(
+            "/teams/00000000-0000-0000-0000-000000000099",
+            headers=auth_headers,
+            json={"name": "No team"},
+        )
+        assert missing.status_code == 404
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert rows == []
+
+    async def test_delete_is_audited(self, app, client, auth_headers):
+        created = await client.post(
+            "/teams",
+            headers=auth_headers,
+            json={"name": "Disposable", "slug": "disposable"},
+        )
+        assert created.status_code == 201, created.text
+        team_id = created.json()["id"]
+        deleted = await client.delete(f"/teams/{team_id}", headers=auth_headers)
+        assert deleted.status_code == 204, deleted.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert any(
+            row.tool_parameters["entity_id"] == team_id
+            and row.tool_parameters["operation"] == "deleted"
+            for row in rows
+        )
+
+    async def test_approval_decision_names_decider(self, app, client, auth_headers):
+        _, approval = await _create_approval_request(app)
+        resolved = await client.post(
+            f"/approvals/{approval.id}/approve", headers=auth_headers
+        )
+        assert resolved.status_code == 200, resolved.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="approval_decision"
+            )
+        assert len(rows) == 1
+        assert rows[0].tool_parameters["actor_id"] == resolved.json()["resolved_by"]
+        assert rows[0].result == {
+            "before": {"status": "pending"},
+            "after": {"status": "approved"},
+        }

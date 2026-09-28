@@ -82,7 +82,8 @@ session and its tool audit history.
 - Workspace activity also shows configuration changes, approval decisions, and
   session tier overrides. Configuration entries identify the actor, route,
   entity, and changed fields; sensitive values are redacted. Expand an entry
-  to inspect its before/after summary.
+  to inspect its before/after summary. A change is only saved together with
+  its entry, so a successful response means the change is recorded.
 - It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor: see [postmortem-guide.md](postmortem-guide.md).
 
 ## 7. Writing Postmortems

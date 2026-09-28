@@ -8988,9 +8988,11 @@ class TestAdminChangeAudit:
             and row.tool_parameters["entity_id"] == str(target_id)
             for row in rows
         )
-        assert minted.json()["url"] not in str(
+        # Compare as a flag so a failure never prints the reset link.
+        link_stored = minted.json()["url"] in str(
             [(row.tool_parameters, row.result) for row in rows]
         )
+        assert not link_stored
 
     async def test_user_role_change_records_actor_and_role_transition(
         self, app, client, auth_headers
@@ -9091,7 +9093,11 @@ class TestAdminChangeAudit:
         create, update = reversed(team_rows)
         assert create.tool_parameters["route"] == "/teams"
         assert update.tool_parameters["route"] == "/teams/{team_id}"
-        assert create.tool_parameters["actor_id"]
+        me = await client.get("/auth/me", headers=auth_headers)
+        assert {row.tool_parameters["actor_id"] for row in team_rows} == {
+            me.json()["id"]
+        }
+        assert {row.org_id for row in team_rows} == {TEST_ORG_ID}
         assert create.tool_parameters["entity_id"] == team_id
         assert update.result["fields"] == ["name"]
         assert update.result["before"]["name"] == "<set>"
@@ -9148,3 +9154,516 @@ class TestAdminChangeAudit:
             "before": {"status": "pending"},
             "after": {"status": "approved"},
         }
+
+    async def test_configuration_routes_commit_before_responding(self, app):
+        """A route that leaves its commit to the request teardown answers
+        before its change and Activity entry are saved."""
+        import inspect
+        import re
+        from types import SimpleNamespace
+
+        from fastapi.routing import APIRoute
+
+        from backend.api.auth import get_current_user
+        from backend.audit.admin_changes import is_config_mutation
+
+        def authenticated(dependant) -> bool:
+            return dependant.call is get_current_user or any(
+                authenticated(sub) for sub in dependant.dependencies
+            )
+
+        checked, uncommitted = 0, []
+        for route in app.routes:
+            if not isinstance(route, APIRoute) or not authenticated(route.dependant):
+                continue
+            path = re.sub(r"\{[^}]+\}", "x", route.path)
+            for method in sorted(route.methods & {"POST", "PUT", "PATCH", "DELETE"}):
+                request = SimpleNamespace(method=method, url=SimpleNamespace(path=path))
+                if not is_config_mutation(request):
+                    continue
+                checked += 1
+                if ".commit()" not in inspect.getsource(route.endpoint):
+                    uncommitted.append(f"{method} {route.path}")
+        assert checked > 100
+        assert uncommitted == []
+
+    async def test_rejected_requests_leave_no_entry(
+        self, app, client, auth_headers, viewer_headers
+    ):
+        attempts = [
+            await client.post(
+                "/teams",
+                headers=viewer_headers,
+                json={"name": "Blocked", "slug": "blocked"},
+            ),
+            await client.post("/teams", json={"name": "Anonymous", "slug": "anon"}),
+            await client.post(
+                "/teams", headers=auth_headers, json={"slug": "missing-name"}
+            ),
+            await client.post(
+                f"/auth/users/{uuid.uuid4()}/reset-password", headers=auth_headers
+            ),
+            await client.put(
+                f"/organizations/{TEST_ORG_ID}/email-settings",
+                headers=viewer_headers,
+                json={"host": "smtp.example.com"},
+            ),
+        ]
+        assert [attempt.status_code for attempt in attempts] == [
+            403,
+            401,
+            422,
+            404,
+            403,
+        ]
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        assert rows == []
+
+    async def test_entries_hold_no_secrets_free_text_or_extra_keys(
+        self, app, client, auth_headers
+    ):
+        marker = "audit-marker-7f3a"
+        responses = [
+            await client.post(
+                "/api/v1/api-tokens",
+                headers=auth_headers,
+                json={"name": f"{marker}-token", "role": "operator"},
+            ),
+            await client.put(
+                f"/organizations/{TEST_ORG_ID}/email-settings",
+                headers=auth_headers,
+                json={
+                    "host": "smtp.example.com",
+                    "port": 587,
+                    "security": "starttls",
+                    "username": "ops",
+                    "password": f"{marker}-smtp",
+                    "from_name": "OpsMender",
+                    "from_address": "ops@example.com",
+                },
+            ),
+            await client.put(
+                f"/organizations/{TEST_ORG_ID}/sso",
+                headers=auth_headers,
+                json={
+                    "provider": "oidc",
+                    "discovery_url": (
+                        "https://idp.example.com/.well-known/openid-configuration"
+                    ),
+                    "client_id": "opsmender-app",
+                    "client_secret": f"{marker}-sso",
+                    "default_role": "operator",
+                    "allowed_email_domains": "acme.com",
+                },
+            ),
+            await client.post(
+                "/teams",
+                headers=auth_headers,
+                json={
+                    "name": f"{marker} team",
+                    "slug": "marker-team",
+                    "description": f"{marker} notes",
+                    "unexpected_key": marker,
+                },
+            ),
+        ]
+        assert [response.status_code for response in responses] == [201, 200, 200, 201]
+        raw_token = responses[0].json()["token"]
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change", limit=500
+            )
+        stored = json.dumps(
+            [(row.tool_name, row.tool_parameters, row.result) for row in rows],
+            default=str,
+        )
+        entities = {row.tool_parameters["entity"] for row in rows}
+        assert {"api_tokens", "org_email_settings", "org_sso_configs", "teams"} <= (
+            entities
+        )
+        # Flags only, so a failure never prints a credential.
+        assert [marker in stored, raw_token in stored] == [False, False]
+
+    async def test_step_reorder_records_each_moved_step_once(
+        self, app, client, auth_headers
+    ):
+        team = await client.post(
+            "/teams", headers=auth_headers, json={"name": "Order", "slug": "order"}
+        )
+        chain = await client.post(
+            "/escalation-chains",
+            headers=auth_headers,
+            json={"team_id": team.json()["id"], "name": "Order"},
+        )
+        chain_id = chain.json()["id"]
+        step_ids = []
+        for index in range(3):
+            async with app.state.session_factory() as db:
+                user = await UserRepo.create(
+                    db,
+                    username=f"order-{index}",
+                    email=f"order-{index}@test.com",
+                    password_hash="unused-test-hash",
+                    role="operator",
+                    primary_org_id=TEST_ORG_ID,
+                )
+                await db.commit()
+            step = await client.post(
+                f"/escalation-chains/{chain_id}/steps",
+                headers=auth_headers,
+                json={
+                    "step_index": index,
+                    "target_type": "user",
+                    "target_id": str(user.id),
+                    "timeout_seconds": 60,
+                },
+            )
+            step_ids.append(step.json()["id"])
+
+        reordered = await client.post(
+            f"/escalation-chains/{chain_id}/reorder-steps",
+            headers=auth_headers,
+            json={"step_ids": list(reversed(step_ids))},
+        )
+        assert reordered.status_code == 200, reordered.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        route = "/escalation-chains/{chain_id}/reorder-steps"
+        moves = {
+            row.tool_parameters["entity_id"]: (
+                row.result["before"]["step_index"],
+                row.result["after"]["step_index"],
+            )
+            for row in rows
+            if row.tool_parameters["route"] == route
+        }
+        # The middle step keeps its place, so it has no entry.
+        assert moves == {step_ids[0]: (0, 2), step_ids[2]: (2, 0)}
+
+    async def test_default_switch_records_only_changed_rows(
+        self, app, client, auth_headers
+    ):
+        async with app.state.session_factory() as db:
+            first = await ModelConfigRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="first",
+                provider="openai",
+                model_id="gpt-4o",
+                is_default=True,
+            )
+            second = await ModelConfigRepo.create(
+                db, TEST_ORG_ID, name="second", provider="ollama", model_id="llama3.2"
+            )
+            await ModelConfigRepo.create(
+                db, TEST_ORG_ID, name="third", provider="ollama", model_id="qwen3"
+            )
+            await db.commit()
+            first_id, second_id = str(first.id), str(second.id)
+
+        switched = await client.post(
+            f"/models/configs/{second_id}/set-default", headers=auth_headers
+        )
+        assert switched.status_code == 200, switched.text
+        async with app.state.session_factory() as db:
+            rows = await AuditEntryRepo.query(
+                db, TEST_ORG_ID, entry_type="admin_change"
+            )
+        changes = {
+            row.tool_parameters["entity_id"]: (
+                row.result["before"],
+                row.result["after"],
+            )
+            for row in rows
+        }
+        assert changes == {
+            first_id: ({"is_default": True}, {"is_default": False}),
+            second_id: ({"is_default": False}, {"is_default": True}),
+        }
+
+    async def test_remaining_configuration_routes_record_each_change_once(
+        self, app, client, auth_headers
+    ):
+        """Routes the rest of the suite never completes: each change gets
+        exactly one entry for each row it touches."""
+
+        async def ok(response, expected=(200, 201, 204)):
+            assert response.status_code in expected, response.text
+            return response.json() if response.status_code != 204 else None
+
+        from backend.db.repos import MaintenanceWindowRepo
+
+        users = []
+        async with app.state.session_factory() as db:
+            for index in range(2):
+                user = await UserRepo.create(
+                    db,
+                    username=f"sweep-{index}",
+                    email=f"sweep-{index}@test.com",
+                    password_hash="unused-test-hash",
+                    role="operator",
+                    primary_org_id=TEST_ORG_ID,
+                )
+                users.append(str(user.id))
+            model = await ModelConfigRepo.create(
+                db, TEST_ORG_ID, name="sweep", provider="ollama", model_id="llama3.2"
+            )
+            windows = []
+            for name in ("approve me", "reject me"):
+                window = await MaintenanceWindowRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    name=name,
+                    starts_at=datetime.now(timezone.utc),
+                    ends_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                    approved=False,
+                )
+                windows.append(str(window.id))
+            await db.commit()
+            model_id = str(model.id)
+
+        team = await ok(
+            await client.post(
+                "/teams", headers=auth_headers, json={"name": "Sweep", "slug": "sweep"}
+            )
+        )
+        for user_id in users:
+            await ok(
+                await client.post(
+                    f"/teams/{team['id']}/members",
+                    headers=auth_headers,
+                    json={"user_id": user_id},
+                )
+            )
+        roster = await ok(
+            await client.post(
+                "/rosters",
+                headers=auth_headers,
+                json={
+                    "team_id": team["id"],
+                    "name": "Sweep",
+                    "pattern": "daily",
+                    "pattern_length": 1,
+                    "anchor_date": "2026-05-04",
+                    "handoff_time": "00:00",
+                    "time_zone": "UTC",
+                },
+            )
+        )
+        for position, user_id in enumerate(users):
+            await ok(
+                await client.post(
+                    f"/rosters/{roster['id']}/members",
+                    headers=auth_headers,
+                    json={"user_id": user_id, "position_index": position},
+                )
+            )
+        override = await ok(
+            await client.post(
+                f"/rosters/{roster['id']}/overrides",
+                headers=auth_headers,
+                json={
+                    "covering_user_id": users[1],
+                    "starts_at": "2026-05-22T00:00:00+00:00",
+                    "ends_at": "2026-05-23T00:00:00+00:00",
+                    "reason": "cover",
+                },
+            )
+        )
+        chain = await ok(
+            await client.post(
+                "/escalation-chains",
+                headers=auth_headers,
+                json={"team_id": team["id"], "name": "Sweep"},
+            )
+        )
+        step = await ok(
+            await client.post(
+                f"/escalation-chains/{chain['id']}/steps",
+                headers=auth_headers,
+                json={
+                    "step_index": 0,
+                    "target_type": "user",
+                    "target_id": users[0],
+                    "timeout_seconds": 60,
+                },
+            )
+        )
+        service = await ok(
+            await client.post(
+                "/services",
+                headers=auth_headers,
+                json={"team_id": team["id"], "name": "Sweep", "slug": "sweep"},
+            )
+        )
+        await ok(
+            await client.post(
+                f"/services/{service['id']}/escalation-chains",
+                headers=auth_headers,
+                json={"chain_id": chain["id"]},
+            )
+        )
+        rule = await ok(
+            await client.post(
+                "/priority-rules",
+                headers=auth_headers,
+                json={
+                    "name": "Low",
+                    "condition": {"severity": ["low"]},
+                    "priority": "P3",
+                },
+            )
+        )
+        schedule_body = {
+            "name": "Weekly",
+            "cadence": "weekly",
+            "recipients": ["lead@example.com"],
+            "filters": {"priority": "P0"},
+            "format": "pdf",
+            "next_run_at": datetime.now(timezone.utc).isoformat(),
+            "enabled": True,
+        }
+        schedule = await ok(
+            await client.post(
+                "/reports/schedules", headers=auth_headers, json=schedule_body
+            )
+        )
+        await ok(
+            await client.put(
+                f"/organizations/{TEST_ORG_ID}/email-settings",
+                headers=auth_headers,
+                json={
+                    "host": "smtp.example.com",
+                    "port": 587,
+                    "security": "starttls",
+                    "from_name": "OpsMender",
+                    "from_address": "ops@example.com",
+                },
+            )
+        )
+        _, recovery_codes = await _enable_mfa(client, auth_headers)
+        async with app.state.session_factory() as db:
+            earlier = {
+                row.id
+                for row in await AuditEntryRepo.query(
+                    db, TEST_ORG_ID, entry_type="admin_change", limit=500
+                )
+            }
+
+        # route template -> the changes it must record, as (entity, operation)
+        expected = {
+            "/escalation-chains/{chain_id}": [("escalation_chains", "updated")],
+            "/escalation-chains/{chain_id}/steps/{step_id}": [
+                ("escalation_steps", "deleted")
+            ],
+            "/services/{service_id}/escalation-chains/{chain_id}": [
+                ("service_escalation_chains", "deleted")
+            ],
+            "/rosters/{roster_id}/members/reorder": [
+                ("roster_members", "updated"),
+                ("roster_members", "updated"),
+            ],
+            "/rosters/{roster_id}/overrides/{override_id}": [
+                ("roster_overrides", "deleted")
+            ],
+            "/rosters/{roster_id}/members/{user_id}": [("roster_members", "deleted")],
+            "/priority-rules/{rule_id}": [("priority_rules", "updated")],
+            "/reports/schedules/{schedule_id}": [("report_schedules", "updated")],
+            "/models/configs/{config_id}/toggle-active": [("model_configs", "updated")],
+            "/organizations/{org_id}/email-settings": [
+                ("org_email_settings", "deleted")
+            ],
+            "/maintenance-windows/{mw_id}/approve": [
+                ("maintenance_windows", "updated")
+            ],
+            "/maintenance-windows/{mw_id}/reject": [("maintenance_windows", "deleted")],
+            "/auth/mfa": [("mfa", "deleted")],
+        }
+        calls = [
+            client.put(
+                f"/escalation-chains/{chain['id']}",
+                headers=auth_headers,
+                json={"name": "Renamed"},
+            ),
+            client.delete(
+                f"/escalation-chains/{chain['id']}/steps/{step['id']}",
+                headers=auth_headers,
+            ),
+            client.delete(
+                f"/services/{service['id']}/escalation-chains/{chain['id']}",
+                headers=auth_headers,
+            ),
+            client.post(
+                f"/rosters/{roster['id']}/members/reorder",
+                headers=auth_headers,
+                json={"ordered_user_ids": list(reversed(users))},
+            ),
+            client.delete(
+                f"/rosters/{roster['id']}/overrides/{override['id']}",
+                headers=auth_headers,
+            ),
+            client.delete(
+                f"/rosters/{roster['id']}/members/{users[0]}", headers=auth_headers
+            ),
+            client.put(
+                f"/priority-rules/{rule['id']}",
+                headers=auth_headers,
+                json={"priority": "P2"},
+            ),
+            client.put(
+                f"/reports/schedules/{schedule['id']}",
+                headers=auth_headers,
+                json={**schedule_body, "cadence": "monthly"},
+            ),
+            client.post(
+                f"/models/configs/{model_id}/toggle-active", headers=auth_headers
+            ),
+            client.delete(
+                f"/organizations/{TEST_ORG_ID}/email-settings", headers=auth_headers
+            ),
+            client.post(
+                f"/maintenance-windows/{windows[0]}/approve", headers=auth_headers
+            ),
+            client.post(
+                f"/maintenance-windows/{windows[1]}/reject", headers=auth_headers
+            ),
+            client.request(
+                "DELETE",
+                "/auth/mfa",
+                headers=auth_headers,
+                json={"recovery_code": recovery_codes[0]},
+            ),
+        ]
+        for call in calls:
+            await ok(await call)
+        await ok(await client.delete(f"/rosters/{roster['id']}", headers=auth_headers))
+        expected["/rosters/{roster_id}"] = [("rosters", "deleted")]
+
+        async with app.state.session_factory() as db:
+            rows = [
+                row
+                for row in await AuditEntryRepo.query(
+                    db, TEST_ORG_ID, entry_type="admin_change", limit=500
+                )
+                if row.id not in earlier
+            ]
+        recorded: dict[str, list[tuple[str, str]]] = {}
+        for row in rows:
+            recorded.setdefault(row.tool_parameters["route"], []).append(
+                (row.tool_parameters["entity"], row.tool_parameters["operation"])
+            )
+        assert {route: sorted(changes) for route, changes in recorded.items()} == {
+            route: sorted(changes) for route, changes in expected.items()
+        }
+        approval = next(
+            row
+            for row in rows
+            if row.tool_parameters["route"] == "/maintenance-windows/{mw_id}/approve"
+        )
+        assert approval.result["before"]["approved"] is False
+        assert approval.result["after"]["approved"] is True

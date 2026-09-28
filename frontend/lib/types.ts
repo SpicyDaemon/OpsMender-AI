@@ -2004,6 +2004,14 @@ export interface IncidentPagingPanelResponse {
   service_id: string | null;
   assignment: IncidentAssignmentResponse | null;
   suppressed_by_maintenance_window: SuppressedByMaintenanceWindow | null;
+  /** Someone asked the owner to hand the incident over. */
+  pending_takeover?: PendingTakeover | null;
+}
+
+export interface PendingTakeover {
+  user_id: string;
+  username: string;
+  expires_at: string;
 }
 
 export interface OnCallResolveResponse {

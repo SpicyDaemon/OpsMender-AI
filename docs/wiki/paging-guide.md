@@ -89,11 +89,12 @@ Each service has:
 - An intake URL, shown in full once, when it's created or rotated. It carries
   the secret that lets a monitor post alerts, so only a hash is stored; the
   list shows admins and operators a masked hint.
-- MCP servers strict allowlist.
+- One MCP server, or none.
 - Up to three ranked Models.
 
-MCP servers define the only configured MCP servers sessions for that service may
-use. Leave the list empty to give the service's sessions no MCP tools.
+The selected MCP server is the only MCP server sessions for that service may
+use. Leave it empty to give the service's sessions no MCP tools. The editor
+warns if an older service lists several; saving keeps the one selected server.
 
 Models define the service-specific models an operator may switch to during an
 AI session. The workspace default model is always available, and a service with
@@ -199,6 +200,9 @@ Ownership is a lock with a timer:
   never level 1 again.
 - **Resolving or combining** the incident ends all paging for it, whatever
   state the chain is in. Phone keypad `3` resolves it too.
+- **Reopening a resolved P0 or P1 incident** releases its former owner and
+  starts a new escalation round at the first level. The timeline explains
+  when no chain matches or the incident notifies instead of paging.
 
 **Snooze** (Slack `/snooze 30m`) pauses escalation for a set time. If nobody
 owns the incident, the next level is paged when the snooze ends. If you own
@@ -217,11 +221,11 @@ optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
 as-is: OpsMender has no route that receives it, so leave it unset unless you
 collect call status elsewhere.
 
-**Taking over from someone.** Asking for an incident someone else owns sends
-them a request; only they can confirm it, within five minutes, and an
-unanswered request just expires. An admin can force a takeover, which is
-recorded on the timeline. The **Take over** button in the incident page is an
-immediate reassignment by an operator, as before.
+**Taking over from someone.** **Take over** on an incident someone else owns
+asks them to hand it over and sends an Inbox notice. The owner can confirm
+with **Hand over** within five minutes; an unanswered request expires. An
+admin can use **Force take** to take ownership immediately, which is recorded
+on the timeline. Taking an unowned incident still assigns it immediately.
 
 ---
 
@@ -316,7 +320,7 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 
 1. Create a team at `/dashboard/paging/teams`.
 2. Create the team's escalation chain at `/dashboard/paging/escalation-chains`.
-3. Create a service at `/dashboard/paging/services`; choose priority, MCP servers, and up to three Models.
+3. Create a service at `/dashboard/paging/services`; choose priority, one MCP server if needed, and up to three Models.
 4. Copy the intake URL from the dialog that opens after you create the service (it's shown once) and configure your monitor to POST alerts to it.
 5. Create one or more roster schedules at `/dashboard/paging/rosters`.
 6. Add maintenance windows for planned work at `/dashboard/paging/maintenance-windows`.

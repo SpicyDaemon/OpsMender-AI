@@ -44,5 +44,17 @@ export default {
       await h.expectText(/service created/i);
       h.state.serviceCreated = true;
     });
+
+    await h.step("service form offers one MCP server choice", async () => {
+      await h.goto("/dashboard/paging/services");
+      await h.page.getByRole("button", { name: /new service/i }).first().click();
+      const server = h.page.getByRole("combobox", { name: "MCP server", exact: true });
+      await server.waitFor({ state: "visible" });
+      if (await server.getAttribute("multiple")) {
+        throw new Error("Service form still allows several MCP servers");
+      }
+      await server.locator('option[value=""]').waitFor({ state: "attached" });
+      await h.page.getByRole("button", { name: /^close /i }).first().click();
+    });
   },
 };

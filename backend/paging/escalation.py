@@ -1069,6 +1069,13 @@ async def handle_takeover_request(
         return "noop"
     if state is None:
         return "requires_admin"
+    expires = _aware(state.pending_takeover_expires_at)
+    if (
+        state.pending_takeover_user_id == requester_id
+        and expires is not None
+        and now < expires
+    ):
+        return "pending"
     state.pending_takeover_user_id = requester_id
     state.pending_takeover_expires_at = now + timedelta(
         seconds=SOFT_TAKEOVER_WINDOW_SECONDS
@@ -1080,6 +1087,19 @@ async def handle_takeover_request(
         incident_id=incident_id,
         body="Requested to take over the incident.",
         author_user_id=requester_id,
+    )
+    # The owner is the one who confirms, so tell them (S-112).
+    requester = await _username(db, requester_id)
+    await emit_to_users(
+        db,
+        org_id,
+        [active.assigned_to],
+        event_type="incident.takeover_requested",
+        category=CATEGORY_INCIDENT,
+        title=f"{requester} asked to take over: {incident.title}",
+        body="Open the incident to hand it over. The request lasts five minutes.",
+        link=f"/dashboard/incidents/detail?id={incident_id}",
+        incident_id=incident_id,
     )
     return "pending"
 

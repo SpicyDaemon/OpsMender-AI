@@ -84,9 +84,14 @@ from backend.api.schemas import (
     IncidentCombineRequest,
     IncidentCombineResponse,
     IncidentPagingPanelResponse,
+    PendingTakeoverResponse,
     SuppressedByMaintenanceWindow,
 )
-from backend.paging.service import compute_priority_for_payload, page_new_incident
+from backend.paging.service import (
+    compute_priority_for_payload,
+    page_new_incident,
+    page_reopened_incident,
+)
 from backend.paging import escalation as _esc
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
@@ -876,6 +881,7 @@ async def update_incident(
 
     # A service handoff re-routes a live incident only. A resolved or merged
     # incident just records the new service (KI-037).
+    restarted_on_service_change = False
     if service_changed and updated.status not in _CLOSED_STATUSES:
         await IncidentAssignmentRepo.release(db, org_id, incident_id)
         if updated.response_mode in ("page", "escalate_immediate"):
@@ -896,6 +902,7 @@ async def update_incident(
                     mode=updated.response_mode or "page",
                     channel_factory=build_channel_factory(),
                 )
+                restarted_on_service_change = True
             else:
                 await _esc.cancel_chain(db, org_id, incident_id=incident_id)
                 await record_lifecycle_comment(
@@ -904,6 +911,24 @@ async def update_incident(
                     incident_id=incident_id,
                     body="No escalation chain matches the new service and priority; no responder was paged.",
                 )
+
+    # Resolving stopped the chain, so reopening pages again (S-115). With a
+    # service change at the same time, the handoff above already restarted it.
+    if prior_status == "resolved" and updated.status not in _CLOSED_STATUSES:
+        if service_changed:
+            await record_lifecycle_comment(
+                db,
+                org_id,
+                incident_id=incident_id,
+                body=(
+                    "Reopened. Paging started again from the first level."
+                    if restarted_on_service_change
+                    else "Reopened."
+                ),
+                author_user_id=user.id,
+            )
+        else:
+            await page_reopened_incident(db, org_id, updated)
 
     if body.status != "resolved" and not service_changed:
         await _esc.record_assignee_activity(
@@ -1628,6 +1653,15 @@ def _incident_link(incident_id: uuid.UUID) -> str:
     return f"/dashboard/incidents/detail?id={incident_id}"
 
 
+async def _owner_name(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> str:
+    """The current owner's username, for messages about the lock they hold."""
+    active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    owner = await UserRepo.get_by_id(db, active.assigned_to) if active else None
+    return owner.username if owner else "Someone else"
+
+
 _CLOSED_STATUSES = ("resolved", "merged")
 
 
@@ -1700,6 +1734,29 @@ async def get_incident_paging(
             else None
         ),
         suppressed_by_maintenance_window=suppressed,
+        pending_takeover=await _pending_takeover(db, org_id, incident_id),
+    )
+
+
+async def _pending_takeover(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> PendingTakeoverResponse | None:
+    """A live takeover request, so the owner can hand the incident over."""
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
+    if state is None or state.pending_takeover_user_id is None:
+        return None
+    expires = state.pending_takeover_expires_at
+    if expires is None:
+        return None
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires <= datetime.now(timezone.utc):
+        return None
+    requester = await UserRepo.get_by_id(db, state.pending_takeover_user_id)
+    if requester is None:
+        return None
+    return PendingTakeoverResponse(
+        user_id=requester.id, username=requester.username, expires_at=expires
     )
 
 
@@ -1733,8 +1790,10 @@ async def assign_incident(
         await _ensure_eligible_owner(db, org_id, target_user_id)
 
     # Taking or assigning ownership acknowledges the incident: paging stops
-    # and the owner holds the D-021 lock (KI-021).
-    await _esc.acknowledge(
+    # and the owner holds the D-021 lock (KI-021). Taking it for yourself
+    # while someone else holds that lock goes through the takeover request
+    # instead (S-112); assigning someone else is an explicit reassignment.
+    outcome = await _esc.acknowledge(
         db,
         org_id,
         incident_id=incident_id,
@@ -1742,8 +1801,17 @@ async def assign_incident(
         actor_id=user.id,
         via="web_ui",
         assigned_by="self_ack" if target_user_id == user.id else "manual",
-        replace_owner=True,
+        replace_owner=target_user_id != user.id,
     )
+    if outcome.status == "owned_by_other":
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"{await _owner_name(db, org_id, incident_id)} owns this incident. "
+                "Request a takeover: they have five minutes to hand it over."
+            ),
+        )
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     assert assignment is not None
     # Notify the assignee when someone else assigns them (self-ack is silent).
@@ -1897,6 +1965,9 @@ async def bulk_incident_action(
                         incident.id,
                         reason=f"Incident resolved by {user.username}",
                     )
+                else:
+                    # Resolving stopped the chain; reopening pages again (S-115).
+                    await page_reopened_incident(db, org_id, incident)
 
         await db.commit()
         if action != "delete":
@@ -1968,7 +2039,7 @@ async def bulk_incident_action(
                     failed += 1
                     continue
                 _ensure_open(incident)
-                await _esc.acknowledge(
+                outcome = await _esc.acknowledge(
                     db,
                     org_id,
                     incident_id=incident_id,
@@ -1976,8 +2047,18 @@ async def bulk_incident_action(
                     actor_id=user.id,
                     via="web_ui",
                     assigned_by="self_ack" if target == user.id else "manual",
-                    replace_owner=True,
+                    replace_owner=target != user.id,
                 )
+                if outcome.status == "owned_by_other":
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id,
+                            ok=False,
+                            error="Someone else owns it. Request a takeover.",
+                        )
+                    )
+                    failed += 1
+                    continue
                 if target != user.id:
                     await emit_notification(
                         db,

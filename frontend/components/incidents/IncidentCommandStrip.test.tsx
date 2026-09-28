@@ -3,7 +3,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
-import type { IncidentAssignmentResponse, IncidentResponse } from "@/lib/types";
+import type {
+  IncidentAssignmentResponse,
+  IncidentResponse,
+  PendingTakeover,
+} from "@/lib/types";
 
 const push = vi.fn();
 const role = { current: "operator" };
@@ -33,6 +37,7 @@ const apiMocks = vi.hoisted(() => ({
   bulkIncidentAction: vi.fn(),
   deleteIncident: vi.fn(),
   releaseIncident: vi.fn(),
+  takeIncident: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -71,6 +76,7 @@ function renderStrip(
   status: IncidentResponse["status"],
   assignment: IncidentAssignmentResponse | null = null,
   ownerLabel?: string | null,
+  pendingTakeover?: PendingTakeover | null,
 ) {
   return render(
     <IncidentCommandStrip
@@ -79,6 +85,7 @@ function renderStrip(
       onStartSession={vi.fn()}
       onChanged={vi.fn()}
       ownerLabel={ownerLabel}
+      pendingTakeover={pendingTakeover}
     />,
   );
 }
@@ -118,6 +125,83 @@ describe("IncidentCommandStrip", () => {
     expect(screen.getByText("Owner: sre-alex")).toBeTruthy();
     expect(screen.getByTestId("action-start-session")).toBeTruthy();
     expect(screen.getByTestId("action-resolve")).toBeTruthy();
+  });
+
+  it("requests a handover directly when someone else owns the incident", async () => {
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex");
+
+    fireEvent.click(screen.getByTestId("action-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1"),
+    );
+    expect(apiMocks.assignIncident).not.toHaveBeenCalled();
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "Asked sre-alex to hand it over. They have five minutes.",
+    );
+  });
+
+  it("requests a handover if another owner claims an apparently unowned incident", async () => {
+    apiMocks.assignIncident.mockRejectedValue(
+      Object.assign(new Error("Owner holds the incident"), { status: 409 }),
+    );
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress");
+
+    fireEvent.click(screen.getByTestId("action-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1"),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "Asked the new owner to hand it over. They have five minutes.",
+    );
+  });
+
+  it("shows the pending request to the owner and lets them hand over", async () => {
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-me"), "me", {
+      user_id: "user-other",
+      username: "sre-alex",
+      expires_at: "2026-09-27T20:00:00Z",
+    });
+
+    fireEvent.click(screen.getByTestId("action-hand-over"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1", {
+        confirm: true,
+      }),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith("Handed over to sre-alex");
+  });
+
+  it("shows a pending request to its requester and disables another Take", () => {
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex", {
+      user_id: "user-me",
+      username: "me",
+      expires_at: "2026-09-27T20:00:00Z",
+    });
+    expect(screen.getByTestId("action-take").textContent).toContain(
+      "Takeover requested",
+    );
+    expect((screen.getByTestId("action-take") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("offers force take only to an admin and asks before using it", async () => {
+    role.current = "admin";
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMocks.takeIncident.mockResolvedValue({});
+    renderStrip("in_progress", makeAssignment("user-other"), "sre-alex");
+
+    fireEvent.click(screen.getByTestId("action-force-take"));
+    await waitFor(() =>
+      expect(apiMocks.takeIncident).toHaveBeenCalledWith("incident-1", {
+        force: true,
+      }),
+    );
+    expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining("without waiting for them"),
+    );
+    confirmSpy.mockRestore();
   });
 
   it("shows only postmortem in the resolved state", () => {

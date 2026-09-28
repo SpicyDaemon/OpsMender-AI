@@ -1019,7 +1019,8 @@ function ServicesPanel({
       description: service.description ?? "",
       priority: service.priority,
       alert_grouping: service.alert_grouping ?? "inherit",
-      mcp_server_ids: service.mcp_server_ids ?? [],
+      // One MCP server per service (S-103): sessions already use only the first.
+      mcp_server_ids: (service.mcp_server_ids ?? []).slice(0, 1),
       model_config_ids: service.model_config_ids ?? [],
       allowed_integration_connector_ids:
         service.allowed_integration_connector_ids ?? [],
@@ -1501,21 +1502,35 @@ function ServicesPanel({
               )}
           </div>
           <div>
-            <Label>MCP servers</Label>
-            <MultiSelect
-              ariaLabel="MCP servers"
-              ordered
-              options={mcpServers.map((s) => ({ value: s.id, label: s.name }))}
-              selected={form.mcp_server_ids}
-              onChange={(next) =>
-                setForm({ ...form, mcp_server_ids: next })
+            <Label>MCP server</Label>
+            <Select
+              aria-label="MCP server"
+              value={form.mcp_server_ids[0] ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  mcp_server_ids: e.target.value ? [e.target.value] : [],
+                })
               }
-              emptyLabel="No MCP servers configured yet."
-            />
+            >
+              <option value="">None</option>
+              {mcpServers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            {editing && (editing.mcp_server_ids?.length ?? 0) > 1 && (
+              <p role="alert" className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                This service lists {editing.mcp_server_ids.length} MCP servers,
+                but sessions only use the first. Saving keeps the one selected
+                here.
+              </p>
+            )}
             <p className="mt-1 text-xs text-fg-muted">
-              Strict allowlist: sessions for this service can only use these
-              MCP servers. Leave empty when native integrations cover the
-              toolset, or to run advisory-only.
+              Sessions for this service use this MCP server and no other.
+              Leave it empty when native integrations cover the toolset, or to
+              run advisory-only.
             </p>
           </div>
           <div>

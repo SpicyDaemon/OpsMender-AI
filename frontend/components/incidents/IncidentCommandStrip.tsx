@@ -43,11 +43,13 @@ import {
   bulkIncidentAction,
   deleteIncident,
   releaseIncident,
+  takeIncident,
 } from "@/lib/api";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import type {
   IncidentAssignmentResponse,
   IncidentResponse,
+  PendingTakeover,
 } from "@/lib/types";
 
 type Status = IncidentResponse["status"];
@@ -61,6 +63,8 @@ interface Props {
   onChanged: () => Promise<void> | void;
   /** Resolved owner display label for "assigned to someone else" states. */
   ownerLabel?: string | null;
+  /** A live request to take the incident over from its owner. */
+  pendingTakeover?: PendingTakeover | null;
   /** Optional: collapses extra status pills on narrow viewports. */
   className?: string;
 }
@@ -71,6 +75,7 @@ export function IncidentCommandStrip({
   onStartSession,
   onChanged,
   ownerLabel,
+  pendingTakeover = null,
   className,
 }: Props) {
   const toast = useToast();
@@ -91,6 +96,9 @@ export function IncidentCommandStrip({
     assignment !== null &&
     assignment.released_at === null &&
     !isAssignedToMe;
+  const takeoverRequestedByMe =
+    pendingTakeover !== null && user !== null && pendingTakeover.user_id === user.id;
+  const owner = ownerLabel || "The owner";
 
   // -- Action handlers -----------------------------------------------------
 
@@ -124,14 +132,55 @@ export function IncidentCommandStrip({
       setBusy(null);
     }
   }
-  const handleTake = () =>
+  // Taking an incident someone is actively working needs their OK (S-112).
+  async function handleTake() {
+    setBusy("take");
+    try {
+      if (isAssignedToSomeoneElse) {
+        await takeIncident(incident.id);
+        toast.success(`Asked ${owner} to hand it over. They have five minutes.`);
+      } else {
+        // The server rejects stale assignment data if another owner got here first.
+        await assignIncident(incident.id);
+        toast.success("You now own this incident");
+      }
+      await onChanged();
+    } catch (err) {
+      if ((err as { status?: number }).status === 409 && !isAssignedToSomeoneElse) {
+        try {
+          await takeIncident(incident.id);
+          toast.success("Asked the new owner to hand it over. They have five minutes.");
+          await onChanged();
+        } catch (inner) {
+          toast.error(inner instanceof Error ? inner.message : String(inner));
+        }
+      } else {
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+  const handleHandOver = () =>
     run(
-      "take",
-      () =>
-        // assignIncident with no user id self-assigns to the caller.
-        assignIncident(incident.id),
+      "handover",
+      () => takeIncident(incident.id, { confirm: true }),
+      `Handed over to ${pendingTakeover?.username ?? "them"}`,
+    );
+  const handleForceTake = () => {
+    if (
+      !confirm(
+        `Take over from ${owner} now, without waiting for them to hand it over?`,
+      )
+    ) {
+      return;
+    }
+    void run(
+      "force",
+      () => takeIncident(incident.id, { force: true }),
       "You now own this incident",
     );
+  };
   const handleRelease = () =>
     run("release", () => releaseIncident(incident.id), "Released ownership");
   const handleResolve = () =>
@@ -233,13 +282,15 @@ export function IncidentCommandStrip({
             <Button
               size="sm"
               variant="secondary"
-              disabled={!!busy}
+              disabled={!!busy || takeoverRequestedByMe}
               onClick={handleTake}
               data-testid="action-take"
               title={
-                isAssignedToSomeoneElse
-                  ? "Take over from the current owner"
-                  : "Assign this incident to yourself"
+                takeoverRequestedByMe
+                  ? `Waiting for ${owner} to hand it over`
+                  : isAssignedToSomeoneElse
+                    ? `${owner} owns it: if they're working on it, they'll be asked to hand it over`
+                    : "Assign this incident to yourself"
               }
             >
               {busy === "take" ? (
@@ -247,7 +298,42 @@ export function IncidentCommandStrip({
               ) : (
                 <Hand size={14} />
               )}
-              {isAssignedToSomeoneElse ? "Take over" : "Take"}
+              {takeoverRequestedByMe
+                ? "Takeover requested"
+                : isAssignedToSomeoneElse
+                  ? "Take over"
+                  : "Take"}
+            </Button>
+          )}
+
+          {!isResolved && isAssignedToSomeoneElse && user?.role === "admin" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!!busy}
+              onClick={handleForceTake}
+              data-testid="action-force-take"
+              title={`Take over from ${owner} without waiting for them`}
+            >
+              {busy === "force" ? <Loader2 size={14} className="animate-spin" /> : null}
+              Force take
+            </Button>
+          )}
+
+          {!isResolved && isAssignedToMe && pendingTakeover && (
+            <Button
+              size="sm"
+              disabled={!!busy}
+              onClick={handleHandOver}
+              data-testid="action-hand-over"
+              title={`${pendingTakeover.username} asked to take over this incident`}
+            >
+              {busy === "handover" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Hand size={14} />
+              )}
+              Hand over to {pendingTakeover.username}
             </Button>
           )}
 

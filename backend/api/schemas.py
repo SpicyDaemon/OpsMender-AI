@@ -2755,6 +2755,14 @@ class SuppressedByMaintenanceWindow(BaseModel):
     scope_type: str
 
 
+class PendingTakeoverResponse(BaseModel):
+    """Someone asked the owner to hand the incident over (S-112)."""
+
+    user_id: uuid.UUID
+    username: str
+    expires_at: datetime
+
+
 class IncidentPagingPanelResponse(BaseModel):
     incident_id: uuid.UUID
     priority: Optional[str]
@@ -2762,6 +2770,7 @@ class IncidentPagingPanelResponse(BaseModel):
     service_id: Optional[uuid.UUID]
     assignment: Optional[IncidentAssignmentResponse]
     suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
+    pending_takeover: Optional[PendingTakeoverResponse] = None
 
 
 class IncidentTimelineItemResponse(BaseModel):
@@ -2967,6 +2976,7 @@ class IncidentPageResponse(BaseModel):
     user_id: uuid.UUID
     chain_id: Optional[uuid.UUID]
     step_index: Optional[int]
+    round: int
     channel: str
     sent_at: datetime
     ack_at: Optional[datetime]
@@ -2982,6 +2992,7 @@ class IncidentChainStateResponse(BaseModel):
     chain_id: uuid.UUID
     status: str
     current_step_index: int
+    round: int
     next_step_due_at: Optional[datetime]
     hard_deadline_at: Optional[datetime]
     pending_takeover_user_id: Optional[uuid.UUID]

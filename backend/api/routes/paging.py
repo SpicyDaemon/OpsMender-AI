@@ -137,6 +137,13 @@ async def _validate_mcp_servers(
                 detail="MCP server not found",
             )
         ordered.append(str(server_id))
+    # A session connects to one MCP server (S-103). Saying so beats silently
+    # ignoring the rest; connecting several is planned for v1.2.
+    if len(ordered) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A service can use one MCP server for now. Pick one.",
+        )
     return ordered
 
 

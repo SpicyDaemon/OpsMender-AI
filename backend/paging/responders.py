@@ -95,7 +95,15 @@ async def add_responders(
     """
 
     # Concurrent adds wait here, so the limit holds.
-    await IncidentRepo.get_by_id(db, org_id, incident.id, for_update=True)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident.id, for_update=True)
+    if incident is None:
+        raise ResponderError(404, "Incident not found.")
+    if incident.status in ("resolved", "merged"):
+        raise ResponderError(409, f"The incident is {incident.status}.")
+    if not await can_manage_responders(db, org_id, incident, actor):
+        raise ResponderError(
+            403, "You can no longer change this incident's responders."
+        )
     wanted = list(dict.fromkeys(user_ids))
     if not wanted:
         raise ResponderError(422, "Choose at least one person.")
@@ -191,6 +199,17 @@ async def remove_responder(
     state = await IncidentChainStateRepo.get_for_incident(
         db, org_id, incident.id, for_update=True
     )
+    incident = await IncidentRepo.get_by_id(db, org_id, incident.id, for_update=True)
+    if incident is None:
+        raise ResponderError(404, "Incident not found.")
+    if incident.status in ("resolved", "merged"):
+        raise ResponderError(409, f"The incident is {incident.status}.")
+    if actor.id != user_id and not await can_manage_responders(
+        db, org_id, incident, actor
+    ):
+        raise ResponderError(
+            403, "You can no longer change this incident's responders."
+        )
     if not await IncidentResponderRepo.remove(
         db, org_id, incident_id=incident.id, user_id=user_id
     ):

@@ -182,7 +182,13 @@ async def reassign_to_team(
     state = await IncidentChainStateRepo.get_for_incident(
         db, org_id, incident.id, for_update=True
     )
-    await IncidentRepo.get_by_id(db, org_id, incident.id, for_update=True)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident.id, for_update=True)
+    if incident is None:
+        raise ValueError("Incident not found.")
+    if incident.status in ("resolved", "merged"):
+        raise ValueError(f"The incident is {incident.status}.")
+    if not await can_reassign(db, org_id, incident, actor):
+        raise PermissionError("The actor is no longer on this incident's team.")
     previous_team_id = await incident_team_id(db, org_id, incident)
     if previous_team_id == team.id:
         raise ValueError(f"{team.name} already handles this incident.")

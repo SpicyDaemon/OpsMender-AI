@@ -2674,6 +2674,9 @@ async def reassign_incident(
             note=(body.note or "").strip() or None,
             channel_factory=build_channel_factory(),
         )
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=403, detail=_REASSIGN_FORBIDDEN) from exc
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -2743,9 +2746,14 @@ async def remove_incident_responder(
         db, org_id, incident, user
     ):
         raise HTTPException(status_code=403, detail=_RESPONDERS_FORBIDDEN)
-    if not await _responders.remove_responder(
-        db, org_id, incident=incident, user_id=user_id, actor=user
-    ):
+    try:
+        removed = await _responders.remove_responder(
+            db, org_id, incident=incident, user_id=user_id, actor=user
+        )
+    except _responders.ResponderError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    if not removed:
         raise HTTPException(
             status_code=404, detail="That person isn't a responder on this incident."
         )

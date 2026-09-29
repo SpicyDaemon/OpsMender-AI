@@ -22,11 +22,13 @@ from backend.db.repos import (
     EscalationStepRepo,
     IncidentPageRepo,
     IncidentRepo,
+    ServiceRepo,
     TeamRepo,
     UserRepo,
 )
 from backend.paging import escalation as esc
 from backend.paging import responders
+from backend.paging import reassign
 
 pytestmark = pytest.mark.integration
 
@@ -289,3 +291,111 @@ async def test_concurrent_responder_adds_never_pass_the_limit(pg_fixture, monkey
         rows = await original(db, org_id, incident_id)
     assert sorted(str(result) for result in results) == ["409", "added"]
     assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_team_handoff_invalidates_stale_operator_actions(pg_fixture):
+    """A second connection hands off after an operator's permission read."""
+    factory, org_id, chain_id, users = pg_fixture
+    async with factory() as db:
+        chain = await EscalationChainRepo.get_by_id(db, org_id, chain_id)
+        team_a = await TeamRepo.get_by_id(db, org_id, chain.team_id)
+        await TeamRepo.add_member(db, org_id, team_a.id, user_id=users[0])
+        team_b = await TeamRepo.create(
+            db, org_id, name="Receiving", slug=f"receiving-{org_id.hex[:8]}"
+        )
+        team_c = await TeamRepo.create(
+            db, org_id, name="Other", slug=f"other-{org_id.hex[:8]}"
+        )
+        service = await ServiceRepo.create(
+            db,
+            org_id,
+            team_id=team_a.id,
+            name="Race service",
+            slug=f"race-service-{org_id.hex[:8]}",
+            priority="P2",
+        )
+        admin = await UserRepo.get_by_id(db, users[2])
+        admin.role = "admin"
+        await db.commit()
+
+    async def incident_id():
+        async with factory() as db:
+            incident = await IncidentRepo.create(
+                db,
+                org_id,
+                title="handoff race",
+                description="test",
+                service_id=service.id,
+                priority="P2",
+                response_mode="notify",
+            )
+            await db.commit()
+            return incident.id
+
+    async def handoff(incident_id):
+        async with factory() as db:
+            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+            actor = await UserRepo.get_by_id(db, users[2])
+            target = await TeamRepo.get_by_id(db, org_id, team_b.id)
+            await reassign.reassign_to_team(
+                db, org_id, incident=incident, team=target, actor=actor
+            )
+            await db.commit()
+
+    move_id = await incident_id()
+    async with factory() as stale:
+        incident = await IncidentRepo.get_by_id(stale, org_id, move_id)
+        operator = await UserRepo.get_by_id(stale, users[0])
+        assert await reassign.can_reassign(stale, org_id, incident, operator)
+        await handoff(move_id)
+        target = await TeamRepo.get_by_id(stale, org_id, team_c.id)
+        with pytest.raises(PermissionError):
+            await reassign.reassign_to_team(
+                stale, org_id, incident=incident, team=target, actor=operator
+            )
+        await stale.rollback()
+
+    add_id = await incident_id()
+    async with factory() as stale:
+        incident = await IncidentRepo.get_by_id(stale, org_id, add_id)
+        operator = await UserRepo.get_by_id(stale, users[0])
+        assert await responders.can_manage_responders(stale, org_id, incident, operator)
+        await handoff(add_id)
+        with pytest.raises(responders.ResponderError) as refused:
+            await responders.add_responders(
+                stale, org_id, incident=incident, user_ids=[users[1]], actor=operator
+            )
+        assert refused.value.status_code == 403
+        await stale.rollback()
+    async with factory() as db:
+        assert await IncidentResponderRepo.list_for_incident(db, org_id, add_id) == []
+
+    remove_id = await incident_id()
+    async with factory() as db:
+        await IncidentResponderRepo.add(
+            db,
+            org_id,
+            incident_id=remove_id,
+            user_id=users[1],
+            added_by=users[2],
+        )
+        await db.commit()
+    async with factory() as stale:
+        incident = await IncidentRepo.get_by_id(stale, org_id, remove_id)
+        operator = await UserRepo.get_by_id(stale, users[0])
+        assert await responders.can_manage_responders(stale, org_id, incident, operator)
+        await handoff(remove_id)
+        with pytest.raises(responders.ResponderError) as refused:
+            await responders.remove_responder(
+                stale,
+                org_id,
+                incident=incident,
+                user_id=users[1],
+                actor=operator,
+            )
+        assert refused.value.status_code == 403
+        await stale.rollback()
+    async with factory() as db:
+        rows = await IncidentResponderRepo.list_for_incident(db, org_id, remove_id)
+        assert [row.user_id for row in rows] == [users[1]]

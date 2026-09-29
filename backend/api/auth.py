@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt as _bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,6 +124,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -147,6 +148,9 @@ async def get_current_user(
             await db.flush()
         setattr(user, "api_token_name", token_row.name)
         setattr(user, "effective_role", token_row.role)
+        from backend.audit.admin_changes import set_audit_actor
+
+        set_audit_actor(db, request, actor_id=user.id, org_id=user.primary_org_id)
         return user
 
     user = await user_for_session_token(db, token)
@@ -154,6 +158,9 @@ async def get_current_user(
         raise credentials_exc
     setattr(user, "api_token_name", None)
     setattr(user, "effective_role", user.role)
+    from backend.audit.admin_changes import set_audit_actor
+
+    set_audit_actor(db, request, actor_id=user.id, org_id=user.primary_org_id)
     return user
 
 

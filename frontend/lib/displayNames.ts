@@ -14,6 +14,9 @@ const AUDIT_ENTRY_LABELS: Record<string, string> = {
   session_end: "Session ended",
   pre: "Tool call",
   post: "Tool result",
+  admin_change: "Configuration change",
+  approval_decision: "Approval decision",
+  tier_override: "Tier override",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {

@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notification settings (Maintenance Windows don't hold the request) and gets
   an Inbox notice with the optional message. Responders show next to the
   owner, can be removed, and can leave.
+- **Workspace change history.** Authenticated configuration changes now write
+  Activity entries with the actor, route, entity, operation, and a short
+  redacted before/after summary. Approval decisions name the decider, and
+  session tier overrides record the actor and tier transition. Credential
+  values are not copied into Activity. A change and its entry are saved in
+  the same database transaction, so if the entry cannot be written the change
+  is rolled back and the request fails. A row changed in several steps, such
+  as a reorder, gets one entry, and rows whose values did not change get none.
 - **Reopen pages again.** Reopening a resolved P0 or P1 incident starts a new
   escalation round at the first level and releases its former owner. The
   timeline says whether paging restarted or why nobody was paged.
@@ -51,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Handoff actions recheck permission after locking.** If another operator
+  moves the incident to a new team before a reassignment or responder change
+  completes, the earlier team's operator cannot finish the stale action.
+- **Plain punctuation in tier gate messages.** Blocked and approval reasons
+  from the tier gate now use a colon or comma instead of a dash, for example
+  "deny-list policy match: blocked at every tier". Only the wording changed;
+  the gate's decisions are identical. The punctuation check now covers the
+  tier gate too.
 - **One MCP server per service.** The service editor selects one server; the
   API rejects several with 422. Existing services that list several show a
   warning, and saving keeps the selected one.

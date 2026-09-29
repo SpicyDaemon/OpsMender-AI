@@ -1582,7 +1582,7 @@ class AuditEntryRepo:
         db: AsyncSession,
         org_id: uuid.UUID,
         *,
-        session_id: uuid.UUID,
+        session_id: uuid.UUID | None,
         tier: int,
         entry_type: str,
         tool_name: str | None = None,

@@ -92,8 +92,9 @@ jobs:
       - name: Install test dependencies
         run: uv sync --frozen --group dev
 
-      # Real two-connection races on this job's Postgres service. They need a
-      # live database, so the main backend run deselects them.
+      # Real two-connection races and audit rollbacks on this job's Postgres
+      # service. They need a live database, so the main backend run
+      # deselects them.
       - name: Postgres concurrency tests
         shell: bash
         # A failed interleaving can leave a lock held through teardown.
@@ -102,6 +103,7 @@ jobs:
           PART4_PG_URL="$OPSMENDER_DATABASE_URL"
           uv run pytest -m integration --run-integration
           tests/test_escalation_part4_postgres.py
+          tests/test_admin_audit_postgres.py
           -q --timeout=180 --timeout-method=thread
 
   frontend:

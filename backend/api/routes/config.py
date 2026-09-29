@@ -325,6 +325,7 @@ async def update_model_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Model config could not be reloaded",
         )
+    await db.commit()
     return ModelConfigSaveResponse(
         config=ModelConfigResponse.model_validate(refreshed),
         warnings=[

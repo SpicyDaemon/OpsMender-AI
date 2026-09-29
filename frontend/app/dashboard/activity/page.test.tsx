@@ -53,6 +53,26 @@ beforeEach(() => {
 });
 
 describe("Activity session grouping", () => {
+  it("shows configuration changes in the workspace activity group", async () => {
+    apiMocks.listAudit.mockResolvedValue({
+      items: [
+        auditEntry({
+          id: "admin-change",
+          timestamp: "2026-09-28T12:00:00Z",
+          session_id: null,
+          tier: 0,
+          entry_type: "admin_change",
+          tool_name: "PUT /teams/{team_id}",
+        }),
+      ],
+      total: 1,
+    });
+    render(<ActivityPage />);
+    expect(await screen.findByRole("button", { name: /workspace activity/i })).toBeTruthy();
+    expect(await screen.findByText("Configuration change")).toBeTruthy();
+    expect(screen.getByText("PUT /teams/{team_id}")).toBeTruthy();
+  });
+
   it("groups entries by newest session, preserves the system bucket, and counts blocked rows", () => {
     const groups = groupAuditEntriesBySession([
       auditEntry({

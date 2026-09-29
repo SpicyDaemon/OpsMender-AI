@@ -42,16 +42,16 @@ class EnforcementResult:
 
 
 # AI Autonomy Tiers (3-tier model):
-#   Tier 0 — Autonomous        (explicit policy + deny lists + sandbox floor)
-#   Tier 1 — Approval Required (execution mode comes from explicit policy)
-#   Tier 2 — Advisory Only     (DEFAULT — no remediation actions execute)
+#   Tier 0: Autonomous         (explicit policy + deny lists + sandbox floor)
+#   Tier 1: Approval Required  (execution mode comes from explicit policy)
+#   Tier 2: Advisory Only      (DEFAULT: no remediation actions execute)
 #
 # Legacy Tier 3 (advise-only) is remapped to Tier 2 (see ``check`` + migration).
 def normalize_tier(tier: int) -> int:
     """Map any tier value to a valid 3-tier value.
 
     Legacy Tier 3 (advise-only) collapses into Tier 2 (advisory only). Any
-    out-of-range value is clamped to the safest tier (2 — advisory), never to
+    out-of-range value is clamped to the safest tier (2, advisory), never to
     a more permissive tier.
     """
     if tier == 3:
@@ -68,7 +68,7 @@ def check(
 ) -> EnforcementResult:
     """Check whether *tool_name* is permitted at the given *tier*.
 
-    This is a hard programmatic check — it cannot be bypassed by agent
+    This is a hard programmatic check: it cannot be bypassed by agent
     reasoning. Legacy Tier 3 is normalized to Tier 2 (advisory).
 
     Enforcement order: deny-list (always wins) → generic-execution guardrail →
@@ -86,7 +86,7 @@ def check(
             if classification != "unknown"
             else "destructive",
             tier=tier,
-            reason="deny-list policy match — blocked at every tier",
+            reason="deny-list policy match: blocked at every tier",
             reversible=reversible,
         )
 
@@ -99,7 +99,7 @@ def check(
                 permitted=True,
                 classification="generic_execution",
                 tier=tier,
-                reason="generic execution tool — requires operator approval at Tier 1",
+                reason="generic execution tool: requires operator approval at Tier 1",
                 reversible=reversible,
                 requires_approval=True,
             )
@@ -107,7 +107,7 @@ def check(
         reason = (
             "generic execution tool blocked at Tier 2 (advisory only)"
             if tier == 2
-            else "generic execution tool blocked at Tier 0 — no command-pattern "
+            else "generic execution tool blocked at Tier 0: no command-pattern "
             "allowlisting (set allow_generic in the MCP Skill to override)"
         )
         return EnforcementResult(
@@ -127,11 +127,11 @@ def check(
             permitted=False,
             classification=classification,
             tier=tier,
-            reason=f"operation has no explicit T{tier} policy — denied",
+            reason=f"operation has no explicit T{tier} policy: denied",
             reversible=reversible,
         )
     if not policy.enabled or policy.mode in {"blocked", "advisory"}:
-        label = "advisory — no execution" if policy.mode == "advisory" else "blocked"
+        label = "advisory, no execution" if policy.mode == "advisory" else "blocked"
         return EnforcementResult(
             permitted=False,
             classification=classification,
@@ -154,7 +154,7 @@ def check(
         if violation is not None:
             permitted = False
             reason = (
-                f"{classification} operation denied at Tier 0 — {violation} "
+                f"{classification} operation denied at Tier 0: {violation} "
                 "(sandbox floor)"
             )
 

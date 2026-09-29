@@ -3,8 +3,6 @@
 They read as machine-written. Use a period, comma, colon or parentheses in
 prose, and a plain hyphen in code comments and ranges. Code that has to
 recognise the glyph in model output writes it as an escape.
-
-The tier gate is frozen for this release, so it is the one exception for now.
 """
 
 from __future__ import annotations
@@ -17,7 +15,6 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GLYPHS = (chr(0x2014), chr(0x2013))  # em dash, en dash
-ALLOWED = {"backend/tiers/enforcement.py"}
 BINARY = {
     ".png",
     ".jpg",
@@ -44,7 +41,7 @@ def _tracked_files() -> list[str]:
 def test_no_em_or_en_dashes_in_tracked_files():
     offenders = []
     for rel in _tracked_files():
-        if rel in ALLOWED or pathlib.Path(rel).suffix.lower() in BINARY:
+        if pathlib.Path(rel).suffix.lower() in BINARY:
             continue
         try:
             text = (ROOT / rel).read_text(encoding="utf-8")

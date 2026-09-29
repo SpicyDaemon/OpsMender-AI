@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import ApprovalRequest
-from backend.db.repos import ApprovalRequestRepo, SessionRepo
+from backend.db.repos import ApprovalRequestRepo, AuditEntryRepo, SessionRepo
 
 
 @dataclasses.dataclass
@@ -78,6 +78,22 @@ async def decide(
         await record_assignee_activity(
             db, org_id, incident_id=session.incident_id, actor_id=resolver_id
         )
+    await AuditEntryRepo.create(
+        db,
+        org_id,
+        session_id=request.session_id,
+        tier=session.tier if session is not None else 0,
+        entry_type="approval_decision",
+        tool_name="approval.decide",
+        tool_parameters={
+            "actor_id": str(resolver_id),
+            "approval_id": str(request.id),
+            "route": db.sync_session.info.get("admin_audit", {}).get(
+                "route", "interactive_action"
+            ),
+        },
+        result={"before": {"status": "pending"}, "after": {"status": decision}},
+    )
     await db.commit()
     return Decision(
         "decided", await ApprovalRequestRepo.get_by_id(db, org_id, request.id)

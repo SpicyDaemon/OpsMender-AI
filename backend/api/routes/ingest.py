@@ -453,6 +453,7 @@ async def create_ingest_token(
         shape_cache=shape_cache,
         service_id=body.service_id,
     )
+    await db.commit()
 
     return IngestTokenCreatedResponse(
         id=token_obj.id,
@@ -516,6 +517,7 @@ async def learn_ingest_token_shape(
             next_cache[shape] = paths
             await IngestTokenRepo.update_shape_cache(db, org_id, tok.id, next_cache)
             tok.shape_cache = next_cache
+    await db.commit()
 
     # Build a preview of what the incident would look like
     parsed_preview = parse_with_paths(normalized_sample, paths)
@@ -554,6 +556,7 @@ async def revoke_ingest_token(
     await IngestTokenRepo.revoke(db, org_id, token_id)
     # Re-fetch after update
     tok = await IngestTokenRepo.get_by_id(db, org_id, token_id)
+    await db.commit()
     return _to_token_response(tok)
 
 
@@ -583,6 +586,7 @@ async def delete_ingest_token(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ingest token not found",
         )
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

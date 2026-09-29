@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Workspace change history.** Authenticated configuration changes now write
+  Activity entries with the actor, route, entity, operation, and a short
+  redacted before/after summary. Approval decisions name the decider, and
+  session tier overrides record the actor and tier transition. Credential
+  values are not copied into Activity. A change and its entry are saved in
+  the same database transaction, so if the entry cannot be written the change
+  is rolled back and the request fails. A row changed in several steps, such
+  as a reorder, gets one entry, and rows whose values did not change get none.
 - **Reopen pages again.** Reopening a resolved P0 or P1 incident starts a new
   escalation round at the first level and releases its former owner. The
   timeline says whether paging restarted or why nobody was paged.

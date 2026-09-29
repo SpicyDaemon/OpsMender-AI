@@ -742,6 +742,7 @@ async def override_session(
             ),
         )
 
+    previous_tier = int(session.tier)
     cancel_session_workflow(request.app, session_id=session_id)
     await _expire_pending_approvals(db, org_id, session_id)
 
@@ -764,6 +765,24 @@ async def override_session(
             assigned_by="override",
             replace_owner=True,
         )
+    await AuditEntryRepo.create(
+        db,
+        org_id,
+        session_id=session_id,
+        tier=target_tier,
+        entry_type="tier_override",
+        tool_name="POST /sessions/{session_id}/override",
+        tool_parameters={
+            "actor_id": str(user.id),
+            "route": "/sessions/{session_id}/override",
+            "entity": "sessions",
+            "entity_id": str(session_id),
+        },
+        result={
+            "before": {"tier": previous_tier},
+            "after": {"tier": target_tier},
+        },
+    )
     await db.commit()
 
     await publish(

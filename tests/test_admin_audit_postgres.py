@@ -1,0 +1,248 @@
+"""Configuration changes and their Activity entries commit together.
+
+Run with PART4_PG_URL pointed at a disposable database. The URL is not logged.
+A trigger makes PostgreSQL reject audit rows, so these tests show what the
+route returns and what stays committed when the audit write fails.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+from types import SimpleNamespace
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from backend.api.app import create_app
+from backend.api.auth import hash_password
+from backend.api.deps import set_session_factory
+from backend.audit.admin_changes import set_audit_actor
+from backend.config_loader import set_env_path
+from backend.db.models import (
+    AuditEntry,
+    Base,
+    IngestToken,
+    Organization,
+    PasswordResetToken,
+)
+from backend.db.repos import TeamRepo, UserRepo
+
+pytestmark = pytest.mark.integration
+
+_PASSWORD = "audit-check-password"
+
+
+@pytest.fixture
+async def pg_app(tmp_path):
+    url = os.environ.get("PART4_PG_URL")
+    if not url:
+        pytest.fail("PART4_PG_URL must target an isolated PostgreSQL database")
+    engine = create_async_engine(url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    set_session_factory(factory)
+    org_id = uuid.uuid4()
+    suffix = org_id.hex[:8]
+    async with factory() as db:
+        db.add(Organization(id=org_id, name="Audit check", slug=f"audit-{suffix}"))
+        await db.flush()
+        admin = await UserRepo.create(
+            db,
+            username=f"admin-{suffix}",
+            email=f"admin-{suffix}@example.test",
+            password_hash=hash_password(_PASSWORD),
+            role="admin",
+            primary_org_id=org_id,
+        )
+        target = await UserRepo.create(
+            db,
+            username=f"target-{suffix}",
+            email=f"target-{suffix}@example.test",
+            password_hash="unused",
+            role="viewer",
+            primary_org_id=org_id,
+        )
+        await db.commit()
+    env = tmp_path / ".env"
+    env.write_text(
+        "OPSMENDER_TIER=2\n"
+        f"OPSMENDER_AUDIT_LOG={tmp_path / 'audit.jsonl'}\n"
+        "OPSMENDER_JWT_SECRET=test-secret\n"
+        "OPSMENDER_DATABASE_URL=sqlite+aiosqlite://\n"
+        "OPSMENDER_MCP_SERVERS_JSON=[]\n"
+    )
+    set_env_path(env)
+    app = create_app()
+    app.state.engine = engine
+    app.state.session_factory = factory
+    # Report a server error as the client would see it instead of raising.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        login = await client.post(
+            "/auth/login", json={"username": admin.username, "password": _PASSWORD}
+        )
+        assert login.status_code == 200, login.status_code
+        yield SimpleNamespace(
+            client=client,
+            engine=engine,
+            factory=factory,
+            org_id=org_id,
+            admin_id=admin.id,
+            target_id=target.id,
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+    set_env_path(None)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
+        await connection.execute(text("DROP FUNCTION IF EXISTS audit_check_reject()"))
+    await engine.dispose()
+
+
+async def _reject_audit_rows(engine) -> None:
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION audit_check_reject() RETURNS trigger "
+                "LANGUAGE plpgsql AS $$ BEGIN "
+                "RAISE EXCEPTION 'audit row rejected by test'; END $$"
+            )
+        )
+        await connection.execute(
+            text(
+                "CREATE TRIGGER audit_check_reject BEFORE INSERT ON audit_entries "
+                "FOR EACH ROW EXECUTE FUNCTION audit_check_reject()"
+            )
+        )
+
+
+async def _count(factory, model, *criteria) -> int:
+    async with factory() as db:
+        return await db.scalar(select(func.count()).select_from(model).where(*criteria))
+
+
+async def _entries(factory, org_id, route):
+    async with factory() as db:
+        rows = await db.execute(
+            select(AuditEntry).where(
+                AuditEntry.org_id == org_id,
+                AuditEntry.entry_type == "admin_change",
+                AuditEntry.tool_name.like(f"% {route}"),
+            )
+        )
+        return list(rows.scalars())
+
+
+async def test_reset_link_commits_with_one_entry(pg_app):
+    route = "/auth/users/{user_id}/reset-password"
+    response = await pg_app.client.post(
+        f"/auth/users/{pg_app.target_id}/reset-password", headers=pg_app.headers
+    )
+
+    assert response.status_code == 200, response.status_code
+    assert (
+        await _count(
+            pg_app.factory,
+            PasswordResetToken,
+            PasswordResetToken.user_id == pg_app.target_id,
+        )
+        == 1
+    )
+    entries = await _entries(pg_app.factory, pg_app.org_id, route)
+    assert len(entries) == 1
+    assert entries[0].tool_parameters == {
+        "actor_id": str(pg_app.admin_id),
+        "route": route,
+        "method": "POST",
+        "entity": "users",
+        "entity_id": str(pg_app.target_id),
+        "operation": "created",
+    }
+    stored = str([(entry.tool_parameters, entry.result) for entry in entries])
+    link_stored = response.json()["url"] in stored
+    assert not link_stored
+
+
+async def test_rejected_entry_rolls_back_reset_link(pg_app):
+    await _reject_audit_rows(pg_app.engine)
+
+    response = await pg_app.client.post(
+        f"/auth/users/{pg_app.target_id}/reset-password", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(
+            pg_app.factory,
+            PasswordResetToken,
+            PasswordResetToken.user_id == pg_app.target_id,
+        ),
+        await _count(pg_app.factory, AuditEntry),
+    )
+    # (status, reset links, audit rows): an error, and nothing committed.
+    assert observed == (500, 0, 0)
+
+
+async def test_ingest_token_commits_with_one_entry(pg_app):
+    response = await pg_app.client.post(
+        "/ingest-tokens",
+        headers=pg_app.headers,
+        json={"name": "audit-check", "provider": "generic"},
+    )
+
+    assert response.status_code == 201, response.status_code
+    assert await _count(pg_app.factory, IngestToken) == 1
+    entries = await _entries(pg_app.factory, pg_app.org_id, "/ingest-tokens")
+    assert len(entries) == 1
+    assert entries[0].tool_parameters["entity"] == "ingest_tokens"
+    assert entries[0].tool_parameters["entity_id"] == response.json()["id"]
+    stored = str([(entry.tool_parameters, entry.result) for entry in entries])
+    token_stored = response.json()["token"] in stored
+    assert not token_stored
+
+
+async def test_rejected_entry_rolls_back_ingest_token(pg_app):
+    await _reject_audit_rows(pg_app.engine)
+
+    response = await pg_app.client.post(
+        "/ingest-tokens",
+        headers=pg_app.headers,
+        json={"name": "audit-check", "provider": "generic"},
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, IngestToken),
+        await _count(pg_app.factory, AuditEntry),
+    )
+    # A 201 here would hand out a token that was never saved.
+    assert observed == (500, 0, 0)
+
+
+async def test_rolled_back_savepoint_leaves_no_entry(pg_app):
+    request = SimpleNamespace(
+        scope={"route": SimpleNamespace(path="/teams")},
+        url=SimpleNamespace(path="/teams"),
+        method="POST",
+        path_params={},
+    )
+    async with pg_app.factory() as db:
+        set_audit_actor(db, request, actor_id=pg_app.admin_id, org_id=pg_app.org_id)
+        kept = await TeamRepo.create(db, pg_app.org_id, name="Kept", slug="kept")
+        with pytest.raises(RuntimeError):
+            async with db.begin_nested():
+                await TeamRepo.create(db, pg_app.org_id, name="Dropped", slug="dropped")
+                raise RuntimeError("roll back the savepoint")
+        async with db.begin_nested():
+            also_kept = await TeamRepo.create(
+                db, pg_app.org_id, name="Also kept", slug="also-kept"
+            )
+        await db.commit()
+
+    entries = await _entries(pg_app.factory, pg_app.org_id, "/teams")
+    assert sorted(entry.tool_parameters["entity_id"] for entry in entries) == sorted(
+        [str(kept.id), str(also_kept.id)]
+    )

@@ -27,9 +27,10 @@ from datetime import datetime, time, timezone
 from typing import Iterable
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import InAppNotification
+from backend.db.models import InAppNotification, User, UserOrganization
 from backend.db.repos import InAppNotificationRepo, UserNotificationPrefRepo
 
 logger = logging.getLogger(__name__)
@@ -196,11 +197,19 @@ async def org_user_ids_with_roles(
     db: AsyncSession, org_id: uuid.UUID, roles: Iterable[str]
 ) -> list[uuid.UUID]:
     """User ids in *org_id* whose org role is one of *roles* (e.g. approvers)."""
-    from backend.db.repos import UserRepo
-
     wanted = {str(r) for r in roles}
-    members = await UserRepo.list_by_org(db, org_id)
-    return [m["user_id"] for m in members if str(m.get("role")) in wanted]
+    stmt = (
+        select(User.id)
+        .join(UserOrganization, UserOrganization.user_id == User.id)
+        .where(
+            UserOrganization.org_id == org_id,
+            UserOrganization.role.in_(wanted),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+        .order_by(UserOrganization.joined_at)
+    )
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def emit_to_users(

@@ -59,6 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Escalation Chain ties now prefer the earliest service link. Links that
+  existed before this upgrade share a backfilled creation time and retain
+  their former UUID tie order. The collision notice uses the same active-chain
+  selection as paging.
+- MTTR now uses the incident's resolution timestamp, so later edits do not
+  move the metric. Existing resolved incidents are backfilled from their last
+  update time, the only timestamp available before this upgrade.
+- The populated-data escalation migration archives extra duplicate page
+  markers as `recorded_legacy` and advances affected chains to round 1.
+  Their next handoff therefore starts round 2; unaffected chains remain at
+  round 0.
+
 - **Handoff actions recheck permission after locking.** If another operator
   moves the incident to a new team before a reassignment or responder change
   completes, the earlier team's operator cannot finish the stale action.
@@ -99,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workloads in the cluster aren't trusted.
 
 ### Fixed
+
+- Incident-created Inbox notices exclude deactivated and deleted users.
+- `/ack` in chat names the current owner and suggests `/take` when someone
+  else holds the incident lock.
+- Shared dialogs announce their title to assistive technology and keep
+  keyboard focus inside until closed.
+- The quiet-hours regression test uses a fixed UTC time instead of depending
+  on the minute the suite happens to run.
 
 - **Paging the same person again.** When someone whose staged notifications
   had finished is paged again for the same incident (a new round, a reopen, or
@@ -245,6 +265,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   won't match later deliveries; resolve those by hand.
 
 ### Security
+
+- Accepted SAML assertion IDs are claimed in the database for their validity
+  window, so a replay is rejected across app workers. Assertions without an ID
+  or expiry are rejected. The container vulnerability scan now runs on pull
+  requests as well as on `main`.
 
 - **Intake URLs are stored as a hash and shown once.** A service's intake URL
   carries the secret that lets a monitor post alerts and page a team, and it

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -26,6 +27,40 @@ from backend.config_loader import set_env_path
 from backend.db.models import Base, Organization
 
 TEST_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
+
+
+def test_acs_rejects_assertions_without_replay_id_or_expiry(monkeypatch):
+    from backend.auth import saml
+
+    class FakeAuth:
+        assertion_id = None
+        expiry = None
+
+        def process_response(self):
+            pass
+
+        def get_errors(self):
+            return []
+
+        def is_authenticated(self):
+            return True
+
+        def get_last_assertion_id(self):
+            return self.assertion_id
+
+        def get_last_assertion_not_on_or_after(self):
+            return self.expiry
+
+        def get_session_expiration(self):
+            return None
+
+    auth = FakeAuth()
+    monkeypatch.setattr(saml, "_auth", lambda *_args: auth)
+    with pytest.raises(saml.SAMLError, match="replay ID"):
+        saml.process_acs(settings=object(), request_data=object())
+    auth.assertion_id = "assertion-without-expiry"
+    with pytest.raises(saml.SAMLError, match="no expiry"):
+        saml.process_acs(settings=object(), request_data=object())
 
 
 # Minimal IdP EntityDescriptor for cache + dispatch tests. Not signed; we
@@ -280,6 +315,8 @@ class TestSAMLACS:
                     "name": ["Sammy SAML"],
                 },
                 "name-id",
+                "assertion-1",
+                datetime.now(timezone.utc) + timedelta(minutes=5),
             )
 
         monkeypatch.setattr(
@@ -295,6 +332,14 @@ class TestSAMLACS:
         )
         assert resp.status_code == 302
         assert "/login#sso_token=" in resp.headers["location"]
+
+        replay = await client.post(
+            "/auth/saml/saml-org/acs",
+            data={"SAMLResponse": "stub"},
+            follow_redirects=False,
+        )
+        assert replay.status_code == 400
+        assert "already used" in replay.json()["detail"]
 
         from backend.db.repos import UserRepo
 

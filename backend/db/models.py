@@ -523,6 +523,9 @@ class Incident(Base):
     acknowledged_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Sprint 61 Step 4 - operator-authored postmortem markdown plus its
     # own edit timestamp so the UI can show "last edited" without
     # conflating with the incident's own lifecycle clock.
@@ -532,6 +535,20 @@ class Incident(Base):
     )
 
     sessions: Mapped[list[Session]] = relationship(back_populates="incident")
+
+
+class SAMLAssertionReplay(Base):
+    """Accepted assertion IDs, shared across workers for the assertion lifetime."""
+
+    __tablename__ = "saml_assertion_replays"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    assertion_id_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2446,6 +2463,9 @@ class ServiceEscalationChain(Base):
         Uuid, ForeignKey("escalation_chains.id", ondelete="CASCADE"), nullable=False
     )
     applies_when: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint("service_id", "chain_id", name="uq_service_escalation_chain"),

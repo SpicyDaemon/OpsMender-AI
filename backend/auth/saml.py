@@ -22,6 +22,7 @@ This module never talks to the DB directly. The route layer fetches the
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -217,8 +218,8 @@ def process_acs(
     settings: OneLogin_Saml2_Settings,
     request_data: _RequestData,
     expected_relay_state: str | None = None,
-) -> tuple[dict[str, list[str]], str | None]:
-    """Validate the POSTed AuthnResponse and return ``(attributes, name_id)``.
+) -> tuple[dict[str, list[str]], str | None, str, datetime]:
+    """Validate the response and return attributes, name ID, replay ID and expiry.
 
     Raises :class:`SAMLError` on any validation failure (signature, expiry,
     audience, replay).
@@ -239,7 +240,20 @@ def process_acs(
         if actual is not None and actual != expected_relay_state:
             raise SAMLError("RelayState mismatch")
 
-    return auth.get_attributes(), auth.get_nameid()
+    assertion_id = auth.get_last_assertion_id()
+    if not assertion_id:
+        raise SAMLError("SAML assertion has no replay ID")
+    expiry = auth.get_last_assertion_not_on_or_after()
+    if expiry is None:
+        expiry = auth.get_session_expiration()
+    if expiry is None:
+        raise SAMLError("SAML assertion has no expiry")
+    return (
+        auth.get_attributes(),
+        auth.get_nameid(),
+        assertion_id,
+        datetime.fromtimestamp(expiry, timezone.utc),
+    )
 
 
 def first_attribute(

@@ -67,7 +67,12 @@ Discovery URL examples:
 
 Client secrets are encrypted at rest with Fernet. Set a dedicated
 `OPSMENDER_SECRET_KEY` in production so JWT secret rotation does not invalidate
-stored SSO secrets.
+stored SSO secrets. The same key protects connector credentials, OAuth tokens,
+MFA seeds and other stored secret material. If no dedicated key is set, OpsMender
+derives it from `OPSMENDER_JWT_SECRET`. Keep the encryption key stable and backed
+up. Before changing a key already in use, ensure you can re-enter or rotate
+every credential, and plan to re-enroll MFA. Changing the key alone cannot
+re-encrypt existing ciphertext.
 
 ---
 
@@ -75,6 +80,10 @@ stored SSO secrets.
 
 OpsMender acts as a SAML SP. IdP metadata can be supplied as a URL or pasted raw
 XML.
+
+The assertion consumer stores accepted assertion IDs until they expire. A
+second use of the same signed assertion is rejected, including when requests
+reach different app workers.
 
 First configure the global SP keypair:
 
@@ -127,7 +136,7 @@ Local email/password login remains available for break-glass admins.
 | Login page does not show the provider button | Host is not registered or provider is inactive | Add the host under Custom domains, then verify `GET /tenant/resolve`. |
 | SSO callback returns 403 | Email domain is rejected | Check the provider's allowed email domains. |
 | SAML validation fails | Clock skew or wrong SP cert | Verify host time and the IdP's configured certificate. |
-| Rotating JWT secret broke OIDC secret decrypt | Secrets used the old derived key | Set `OPSMENDER_SECRET_KEY` and re-save the OIDC config. |
+| Rotating JWT secret broke stored-secret decrypt | Secrets used the old derived key | Restore the old key or a backup, ensure credentials can be re-entered or rotated, then set a dedicated `OPSMENDER_SECRET_KEY` and re-enter them. Re-enroll MFA. |
 
 ---
 

@@ -55,6 +55,7 @@ from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
+    UserRepo,
 )
 from backend.paging import escalation as _esc
 from backend.paging.slack_cards import (
@@ -362,14 +363,28 @@ async def _handle_slash(
         return _ephemeral("That incident no longer exists.")
 
     if command == "/ack":
-        ok = await _esc.handle_ack(
+        outcome = await _esc.acknowledge(
             db,
             connector.org_id,
             incident_id=incident_id,
-            user_id=actor.id,
+            assignee_id=actor.id,
             via="slash_command",
         )
-        verb = "acknowledged" if ok else "recorded"
+        if outcome.status == "owned_by_other":
+            assignment = await IncidentAssignmentRepo.get_active(
+                db, connector.org_id, incident_id
+            )
+            owner = (
+                await UserRepo.get_by_id(db, assignment.assigned_to)
+                if assignment is not None
+                else None
+            )
+            owner_name = owner.username if owner is not None else "another responder"
+            return _ephemeral(
+                f"*{incident.title}* is owned by {owner_name}. "
+                "Use `/take` to request a takeover."
+            )
+        verb = "acknowledged" if outcome.chain_locked else "recorded"
         return _ephemeral(f"You {verb} *{incident.title}*.")
 
     if command == "/take":

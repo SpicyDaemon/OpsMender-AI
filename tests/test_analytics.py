@@ -160,6 +160,7 @@ async def _seed_known_data(app):
             flapping=True,
             created_at=base + timedelta(hours=1),
             acknowledged_at=base + timedelta(hours=1, minutes=5),
+            resolved_at=base + timedelta(hours=1, minutes=20),
             updated_at=base + timedelta(hours=1, minutes=20),
         )
         incident_b = Incident(
@@ -182,6 +183,7 @@ async def _seed_known_data(app):
             service_id=service_a.id,
             created_at=base + timedelta(days=8),
             acknowledged_at=base + timedelta(days=8, minutes=10),
+            resolved_at=base + timedelta(days=8, minutes=40),
             updated_at=base + timedelta(days=8, minutes=40),
         )
         db.add_all([incident_a1, incident_b, incident_a2])

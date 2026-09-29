@@ -254,7 +254,11 @@ async def test_selection_priority_default_and_no_match(app):
             applies_when={"priorities": ["P1"]},
         )
         await db.commit()
-        expected = min((link_a, link_b), key=lambda link: link.id).chain_id
+        # A later link may have a lower UUID; creation order wins.
+        link_b.created_at = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        link_a.created_at = datetime(2026, 9, 2, tzinfo=timezone.utc)
+        await db.commit()
+        expected = link_b.chain_id
         for _ in range(3):
             link = await esc.select_chain_for_incident(
                 db, TEST_ORG_ID, service_id=svc.id, priority="P1"

@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Plain punctuation in tier gate messages.** Blocked and approval reasons
+  from the tier gate now use a colon or comma instead of a dash, for example
+  "deny-list policy match: blocked at every tier". Only the wording changed;
+  the gate's decisions are identical. The punctuation check now covers the
+  tier gate too.
 - **One MCP server per service.** The service editor selects one server; the
   API rejects several with 422. Existing services that list several show a
   warning, and saving keeps the selected one.

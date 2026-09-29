@@ -121,21 +121,28 @@ async def _resolve_incident_team(
 ) -> tuple[uuid.UUID | None, str | None, str | None]:
     """Resolve incident ownership deterministically for channel filtering.
 
-    Precedence: incident service -> service.team; incident escalation chain ->
-    escalation_chain.team; no free-text or AI inference.
+    Precedence: the team it was reassigned to; incident service ->
+    service.team; incident escalation chain -> escalation_chain.team; no
+    free-text or AI inference.
     """
     if incident is None:
         return None, None, None
 
-    if incident.service_id is not None:
-        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-        if service is not None:
-            team = await TeamRepo.get_by_id(db, org_id, service.team_id)
-            return (
-                service.team_id,
-                team.name if team is not None else None,
-                service.name,
-            )
+    service = (
+        await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if incident.service_id is not None
+        else None
+    )
+    team_id = getattr(incident, "team_id", None) or (
+        service.team_id if service is not None else None
+    )
+    if team_id is not None:
+        team = await TeamRepo.get_by_id(db, org_id, team_id)
+        return (
+            team_id,
+            team.name if team is not None else None,
+            service.name if service is not None else None,
+        )
 
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident.id)
     if state is not None and state.chain_id is not None:

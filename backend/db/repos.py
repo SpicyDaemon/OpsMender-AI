@@ -17,7 +17,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import case, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
@@ -44,6 +44,7 @@ from backend.db.models import (
     IncidentMemory,
     IncidentMemoryRecallLog,
     IncidentPage,
+    IncidentResponder,
     ServiceEscalationChain,
     PriorityLLMOverrideLog,
     PriorityRule,
@@ -640,17 +641,22 @@ class IncidentRepo:
 
     @staticmethod
     async def get_by_id(
-        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> Incident | None:
-        return (
-            await db.execute(
-                select(Incident)
-                .where(Incident.org_id == org_id)
-                .where(Incident.org_id == org_id)
-                .where(Incident.org_id == org_id)
-                .where(Incident.id == incident_id, Incident.org_id == org_id)
-            )
-        ).scalar_one_or_none()
+        stmt = (
+            select(Incident)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
+            .where(Incident.org_id == org_id)
+            .where(Incident.id == incident_id, Incident.org_id == org_id)
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
     async def list_all(
@@ -720,9 +726,15 @@ class IncidentRepo:
         if excluded:
             stmt = stmt.where(Incident.status.not_in(excluded))
         if team_ids:
-            stmt = stmt.join(Service, Service.id == Incident.service_id).where(
-                Service.org_id == org_id,
-                Service.team_id.in_(team_ids),
+            # A reassigned incident belongs to the team it was handed to.
+            stmt = stmt.outerjoin(
+                Service,
+                and_(Service.id == Incident.service_id, Service.org_id == org_id),
+            ).where(
+                or_(
+                    Incident.team_id.in_(team_ids),
+                    and_(Incident.team_id.is_(None), Service.team_id.in_(team_ids)),
+                )
             )
         if statuses:
             stmt = stmt.where(Incident.status.in_(statuses))
@@ -3893,7 +3905,7 @@ class InAppNotificationRepo:
             user_id=user_id,
             event_type=event_type,
             category=category,
-            title=title,
+            title=title if len(title) <= 200 else title[:199] + "…",
             body=body,
             link=link,
             incident_id=incident_id,
@@ -6719,6 +6731,60 @@ class IncidentAssignmentRepo:
 # ---------------------------------------------------------------------------
 # Escalation chains (Sprint 34)
 # ---------------------------------------------------------------------------
+
+
+class IncidentResponderRepo:
+    """People asked to help with an incident besides its owner."""
+
+    @staticmethod
+    async def list_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IncidentResponder]:
+        stmt = (
+            select(IncidentResponder)
+            .where(
+                IncidentResponder.org_id == org_id,
+                IncidentResponder.incident_id == incident_id,
+            )
+            .order_by(IncidentResponder.added_at, IncidentResponder.id)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def add(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        added_by: uuid.UUID | None,
+    ) -> IncidentResponder:
+        row = IncidentResponder(
+            org_id=org_id,
+            incident_id=incident_id,
+            user_id=user_id,
+            added_by=added_by,
+        )
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def remove(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> bool:
+        result = await db.execute(
+            delete(IncidentResponder).where(
+                IncidentResponder.org_id == org_id,
+                IncidentResponder.incident_id == incident_id,
+                IncidentResponder.user_id == user_id,
+            )
+        )
+        return (result.rowcount or 0) > 0
 
 
 class EscalationChainRepo:

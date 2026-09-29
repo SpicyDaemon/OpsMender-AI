@@ -12,9 +12,13 @@
  *
  * | status       | shown                                                |
  * |--------------|------------------------------------------------------|
- * | open         | Acknowledge, Take/Release, Start session, Resolve    |
- * | in_progress  | Take/Release, Start session, Resolve                 |
+ * | open         | Acknowledge, Take/Release, Reassign, Add responders, |
+ * |              | Start session, Resolve                               |
+ * | in_progress  | Take/Release, Reassign, Add responders,              |
+ * |              | Start session, Resolve                               |
  * | resolved     | Create postmortem                                    |
+ *
+ * Reassign and Add responders show only when the server allows them.
  *
  * Approve / Reject + Escalate land in Sprint A step 2 (right-rail
  * context) and Sprint B (governed AI) - they need state the detail
@@ -23,6 +27,7 @@
 
 import { useState, type FormEvent } from "react";
 import {
+  ArrowRightLeft,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -32,12 +37,15 @@ import {
   Play,
   ScrollText,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Label, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { AddRespondersModal } from "@/components/incidents/AddRespondersModal";
+import { ReassignIncidentModal } from "@/components/incidents/ReassignIncidentModal";
 import { useAuth } from "@/context/auth";
 import {
   ackIncident,
@@ -50,8 +58,10 @@ import {
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import type {
   IncidentAssignmentResponse,
+  IncidentResponderResponse,
   IncidentResponse,
   PendingTakeover,
+  UserResponse,
 } from "@/lib/types";
 
 type Status = IncidentResponse["status"];
@@ -69,6 +79,15 @@ interface Props {
   pendingTakeover?: PendingTakeover | null;
   /** The server-authorized force path for an admin or service teammate. */
   canForceTake?: boolean;
+  /** Admins and operators on the incident's team can hand it to another team. */
+  canReassign?: boolean;
+  /** Admins, the owner, and operators on the incident's team. */
+  canManageResponders?: boolean;
+  /** People asked to help besides the owner. */
+  responders?: IncidentResponderResponse[];
+  responderLimit?: number;
+  /** Workspace people, for choosing responders. */
+  users?: UserResponse[];
   /** Optional: collapses extra status pills on narrow viewports. */
   className?: string;
 }
@@ -81,6 +100,11 @@ export function IncidentCommandStrip({
   ownerLabel,
   pendingTakeover = null,
   canForceTake = false,
+  canReassign = false,
+  canManageResponders = false,
+  responders = [],
+  responderLimit = 3,
+  users = [],
   className,
 }: Props) {
   const toast = useToast();
@@ -89,10 +113,14 @@ export function IncidentCommandStrip({
   const [busy, setBusy] = useState<string | null>(null);
   const [forceOpen, setForceOpen] = useState(false);
   const [forceReason, setForceReason] = useState("");
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [respondersOpen, setRespondersOpen] = useState(false);
 
   const status = incident.status as Status;
   const isOpen = status === "open";
   const isResolved = status === "resolved";
+  const isClosed = isResolved || status === "merged";
+  const respondersFull = responders.length >= responderLimit;
 
   const isAssignedToMe =
     assignment !== null &&
@@ -241,9 +269,10 @@ export function IncidentCommandStrip({
       aria-busy={busy !== null}
       aria-live="polite"
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+      {/* The actions move to their own row when they would squeeze the title. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4">
         {/* Left: status + severity + truncated title */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 lg:min-w-[22rem]">
           <Badge
             variant={status as Parameters<typeof Badge>[0]["variant"]}
           >
@@ -253,12 +282,12 @@ export function IncidentCommandStrip({
             <Badge variant={incident.severity}>{incident.severity}</Badge>
           )}
           {isAssignedToMe && (
-            <Badge variant="default" className="hidden sm:inline-flex">
+            <Badge variant="default" className="hidden whitespace-nowrap sm:inline-flex">
               You own this
             </Badge>
           )}
           {isAssignedToSomeoneElse && assignment && (
-            <Badge variant="default" className="hidden md:inline-flex">
+            <Badge variant="default" className="hidden whitespace-nowrap md:inline-flex">
               Owner: {ownerLabel || "Assigned"}
             </Badge>
           )}
@@ -271,7 +300,7 @@ export function IncidentCommandStrip({
         </div>
 
         {/* Right: actions */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
           {isOpen && (
             <Button
               size="sm"
@@ -363,6 +392,38 @@ export function IncidentCommandStrip({
                 <HandMetal size={14} />
               )}
               Release
+            </Button>
+          )}
+
+          {!isClosed && canReassign && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!!busy}
+              onClick={() => setReassignOpen(true)}
+              data-testid="action-reassign"
+              title="Hand this incident to the team it belongs to"
+            >
+              <ArrowRightLeft size={14} />
+              Reassign
+            </Button>
+          )}
+
+          {!isClosed && canManageResponders && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!!busy || respondersFull}
+              onClick={() => setRespondersOpen(true)}
+              data-testid="action-add-responders"
+              title={
+                respondersFull
+                  ? `All ${responderLimit} responder slots are taken`
+                  : `Ask up to ${responderLimit} people to help`
+              }
+            >
+              <UserPlus size={14} />
+              Add responders
             </Button>
           )}
 
@@ -463,6 +524,38 @@ export function IncidentCommandStrip({
         </div>
       </form>
     </Modal>
+    <ReassignIncidentModal
+      open={reassignOpen}
+      incidentId={incident.id}
+      onClose={() => setReassignOpen(false)}
+      onReassigned={async (teamName, paged) => {
+        setReassignOpen(false);
+        toast.success(
+          paged
+            ? `Reassigned to ${teamName}. Paging their Escalation Chain.`
+            : `Reassigned to ${teamName}.`,
+        );
+        await onChanged();
+      }}
+    />
+    <AddRespondersModal
+      open={respondersOpen}
+      incidentId={incident.id}
+      teamId={incident.team_id ?? null}
+      teamName={incident.team_name ?? null}
+      ownerId={
+        assignment && assignment.released_at === null ? assignment.assigned_to : null
+      }
+      responders={responders}
+      limit={responderLimit}
+      users={users}
+      onClose={() => setRespondersOpen(false)}
+      onAdded={async (names) => {
+        setRespondersOpen(false);
+        toast.success(`Asked ${names.join(", ")} to help`);
+        await onChanged();
+      }}
+    />
     </>
   );
 }

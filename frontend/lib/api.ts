@@ -1508,6 +1508,8 @@ export async function dismissAuditFinding(
 import type {
   IncidentAssignmentResponse,
   IncidentPagingPanelResponse,
+  IncidentReassignOptionsResponse,
+  IncidentResponderListResponse,
   OnCallResolveResponse,
   OnCallRangeResponse,
   PriorityRuleCreate,
@@ -1690,6 +1692,34 @@ export async function assignIncident(
 }
 export async function releaseIncident(incidentId: string): Promise<void> {
   return api.post<void>(`/incidents/${incidentId}/release`);
+}
+export async function getReassignOptions(
+  incidentId: string,
+): Promise<IncidentReassignOptionsResponse> {
+  return api.get<IncidentReassignOptionsResponse>(
+    `/incidents/${incidentId}/reassign-options`,
+  );
+}
+export async function reassignIncident(
+  incidentId: string,
+  body: { team_id: string; note?: string },
+): Promise<IncidentResponse> {
+  return api.post<IncidentResponse>(`/incidents/${incidentId}/reassign`, body);
+}
+export async function addIncidentResponders(
+  incidentId: string,
+  body: { user_ids: string[]; message?: string },
+): Promise<IncidentResponderListResponse> {
+  return api.post<IncidentResponderListResponse>(
+    `/incidents/${incidentId}/responders`,
+    body,
+  );
+}
+export async function removeIncidentResponder(
+  incidentId: string,
+  userId: string,
+): Promise<void> {
+  return api.del<void>(`/incidents/${incidentId}/responders/${userId}`);
 }
 
 export interface IncidentBulkActionResult {

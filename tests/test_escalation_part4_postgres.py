@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.db.models import Base, IncidentPage, Organization
 from backend.db.repos import (
     EscalationChainRepo,
+    IncidentResponderRepo,
     EscalationStepRepo,
     IncidentPageRepo,
     IncidentRepo,
@@ -25,6 +26,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as esc
+from backend.paging import responders
 
 pytestmark = pytest.mark.integration
 
@@ -226,3 +228,64 @@ async def test_scheduler_serializes_explicit_escalation_and_handoff(
         await db.commit()
     markers = await _markers(factory, incident_id)
     assert [(p.step_index, p.round) for p in markers if p.round == 1] == [(0, 1)]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_responder_adds_never_pass_the_limit(pg_fixture, monkeypatch):
+    """Two admins adding two responders each at once: one wins, one is refused."""
+    factory, org_id, chain_id, users = pg_fixture
+    incident_id = await _incident(factory, org_id, chain_id, datetime.now(timezone.utc))
+    async with factory() as db:
+        helpers = []
+        for index in range(4):
+            helper = await UserRepo.create(
+                db,
+                username=f"helper-{org_id.hex[:8]}-{index}",
+                email=f"helper-{org_id.hex[:8]}-{index}@example.test",
+                password_hash="x",
+                role="operator",
+                primary_org_id=org_id,
+            )
+            helpers.append(helper.id)
+        await db.commit()
+
+    first_read, go = asyncio.Event(), asyncio.Event()
+    original = IncidentResponderRepo.list_for_incident
+
+    async def paused_list(db, org_id, incident_id):
+        rows = await original(db, org_id, incident_id)
+        if not first_read.is_set():
+            # The first add holds here after reading who is already on it.
+            first_read.set()
+            await go.wait()
+        return rows
+
+    monkeypatch.setattr(
+        responders.IncidentResponderRepo, "list_for_incident", staticmethod(paused_list)
+    )
+
+    async def add(pair):
+        async with factory() as db:
+            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+            actor = await UserRepo.get_by_id(db, users[0])
+            try:
+                await responders.add_responders(
+                    db, org_id, incident=incident, user_ids=pair, actor=actor
+                )
+                await db.commit()
+                return "added"
+            except responders.ResponderError as exc:
+                await db.rollback()
+                return exc.status_code
+
+    first = asyncio.create_task(add(helpers[:2]))
+    await asyncio.wait_for(first_read.wait(), timeout=10)
+    second = asyncio.create_task(add(helpers[2:]))
+    await asyncio.sleep(0.5)
+    go.set()
+    results = await asyncio.wait_for(asyncio.gather(first, second), timeout=30)
+
+    async with factory() as db:
+        rows = await original(db, org_id, incident_id)
+    assert sorted(str(result) for result in results) == ["409", "added"]
+    assert len(rows) == 2

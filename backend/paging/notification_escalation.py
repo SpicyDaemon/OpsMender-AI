@@ -207,30 +207,42 @@ async def start_escalation(
 ) -> None:
     """Create state, fire stage 0 now, schedule stage 1 (if any).
 
-    Idempotent per (incident, user): a second call is a no-op so the chain
-    engine re-paging the same user doesn't double-start.
+    One escalation per (incident, user). While it runs, another page for the
+    same person is a no-op, so the chain engine never double-starts. Once it
+    has finished (acknowledged, exhausted or cancelled), paging that person
+    again starts it over: a new round, a reopened incident, or a responder
+    request.
     """
 
     if not stages:
         return
     now = at or _utcnow()
+    stage_rows = [
+        {"channel_id": s.channel_id, "delay_seconds": s.delay_seconds} for s in stages
+    ]
     existing = await NotificationEscalationRepo.get(
         db, org_id, incident_id=incident.id, user_id=user.id
     )
-    if existing is not None:
+    if existing is not None and existing.status == "running":
         return
-
-    state = await NotificationEscalationRepo.create(
-        db,
-        org_id,
-        incident_id=incident.id,
-        user_id=user.id,
-        priority=incident.priority,
-        stages=[
-            {"channel_id": s.channel_id, "delay_seconds": s.delay_seconds}
-            for s in stages
-        ],
-    )
+    if existing is None:
+        state = await NotificationEscalationRepo.create(
+            db,
+            org_id,
+            incident_id=incident.id,
+            user_id=user.id,
+            priority=incident.priority,
+            stages=stage_rows,
+        )
+    else:
+        state = existing
+        state.priority = incident.priority
+        state.stages = stage_rows
+        state.status = "running"
+        state.current_stage = -1
+        state.started_at = now
+        state.finished_at = None
+        state.next_stage_due_at = None
     await _fire_stage(
         db,
         org_id,

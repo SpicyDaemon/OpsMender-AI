@@ -14,6 +14,7 @@ import {
   Shield,
   Siren,
   Terminal,
+  UserPlus,
 } from "lucide-react";
 import { createIncidentComment } from "@/lib/api";
 import type { IncidentTimelineItemResponse } from "@/lib/types";
@@ -48,6 +49,9 @@ function timelineIcon(item: IncidentTimelineItemResponse) {
     return <Bell size={14} className="text-fg-secondary" />;
   if (item.event_type === "escalation_step_fired") {
     return <Siren size={14} className="text-status-high" />;
+  }
+  if (item.event_type === "responder_requested") {
+    return <UserPlus size={14} className="text-accent-text" />;
   }
   return <CircleDot size={14} className="text-fg-secondary" />;
 }

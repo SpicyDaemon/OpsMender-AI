@@ -59,6 +59,7 @@ from backend.db.repos import (
     IncidentNotificationReceiptRepo,
     IncidentPageRepo,
     IncidentRepo,
+    IncidentResponderRepo,
     IngestLogRepo,
     MaintenanceWindowRepo,
     SessionRepo,
@@ -84,6 +85,12 @@ from backend.api.schemas import (
     IncidentCombineRequest,
     IncidentCombineResponse,
     IncidentPagingPanelResponse,
+    IncidentReassignOption,
+    IncidentReassignOptionsResponse,
+    IncidentReassignRequest,
+    IncidentResponderListResponse,
+    IncidentResponderResponse,
+    IncidentRespondersAddRequest,
     PendingTakeoverResponse,
     SuppressedByMaintenanceWindow,
 )
@@ -93,6 +100,8 @@ from backend.paging.service import (
     page_reopened_incident,
 )
 from backend.paging import escalation as _esc
+from backend.paging import reassign as _reassign
+from backend.paging import responders as _responders
 from backend.skills.parser import loads as load_skill_def_text
 from backend.memory.candidates import candidate_title, extract_memory_candidates
 from backend.memory.tags import canonicalize_memory_tag
@@ -302,9 +311,12 @@ def _resolve_responder_from(
 
     Acknowledged (active assignment) wins; otherwise the latest escalation page
     is the current target - ``awaiting`` at the first level, ``escalated`` after.
-    ``pages`` must be ordered oldest-first (latest page last).
+    ``pages`` must be ordered oldest-first (latest page last). Only the
+    chain's recorded pages count: delivery attempts and responder requests
+    never change who the incident is awaiting.
     """
-    latest = pages[-1] if pages else None
+    chain_pages = [page for page in pages if page.channel == "recorded"]
+    latest = chain_pages[-1] if chain_pages else None
 
     ack_uid = assignment.assigned_to if assignment is not None else None
     esc_uid = latest.user_id if latest is not None else None
@@ -337,13 +349,17 @@ async def _to_incident_response(
     db: AsyncSession, org_id: uuid.UUID, incident
 ) -> IncidentResponse:
     data = IncidentResponse.model_validate(incident).model_dump()
+    team_id = incident.team_id
     if incident.service_id is not None:
         service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
         if service is not None:
             data["service_name"] = service.name
-            data["team_id"] = service.team_id
-            team = await TeamRepo.get_by_id(db, org_id, service.team_id)
-            data["team_name"] = team.name if team is not None else None
+            team_id = team_id or service.team_id
+    if team_id is not None:
+        # A reassignment wins over the service's team.
+        data["team_id"] = team_id
+        team = await TeamRepo.get_by_id(db, org_id, team_id)
+        data["team_name"] = team.name if team is not None else None
     # include_deleted=True: historical responder references must render a
     # fallback display (e.g. "deleted_user-<id>") rather than crashing.
     user_by_id = {
@@ -383,13 +399,16 @@ async def _to_incident_list_response(
     responses: list[IncidentResponse] = []
     for incident in incidents:
         data = IncidentResponse.model_validate(incident).model_dump()
+        team_id = incident.team_id
         if incident.service_id is not None:
             service = service_by_id.get(incident.service_id)
             if service is not None:
                 data["service_name"] = service.name
-                data["team_id"] = service.team_id
-                team = team_by_id.get(service.team_id)
-                data["team_name"] = team.name if team is not None else None
+                team_id = team_id or service.team_id
+        if team_id is not None:
+            data["team_id"] = team_id
+            team = team_by_id.get(team_id)
+            data["team_name"] = team.name if team is not None else None
         data.update(
             _resolve_responder_from(
                 assignment_by_incident.get(incident.id),
@@ -852,17 +871,33 @@ async def update_incident(
     # otherwise defeat the resolved-transition guard below.
     prior_status = incident.status
     service_changed = body.service_id_set and body.service_id != incident.service_id
+    # Moving an incident to another service hands it to that service's team,
+    # so it follows the Reassign rule.
+    if service_changed and not await _reassign.can_reassign(db, org_id, incident, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Only an admin or a member of this incident's team can move it "
+                "to another service."
+            ),
+        )
     if service_changed and prior_status not in _CLOSED_STATUSES:
         await IncidentChainStateRepo.get_for_incident(
             db, org_id, incident_id, for_update=True
         )
+    new_service = None
     if body.service_id_set and body.service_id is not None:
-        service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
-        if service is None:
+        new_service = await ServiceRepo.get_by_id(db, org_id, body.service_id)
+        if new_service is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Service not found",
             )
+    previous_service = (
+        await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        if service_changed and incident.service_id is not None
+        else None
+    )
 
     updated = await IncidentRepo.update_fields(
         db,
@@ -879,11 +914,35 @@ async def update_incident(
             detail="Incident not found",
         )
 
+    # The new service's team handles it now, replacing any reassignment.
+    if service_changed and updated.team_id is not None:
+        updated.team_id = None
+        await db.flush()
+    if service_changed:
+        note = (body.handoff_reason or "").strip()
+        await record_lifecycle_comment(
+            db,
+            org_id,
+            incident_id=incident_id,
+            body=(
+                f"Moved from {previous_service.name if previous_service else 'no service'} "
+                f"to {new_service.name if new_service else 'no service'}."
+                + (f" Note: {note}" if note else "")
+            ),
+            author_user_id=user.id,
+        )
+
     # A service handoff re-routes a live incident only. A resolved or merged
     # incident just records the new service (KI-037).
     restarted_on_service_change = False
     if service_changed and updated.status not in _CLOSED_STATUSES:
         await IncidentAssignmentRepo.release(db, org_id, incident_id)
+        # The previous team stops being chased by staged notifications.
+        from backend.paging import notification_escalation as _ne
+
+        await _ne.stop_escalation(
+            db, org_id, incident_id=incident_id, status="cancelled"
+        )
         if updated.response_mode in ("page", "escalate_immediate"):
             link = await _esc.select_chain_for_incident(
                 db,
@@ -1483,19 +1542,37 @@ async def get_incident_timeline(
             )
 
     for page in pages:
+        if page.channel == _responders.RESPONDER_CHANNEL:
+            # The lifecycle comment already says who was asked, and by whom.
+            continue
         actor_label = user_lookup.get(page.user_id)
+        # Responder requests have no chain and no level.
+        responder_request = page.chain_id is None and page.step_index is None
         items.append(
             IncidentTimelineItemResponse(
                 id=f"page:{page.id}:sent",
                 happened_at=_aware(page.sent_at) or page.sent_at,
                 lane="response",
-                event_type="escalation_step_fired",
-                title=f"Escalation step {(page.step_index or 0) + 1} fired",
+                event_type=(
+                    "responder_requested"
+                    if responder_request
+                    else "escalation_step_fired"
+                ),
+                title=(
+                    "Responder request"
+                    if responder_request
+                    else f"Escalation step {(page.step_index or 0) + 1} fired"
+                ),
                 body=(
-                    f"Did not page {actor_label or str(page.user_id)[:8]}: "
+                    f"Did not {'reach' if responder_request else 'page'} "
+                    f"{actor_label or str(page.user_id)[:8]}: "
                     f"{_SKIP_REASONS.get(page.delivery_error or '', (page.delivery_error or 'skipped').replace('_', ' '))}."
                     if page.delivery_status == "skipped"
-                    else f"Paged {actor_label or str(page.user_id)[:8]} via {page.channel}."
+                    else (
+                        f"Asked {actor_label or str(page.user_id)[:8]} to help via {page.channel}."
+                        if responder_request
+                        else f"Paged {actor_label or str(page.user_id)[:8]} via {page.channel}."
+                    )
                 ),
                 actor_user_id=page.user_id,
                 actor_label=actor_label,
@@ -1747,7 +1824,39 @@ async def get_incident_paging(
             if user.role in ("admin", "operator")
             else False
         ),
+        can_reassign=await _reassign.can_reassign(db, org_id, incident, user),
+        can_manage_responders=await _responders.can_manage_responders(
+            db, org_id, incident, user
+        ),
+        responders=await _responder_items(db, org_id, incident_id),
+        responder_limit=_responders.RESPONDER_LIMIT,
     )
+
+
+async def _responder_items(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> list[IncidentResponderResponse]:
+    rows = await IncidentResponderRepo.list_for_incident(db, org_id, incident_id)
+    names: dict[uuid.UUID, str] = {}
+    for user_id in {row.user_id for row in rows} | {
+        row.added_by for row in rows if row.added_by is not None
+    }:
+        person = await UserRepo.get_by_id(db, user_id)
+        names[user_id] = (
+            person.username
+            if person is not None
+            else f"Deleted user {str(user_id)[:8]}"
+        )
+    return [
+        IncidentResponderResponse(
+            user_id=row.user_id,
+            username=names[row.user_id],
+            added_by_user_id=row.added_by,
+            added_by_username=names.get(row.added_by) if row.added_by else None,
+            added_at=row.added_at,
+        )
+        for row in rows
+    ]
 
 
 async def _pending_takeover(
@@ -2477,3 +2586,176 @@ async def take_incident(
         ),
         pages=[IncidentPageResponse.model_validate(p) for p in pages],
     )
+
+
+# ---------------------------------------------------------------------------
+# Reassign to another team, and add responders
+# ---------------------------------------------------------------------------
+
+_REASSIGN_FORBIDDEN = (
+    "Only an admin or a member of this incident's team can reassign it."
+)
+_RESPONDERS_FORBIDDEN = (
+    "Only an admin, the owner, or a member of this incident's team can "
+    "change its responders."
+)
+
+
+@router.get(
+    "/{incident_id}/reassign-options",
+    response_model=IncidentReassignOptionsResponse,
+    summary="Teams this incident can be reassigned to",
+)
+async def get_reassign_options(
+    incident_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    if not await _reassign.can_reassign(db, org_id, incident, user):
+        raise HTTPException(status_code=403, detail=_REASSIGN_FORBIDDEN)
+    current_id = await _reassign.incident_team_id(db, org_id, incident)
+    current = (
+        await TeamRepo.get_by_id(db, org_id, current_id)
+        if current_id is not None
+        else None
+    )
+    options = await _reassign.reassign_options(db, org_id, incident)
+    return IncidentReassignOptionsResponse(
+        current_team_id=current_id,
+        current_team_name=current.name if current is not None else None,
+        pages=_reassign.pages_on_reassign(incident),
+        options=[
+            IncidentReassignOption(
+                team_id=option.team.id,
+                team_name=option.team.name,
+                chain_id=option.chain.id if option.chain is not None else None,
+                chain_name=option.chain.name if option.chain is not None else None,
+                note=option.note,
+            )
+            for option in options
+        ],
+    )
+
+
+@router.post(
+    "/{incident_id}/reassign",
+    response_model=IncidentResponse,
+    summary="Reassign an incident to another team",
+)
+async def reassign_incident(
+    incident_id: uuid.UUID,
+    body: IncidentReassignRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    _ensure_open(incident)
+    if not await _reassign.can_reassign(db, org_id, incident, user):
+        raise HTTPException(status_code=403, detail=_REASSIGN_FORBIDDEN)
+    team = await TeamRepo.get_by_id(db, org_id, body.team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    from backend.paging.channel_factory import build_channel_factory
+
+    try:
+        await _reassign.reassign_to_team(
+            db,
+            org_id,
+            incident=incident,
+            team=team,
+            actor=user,
+            note=(body.note or "").strip() or None,
+            channel_factory=build_channel_factory(),
+        )
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=403, detail=_REASSIGN_FORBIDDEN) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    return await _to_incident_response(db, org_id, refreshed)
+
+
+@router.post(
+    "/{incident_id}/responders",
+    response_model=IncidentResponderListResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ask up to three people to help with an incident",
+)
+async def add_incident_responders(
+    incident_id: uuid.UUID,
+    body: IncidentRespondersAddRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    _ensure_open(incident)
+    if not await _responders.can_manage_responders(db, org_id, incident, user):
+        raise HTTPException(status_code=403, detail=_RESPONDERS_FORBIDDEN)
+    from backend.paging.channel_factory import build_channel_factory
+
+    try:
+        await _responders.add_responders(
+            db,
+            org_id,
+            incident=incident,
+            user_ids=body.user_ids,
+            actor=user,
+            message=(body.message or "").strip() or None,
+            channel_factory=build_channel_factory(),
+        )
+    except _responders.ResponderError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    await db.commit()
+    return IncidentResponderListResponse(
+        items=await _responder_items(db, org_id, incident_id),
+        limit=_responders.RESPONDER_LIMIT,
+    )
+
+
+@router.delete(
+    "/{incident_id}/responders/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a responder, or leave as one",
+)
+async def remove_incident_responder(
+    incident_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    _ensure_open(incident)
+    if user.id != user_id and not await _responders.can_manage_responders(
+        db, org_id, incident, user
+    ):
+        raise HTTPException(status_code=403, detail=_RESPONDERS_FORBIDDEN)
+    try:
+        removed = await _responders.remove_responder(
+            db, org_id, incident=incident, user_id=user_id, actor=user
+        )
+    except _responders.ResponderError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    if not removed:
+        raise HTTPException(
+            status_code=404, detail="That person isn't a responder on this incident."
+        )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

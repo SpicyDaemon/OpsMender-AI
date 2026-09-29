@@ -244,20 +244,35 @@ async def page_reopened_incident(
             "Reopened. This incident notifies instead of paging, so nobody was paged."
         )
     else:
-        link = await escalation.select_chain_for_incident(
-            db, org_id, service_id=incident.service_id, priority=incident.priority
-        )
-        if link is None:
-            body = (
+        if incident.team_id is not None:
+            # A reassigned incident pages the team it was handed to.
+            from backend.paging.reassign import select_chain_for_team
+
+            chain = await select_chain_for_team(
+                db, org_id, team_id=incident.team_id, priority=incident.priority
+            )
+            chain_id = chain.id if chain is not None else None
+            no_chain = (
+                "Reopened. Its team has no active Escalation Chain; "
+                "no responder was paged."
+            )
+        else:
+            link = await escalation.select_chain_for_incident(
+                db, org_id, service_id=incident.service_id, priority=incident.priority
+            )
+            chain_id = link.chain_id if link is not None else None
+            no_chain = (
                 "Reopened. No escalation chain matches this service and "
                 "priority; no responder was paged."
             )
+        if chain_id is None:
+            body = no_chain
         else:
             await escalation.restart_chain_for_handoff(
                 db,
                 org_id,
                 incident_id=incident.id,
-                chain_id=link.chain_id,
+                chain_id=chain_id,
                 mode=incident.response_mode,
                 channel_factory=build_channel_factory(),
             )

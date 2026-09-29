@@ -2007,6 +2007,43 @@ export interface IncidentPagingPanelResponse {
   /** Someone asked the owner to hand the incident over. */
   pending_takeover?: PendingTakeover | null;
   can_force_take?: boolean;
+  /** Admins and operators on the incident's team can hand it to another team. */
+  can_reassign?: boolean;
+  /** Admins, the owner, and operators on the incident's team. */
+  can_manage_responders?: boolean;
+  /** People asked to help besides the owner, oldest first. */
+  responders?: IncidentResponderResponse[];
+  responder_limit?: number;
+}
+
+export interface IncidentResponderResponse {
+  user_id: string;
+  username: string;
+  added_by_user_id: string | null;
+  added_by_username: string | null;
+  added_at: string;
+}
+
+export interface IncidentResponderListResponse {
+  items: IncidentResponderResponse[];
+  limit: number;
+}
+
+export interface IncidentReassignOption {
+  team_id: string;
+  team_name: string;
+  chain_id: string | null;
+  chain_name: string | null;
+  /** Why nobody would be paged, or how a P2/P3 team hears about it. */
+  note: string | null;
+}
+
+export interface IncidentReassignOptionsResponse {
+  current_team_id: string | null;
+  current_team_name: string | null;
+  /** False for P2/P3 incidents, which notify instead of paging. */
+  pages: boolean;
+  options: IncidentReassignOption[];
 }
 
 export interface PendingTakeover {

@@ -229,6 +229,45 @@ team as the current owner, can use **Force take** immediately. They must enter
 a reason. The former owner gets an Inbox notice, and the reason appears on
 the timeline. Taking an unowned incident still assigns it immediately.
 
+**Reassigning to another team.** When an alert reaches the wrong team,
+**Reassign** hands the incident to the team it belongs to. Admins, and
+operators on the incident's current team, can reassign it. Pick the team: the
+dialog shows which of its Escalation Chains will page, or warns when it has
+none.
+
+- The owner is released and gets an Inbox notice.
+- For P0 and P1 incidents, the new team's chain pages from the first level in
+  a new round. P2 and P3 incidents notify instead of paging, so the new
+  team's members get an Inbox notice.
+- An optional note for the new team appears on the timeline.
+
+The incident keeps its service, so it still shows which system alerted. From
+then on the new team handles it:
+
+- force takes;
+- the incident list's team filter and reports;
+- team-scoped channel updates;
+- paging again if it is reopened.
+
+Moving an incident to another service (**Manage incident** on the incident
+list) hands it to that service's team instead, and records the handoff note
+on the timeline.
+
+**Adding responders.** **Add responders** asks up to three people to help,
+besides the owner.
+
+- **Who can add them:** admins, the owner, and operators on the incident's
+  team.
+- **Who can be added:** any active admin or operator.
+- **How they're reached:** each one is paged once through their own
+  notification settings. Their quiet hours apply, though P0 always breaks
+  through, and Maintenance Windows don't hold the request. They also get an
+  Inbox notice with your optional message.
+
+Responders show under **Also responding**, next to the owner. You can remove
+them there, and a responder can leave. Adding someone doesn't change who owns
+the incident.
+
 ---
 
 ## 6. On Call Schedule
@@ -347,5 +386,6 @@ incident CSV/PDF reports, while admins can schedule recurring email delivery.
 | Maintenance Windows | `/dashboard/paging/maintenance-windows` | `/maintenance-windows` |
 | Notifications | `/dashboard/paging/notifications` | `/users/me/notification-preferences`, `/webhook-triggers`, notification connector APIs |
 | Incident ack / take / release / paging panel | `/dashboard/incidents/*` | `/incidents/{id}/ack`, `/take`, `/release`, `/paging` |
+| Reassign to another team / add responders | `/dashboard/incidents/*` | `/incidents/{id}/reassign-options`, `/reassign`, `/responders` |
 
 Legacy routes for old bookmarks can remain, but new v1 setup should use the routes above.

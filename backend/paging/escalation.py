@@ -60,7 +60,6 @@ from backend.db.repos import (
     IncidentRepo,
     EscalationChainRepo,
     RosterRepo,
-    ServiceRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
     UserRepo,
@@ -1167,20 +1166,23 @@ async def can_force_takeover(
     actor_id: uuid.UUID,
     is_admin: bool,
 ) -> bool:
-    """Admins or two members of the service's team can transfer ownership."""
+    """Admins or two members of the incident's team can transfer ownership.
+
+    The incident's team is the one it was reassigned to, else its service's.
+    """
+
+    from backend.paging.reassign import incident_team_id
 
     if active is None or active.assigned_to == actor_id:
         return False
     if is_admin:
         return True
-    if incident.service_id is None:
-        return False
-    service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
-    if service is None:
+    team_id = await incident_team_id(db, org_id, incident)
+    if team_id is None:
         return False
     return await TeamRepo.is_member(
-        db, org_id, service.team_id, actor_id
-    ) and await TeamRepo.is_member(db, org_id, service.team_id, active.assigned_to)
+        db, org_id, team_id, actor_id
+    ) and await TeamRepo.is_member(db, org_id, team_id, active.assigned_to)
 
 
 async def handle_force_takeover(

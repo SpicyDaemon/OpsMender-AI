@@ -15,6 +15,7 @@ import {
   Radar,
   ShieldAlert,
   TimerReset,
+  X,
 } from "lucide-react";
 import {
   createSession,
@@ -24,9 +25,11 @@ import {
   listIncidentSessions,
   listProviders,
   listUsers,
+  removeIncidentResponder,
 } from "@/lib/api";
 import type {
   IncidentPagingPanelResponse,
+  IncidentResponderResponse,
   IncidentResponse,
   IncidentTimelineItemResponse,
   ProviderModelsResponse,
@@ -309,6 +312,22 @@ function IncidentDetailContent() {
   if (isViewer) return <ViewerIncidentView incident={incident} />;
 
   const acknowledgedByDetail = acknowledgedByName(incident);
+  const responders = pagingPanel?.responders ?? [];
+  const incidentClosed = incident.status === "resolved" || incident.status === "merged";
+  async function handleRemoveResponder(responder: IncidentResponderResponse) {
+    if (!incident) return;
+    try {
+      await removeIncidentResponder(incident.id, responder.user_id);
+      toast.success(
+        responder.user_id === user?.id
+          ? "You left the responders"
+          : `Removed ${responder.username} from the responders`,
+      );
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
   return (
     <div className="mx-auto max-w-7xl">
       {/* Sprint A Step 1: sticky command strip surfaces the lifecycle actions
@@ -322,6 +341,11 @@ function IncidentDetailContent() {
         ownerLabel={ownerLabel}
         pendingTakeover={pagingPanel?.pending_takeover ?? null}
         canForceTake={pagingPanel?.can_force_take ?? false}
+        canReassign={pagingPanel?.can_reassign ?? false}
+        canManageResponders={pagingPanel?.can_manage_responders ?? false}
+        responders={pagingPanel?.responders ?? []}
+        responderLimit={pagingPanel?.responder_limit ?? 3}
+        users={users}
       />
 
       {incident.merged_into_incident_id && (
@@ -353,6 +377,49 @@ function IncidentDetailContent() {
         </span>
         {acknowledgedByDetail && (
           <span className="text-xs text-fg-muted">Acknowledged by {acknowledgedByDetail}</span>
+        )}
+        {responders.length > 0 && (
+          <>
+            <span className="ml-1 text-[11px] font-medium uppercase tracking-wide text-fg-muted sm:ml-3">
+              Also responding
+            </span>
+            {responders.map((responder) => {
+              const isMe = responder.user_id === user?.id;
+              const canRemove =
+                !incidentClosed && (isMe || (pagingPanel?.can_manage_responders ?? false));
+              return (
+                <span
+                  key={responder.user_id}
+                  className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-bg-elevated py-0.5 pl-2.5 pr-1 text-xs font-medium text-fg-primary"
+                  title={
+                    responder.added_by_username
+                      ? `Added by ${responder.added_by_username}`
+                      : undefined
+                  }
+                  data-testid="incident-responder"
+                >
+                  {isMe ? "You" : responder.username}
+                  {canRemove ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveResponder(responder)}
+                      className="rounded-full p-0.5 text-fg-muted hover:bg-bg-hover hover:text-fg-primary"
+                      aria-label={
+                        isMe
+                          ? "Leave the responders"
+                          : `Remove ${responder.username} from the responders`
+                      }
+                      title={isMe ? "Leave" : "Remove"}
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : (
+                    <span className="pr-1.5" />
+                  )}
+                </span>
+              );
+            })}
+          </>
         )}
       </div>
 

@@ -2763,6 +2763,48 @@ class PendingTakeoverResponse(BaseModel):
     expires_at: datetime
 
 
+class IncidentResponderResponse(BaseModel):
+    """A person asked to help with an incident besides its owner."""
+
+    user_id: uuid.UUID
+    username: str
+    added_by_user_id: Optional[uuid.UUID] = None
+    added_by_username: Optional[str] = None
+    added_at: datetime
+
+
+class IncidentResponderListResponse(BaseModel):
+    items: list[IncidentResponderResponse]
+    limit: int
+
+
+class IncidentRespondersAddRequest(BaseModel):
+    user_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=3)
+    message: Optional[str] = Field(default=None, max_length=500)
+
+
+class IncidentReassignRequest(BaseModel):
+    team_id: uuid.UUID
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class IncidentReassignOption(BaseModel):
+    team_id: uuid.UUID
+    team_name: str
+    chain_id: Optional[uuid.UUID] = None
+    chain_name: Optional[str] = None
+    # Why nobody would be paged, or how a P2/P3 team hears about it.
+    note: Optional[str] = None
+
+
+class IncidentReassignOptionsResponse(BaseModel):
+    current_team_id: Optional[uuid.UUID] = None
+    current_team_name: Optional[str] = None
+    # False for P2/P3 incidents, which notify instead of paging (D-3).
+    pages: bool
+    options: list[IncidentReassignOption]
+
+
 class IncidentPagingPanelResponse(BaseModel):
     incident_id: uuid.UUID
     priority: Optional[str]
@@ -2772,6 +2814,10 @@ class IncidentPagingPanelResponse(BaseModel):
     suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
     pending_takeover: Optional[PendingTakeoverResponse] = None
     can_force_take: bool = False
+    can_reassign: bool = False
+    can_manage_responders: bool = False
+    responders: list[IncidentResponderResponse] = Field(default_factory=list)
+    responder_limit: int = 3
 
 
 class IncidentTimelineItemResponse(BaseModel):

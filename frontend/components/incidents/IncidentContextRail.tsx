@@ -8,7 +8,7 @@
  *
  *   Status / Severity         (always)
  *   Service                   (if incident.service_id is set)
- *   Team                      (resolved via service.team_id)
+ *   Team                      (a reassignment, else the service's team)
  *   Current owner             (from pagingPanel.assignment)
  *   Escalation step           (from chain state)
  *   Pending approvals         (count of pending approval requests
@@ -132,10 +132,11 @@ export function IncidentContextRail({
         : null,
     [incident.service_id, services],
   );
-  const team = useMemo(
-    () => (service ? teams.find((t) => t.id === service.team_id) ?? null : null),
-    [service, teams],
-  );
+  // The team handling it: the one it was reassigned to, else the service's.
+  const team = useMemo(() => {
+    const teamId = incident.team_id ?? service?.team_id ?? null;
+    return teamId ? teams.find((t) => t.id === teamId) ?? null : null;
+  }, [incident.team_id, service, teams]);
   const owner = useMemo(() => {
     const a = pagingPanel?.assignment;
     if (!a || a.released_at !== null) return null;

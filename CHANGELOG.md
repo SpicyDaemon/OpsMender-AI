@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Reassign to another team.** An incident that reached the wrong team can be
+  handed to the team it belongs to from the incident page. Admins and
+  operators on the incident's team can reassign it. The owner is released, the
+  receiving team's Escalation Chain pages from the first level (P2 and P3
+  incidents notify its members in their Inbox instead), and the timeline
+  records who moved it, where, and the optional note. The incident keeps its
+  service; the new team handles force takes, filters, reports, team-scoped
+  channel updates, and paging after a reopen.
+- **Add responders.** Up to three people can be asked to help with an
+  incident besides its owner. Each one is paged once through their own
+  notification settings (Maintenance Windows don't hold the request) and gets
+  an Inbox notice with the optional message. Responders show next to the
+  owner, can be removed, and can leave.
 - **Workspace change history.** Authenticated configuration changes now write
   Activity entries with the actor, route, entity, operation, and a short
   redacted before/after summary. Approval decisions name the decider, and
@@ -46,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Handoff actions recheck permission after locking.** If another operator
+  moves the incident to a new team before a reassignment or responder change
+  completes, the earlier team's operator cannot finish the stale action.
 - **Plain punctuation in tier gate messages.** Blocked and approval reasons
   from the tier gate now use a colon or comma instead of a dash, for example
   "deny-list policy match: blocked at every tier". Only the wording changed;
@@ -84,6 +100,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Paging the same person again.** When someone whose staged notifications
+  had finished is paged again for the same incident (a new round, a reopen, or
+  a responder request), their notifications start over instead of being
+  skipped.
+- **Service handoff notes.** Moving an incident to another service now records
+  the move and the optional handoff note on the timeline; the note was
+  previously dropped.
+- **Long incident titles in the Inbox.** Inbox notices shorten titles to fit,
+  and a failed notice no longer fails the action that sent it.
 - **One combined alert clearing no longer resolves the incident.** When
   alerts were combined, a recovery for one of them resolved the whole
   incident and stopped paging. The incident now stays open, notes the

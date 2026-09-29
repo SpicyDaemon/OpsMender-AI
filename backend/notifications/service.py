@@ -163,18 +163,21 @@ async def emit_notification(
         if pref is not None and category in _muted_categories(pref.routing):
             return None
 
-        notification = await InAppNotificationRepo.create(
-            db,
-            org_id,
-            user_id,
-            event_type=event_type,
-            category=category,
-            title=title,
-            body=body,
-            link=link,
-            incident_id=incident_id,
-            session_id=session_id,
-        )
+        # A savepoint keeps a failed insert from aborting the caller's
+        # transaction; the notification is best-effort.
+        async with db.begin_nested():
+            notification = await InAppNotificationRepo.create(
+                db,
+                org_id,
+                user_id,
+                event_type=event_type,
+                category=category,
+                title=title,
+                body=body,
+                link=link,
+                incident_id=incident_id,
+                session_id=session_id,
+            )
 
         quiet = pref is not None and _in_quiet_hours(
             pref.quiet_hours, datetime.now(timezone.utc)

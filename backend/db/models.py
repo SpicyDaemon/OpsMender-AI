@@ -481,6 +481,12 @@ class Incident(Base):
     service_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
     )
+    # Set when the incident was reassigned to another team; that team then
+    # handles it and its Escalation Chain pages. Null means the service's
+    # team handles it.
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
+    )
     ingestion_model_config_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("model_configs.id", ondelete="SET NULL"), nullable=True
     )
@@ -2342,6 +2348,36 @@ class IncidentAssignment(Base):
             postgresql_where=text("released_at IS NULL"),
             sqlite_where=text("released_at IS NULL"),
         ),
+    )
+
+
+class IncidentResponder(Base):
+    """A person asked to help with an incident besides its owner."""
+
+    __tablename__ = "incident_responders"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    added_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("incident_id", "user_id", name="uq_incident_responder"),
     )
 
 

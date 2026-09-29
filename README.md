@@ -79,6 +79,8 @@ and TOTP are there when you need them.
   IVR keypad does 1 acknowledge / 2 escalate / 3 resolve. Reopening a resolved
   paging incident starts a new round; taking an owned incident requests its
   owner's consent, with a reasoned force option for admins and teammates.
+  A misrouted incident can be reassigned to the right team, whose Escalation
+  Chain then pages, and up to three extra responders can be asked to help.
 - **Shared incident tracking**: update-in-place Slack, Discord, and Google
   Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
   events.

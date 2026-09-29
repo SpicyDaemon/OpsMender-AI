@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Incident, MaintenanceWindow, Service, Team
@@ -42,7 +42,8 @@ async def build_incident_report(
     stmt = (
         select(Incident, Service.name, Team.name)
         .outerjoin(Service, Incident.service_id == Service.id)
-        .outerjoin(Team, Service.team_id == Team.id)
+        # A reassigned incident belongs to the team it was handed to.
+        .outerjoin(Team, func.coalesce(Incident.team_id, Service.team_id) == Team.id)
         .where(
             Incident.org_id == org_id,
             Incident.created_at >= from_at,

@@ -266,6 +266,7 @@ async def dispatch_page(
     channel_factory: ChannelFactory,
     at: datetime | None = None,
     roster_id: uuid.UUID | None = None,
+    requested_by_person: bool = False,
 ) -> DispatchResult:
     """Fan out a recorded incident_pages row across the channels configured
     for this user. Each delivery attempt becomes a new incident_pages row
@@ -273,8 +274,10 @@ async def dispatch_page(
 
     ``roster_id`` is set when this user is paged as the on-call person of a
     Roster level: quiet hours never block that page (D-4), and that Roster's
-    Maintenance Windows apply. A page that is suppressed is still recorded as
-    a ``skipped`` row with the reason.
+    Maintenance Windows apply. ``requested_by_person`` marks a page someone
+    asked for explicitly (a responder request): Maintenance Windows don't
+    hold it. A page that is suppressed is still recorded as a ``skipped`` row
+    with the reason.
     """
 
     now = at or _utcnow()
@@ -300,7 +303,7 @@ async def dispatch_page(
     response_mode = incident.response_mode or "notify"
 
     # 1. Maintenance-window suppression
-    if response_mode != "escalate_immediate":
+    if response_mode != "escalate_immediate" and not requested_by_person:
         mw = await evaluate_maintenance_window(
             db, org_id, incident=incident, at=now, roster_id=roster_id
         )

@@ -607,6 +607,37 @@ async def test_removing_a_responder_stops_their_staged_notifications(world):
         assert (await db.get(NotificationEscalation, stage_id)).status == "cancelled"
 
 
+async def test_removing_responder_keeps_their_live_chain_notifications(world):
+    helper = await _user(world.app, "rx-chain-helper")
+    _, service, chain = await _team(world, "ChainHelper", levels=[helper])
+    incident_id = await _incident_on(world, service, chain)
+    assert await _recorded(world, incident_id, 0) == [(helper, 0)]
+    added = await world.client.post(
+        f"/incidents/{incident_id}/responders",
+        json={"user_ids": [str(helper)]},
+        headers=world.admin,
+    )
+    assert added.status_code == 201, added.text
+    async with world.app.state.session_factory() as db:
+        stage = await NotificationEscalationRepo.create(
+            db,
+            TEST_ORG_ID,
+            incident_id=incident_id,
+            user_id=helper,
+            priority="P1",
+            stages=[{"channel_id": "x", "delay_seconds": 60}] * 2,
+        )
+        await db.commit()
+        stage_id = stage.id
+
+    removed = await world.client.delete(
+        f"/incidents/{incident_id}/responders/{helper}", headers=world.admin
+    )
+    assert removed.status_code == 204
+    async with world.app.state.session_factory() as db:
+        assert (await db.get(NotificationEscalation, stage_id)).status == "running"
+
+
 async def test_paging_the_same_person_again_restarts_a_finished_escalation(world):
     a1 = await _user(world.app, "re-a1")
     _, service_a, chain_a = await _team(world, "Platform", levels=[a1])

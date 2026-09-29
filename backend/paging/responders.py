@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Incident, IncidentResponder, User
+from backend.db.models import Incident, IncidentPage, IncidentResponder, User
 from backend.db.repos import (
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
@@ -20,6 +21,7 @@ from backend.db.repos import (
     IncidentRepo,
     IncidentResponderRepo,
     UserRepo,
+    chain_is_live,
 )
 from backend.notifications import CATEGORY_INCIDENT, emit_notification
 from backend.paging.dispatch import ChannelFactory, dispatch_page
@@ -186,13 +188,35 @@ async def remove_responder(
 
     from backend.paging import notification_escalation
 
+    state = await IncidentChainStateRepo.get_for_incident(
+        db, org_id, incident.id, for_update=True
+    )
     if not await IncidentResponderRepo.remove(
         db, org_id, incident_id=incident.id, user_id=user_id
     ):
         return False
-    await notification_escalation.stop_escalation(
-        db, org_id, incident_id=incident.id, user_id=user_id, status="cancelled"
-    )
+    # Staged routing is shared by incident and person. A chain page can keep
+    # that person's stages running even after their extra responder role ends.
+    chain_paged_user = False
+    if chain_is_live(state):
+        chain_paged_user = (
+            await db.execute(
+                select(IncidentPage.id)
+                .where(
+                    IncidentPage.org_id == org_id,
+                    IncidentPage.incident_id == incident.id,
+                    IncidentPage.user_id == user_id,
+                    IncidentPage.chain_id == state.chain_id,
+                    IncidentPage.round == state.round,
+                    IncidentPage.channel == "recorded",
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+    if not chain_paged_user:
+        await notification_escalation.stop_escalation(
+            db, org_id, incident_id=incident.id, user_id=user_id, status="cancelled"
+        )
     if user_id == actor.id:
         body = "Left the responders."
     else:

@@ -21,8 +21,12 @@ from backend.db.models import Base, Incident, Organization
 from backend.db.repos import (
     BotConnectorRepo,
     BotUserLinkRepo,
+    EscalationChainRepo,
+    IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentPageRepo,
     IncidentRepo,
+    TeamRepo,
     UserRepo,
 )
 from backend.paging.slack_cards import (
@@ -520,6 +524,38 @@ class TestSlackSlashCommandEndpoint:
         assert resp.status_code == 200
         text_out = resp.json()["text"]
         assert "acknowledged" in text_out or "recorded" in text_out
+
+    async def test_ack_names_current_owner_and_takeover_path(self, client, app):
+        connector = await _seed_slack_connector(app)
+        owner, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_OWNER"
+        )
+        _actor, _ = await _seed_user_and_link(
+            app, connector_id=connector.id, slack_user_id="U_ACTOR"
+        )
+        incident = await _seed_incident(app)
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="ack-team", slug="ack-team"
+            )
+            chain = await EscalationChainRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="ack-chain"
+            )
+            state = await IncidentChainStateRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id
+            )
+            state.status = "acked"
+            await IncidentAssignmentRepo.assign(
+                db, TEST_ORG_ID, incident_id=incident.id, user_id=owner.id
+            )
+            await db.commit()
+        body = _slash_body(command="/ack", text=str(incident.id), user_id="U_ACTOR")
+        resp = await client.post(
+            "/bot/slack/commands", content=body, headers=_slack_sign(body)
+        )
+        assert resp.status_code == 200
+        assert owner.username in resp.json()["text"]
+        assert "`/take`" in resp.json()["text"]
 
     async def test_ack_falls_back_to_latest_paged_incident(self, client, app):
         connector = await _seed_slack_connector(app)

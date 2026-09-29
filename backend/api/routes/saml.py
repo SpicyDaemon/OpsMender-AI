@@ -12,12 +12,16 @@ shape as the OIDC flow in :mod:`backend.api.routes.sso`.
 
 from __future__ import annotations
 
+import hashlib
 import secrets as _secrets
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse, Response
+from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import create_access_token, hash_password
@@ -36,7 +40,7 @@ from backend.auth.saml import (
     render_sp_metadata,
 )
 from backend.config_loader import Config
-from backend.db.models import Organization
+from backend.db.models import Organization, SAMLAssertionReplay
 from backend.db.repos import OrganizationRepo, OrgSAMLConfigRepo, UserRepo
 
 router = APIRouter(prefix="/auth/saml", tags=["saml"])
@@ -204,11 +208,32 @@ async def _saml_acs(slug: str, request: Request, db: AsyncSession):
 
     rd = _request_data(request, post=post_data)
     try:
-        attributes, _name_id = process_acs(
+        attributes, _name_id, assertion_id, expires_at = process_acs(
             settings=settings, request_data=rd, expected_relay_state=None
         )
     except SAMLError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    now = datetime.now(timezone.utc)
+    if expires_at <= now:
+        raise HTTPException(status_code=400, detail="SAML assertion has expired")
+    await db.execute(
+        delete(SAMLAssertionReplay).where(SAMLAssertionReplay.expires_at <= now)
+    )
+    try:
+        async with db.begin_nested():
+            db.add(
+                SAMLAssertionReplay(
+                    org_id=org.id,
+                    assertion_id_hash=hashlib.sha256(
+                        assertion_id.encode("utf-8")
+                    ).hexdigest(),
+                    expires_at=expires_at,
+                )
+            )
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(status_code=400, detail="SAML assertion was already used")
 
     email = first_attribute(
         attributes,

@@ -809,6 +809,14 @@ class IncidentRepo:
         values: dict[str, Any] = {}
         if status is not None:
             values["status"] = status
+            values["resolved_at"] = (
+                case(
+                    (Incident.status != "resolved", datetime.now(timezone.utc)),
+                    else_=Incident.resolved_at,
+                )
+                if status == "resolved"
+                else None
+            )
         if severity is not None:
             values["severity"] = severity
         if service_id_set:
@@ -866,7 +874,18 @@ class IncidentRepo:
             .where(Incident.org_id == org_id)
             .where(Incident.org_id == org_id)
             .where(Incident.id == incident_id)
-            .values(status=status, updated_at=datetime.now(timezone.utc))
+            .values(
+                status=status,
+                updated_at=datetime.now(timezone.utc),
+                resolved_at=(
+                    case(
+                        (Incident.status != "resolved", datetime.now(timezone.utc)),
+                        else_=Incident.resolved_at,
+                    )
+                    if status == "resolved"
+                    else None
+                ),
+            )
         )
         await db.execute(stmt)
         # Resolving stops the chain and staged notifications (single
@@ -7087,7 +7106,10 @@ class ServiceEscalationChainRepo:
                 ServiceEscalationChain.org_id == org_id,
                 ServiceEscalationChain.service_id == service_id,
             )
-            .order_by(ServiceEscalationChain.id)
+            .order_by(
+                ServiceEscalationChain.created_at,
+                ServiceEscalationChain.id,
+            )
         )
         return (await db.execute(stmt)).scalars().all()
 

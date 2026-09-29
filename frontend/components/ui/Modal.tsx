@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -22,15 +22,53 @@ export function Modal({
   maxWidth = "max-w-lg",
   headerExtra,
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
 
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const focusable = () =>
+      Array.from(
+        panel?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0);
+    (focusable()[0] ?? panel)?.focus();
+
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (dialogs[dialogs.length - 1] !== panel) return;
+      if (e.key === "Escape") onCloseRef.current();
+      if (e.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) {
+        e.preventDefault();
+        panel?.focus();
+      } else if (!panel?.contains(document.activeElement)) {
+        e.preventDefault();
+        (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+      } else if (e.shiftKey && document.activeElement === items[0]) {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      } else if (!e.shiftKey && document.activeElement === items[items.length - 1]) {
+        e.preventDefault();
+        items[0].focus();
+      }
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose, open]);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      previousFocus?.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -41,10 +79,15 @@ export function Modal({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={`ops-modal-panel relative z-10 my-auto flex max-h-[calc(100vh-3rem)] w-full ${maxWidth} mx-4 flex-col rounded-lg bg-bg-elevated border border-border-strong shadow-2xl`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-fg-primary">{title}</h2>
+          <h2 id={titleId} className="text-sm font-semibold text-fg-primary">{title}</h2>
           <div className="flex items-center gap-2">
             {headerExtra}
             <button

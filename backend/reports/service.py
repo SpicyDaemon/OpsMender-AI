@@ -74,9 +74,9 @@ async def build_incident_report(
                     (incident.acknowledged_at - incident.created_at).total_seconds(),
                 )
             )
-        if incident.status == "resolved":
+        if incident.status == "resolved" and incident.resolved_at is not None:
             mttr.append(
-                max(0.0, (incident.updated_at - incident.created_at).total_seconds())
+                max(0.0, (incident.resolved_at - incident.created_at).total_seconds())
             )
         incidents.append(
             {
@@ -91,6 +91,7 @@ async def build_incident_report(
                 "created_at": _iso(incident.created_at),
                 "acknowledged_at": _iso(incident.acknowledged_at),
                 "updated_at": _iso(incident.updated_at),
+                "resolved_at": _iso(incident.resolved_at),
                 "mtta_seconds": (
                     round(
                         (
@@ -103,9 +104,10 @@ async def build_incident_report(
                 ),
                 "mttr_seconds": (
                     round(
-                        (incident.updated_at - incident.created_at).total_seconds(), 2
+                        (incident.resolved_at - incident.created_at).total_seconds(), 2
                     )
                     if incident.status == "resolved"
+                    and incident.resolved_at is not None
                     else None
                 ),
             }

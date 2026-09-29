@@ -173,6 +173,17 @@ class TestIncidentRepo:
 
         fetched = await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)
         assert fetched.status == "resolved"
+        assert fetched.resolved_at is not None
+        first_resolution = fetched.resolved_at
+        await IncidentRepo.update_fields(db, TEST_ORG_ID, inc.id, severity="low")
+        await db.refresh(fetched)
+        assert fetched.resolved_at == first_resolution
+        await IncidentRepo.update_status(db, TEST_ORG_ID, inc.id, "open")
+        await db.refresh(fetched)
+        assert fetched.resolved_at is None
+        await IncidentRepo.update_fields(db, TEST_ORG_ID, inc.id, status="resolved")
+        await db.refresh(fetched)
+        assert fetched.resolved_at is not None
 
 
 # ---------------------------------------------------------------------------

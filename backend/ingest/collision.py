@@ -14,12 +14,11 @@ from backend.db.models import Incident, IngestLog, Service
 from backend.db.repos import (
     EscalationChainRepo,
     EscalationStepRepo,
-    ServiceEscalationChainRepo,
     ServiceRepo,
     UserRepo,
 )
 from backend.notifications import CATEGORY_INCIDENT, emit_to_users
-from backend.paging.escalation import _resolve_step_targets
+from backend.paging.escalation import _resolve_step_targets, select_chain_for_incident
 
 log = logging.getLogger(__name__)
 
@@ -99,27 +98,12 @@ async def record_collision(
     if already:
         return explanation, None
 
-    links = sorted(
-        await ServiceEscalationChainRepo.list_for_service(
-            db, org_id, losing_service.id
-        ),
-        key=lambda link: str(link.id),
-    )
     # Priority comes from the service, so pick the chain the receiving service
     # would have paged for an incident of its own, not the owner's priority.
     priority = losing_service.priority or "P2"
-    matching = []
-    defaults = []
-    for link in links:
-        condition = link.applies_when or {}
-        priorities = (
-            condition.get("priorities") if isinstance(condition, dict) else None
-        )
-        if priorities and priority in {str(p).upper() for p in priorities}:
-            matching.append(link)
-        elif not priorities:
-            defaults.append(link)
-    selected = (matching or defaults or [None])[0]
+    selected = await select_chain_for_incident(
+        db, org_id, service_id=losing_service.id, priority=priority
+    )
     responders: set[uuid.UUID] = set()
     if selected is None:
         log.warning(

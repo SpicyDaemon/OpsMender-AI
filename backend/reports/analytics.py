@@ -25,7 +25,7 @@ NOISE_METRIC_DEFINITIONS = {
 
 RESPONSE_METRIC_DEFINITIONS = {
     "mtta_seconds": "MTTA seconds is the median created-to-acknowledged duration for incidents with acknowledged_at set.",
-    "mttr_seconds": "MTTR seconds is the median created-to-resolved duration for incidents whose status is resolved, using updated_at as the resolved timestamp.",
+    "mttr_seconds": "MTTR seconds is the median created-to-resolved duration for incidents whose status is resolved, using resolved_at as the resolved timestamp.",
 }
 
 
@@ -208,9 +208,9 @@ def _duration_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if row["acknowledged_at"] is not None
     ]
     mttr = [
-        max(0.0, (row["updated_at"] - row["created_at"]).total_seconds())
+        max(0.0, (row["resolved_at"] - row["created_at"]).total_seconds())
         for row in rows
-        if row["status"] == "resolved"
+        if row["status"] == "resolved" and row["resolved_at"] is not None
     ]
     return {
         "incident_count": len(rows),
@@ -251,6 +251,7 @@ async def build_response_report(
             Incident.status,
             Incident.created_at,
             Incident.acknowledged_at,
+            Incident.resolved_at,
             Incident.updated_at,
         )
         .outerjoin(Service, Service.id == Incident.service_id)
@@ -276,6 +277,7 @@ async def build_response_report(
                 if row.acknowledged_at
                 else None,
                 "updated_at": _utc(row.updated_at),
+                "resolved_at": _utc(row.resolved_at) if row.resolved_at else None,
             }
         )
 

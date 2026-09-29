@@ -201,6 +201,15 @@ async def test_emit_respects_mute(factory, monkeypatch):
 
 
 async def test_emit_quiet_hours_stores_but_no_push(factory, monkeypatch):
+    from datetime import datetime, timezone
+    import backend.notifications.service as notifications_service
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 26, 12, 0, tzinfo=tz or timezone.utc)
+
+    monkeypatch.setattr(notifications_service, "datetime", FixedDatetime)
     pushed: list = []
 
     async def fake_push(user_id, message):
@@ -295,6 +304,14 @@ async def test_org_user_ids_with_roles(factory):
     async with factory() as db:
         approvers = await org_user_ids_with_roles(db, ORG, ("admin", "operator"))
         assert approvers == [USER_A]
+        user = await UserRepo.get_by_id(db, USER_A)
+        user.is_active = False
+        await db.flush()
+        assert await org_user_ids_with_roles(db, ORG, ("admin", "operator")) == []
+        user.is_active = True
+        user.deleted_at = datetime.now(timezone.utc)
+        await db.flush()
+        assert await org_user_ids_with_roles(db, ORG, ("admin", "operator")) == []
 
 
 async def test_approval_request_notifies_approvers(factory, monkeypatch):

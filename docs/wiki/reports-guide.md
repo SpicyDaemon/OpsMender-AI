@@ -29,4 +29,4 @@ export.
 - Grouped alert savings is the sum of correlated alerts recorded on incidents created in the selected range.
 - Flapping incident count is the number of incidents created in the selected range that were marked flapping.
 - MTTA seconds is the median created-to-acknowledged duration for incidents with acknowledged_at set.
-- MTTR seconds is the median created-to-resolved duration for incidents whose status is resolved, using updated_at as the resolved timestamp.
+- MTTR seconds is the median created-to-resolved duration for incidents whose status is resolved, using `resolved_at` as the resolution timestamp. Later edits do not change it. On upgrade, older resolved incidents are backfilled from their last update time because their original resolution time was not stored.

@@ -9,6 +9,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { Modal } from "@/components/ui/Modal";
 
@@ -42,6 +43,42 @@ describe("Modal", () => {
       </Modal>,
     );
     expect(screen.queryByTestId("modal-body")).toBeNull();
+  });
+
+  it("labels the dialog, traps Tab, and returns focus on close", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <>
+        <button type="button">Open</button>
+        <Modal open={false} onClose={() => {}} title="Edit service">
+          <button type="button">Save</button>
+        </Modal>
+      </>,
+    );
+    const opener = screen.getByRole("button", { name: "Open" });
+    await user.click(opener);
+    rerender(
+      <>
+        <button type="button">Open</button>
+        <Modal open onClose={() => {}} title="Edit service">
+          <button type="button">Save</button>
+        </Modal>
+      </>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Edit service" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    rerender(
+      <>
+        <button type="button">Open</button>
+        <Modal open={false} onClose={() => {}} title="Edit service">
+          <button type="button">Save</button>
+        </Modal>
+      </>,
+    );
+    expect(document.activeElement).toBe(opener);
   });
 
   it("closes on Escape", () => {

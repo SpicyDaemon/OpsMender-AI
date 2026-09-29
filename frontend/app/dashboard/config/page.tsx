@@ -101,6 +101,20 @@ export default function ConfigPage() {
 
       {canEdit && <ApiTokensSection />}
 
+      {canEdit && (
+        <section className="rounded-lg border border-border-subtle bg-bg-panel px-5 py-4">
+          <h2 className="text-sm font-semibold text-fg-primary">Stored secret encryption</h2>
+          <p className="mt-2 text-sm text-fg-secondary">
+            Set and back up a dedicated <code>OPSMENDER_SECRET_KEY</code> for
+            connector credentials, OAuth tokens, and MFA secrets. If it is unset,
+            encryption derives from <code>OPSMENDER_JWT_SECRET</code>. Changing
+            either key without migrating the stored secrets makes them unreadable.
+            Make sure each credential can be re-entered or rotated before
+            changing the key. Re-enter credentials and re-enroll MFA afterward.
+          </p>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-primary">
           Storage &amp; retention

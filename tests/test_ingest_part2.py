@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from backend.db.models import InAppNotification, IngestLog
 from backend.db.repos import (
+    EscalationChainRepo,
     IncidentPageRepo,
     IncidentRepo,
     IngestLogRepo,
@@ -1008,6 +1009,44 @@ async def test_collision_selects_receiving_chain_by_receiving_service_priority(
         assert incident.priority == "P2"
     inbox = await _collision_inbox(app, incident_id)
     assert [row.user_id for row in inbox] == [target]
+
+
+async def test_collision_skips_inactive_matching_chain_for_active_default(
+    client: AsyncClient, app, admin_headers, monkeypatch
+):
+    owner = await _create_paged_service(
+        client, app, admin_headers, name="InactiveOwner", priority="P2"
+    )
+    loser = await _create_paged_service(
+        client, app, admin_headers, name="InactiveLoser", priority="P1"
+    )
+    _, default_target = await _first_target(app, loser)
+    async with app.state.session_factory() as db:
+        inactive = await EscalationChainRepo.create(
+            db,
+            TEST_ORG_ID,
+            team_id=uuid.UUID(loser["team_id"]),
+            name="inactive-match",
+            is_active=False,
+        )
+        await ServiceEscalationChainRepo.link(
+            db,
+            TEST_ORG_ID,
+            service_id=uuid.UUID(loser["id"]),
+            chain_id=inactive.id,
+            applies_when={"priorities": ["P1"]},
+        )
+        await db.commit()
+    raw_owner, raw_loser = await _provider_tokens(app, owner, loser)
+    monkeypatch.setattr("backend.bots.notifier.deliver_incident_text", _noop_delivery)
+    incident_id = await _fold(
+        client,
+        raw_owner,
+        raw_loser,
+        {"title": "Inactive match", "id": "inactive-match-1"},
+    )
+    inbox = await _collision_inbox(app, incident_id)
+    assert [row.user_id for row in inbox] == [default_target]
 
 
 async def test_collision_notifies_shared_chain_owned_by_another_team(

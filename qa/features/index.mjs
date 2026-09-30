@@ -19,6 +19,7 @@ import reliability from "./reliability.mjs";
 import models from "./models.mjs";
 import skills from "./skills.mjs";
 import mcpOptional from "./mcp_optional.mjs";
+import toolSources from "./tool_sources.mjs";
 import logout from "./logout.mjs";
 import signInProtection from "./sign_in_protection.mjs";
 
@@ -40,6 +41,7 @@ export const features = [
   models,
   skills,
   mcpOptional,
+  toolSources,
   signInProtection,
   logout,
 ];

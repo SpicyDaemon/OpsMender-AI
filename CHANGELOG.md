@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Skill Studio now saves a reviewed policy change when Save is clicked from
+  the content editor. Debounced validation and validation on save remain active.
+- Demo seeding no longer prints its database connection URL. Demo users and
+  invitations use reserved example addresses.
+- The local image scanner reads the existing unfixed-vulnerability policy
+  from the correct configuration key, matching the hosted scan.
+
+### Changed
+
+- Refreshed all 13 demo screenshots from one clean seed, including the Tier 1
+  approval view. The capture script checks for test debris and real email
+  addresses. Browser QA now verifies policy widening, advisory-only services,
+  and overlapping tool sources with a single-source control.
+
 ### Added
 
 - **Reassign to another team.** An incident that reached the wrong team can be

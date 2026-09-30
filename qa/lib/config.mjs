@@ -89,6 +89,9 @@ export const config = {
   livePaging:
     bool("QA_LIVE_PAGING", "livePaging", false) ||
     bool("QA_INTAKE_PAGING", "intakePaging", false),
+  // Session starts may contact a configured model; enable only on an isolated
+  // demo instance with an offline model/stub and test recipients.
+  toolSourceSessions: bool("QA_TOOL_SOURCE_SESSIONS", "toolSourceSessions", false),
   // Use the synthetic Fire Test Incident flow rather than a real incident.
   fireTestIncident: bool("QA_FIRE_TEST_INCIDENT", "fireTestIncident", true),
 

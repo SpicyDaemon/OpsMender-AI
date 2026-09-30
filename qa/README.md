@@ -31,8 +31,9 @@ workflow actually works against a running instance.
 | Priorities and recurring windows | a new service starts at P1 and says which priorities page · an unreadable recurrence rule is refused |
 | Reliability | page loads · create HTTP SLA target |
 | AI models | page loads · *(optional)* create config · test connection |
-| Skills | page loads · starter templates + backend validation · MCP/integration generator sources |
+| Skills | page loads · starter templates + backend validation · MCP/integration generator sources · operation diff and widening flagged before save |
 | MCP-optional acceptance | zero-MCP service · integration tool discovery · Tier 1/Tier 2 session start · setup checklist (skipped, with its reason, on a workspace that already has MCP servers) · screenshot |
+| Tool-source boundaries | no-source advisory label · matching-source overlap warning · single-source control · *(opt-in)* both services start sessions and the no-source transcript explains advisory mode |
 | Authentication | sign out · session cleared |
 
 Each step uses **soft assertions**: a failure is recorded with a full-page
@@ -105,6 +106,7 @@ All configuration is via environment variables (or a gitignored
 | `QA_FIRE_TEST_INCIDENT` | `true` | Use the synthetic Fire-Test-Incident flow (vs a real incident). |
 | `QA_SEND_TEST_NOTIFICATION` | `false` | Actually send a live test notification (**may page real people**). |
 | `QA_LIVE_PAGING` | `false` | Run the checks whose Escalation Chains page real accounts: intake recovery/collision and the ownership lifecycle (**disposable instance only**). `QA_INTAKE_PAGING` is the earlier name and still works. |
+| `QA_TOOL_SOURCE_SESSIONS` | `false` | Start Tier 2 sessions for no-source and overlapping services; use only an isolated offline-model demo instance with test recipients. |
 | `QA_CREATE_MODEL` | `false` | Create a model config during the run (needs the `QA_MODEL_*` params). |
 | `QA_TEST_MODEL_CONNECTION` | `true` | Click "Test" on the first saved model config. |
 | `QA_MODEL_PROVIDER` / `QA_MODEL_ID` / `QA_MODEL_KEY_ENV` / `QA_MODEL_BASE_URL` | openai / gpt-4o-mini / OPENAI_API_KEY / none | Params for `QA_CREATE_MODEL`. |

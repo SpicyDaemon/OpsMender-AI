@@ -2,7 +2,8 @@ exit-code: 1
 severity:
   - CRITICAL
   - HIGH
-ignore-unfixed: true
+vulnerability:
+  ignore-unfixed: true
 
 # npm ships in the runtime image only to back npx-based MCP servers; its own
 # vendored node_modules (picomatch, undici, …) are CLI tooling and are not on

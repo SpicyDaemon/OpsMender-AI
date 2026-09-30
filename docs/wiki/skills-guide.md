@@ -26,6 +26,11 @@ Open **MCP Skills** at `/dashboard/skills`. MCP Skill Studio supports:
   widening, and bound sources list tools with no matching operation. An
   unclassified tool is denied at every tier.
 
+When editing a policy, review **Permission changes before save**. The table
+shows each changed operation's previous and proposed tier modes, with an
+escalation flag for wider permissions. The stored policy changes only after
+**Save changes** succeeds. Validation runs while editing and again on save.
+
 ## Assignment
 
 A Skill may be:

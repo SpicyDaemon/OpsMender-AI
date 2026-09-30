@@ -1,6 +1,42 @@
 // Feature: skills. Covers the v1.1 source-neutral Skill Studio authoring surface.
 
 import { Harness } from "../lib/harness.mjs";
+import { config, qaName } from "../lib/config.mjs";
+
+const blockedPolicy = `---
+version: "1"
+environment: qa
+default_tier: T2
+operations:
+  - tool: inspect_service
+    classification: safe
+    tiers:
+      T0: { enabled: false, mode: blocked }
+      T1: { enabled: true, mode: approval }
+      T2: { enabled: false, mode: blocked }
+---
+
+# QA policy
+`;
+const widenedPolicy = blockedPolicy.replace(
+  "T0: { enabled: false, mode: blocked }",
+  "T0: { enabled: true, mode: autonomous }",
+);
+
+async function requestJson(h, method, route, data) {
+  const response = await h.request.fetch(`${config.baseUrl}${route}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${h.auth.token}`,
+      ...(h.auth.orgId ? { "X-Org-ID": h.auth.orgId } : {}),
+    },
+    ...(data === undefined ? {} : { data }),
+  });
+  if (!response.ok()) {
+    throw new Error(`${method} ${route} failed with ${response.status()}`);
+  }
+  return response.json();
+}
 
 export default {
   id: "skills",
@@ -39,6 +75,58 @@ export default {
         }
       }
       await h.page.keyboard.press("Escape");
+    });
+
+    await h.step("operation policy diff flags widening before save", async () => {
+      const name = qaName("policy-diff");
+      const created = await requestJson(h, "POST", "/skills", {
+        name,
+        description: "QA permission-change review",
+        content_md: blockedPolicy,
+        assignment: "unassigned",
+      });
+      await h.goto("/dashboard/skills");
+      const row = h.page.locator("tr").filter({ hasText: name }).first();
+      await row.waitFor({ state: "visible" });
+      await row.getByRole("button", { name: /^edit$/i }).click();
+      const dialog = h.page.getByRole("dialog", { name: "Edit skill" });
+      await dialog.locator("#skill-name").waitFor({ state: "visible" });
+      await h.page.waitForFunction(
+        (expected) => document.querySelector("#skill-name")?.value === expected,
+        name,
+        { timeout: 5000 },
+      );
+      await dialog.locator("#skill-content").fill(widenedPolicy);
+      await dialog.getByText("Permission changes before save").waitFor();
+      await dialog.getByText("escalation", { exact: true }).waitFor();
+      const diffRow = dialog.locator("tr").filter({ hasText: "inspect_service" });
+      await diffRow.getByText(/T0 blocked/).waitFor();
+      await diffRow.getByText(/T0 autonomous/).waitFor();
+      const beforeSave = await requestJson(h, "GET", `/skills/${created.id}`);
+      if (beforeSave.content_md !== blockedPolicy) {
+        throw new Error("policy changed before the operator saved it");
+      }
+      const validation = await requestJson(h, "POST", "/skills/validate", {
+        content_md: widenedPolicy,
+      });
+      if (!validation.valid) {
+        throw new Error(`widened policy is invalid: ${validation.issues.map((issue) => issue.message).join("; ")}`);
+      }
+      const updatedResponse = h.page.waitForResponse(
+        (response) =>
+          response.url().endsWith(`/skills/${created.id}`) &&
+          response.request().method() === "PUT",
+      );
+      await dialog.getByRole("button", { name: /^save changes$/i }).click();
+      const savedResponse = await updatedResponse;
+      if (!savedResponse.ok()) {
+        throw new Error(`skill save failed with ${savedResponse.status()}`);
+      }
+      await dialog.waitFor({ state: "hidden" });
+      const afterSave = await requestJson(h, "GET", `/skills/${created.id}`);
+      if (afterSave.content_md !== widenedPolicy) {
+        throw new Error("reviewed policy change was not saved");
+      }
     });
   },
 };

@@ -498,28 +498,6 @@ function SkillModal({
             id="skill-content"
             value={form.content}
             onChange={(e) => setForm({ ...form, content: e.target.value })}
-            onBlur={() => {
-              setValidating(true);
-              void validateSkill(form.content)
-                .then(setValidation)
-                .catch((err) =>
-                  setValidation({
-                    valid: false,
-                    issues: [
-                      {
-                        severity: "error",
-                        message:
-                          err instanceof Error
-                            ? err.message
-                            : "Validation unavailable",
-                        line: null,
-                      },
-                    ],
-                    operations: [],
-                  }),
-                )
-                .finally(() => setValidating(false));
-            }}
             rows={18}
             className="font-mono text-xs"
           />

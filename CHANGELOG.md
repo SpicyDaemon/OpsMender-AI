@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raised the PyJWT minimum to 2.14 and refreshed the locked package to include
+  upstream fixes for token verification and key handling vulnerabilities.
 - Skill Studio now saves a reviewed policy change when Save is clicked from
   the content editor. Debounced validation and validation on save remain active.
 - Demo seeding no longer prints its database connection URL. Demo users and

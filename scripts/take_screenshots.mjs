@@ -7,6 +7,7 @@
 //   OPSMENDER_BASE_URL       default http://localhost:8000
 //   OPSMENDER_EMAIL          login override
 //   OPSMENDER_PASSWORD       login override
+//   OPSMENDER_DEMO_OPERATOR_PASSWORD  seeded operator login (gallery capture)
 //   OPSMENDER_SCREENSHOT_DIR default site/public/screenshots
 
 // The script never starts an AI session. It captures only deterministic seeded
@@ -45,6 +46,7 @@ const PASSWORD =
   process.env.OPSMENDER_PASSWORD ||
   process.env.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD ||
   DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD;
+const OPERATOR_PASSWORD = process.env.OPSMENDER_DEMO_OPERATOR_PASSWORD;
 const OUT = path.resolve(
   process.env.OPSMENDER_SCREENSHOT_DIR || "site/public/screenshots",
 );
@@ -63,6 +65,9 @@ if (!EMAIL || !PASSWORD) {
     "Set OPSMENDER_EMAIL/OPSMENDER_PASSWORD or OPSMENDER_BOOTSTRAP_ADMIN_* in the environment or .env.",
   );
 }
+if (!OPERATOR_PASSWORD) {
+  throw new Error("Set OPSMENDER_DEMO_OPERATOR_PASSWORD for the seeded operator gallery capture.");
+}
 
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -72,17 +77,20 @@ const context = await browser.newContext({
   colorScheme: "dark",
   deviceScaleFactor: 1,
 });
-const page = await context.newPage();
+let page = await context.newPage();
 
 let responseFailures = [];
 let pageErrors = [];
-page.on("response", (response) => {
-  const status = response.status();
-  if (status === 401 || status === 403 || status >= 500) {
-    responseFailures.push(`${status} ${response.request().method()} ${response.url()}`);
-  }
-});
-page.on("pageerror", (error) => pageErrors.push(error.message));
+function monitor(target) {
+  target.on("response", (response) => {
+    const status = response.status();
+    if (status === 401 || status === 403 || status >= 500) {
+      responseFailures.push(`${status} ${response.request().method()} ${response.url()}`);
+    }
+  });
+  target.on("pageerror", (error) => pageErrors.push(error.message));
+}
+monitor(page);
 
 async function settle(ms = 900) {
   await page.waitForLoadState("domcontentloaded").catch(() => {});
@@ -172,6 +180,13 @@ async function assertCleanCapture(label, requireEvents) {
   if (forbidden) {
     throw new Error(`${label} contains forbidden state: ${forbidden}`);
   }
+  if (/qa-\d{10,}/i.test(bodyText)) {
+    throw new Error(`${label} contains test-run debris; use a fresh demo seed.`);
+  }
+  const addresses = bodyText.match(/[a-z0-9._%+-]+@(?:[a-z0-9.-]+\.[a-z]{2,}|localhost)/g) ?? [];
+  if (addresses.some((address) => !address.endsWith("@example.com") && !address.endsWith("@localhost"))) {
+    throw new Error(`${label} contains an email outside the reserved demo domains.`);
+  }
   const toasts = await page.locator(".ops-toast").allInnerTexts();
   if (toasts.length > 0) {
     throw new Error(`${label} rendered a toast: ${toasts.join(" | ")}`);
@@ -245,6 +260,46 @@ try {
     route: "/dashboard/incidents",
     label: "Incident command center",
   });
+  await capture({
+    file: "incidents-admin.png",
+    route: "/dashboard/incidents",
+    label: "Admin incident board",
+  });
+  await capture({
+    file: "incident-detail.png",
+    route: `/dashboard/incidents/detail?id=${scenarios[1].incident.id}`,
+    label: "Incident detail",
+  });
+
+  const adminPage = page;
+  const operatorContext = await browser.newContext({
+    viewport: VIEWPORT,
+    colorScheme: "dark",
+    deviceScaleFactor: 1,
+  });
+  try {
+    page = await operatorContext.newPage();
+    monitor(page);
+    const operatorLogin = await page.request.post(`${BASE}/auth/login`, {
+      data: { username: "john", password: OPERATOR_PASSWORD },
+    });
+    if (!operatorLogin.ok()) {
+      throw new Error(`Seeded operator login failed: ${operatorLogin.status()}`);
+    }
+    const { access_token: operatorToken } = await operatorLogin.json();
+    await page.addInitScript((accessToken) => {
+      localStorage.setItem("opsmender_token", accessToken);
+      localStorage.setItem("opsmender:theme", "dark");
+    }, operatorToken);
+    await capture({
+      file: "incidents-operator.png",
+      route: "/dashboard/incidents",
+      label: "Operator incident board",
+    });
+  } finally {
+    page = adminPage;
+    await operatorContext.close();
+  }
 
   await setWorkspaceTier(token, 1);
   await capture({
@@ -272,6 +327,13 @@ try {
     requireEvents: true,
     focusEvents: true,
   });
+  await capture({
+    file: "ai-session.png",
+    route: `/dashboard/sessions/detail?id=${scenarios[0].session.id}`,
+    label: "AI session",
+    requireEvents: true,
+    focusEvents: true,
+  });
 
   await setWorkspaceTier(token, 2);
   await capture({
@@ -285,6 +347,16 @@ try {
     file: "settings.png",
     route: "/dashboard/config",
     label: "Workspace settings",
+  });
+  await capture({
+    file: "mcp-skills.png",
+    route: "/dashboard/skills",
+    label: "Skill Studio",
+  });
+  await capture({
+    file: "people-rbac.png",
+    route: "/dashboard/people",
+    label: "People and access",
   });
 } catch (error) {
   runError = error;
@@ -302,4 +374,4 @@ try {
 }
 
 if (runError) throw runError;
-console.log(`Done. Seven verified screenshots saved to ${path.relative(process.cwd(), OUT)}.`);
+console.log(`Done. Thirteen verified screenshots saved to ${path.relative(process.cwd(), OUT)}.`);

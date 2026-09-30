@@ -97,9 +97,9 @@ async def main():
         _admin_pw = os.getenv("OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD") or "AcmeDemo2026!"
         users_seed = [
             ("admin", _admin_email, _admin_pw, "admin"),
-            ("john", "john@acme.com", "john123", "operator"),
-            ("dmitri", "dmitri@acme.com", "dmitri123", "operator"),
-            ("sam", "sam@acme.com", "sam123", "viewer"),
+            ("john", "john@example.com", "john123", "operator"),
+            ("dmitri", "dmitri@example.com", "dmitri123", "operator"),
+            ("sam", "sam@example.com", "sam123", "viewer"),
         ]
         users: dict[str, User] = {}
         for username, email, pw, role in users_seed:
@@ -958,7 +958,7 @@ async def main():
         db.add(
             OrgInvite(
                 org_id=oid,
-                email="newhire@acme.com",
+                email="newhire@example.com",
                 role="operator",
                 token_hash=hashlib.sha256(b"invite-pending").hexdigest(),
                 invited_by_user_id=users["admin"].id,
@@ -968,7 +968,7 @@ async def main():
         db.add(
             OrgInvite(
                 org_id=oid,
-                email="contractor@acme.com",
+                email="contractor@example.com",
                 role="viewer",
                 token_hash=hashlib.sha256(b"invite-accepted").hexdigest(),
                 invited_by_user_id=users["admin"].id,
@@ -980,7 +980,7 @@ async def main():
         db.add(
             OrgInvite(
                 org_id=oid,
-                email="oldteam@acme.com",
+                email="oldteam@example.com",
                 role="operator",
                 token_hash=hashlib.sha256(b"invite-revoked").hexdigest(),
                 invited_by_user_id=users["admin"].id,
@@ -992,7 +992,7 @@ async def main():
         await db.commit()
 
     await engine.dispose()
-    print("[seed] Demo DB seeded:", url)
+    print("[seed] Demo DB seeded")
 
 
 if __name__ == "__main__":

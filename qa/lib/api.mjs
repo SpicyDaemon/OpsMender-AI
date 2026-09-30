@@ -87,6 +87,7 @@ export async function cleanup(request, auth) {
   // Dependents first.
   await sweep("incidents", "/incidents?limit=200", (id) => `/incidents/${id}`, "title");
   await sweep("services", "/services", (id) => `/services/${id}`);
+  await sweep("mcp-servers", "/mcp-servers", (id) => `/mcp-servers/${id}`);
   await sweep("escalation-chains", "/escalation-chains", (id) => `/escalation-chains/${id}`);
   await sweep("rosters", "/rosters", (id) => `/rosters/${id}`);
   await sweep("sla-targets", "/sla-targets", (id) => `/sla-targets/${id}`);

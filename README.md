@@ -50,6 +50,10 @@ and TOTP are there when you need them.
 | ![Pending approvals inbox with request context and approve or reject actions](site/public/screenshots/approvals-pending.png) | ![Settings page with session workflow, models, notifications, and workspace controls](site/public/screenshots/settings.png) |
 | Review Tier 1 actions with context before anything runs. | Configure workspace policy, session workflow, notifications, models, and guardrails. |
 
+The gallery uses one clean demo seed with reserved example addresses. See
+[screenshot capture instructions](site/public/screenshots/SCREENSHOTS.md) to
+reproduce all 13 images, including the Tier 1 approval view.
+
 **AI autonomy tiers**: the tier gate is enforced in code. Set the default per workspace and override it per session.
 
 | Tier 0 · Autonomous | Tier 1 · Approval Required | Tier 2 · Advisory (default) |

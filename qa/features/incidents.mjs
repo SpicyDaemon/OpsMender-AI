@@ -11,12 +11,18 @@ export default {
     const title = qaName("incident");
 
     await h.step("incidents page loads", async () => {
+      const loaded = h.page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/incidents" && response.request().method() === "GET",
+      );
       await h.goto("/dashboard/incidents");
+      await loaded;
       await h.expectText(/incident/i);
     });
 
     await h.step("create incident", async () => {
       if (config.fireTestIncident) {
+        const more = h.page.getByRole("button", { name: "More incident actions" });
+        if (await more.isVisible()) await more.click();
         const fireBtn = h.page.getByRole("button", { name: /fire test incident/i }).first();
         if (!(await fireBtn.count())) throw new Error("Fire Test Incident button not found");
         await fireBtn.click();
@@ -26,10 +32,16 @@ export default {
           await svc.selectOption({ label: h.state.serviceName }).catch(() => {});
         }
         // Confirm button shares the "Fire Test Incident" label.
-        await h.page
-          .getByRole("button", { name: /fire test incident/i })
-          .last()
-          .click();
+        const [fired] = await Promise.all([
+          h.page.waitForResponse((response) =>
+            new URL(response.url()).pathname === "/incidents/fire-test" && response.request().method() === "POST",
+          ),
+          h.page.getByRole("dialog", { name: "Fire Test Incident" })
+            .getByRole("button", { name: /^fire test incident$/i })
+            .click(),
+        ]);
+        if (!fired.ok()) throw new Error(`Fire Test Incident failed: ${fired.status()}`);
+        h.state.createdIncidentId = (await fired.json()).incident.id;
         await h.expectText(/incident|created|fired/i);
       } else {
         await h.page.getByRole("button", { name: /new incident/i }).first().click();
@@ -51,6 +63,11 @@ export default {
     });
 
     await h.step("open incident detail", async () => {
+      if (h.state.createdIncidentId) {
+        await h.goto(`/dashboard/incidents/detail?id=${h.state.createdIncidentId}`);
+        await h.expectText(/incident|severity|status/i);
+        return;
+      }
       await h.goto("/dashboard/incidents");
       const link = h.page.locator('a[href*="/dashboard/incidents/detail?id="]').first();
       const appeared = await link

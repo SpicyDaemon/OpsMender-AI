@@ -44,13 +44,32 @@ def test_uptime_stats_basic_percentage():
     assert stats["downtime_seconds"] == 60
 
 
-def test_uptime_stats_suppressed_excluded():
+def test_uptime_stats_suppressed_count_as_up():
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    # 2 up, 1 suppressed → percentage over the 2 non-suppressed only.
+    # 2 up, 1 suppressed: all three count as up.
     stats = metrics.uptime_stats(_series("USU", start=start))
     assert stats["uptime_pct"] == 100.0
     assert stats["suppressed_seconds"] == 60
     assert stats["total_samples"] == 3
+    assert stats["up_samples"] == 3
+
+
+def test_uptime_stats_mixed_maintenance_counts_as_up():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    samples = [
+        FakeSample(start, up=True),
+        FakeSample(start, up=True),
+        FakeSample(start, up=False),
+        FakeSample(start, up=False, suppressed=True),
+        FakeSample(start, up=True, suppressed=True),
+    ]
+    assert metrics.uptime_stats(samples) == {
+        "uptime_pct": 80.0,
+        "total_samples": 5,
+        "up_samples": 4,
+        "downtime_seconds": 60,
+        "suppressed_seconds": 120,
+    }
 
 
 def test_count_down_events_groups_consecutive():

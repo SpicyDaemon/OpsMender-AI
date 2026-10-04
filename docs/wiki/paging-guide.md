@@ -331,6 +331,12 @@ It does not create a visible incident and does not show a suppressed incident in
 the main incident list. A page that a window suppresses later is recorded on the
 incident as not delivered, with the reason.
 
+Active, approved global, service and team windows also cover matching uptime
+samples and prevent new SLO burn incidents. Covered samples count as up, while
+the actual probe result remains in Outage History. Roster windows do not cover
+samples. Legacy target IDs and `*` remain supported for probe coverage. See
+[Reliability](reliability-guide.md#maintenance-and-uptime) for the uptime math.
+
 A window can repeat. Give it an iCalendar recurrence rule such as
 `FREQ=WEEKLY;BYDAY=SU`: each repeat starts at an occurrence of the rule and lasts
 as long as the first window. Occurrences follow the first window's start time in

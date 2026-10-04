@@ -254,7 +254,7 @@ export default function ReliabilityPage() {
               <div>
                 <h2 className="text-base font-semibold text-fg-primary">Maintenance Windows</h2>
                 <p className="text-sm text-fg-secondary">
-                  Planned downtime where uptime alerts are suppressed and the time is excluded from SLA calculations.
+                  Planned downtime where matching SLO alerts are suppressed and covered samples count as up in SLA calculations.
                 </p>
                 <p className="mt-1 text-xs text-fg-muted">
                   Shared with{" "}
@@ -282,7 +282,7 @@ export default function ReliabilityPage() {
               <EmptyState
                 icon={Calendar}
                 title="No maintenance windows"
-                description="Schedule maintenance to suppress alerts, suppress paging, and exclude that time from SLA calculations."
+                description="Schedule maintenance to suppress matching alerts and paging, and count covered samples as up in SLA calculations."
                 learnMoreHref="https://github.com/SpicyDaemon/OpsMender-AI/tree/main/docs/wiki/operator-guide.md"
                 learnMoreLabel="Operator guide"
               />

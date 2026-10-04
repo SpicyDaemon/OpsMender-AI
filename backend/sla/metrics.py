@@ -6,11 +6,11 @@ datetime), ``up`` (bool), and ``suppressed`` (bool) attributes - the
 ``UptimeSample`` ORM rows satisfy this, as do lightweight stand-ins in tests.
 
 Conventions (kept consistent with the existing poller/repo):
-- The poller records one sample per probe; uptime math treats each
-  non-suppressed sample as covering ``SAMPLE_INTERVAL_SECONDS`` of wall clock.
-- Suppressed samples (recorded during a maintenance window) are **excluded**
-  from the uptime percentage and from downtime - i.e. maintenance windows are
-  excluded from SLA impact, not merely silenced.
+- The poller records one sample per probe; uptime math treats each sample as
+  covering ``SAMPLE_INTERVAL_SECONDS`` of wall clock.
+- Suppressed samples (recorded during a maintenance window) count as up in the
+  uptime percentage and contribute no downtime. The recorded probe result is
+  retained for outage history.
 """
 
 from __future__ import annotations
@@ -54,12 +54,10 @@ def uptime_stats(samples: Sequence[_Sample]) -> dict[str, Any]:
             "downtime_seconds": 0,
             "suppressed_seconds": 0,
         }
-    non_suppressed = [s for s in samples if not s.suppressed]
-    suppressed_count = total - len(non_suppressed)
-    up_count = sum(1 for s in non_suppressed if s.up)
-    ns_total = len(non_suppressed)
-    uptime_pct = up_count / ns_total * 100.0 if ns_total > 0 else 100.0
-    downtime_seconds = (ns_total - up_count) * SAMPLE_INTERVAL_SECONDS
+    suppressed_count = sum(1 for s in samples if s.suppressed)
+    up_count = sum(1 for s in samples if s.up or s.suppressed)
+    uptime_pct = up_count / total * 100.0
+    downtime_seconds = (total - up_count) * SAMPLE_INTERVAL_SECONDS
     suppressed_seconds = suppressed_count * SAMPLE_INTERVAL_SECONDS
     return {
         "uptime_pct": round(uptime_pct, 4),
@@ -117,8 +115,8 @@ def downtime_episodes(samples: Sequence[_Sample]) -> list[dict[str, Any]]:
         elapsed time from the start to the last observed sample
       - ``maintenance`` - True when *every* down sample in the run was suppressed
         (the outage fell entirely inside a maintenance window). Maintenance
-        episodes are surfaced for visibility but are excluded from the SLA/SLO
-        uptime math (``uptime_stats`` already drops suppressed samples).
+        episodes are surfaced for visibility but their samples count as up in
+        the SLA/SLO uptime math (``uptime_stats``).
 
     Down samples are grouped regardless of suppression so a maintenance window
     that begins mid-outage doesn't split one outage into two; the episode is

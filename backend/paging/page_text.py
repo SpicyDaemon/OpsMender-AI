@@ -8,12 +8,13 @@ org a page is for.
 
 from __future__ import annotations
 
+import os
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Incident
-from backend.db.repos import OrganizationRepo
+from backend.db.repos import OrganizationRepo, ServiceRepo
 
 
 def format_page_subject_body(
@@ -100,6 +101,39 @@ def format_voice_menu_twiml(summary: str, action_url: str) -> str:
         "<Hangup/>"
         "</Response>"
     )
+
+
+async def build_voice_page_content(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    incident: Incident,
+    user_id: uuid.UUID,
+    org_name: str | None = None,
+) -> tuple[str, str | None]:
+    """Build the spoken summary and optional signed keypad link for both send paths."""
+    if org_name is None:
+        org_name = await org_name_for_page(db, org_id)
+    service_name = None
+    if incident.service_id is not None:
+        service = await ServiceRepo.get_by_id(db, org_id, incident.service_id)
+        service_name = service.name if service is not None else None
+    summary = format_voice_summary(
+        incident, org_name=org_name, service_name=service_name
+    )
+    base = os.environ.get("OPSMENDER_PUBLIC_URL")
+    if not base:
+        return summary, None
+
+    from backend.api.routes.voice import encode_voice_ack_token
+
+    token = encode_voice_ack_token(
+        org_id=org_id,
+        incident_id=incident.id,
+        user_id=user_id,
+        summary=summary,
+    )
+    return summary, f"{base.rstrip('/')}/paging/voice/ack/{token}"
 
 
 async def org_name_for_page(db: AsyncSession, org_id: uuid.UUID) -> str | None:

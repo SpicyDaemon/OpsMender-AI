@@ -74,6 +74,14 @@ Notification Channel posts to that channel's first allowed chat, which is a
 shared channel, not a direct message to you. Voice and SMS stages call or text
 your own number.
 
+**Voice Call stages.** A configured voice stage reads the organization, severity,
+service and incident title. Set `OPSMENDER_PUBLIC_URL` to the address your phone
+provider can reach to offer the signed keypad menu: `1` acknowledge, `2` escalate,
+`3` resolve and `*` repeat. Without that URL the call only reads the summary.
+Answering a call or hearing the message does not acknowledge the incident.
+Missing calling configuration or a phone number records a skipped attempt;
+the next stage still waits for the configured interval. Stages do not retry.
+
 **What "sent" means.** A delivery marked **sent** means the provider accepted
 it: the chat API, mail server or phone provider returned success. OpsMender
 can't confirm you saw it. Each stage is attempted once: a failed delivery isn't

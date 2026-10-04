@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Voice Call stages now reach the configured calling channel and use the same
+  spoken summary and signed keypad link as immediate phone pages. Missing
+  configuration or a phone number records a skipped attempt with its reason;
+  answering a call does not acknowledge the incident.
 - Approved active Maintenance Windows now cover uptime samples by global,
   service or team scope as well as legacy target lists. Roster windows do not
   cover samples. Matching windows prevent new SLO burn incidents, including

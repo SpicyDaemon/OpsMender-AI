@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uptime and SLO percentages count maintenance samples as up instead of
   excluding them. Two up, one down and two maintenance samples now report 80%
   uptime, with one minute of downtime and two minutes of maintenance. Probe
-  results remain available in Outage History.
+  results remain available in Outage History. Reliability now describes covered
+  samples as up, matching these numbers.
 - Refreshed all 13 demo screenshots from one clean seed, including the Tier 1
   approval view. The capture script checks for test debris and real email
   addresses. Browser QA now verifies policy widening, advisory-only services,

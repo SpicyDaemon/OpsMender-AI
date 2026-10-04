@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raised the PyJWT minimum to 2.14 and refreshed the locked package to include
+  upstream fixes for token verification and key handling vulnerabilities.
+- Updated the locked urllib3 to 2.8.0 for upstream fixes to HTTPS proxy TLS
+  settings and unbounded memory use in chunked responses.
 - An API token now acts at the lower of its own role and its creator's current
   role in every permission check. Previously some incident, team, responder,
   comment, maintenance and memory checks read the creator's account role, so an

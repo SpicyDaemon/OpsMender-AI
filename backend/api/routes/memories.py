@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
+from backend.auth.roles import request_role
 from backend.api.schemas import (
     IncidentMemoryBulkDeleteRequest,
     IncidentMemoryBulkDeleteResponse,
@@ -79,9 +80,10 @@ async def _manageable_memory_ids(
     user: User,
     memories: list[IncidentMemory],
 ) -> set[uuid.UUID]:
-    if user.role == "admin":
+    role = request_role(user)
+    if role == "admin":
         return {memory.id for memory in memories}
-    if user.role != "operator":
+    if role != "operator":
         return set()
     team_ids = await TeamRepo.team_ids_for_user(db, org_id, user.id)
     service_ids = {
@@ -112,7 +114,7 @@ async def _visible_memory_ids(
     Operators see global memories plus memories tied to services owned by one
     of their teams. Admins and viewers retain organization-wide read access.
     """
-    if user.role != "operator":
+    if request_role(user) != "operator":
         return {memory.id for memory in memories}
     team_ids = await TeamRepo.team_ids_for_user(db, org_id, user.id)
     service_ids = {
@@ -167,7 +169,7 @@ async def _require_operator_service_access(
     user: User,
     service_id: uuid.UUID | None,
 ) -> None:
-    if user.role == "admin":
+    if request_role(user) == "admin":
         return
     if service_id is None:
         raise HTTPException(
@@ -257,8 +259,8 @@ async def create_memory(
     user: User = Depends(require_role("admin", "operator")),
 ):
     await _validate_service(db, org_id, body.service_id)
-    if user.role == "operator" and body.service_id is not None:
-        await _require_operator_service_access(db, org_id, user, body.service_id)
+    # Operators write only their teams' service memories; Global is admin-only.
+    await _require_operator_service_access(db, org_id, user, body.service_id)
     memory = await IncidentMemoryRepo.create(
         db,
         org_id=org_id,

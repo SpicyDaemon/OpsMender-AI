@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An API token now acts at the lower of its own role and its creator's current
+  role in every permission check. Previously some incident, team, responder,
+  comment, maintenance and memory checks read the creator's account role, so an
+  Operator token created by an Admin could delete incidents, force-take or
+  reassign another team's incidents, delete other people's comments and
+  self-approve global Maintenance Windows. Demoting a token's creator now
+  lowers the token too.
+- Operators can no longer create global memories; global memories need an
+  Admin, as editing and deleting them already did.
 - Skill Studio now saves a reviewed policy change when Save is clicked from
   the content editor. Debounced validation and validation on save remain active.
 - Demo seeding no longer prints its database connection URL. Demo users and

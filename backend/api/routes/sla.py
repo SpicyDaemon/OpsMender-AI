@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
+from backend.auth.roles import request_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     MaintenanceWindowCreate,
@@ -967,7 +968,7 @@ async def create_maintenance_window(
 
     # Admin-created windows are approved immediately; operator requests are
     # pending until an admin explicitly approves them.
-    is_admin = user.role == "admin"
+    is_admin = request_role(user) == "admin"
     now = datetime.now(timezone.utc)
 
     mw = await MaintenanceWindowRepo.create(

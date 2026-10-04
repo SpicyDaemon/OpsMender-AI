@@ -25,6 +25,7 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.api_tokens import API_TOKEN_PREFIX, hash_api_token
+from backend.auth.roles import lower_role, request_role
 from backend.config_loader import AppConfig
 from backend.api.deps import get_db
 from backend.db.models import User
@@ -147,7 +148,8 @@ async def get_current_user(
             token_row.last_used_at = now
             await db.flush()
         setattr(user, "api_token_name", token_row.name)
-        setattr(user, "effective_role", token_row.role)
+        # A token never grants more than its creator holds now (EC-P05).
+        setattr(user, "effective_role", lower_role(token_row.role, user.role))
         from backend.audit.admin_changes import set_audit_actor
 
         set_audit_actor(db, request, actor_id=user.id, org_id=user.primary_org_id)
@@ -237,7 +239,7 @@ def require_role(*allowed_roles: str):
     """
 
     async def _checker(user: User = Depends(get_current_user)) -> User:
-        effective_role = getattr(user, "effective_role", user.role)
+        effective_role = request_role(user)
         if effective_role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

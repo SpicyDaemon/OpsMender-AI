@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covers the workspace, a linked target covers its service, and a standalone
   target covers only that probe. Create and update reject specific target IDs
   under global scope and reject unknown or other-workspace probe IDs. Changing
-  a selection clears the previous service scope. Existing windows are not
+  a selection clears the previous service scope. Loading targets preserves
+  a new window's draft. Existing windows are not
   rewritten automatically.
 - Approved active Maintenance Windows now cover uptime samples by global,
   service or team scope as well as legacy target lists. Roster windows do not

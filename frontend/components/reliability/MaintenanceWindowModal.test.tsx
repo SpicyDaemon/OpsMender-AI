@@ -49,6 +49,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("MaintenanceWindowModal scope", () => {
+  it("keeps a new window draft when its target list finishes loading", async () => {
+    const user = userEvent.setup();
+    const callbacks = { onClose: vi.fn(), onSaved: vi.fn() };
+    const { rerender } = render(<MaintenanceWindowModal open {...callbacks} targets={[]} />);
+    await user.type(screen.getByLabelText("Name"), "Planned work");
+    rerender(<MaintenanceWindowModal open {...callbacks} targets={targets} />);
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Planned work");
+    await user.selectOptions(screen.getByLabelText("Target"), linked.id);
+    await user.click(screen.getByRole("button", { name: "Schedule" }));
+    expect(apiMocks.createMaintenanceWindow).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      name: "Planned work", scope_type: "service", scope_ids: [serviceId], target_ids: [linked.id],
+    }));
+  });
+
   it.each([
     ["*", "global", [], ["*"], /all service alerts, paging and uptime targets/i],
     [linked.id, "service", [serviceId], [linked.id], /for Payments/i],

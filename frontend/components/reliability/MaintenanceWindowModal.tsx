@@ -33,24 +33,29 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  let initialTargetId = "*";
+  if (initialData) {
+    const onlyTargetId = initialData.target_ids.length === 1 ? initialData.target_ids[0] : null;
+    const directTarget = targets.find((target) => target.id === onlyTargetId);
+    const serviceTarget = initialData.scope_type === "service" && initialData.scope_ids.length === 1
+      ? targets.find((target) => target.service_id === initialData.scope_ids[0])
+      : undefined;
+    initialTargetId = initialData.scope_type === "global" && initialData.target_ids.every((id) => id === "*")
+      ? "*"
+      : initialData.scope_type === "service" || initialData.scope_type === "global"
+        ? directTarget?.id ?? serviceTarget?.id ?? ""
+        : "";
+  }
+
   useEffect(() => {
     if (open) {
       if (initialData) {
-        const onlyTargetId = initialData.target_ids.length === 1 ? initialData.target_ids[0] : null;
-        const directTarget = targets.find((target) => target.id === onlyTargetId);
-        const serviceTarget = initialData.scope_type === "service" && initialData.scope_ids.length === 1
-          ? targets.find((target) => target.service_id === initialData.scope_ids[0])
-          : undefined;
         setForm({
           name: initialData.name,
           reason: initialData.reason ?? "",
           starts_at: formatDateForInput(initialData.starts_at),
           ends_at: formatDateForInput(initialData.ends_at),
-          target_id: initialData.scope_type === "global" && initialData.target_ids.every((id) => id === "*")
-            ? "*"
-            : initialData.scope_type === "service" || initialData.scope_type === "global"
-              ? directTarget?.id ?? serviceTarget?.id ?? ""
-              : "",
+          target_id: initialTargetId,
           rrule: initialData.rrule ?? "",
         });
       } else {
@@ -67,7 +72,7 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
       }
       setError("");
     }
-  }, [open, initialData, targets]);
+  }, [open, initialData, initialTargetId]);
 
   const selectedTarget = targets.find((target) => target.id === form.target_id);
 

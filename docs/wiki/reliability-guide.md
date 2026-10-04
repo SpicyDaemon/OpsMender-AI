@@ -28,7 +28,8 @@ The Target choice in Reliability determines the Maintenance Window's scope:
   and paging stay active.
 
 The form shows the scope before saving. A service window maps back to its
-linked probe when edited. Changing to All Targets or a standalone probe clears
+linked probe when edited. Loading targets preserves a new window's draft.
+Changing to All Targets or a standalone probe clears
 the previous service selection. If the probe selector cannot represent an
 existing window, choose a target explicitly or use Paging to retain/edit its
 existing scope; the form does not silently replace it with a global window.

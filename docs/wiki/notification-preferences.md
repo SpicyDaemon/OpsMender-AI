@@ -139,6 +139,9 @@ Inside the window:
 - A page that a window holds back later is recorded on the incident as not
   delivered, with the reason.
 - Non-matching alerts still create incidents and page as usual.
+- Approved global, service and team windows cover matching uptime samples,
+  which count as up, and prevent new SLO burn incidents while active. Roster
+  windows do not cover samples. See [Reliability](reliability-guide.md#maintenance-and-uptime).
 
 A window can repeat with an iCalendar recurrence rule such as
 `FREQ=WEEKLY;BYDAY=SU`; see the [Paging Guide](paging-guide.md#7-maintenance-windows).

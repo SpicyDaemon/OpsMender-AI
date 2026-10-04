@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+import os
+from unittest.mock import AsyncMock, patch
 
 from datetime import datetime, timedelta, timezone
 
@@ -591,10 +593,10 @@ class TestUptimeAPI:
         assert data["burn_rate"] > 1.0  # consuming budget faster than allowed
 
     @pytest.mark.asyncio
-    async def test_uptime_suppressed_excluded(
+    async def test_uptime_maintenance_counts_as_up(
         self, client: AsyncClient, db: AsyncSession
     ):
-        """Suppressed samples should be excluded from uptime calculation."""
+        """Covered samples count as up without hiding the saved probe result."""
         target_resp = await client.post(
             "/sla-targets",
             json={
@@ -606,8 +608,9 @@ class TestUptimeAPI:
 
         from backend.db.repos import UptimeSampleRepo
 
-        # 8 up, 2 down but suppressed = 100% effective uptime
-        for i in range(8):
+        assert target_resp.status_code == 201
+        # 2 up, 1 down, 2 covered down = 80% effective uptime.
+        for i in range(2):
             await UptimeSampleRepo.create(
                 db,
                 TEST_ORG_ID,
@@ -615,6 +618,9 @@ class TestUptimeAPI:
                 up=True,
                 source="poller",
             )
+        await UptimeSampleRepo.create(
+            db, TEST_ORG_ID, target_id=uuid.UUID(target_id), up=False, source="poller"
+        )
         for _ in range(2):
             await UptimeSampleRepo.create(
                 db,
@@ -627,11 +633,21 @@ class TestUptimeAPI:
         await db.commit()
 
         resp = await client.get(f"/sla-targets/{target_id}/uptime?window=7d")
+        assert resp.status_code == 200
         data = resp.json()
-        assert data["total_samples"] == 10
-        assert data["up_samples"] == 8
-        assert data["uptime_pct"] == 100.0  # all non-suppressed are up
+        assert data["total_samples"] == 5
+        assert data["up_samples"] == 4
+        assert data["uptime_pct"] == 80.0
+        assert data["downtime_seconds"] == 60
         assert data["suppressed_seconds"] == 120  # 2 * 60s
+        saved = await UptimeSampleRepo.query_window(
+            db,
+            TEST_ORG_ID,
+            uuid.UUID(target_id),
+            since=datetime.now(timezone.utc) - timedelta(days=7),
+        )
+        assert sum(sample.up for sample in saved) == 2
+        assert sum(sample.suppressed for sample in saved) == 2
 
     @pytest.mark.asyncio
     async def test_sla_target_incidents(self, client: AsyncClient, db: AsyncSession):
@@ -935,6 +951,262 @@ class TestReliabilityV1:
 
         incidents = await IncidentRepo.list_all(db, TEST_ORG_ID)
         assert all("SLO" not in (i.title or "") for i in incidents)
+
+
+class TestMaintenanceCoverage:
+    @pytest.mark.parametrize(
+        ("variant", "covered"),
+        [
+            ("global", True),
+            ("service", True),
+            ("services", True),
+            ("team", True),
+            ("teams", True),
+            ("unrelated-service", False),
+            ("unrelated-team", False),
+            ("roster", False),
+            ("roster-target", False),
+            ("roster-all", False),
+            ("legacy-all", True),
+            ("legacy-target", True),
+            ("pending", False),
+            ("expired", False),
+            ("recurring", True),
+            ("other-workspace", False),
+            ("unlinked-global", True),
+        ],
+    )
+    async def test_sample_and_slo_share_maintenance_scope(
+        self, variant, covered, app_db, client: AsyncClient
+    ):
+        from sqlalchemy import select
+
+        from backend.db.models import (
+            Incident,
+            MaintenanceWindow,
+            Organization,
+            SLATarget,
+        )
+        from backend.db.repos import RosterRepo, ServiceRepo, TeamRepo, UptimeSampleRepo
+        from backend.sla.poller import SLAPoller
+
+        _, factory, _ = app_db
+        async with factory() as db:
+            team = await TeamRepo.create(db, TEST_ORG_ID, name="Team", slug="team")
+            other_team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="Other", slug="other"
+            )
+            service = await ServiceRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Service", slug="service"
+            )
+            other_service = await ServiceRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=other_team.id,
+                name="Other service",
+                slug="other-service",
+            )
+            roster = await RosterRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="Roster",
+                anchor_date=datetime.now(timezone.utc).date(),
+            )
+            await db.commit()
+
+        target_resp = await client.post(
+            "/sla-targets",
+            json={
+                "name": "maintenance-target",
+                "kind": "http",
+                "service_id": (
+                    None if variant == "unlinked-global" else str(service.id)
+                ),
+            },
+        )
+        assert target_resp.status_code == 201
+        target_id = uuid.UUID(target_resp.json()["id"])
+        now = datetime.now(timezone.utc)
+        body = {
+            "name": variant,
+            "scope_type": "global",
+            "starts_at": (now - timedelta(minutes=5)).isoformat(),
+            "ends_at": (now + timedelta(minutes=5)).isoformat(),
+        }
+        if variant in {"service", "services", "recurring", "unrelated-service"}:
+            body["scope_type"] = "service"
+            body["scope_ids"] = (
+                [str(other_service.id), str(service.id)]
+                if variant == "services"
+                else [
+                    str(
+                        other_service.id
+                        if variant == "unrelated-service"
+                        else service.id
+                    )
+                ]
+            )
+        elif variant in {"team", "teams", "unrelated-team"}:
+            body["scope_type"] = "team"
+            body["scope_ids"] = (
+                [str(other_team.id), str(team.id)]
+                if variant == "teams"
+                else [str(other_team.id if variant == "unrelated-team" else team.id)]
+            )
+        elif variant.startswith("roster"):
+            body["scope_type"] = "roster"
+            if variant == "roster":
+                body["scope_id"] = str(roster.id)
+            body["target_ids"] = (
+                [str(target_id)]
+                if variant == "roster-target"
+                else ["*"]
+                if variant == "roster-all"
+                else []
+            )
+        elif variant.startswith("legacy"):
+            body["scope_type"] = "service"
+            body["target_ids"] = ["*"] if variant == "legacy-all" else [str(target_id)]
+        if variant == "expired":
+            body["ends_at"] = now.isoformat()
+        elif variant == "recurring":
+            body["starts_at"] = (now - timedelta(days=1, minutes=5)).isoformat()
+            body["ends_at"] = (
+                now - timedelta(days=1) + timedelta(minutes=5)
+            ).isoformat()
+            body["rrule"] = "FREQ=DAILY;COUNT=2"
+
+        window_resp = await client.post("/maintenance-windows", json=body)
+        assert window_resp.status_code == 201
+        window_id = uuid.UUID(window_resp.json()["id"])
+        assert window_resp.json()["approved"] is True
+
+        async with factory() as db:
+            window = await db.get(MaintenanceWindow, window_id)
+            assert window.scope_type == body["scope_type"]
+            expected_targets = body.get("scope_ids") or (
+                [body["scope_id"]] if "scope_id" in body else body.get("target_ids", [])
+            )
+            assert window.target_ids == expected_targets
+            if variant == "pending":
+                window.approved = False
+            elif variant == "other-workspace":
+                other_org = Organization(name="Other", slug="other-workspace")
+                db.add(other_org)
+                await db.flush()
+                window.org_id = other_org.id
+            # A pre-window outage still burns the SLO budget during maintenance.
+            sample = await UptimeSampleRepo.create(
+                db, TEST_ORG_ID, target_id=target_id, up=False
+            )
+            sample.observed_at = now - timedelta(minutes=10)
+            target = await db.get(SLATarget, target_id)
+            await db.commit()
+
+        slo_resp = await client.post(
+            "/slos",
+            json={
+                "target_id": str(target_id),
+                "name": "Maintenance burn",
+                "objective_pct": 99,
+                "window_seconds": 3600,
+                "burn_alert_threshold": 2,
+            },
+        )
+        assert slo_resp.status_code == 201
+
+        poller = SLAPoller(factory, AppConfig.load())
+        with (
+            patch.object(poller, "_probe_target", AsyncMock(return_value=(False, 37))),
+            patch(
+                "backend.sla.poller.page_new_incident", new_callable=AsyncMock
+            ) as page,
+            patch("backend.sla.poller.should_auto_start_session", return_value=False),
+        ):
+            await poller._probe_and_record(TEST_ORG_ID, target)
+            await poller._check_slos(TEST_ORG_ID)
+
+            response = await client.get(f"/sla-targets/{target_id}/uptime?window=7d")
+            assert response.status_code == 200
+            assert response.json()["uptime_pct"] == (50.0 if covered else 0.0)
+            assert response.json()["up_samples"] == int(covered)
+            async with factory() as db:
+                samples = await UptimeSampleRepo.query_window(
+                    db, TEST_ORG_ID, target_id, since=now - timedelta(hours=1)
+                )
+                assert len(samples) == 2
+                assert samples[-1].up is False
+                assert samples[-1].latency_ms == 37
+                assert samples[-1].suppressed is covered
+                incidents = list((await db.scalars(select(Incident))).all())
+                assert len(incidents) == (0 if covered else 1)
+                if incidents:
+                    assert incidents[0].target_id == target_id
+                    assert (
+                        incidents[0].external_source == f"slo:{slo_resp.json()['id']}"
+                    )
+            assert page.await_count == (0 if covered else 1)
+
+            # At the exclusive end boundary, a new failed probe and SLO alert
+            # behave normally. The recurring window's second occurrence ends then.
+            after = now + timedelta(minutes=5)
+            with patch("backend.sla.poller.datetime", wraps=datetime) as clock:
+                clock.now.return_value = after
+                await poller._probe_and_record(TEST_ORG_ID, target)
+                await poller._check_slos(TEST_ORG_ID)
+            async with factory() as db:
+                samples = await UptimeSampleRepo.query_window(
+                    db, TEST_ORG_ID, target_id, since=now - timedelta(hours=1)
+                )
+                assert len(samples) == 3
+                assert samples[-1].suppressed is False
+                incidents = list((await db.scalars(select(Incident))).all())
+                assert len(incidents) == 1
+            assert page.await_count == 1
+
+
+@pytest.mark.integration
+class TestMaintenanceCoveragePostgres(TestMaintenanceCoverage):
+    @pytest.fixture
+    async def app_db(self, monkeypatch):
+        """Exercise the same HTTP and saved-state contract on disposable Postgres."""
+        from sqlalchemy.engine import make_url
+
+        from backend.api import deps
+        from backend.db.models import Organization
+
+        url = os.environ.get("PART4_PG_URL")
+        if not url:
+            pytest.fail("PART4_PG_URL must target an isolated PostgreSQL database")
+        if make_url(url).database == "testdb":
+            pytest.fail("The owner's database must never be used for integration tests")
+        engine = create_async_engine(url)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        monkeypatch.setattr(deps, "_session_factory", factory)
+        app = create_app(AppConfig.load())
+        app.state.session_factory = factory
+        async with factory() as db:
+            db.add(Organization(id=TEST_ORG_ID, name="Test Org", slug="test-org"))
+            await db.flush()
+            admin = User(
+                username="maintenance-admin",
+                email="maintenance-admin@example.test",
+                password_hash="unused",
+                role="admin",
+                primary_org_id=TEST_ORG_ID,
+            )
+            db.add(admin)
+            await db.commit()
+        token = create_access_token(admin.id, "admin")
+        try:
+            yield app, factory, token
+        finally:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
 
 
 class TestSLATargetServiceLink:

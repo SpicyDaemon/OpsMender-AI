@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Approved active Maintenance Windows now cover uptime samples by global,
+  service or team scope as well as legacy target lists. Roster windows do not
+  cover samples. Matching windows prevent new SLO burn incidents, including
+  burns from earlier outages; checks resume normally when the window ends.
 - Raised the PyJWT minimum to 2.14 and refreshed the locked package to include
   upstream fixes for token verification and key handling vulnerabilities.
 - Updated the locked urllib3 to 2.8.0 for upstream fixes to HTTPS proxy TLS
@@ -22,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Uptime and SLO percentages count maintenance samples as up instead of
+  excluding them. Two up, one down and two maintenance samples now report 80%
+  uptime, with one minute of downtime and two minutes of maintenance. Probe
+  results remain available in Outage History.
 - Refreshed all 13 demo screenshots from one clean seed, including the Tier 1
   approval view. The capture script checks for test debris and real email
   addresses. Browser QA now verifies policy widening, advisory-only services,

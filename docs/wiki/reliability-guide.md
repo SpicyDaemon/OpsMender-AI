@@ -17,6 +17,24 @@ dashboard.
 Response-time charts use a solid line for average latency. The panel header also
 shows the aggregate average and sample count for the selected window.
 
+## Maintenance and uptime
+
+An active, approved Maintenance Window covers probes by global, service or
+team scope. Service-linked targets use their service's team. Legacy windows
+listing a target ID or `*` still cover those probes. Roster windows cover pages
+through that roster, and do not cover uptime samples.
+
+Covered samples count as up in uptime summaries and SLO percentages, even when
+the probe fails. Two up, one down and two maintenance samples report 80% uptime,
+one minute of downtime and two minutes of maintenance. OpsMender still records
+the actual probe result, latency and maintenance flag for Outage History.
+
+A matching window also prevents new SLO burn incidents while it is active,
+including a burn caused by an earlier outage. After it ends, probes and SLO
+incident creation resume normally. Pending, expired and unrelated windows do
+not suppress those checks. Recurring windows follow the same active periods as
+intake and paging. Existing incidents are not closed by a new window.
+
 ## Retention
 
 Raw uptime samples contain `latency_ms` and are retained for 30 days. To support

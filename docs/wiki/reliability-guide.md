@@ -19,6 +19,26 @@ shows the aggregate average and sample count for the selected window.
 
 ## Maintenance and uptime
 
+The Target choice in Reliability determines the Maintenance Window's scope:
+
+- **All Targets** covers all service alerts, paging and uptime targets.
+- **A target linked to a service** covers that service's alerts, paging and
+  uptime targets. Other services stay active.
+- **A target without a service** covers only that uptime probe. Service alerts
+  and paging stay active.
+
+The form shows the scope before saving. A service window maps back to its
+linked probe when edited. Changing to All Targets or a standalone probe clears
+the previous service selection. If the probe selector cannot represent an
+existing window, choose a target explicitly or use Paging to retain/edit its
+existing scope; the form does not silently replace it with a global window.
+
+The API rejects global scope with specific target IDs and checks supplied
+probe IDs belong to this workspace, on both create and update. Older global
+windows with specific IDs are not automatically rewritten. Review them and
+save an explicit service/probe scope or All Targets; even a name-only update
+requires correcting an invalid global target list.
+
 An active, approved Maintenance Window covers probes by global, service or
 team scope. Service-linked targets use their service's team. Legacy windows
 listing a target ID or `*` still cover those probes. Roster windows cover pages

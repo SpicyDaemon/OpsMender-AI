@@ -940,6 +940,36 @@ def _check_rrule(rrule: str | None, starts_at: datetime) -> None:
         ) from exc
 
 
+async def _check_maintenance_targets(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    scope_type: str,
+    target_ids: list[str],
+    stored_target_ids: list[str],
+) -> None:
+    if scope_type == "global" and any(v != "*" for v in stored_target_ids):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A global Maintenance Window may only use '*' as its target. "
+            "Choose service scope for specific targets.",
+        )
+    for raw in target_ids:
+        if raw == "*":
+            continue
+        try:
+            target_id = uuid.UUID(raw)
+        except ValueError:
+            target_id = None
+        if (
+            target_id is None
+            or await SLATargetRepo.get_by_id(db, org_id, target_id) is None
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Each target_id must reference an SLA target in this workspace, or '*'.",
+            )
+
+
 @router.post(
     _mw_prefix,
     response_model=MaintenanceWindowResponse,
@@ -964,6 +994,9 @@ async def create_maintenance_window(
         scope_ids.insert(0, body.scope_id)
     scope_id = scope_ids[0] if scope_ids else body.scope_id
     target_ids = [str(v) for v in scope_ids] if scope_ids else body.target_ids
+    await _check_maintenance_targets(
+        db, org_id, body.scope_type, body.target_ids, target_ids
+    )
 
     # Admin-created windows are approved immediately; operator requests are
     # pending until an admin explicitly approves them.
@@ -1018,7 +1051,14 @@ async def update_maintenance_window(
         if scope_id is not None and scope_id not in ordered:
             ordered.insert(0, scope_id)
         scope_id = ordered[0] if ordered else None
-        target_ids = [str(v) for v in ordered]
+        target_ids = [str(v) for v in ordered] if ordered else (body.target_ids or [])
+    await _check_maintenance_targets(
+        db,
+        org_id,
+        body.scope_type or existing.scope_type,
+        body.target_ids or [],
+        target_ids if target_ids is not None else existing.target_ids,
+    )
 
     updated = await MaintenanceWindowRepo.update(
         db,

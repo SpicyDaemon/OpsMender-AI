@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reliability Maintenance Windows now send an explicit scope: All Targets
+  covers the workspace, a linked target covers its service, and a standalone
+  target covers only that probe. Create and update reject specific target IDs
+  under global scope and reject unknown or other-workspace probe IDs. Changing
+  a selection clears the previous service scope. Existing windows are not
+  rewritten automatically.
 - Approved active Maintenance Windows now cover uptime samples by global,
   service or team scope as well as legacy target lists. Roster windows do not
   cover samples. Matching windows prevent new SLO burn incidents, including

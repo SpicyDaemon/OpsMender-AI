@@ -221,6 +221,11 @@ optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
 as-is: OpsMender has no route that receives it, so leave it unset unless you
 collect call status elsewhere.
 
+Immediate phone pages and Voice Call stages share the same spoken summary and
+signed keypad link. Answering the call does not acknowledge it. A stage with no
+calling configuration or phone number records a skipped attempt and retains
+its wait before the next stage; it is not retried.
+
 **Taking over from someone.** **Take over** on an incident someone else owns
 asks them to hand it over and sends an Inbox notice. The owner can confirm
 with **Hand over** within five minutes; an unanswered request expires without

@@ -124,9 +124,23 @@ def build_notification_sender(
             if channel is None:
                 return ("skipped", "channel_unconfigured")
             try:
-                attempt = await channel.send(
-                    recipient=recipient, subject=subject, body=body
-                )
+                if channel_id == "voice":
+                    from backend.paging.page_text import build_voice_page_content
+
+                    summary, ack_url = await build_voice_page_content(
+                        db, org_id, incident=incident, user_id=user.id
+                    )
+                    attempt = await channel.send(
+                        recipient=recipient,
+                        subject=subject,
+                        body=body,
+                        summary=summary,
+                        ack_url=ack_url,
+                    )
+                else:
+                    attempt = await channel.send(
+                        recipient=recipient, subject=subject, body=body
+                    )
                 return (attempt.status, attempt.error)
             except Exception as exc:  # noqa: BLE001
                 return ("failed", str(exc))

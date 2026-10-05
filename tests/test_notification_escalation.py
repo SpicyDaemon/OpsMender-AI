@@ -310,6 +310,73 @@ class TestEngine:
             )
             assert state.status == "resolved"
 
+    async def test_a_merged_incident_ends_leftover_steps(self, session_factory):
+        user = await _user(session_factory)
+        inc = await _incident(session_factory)
+        log: list[str] = []
+        t0 = datetime(2026, 5, 29, 12, 0, tzinfo=timezone.utc)
+        stages = parse_stages(
+            [
+                {"channel_id": "teams", "delay_seconds": 300},
+                {"channel_id": "sms", "delay_seconds": 300},
+            ]
+        )
+        async with session_factory() as db:
+            await ne.start_escalation(
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=stages,
+                sender=_recording_sender(log),
+                at=t0,
+            )
+            # Closed without the close path, like rows from before it.
+            (await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)).status = "merged"
+            await db.commit()
+        async with session_factory() as db:
+            changed = await ne.tick_all_due(
+                db, sender=_recording_sender(log), at=t0 + timedelta(seconds=300)
+            )
+            await db.commit()
+            state = await NotificationEscalationRepo.get(
+                db, TEST_ORG_ID, incident_id=inc.id, user_id=user.id
+            )
+        assert changed == 1
+        assert log == ["teams"]
+        assert (state.status, state.current_stage) == ("resolved", 0)
+
+    async def test_the_scheduler_saves_a_stop_that_sends_nothing(self, session_factory):
+        from backend.paging.scheduler import EscalationScheduler
+
+        user = await _user(session_factory)
+        inc = await _incident(session_factory)
+        log: list[str] = []
+        async with session_factory() as db:
+            await ne.start_escalation(
+                db,
+                TEST_ORG_ID,
+                incident=inc,
+                user=user,
+                stages=parse_stages(
+                    [
+                        {"channel_id": "teams", "delay_seconds": 300},
+                        {"channel_id": "sms", "delay_seconds": 300},
+                    ]
+                ),
+                sender=_recording_sender(log),
+                at=datetime.now(timezone.utc) - timedelta(seconds=301),
+            )
+            (await IncidentRepo.get_by_id(db, TEST_ORG_ID, inc.id)).status = "resolved"
+            await db.commit()
+        await EscalationScheduler(session_factory)._tick()
+        async with session_factory() as db:
+            state = await NotificationEscalationRepo.get(
+                db, TEST_ORG_ID, incident_id=inc.id, user_id=user.id
+            )
+        assert log == ["teams"]
+        assert (state.status, state.next_stage_due_at) == ("resolved", None)
+
     async def test_start_is_idempotent_per_incident_user(self, session_factory):
         user = await _user(session_factory)
         inc = await _incident(session_factory)

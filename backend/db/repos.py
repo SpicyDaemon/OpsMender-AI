@@ -1101,11 +1101,15 @@ class IncidentRepo:
                     ApprovalRequest.session_id.in_(session_ids),
                 )
             )
+            # Activity outlives the incident: keep each session's entries,
+            # detached from the session row that is about to go (D-031).
             await db.execute(
-                delete(AuditEntry).where(
+                update(AuditEntry)
+                .where(
                     AuditEntry.org_id == org_id,
                     AuditEntry.session_id.in_(session_ids),
                 )
+                .values(session_id=None)
             )
 
         for model in (

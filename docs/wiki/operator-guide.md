@@ -18,10 +18,13 @@ When an incident is ingested (either manually or via an external alert), it appe
 Admins see a compact trash icon on every incident row and in the incident
 command strip. It is available for every status, including open incidents.
 After confirmation, OpsMender cancels any tracked AI workflow and permanently
-removes the incident, its sessions, comments, paging state, approvals, and tool
-audit history. Independent ingest, bot-action, finding, and memory records are
-retained with their incident/session references cleared. This action cannot be
-undone. Operators and viewers never see or receive access to this action.
+removes the incident, its sessions, comments, paging state and approvals.
+Activity keeps an entry for the deletion (who deleted which incident, and when)
+and the sessions' earlier entries, with their session links cleared. Independent
+ingest, bot-action, finding, and memory records are retained the same way. Bulk
+deletion writes one entry per incident. A repeated deletion reports the incident
+as not found and does not add another entry. This action cannot be undone. Operators
+and viewers never see or receive access to this action.
 
 ## 2. Interacting with Session Chat
 
@@ -73,9 +76,9 @@ You can take control of any running session from the session page:
 
 ## 6. The Audit Log
 
-Every action taken by the AI is recorded in the **Audit Log** for the lifetime
-of its session. Permanently deleting the owning incident also deletes that
-session and its tool audit history.
+Every action taken by the AI is recorded in the **Audit Log**. Permanently
+deleting the owning incident deletes the session, but its audit entries stay,
+alongside an entry recording the deletion.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.

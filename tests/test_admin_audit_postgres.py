@@ -316,3 +316,54 @@ async def test_rejected_entry_rolls_back_incident_deletion(pg_app):
     )
     # An error, and the incident, its session and attached entries all remain.
     assert observed == (500, 1, 1, 2, 0)
+
+
+async def test_later_rejected_entry_rolls_back_bulk_incident_deletion(pg_app):
+    first, first_session = await _incident_with_session(pg_app)
+    second, second_session = await _incident_with_session(pg_app)
+    async with pg_app.engine.begin() as connection:
+        await connection.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION audit_check_reject() RETURNS trigger "
+                "LANGUAGE plpgsql AS $$ BEGIN "
+                "IF NEW.entry_type = 'incident_deleted' AND EXISTS ("
+                "SELECT 1 FROM audit_entries a "
+                "WHERE a.org_id = NEW.org_id AND a.entry_type = 'incident_deleted' "
+                "AND NOT EXISTS (SELECT 1 FROM incidents i "
+                "WHERE i.id::text = a.tool_parameters->>'incident_id')) THEN "
+                "RAISE EXCEPTION 'audit row rejected by test'; END IF; "
+                "RETURN NEW; END $$"
+            )
+        )
+        await connection.execute(
+            text(
+                "CREATE TRIGGER audit_check_reject BEFORE INSERT ON audit_entries "
+                "FOR EACH ROW EXECUTE FUNCTION audit_check_reject()"
+            )
+        )
+
+    # Reject the later entry only after the first incident was really deleted
+    # inside the transaction. A partial commit must not survive the HTTP error.
+    response = await pg_app.client.post(
+        "/incidents/bulk",
+        json={"action": "delete", "incident_ids": [str(first), str(second)]},
+        headers=pg_app.headers,
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id.in_((first, second))),
+        await _count(
+            pg_app.factory, Session, Session.id.in_((first_session, second_session))
+        ),
+        await _count(
+            pg_app.factory,
+            AuditEntry,
+            AuditEntry.session_id.in_((first_session, second_session)),
+        ),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id.is_(None)),
+    )
+    assert observed == (500, 2, 2, 4, 0, 0)

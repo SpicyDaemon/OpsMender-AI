@@ -7,9 +7,12 @@
 //
 // This is the harness behind docs/DESIGN_AUDIT_2026-07-03.md. Re-run it after
 // remediation work; the exit code is the pass/fail gate:
-//   exit 0  →  0 axe-critical violations, 0 axe-serious violations, and no
-//              unexpected console errors on any captured page
+//   exit 0  →  at least one page captured; 0 axe-critical violations, 0
+//              axe-serious violations, no unexpected console errors, no
+//              accessibility-checker failures and no capture failures
 //   exit 1  →  anything above found (details in .design-audit/results.json)
+// A page that needs a record the environment doesn't have is listed as NOT
+// RUN; it doesn't fail the gate, but it isn't counted as checked either.
 //
 // Setup (one-time):   cd frontend && npm install    (playwright + axe-core are frontend devDeps)
 // Run (full):         node scripts/design_audit.mjs
@@ -133,6 +136,13 @@ async function capture(page, dir, name, { runAxe = true, errBuf } = {}) {
     axe,
   });
   process.stdout.write(`  ✓ ${name}\n`);
+}
+
+// A page whose record id is missing is not captured; record it so the gate
+// lists it as NOT RUN instead of dropping it silently.
+function notRun(dir, name) {
+  results.push({ name, viewport: path.basename(dir), shot: null, url: null, notRun: "missing record id" });
+  console.log(`  - ${name}: NOT RUN (missing record id)`);
 }
 
 function wireConsole(page, buf) {
@@ -268,7 +278,10 @@ const pages = [
 
 console.log("dashboard pages (desktop dark):");
 for (const [name, url] of pages) {
-  if (!url) continue;
+  if (!url) {
+    notRun(dDark, name);
+    continue;
+  }
   try {
     await page.goto(`${BASE}${url}`);
     await settle(page);
@@ -318,7 +331,10 @@ for (const [name, url] of [
   ["36-profile", "/dashboard/settings/profile"],
   ["00-login-light", "/login"],
 ]) {
-  if (!url) continue;
+  if (!url) {
+    notRun(dLight, name);
+    continue;
+  }
   await page.goto(`${BASE}${url}`);
   await settle(page);
   await capture(page, dLight, name, { errBuf });
@@ -354,7 +370,10 @@ for (const [name, url] of [
   ["36-profile", "/dashboard/settings/profile"],
   ["11-models", "/dashboard/models"],
 ]) {
-  if (!url) continue;
+  if (!url) {
+    notRun(dMob, name);
+    continue;
+  }
   await mpage.goto(`${BASE}${url}`);
   await settle(mpage);
   await capture(mpage, dMob, name, { errBuf: mErr });
@@ -386,8 +405,25 @@ fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringify(results, null, 1
 let criticals = 0;
 let serious = 0;
 let unexpectedErrors = 0;
+let checkerFailures = 0;
+let captureFailures = 0;
+let captured = 0;
+let notRunPages = 0;
 const lines = [];
 for (const p of results) {
+  const label = (p.shot || (p.viewport ? `${p.viewport}/${p.name}` : p.name) || "?").padEnd(52);
+  if (p.notRun) {
+    notRunPages += 1;
+    lines.push(`${label} NOT RUN (${p.notRun})`);
+    continue;
+  }
+  if (p.error) {
+    captureFailures += 1;
+    lines.push(`${label} CAPTURE FAILED: ${p.error}`);
+    continue;
+  }
+  captured += 1;
+  const failedChecks = (p.axe || []).filter((v) => v.id === "axe-failed").length;
   const ax = (p.axe || []).filter((v) => v.id !== "axe-failed");
   const c = ax.filter((v) => v.impact === "critical").reduce((n, v) => n + v.nodes, 0);
   const s = ax.filter((v) => v.impact === "serious").reduce((n, v) => n + v.nodes, 0);
@@ -395,19 +431,32 @@ for (const p of results) {
   criticals += c;
   serious += s;
   unexpectedErrors += errs;
+  checkerFailures += failedChecks;
   lines.push(
-    `${(p.shot || p.name || "?").padEnd(52)} critical=${c} serious=${s} consoleErrors=${errs} overflowX=${p.overflowX ? "YES" : "no"}`,
+    `${label} critical=${c} serious=${s} consoleErrors=${errs} overflowX=${p.overflowX ? "YES" : "no"}` +
+      (failedChecks ? " CHECKER FAILED" : ""),
   );
 }
+const passed =
+  captured > 0 &&
+  criticals === 0 &&
+  serious === 0 &&
+  unexpectedErrors === 0 &&
+  checkerFailures === 0 &&
+  captureFailures === 0;
 const summary = [
   ...lines,
   "",
+  `TOTAL pages captured:       ${captured}`,
   `TOTAL axe critical nodes:   ${criticals}`,
   `TOTAL axe serious nodes:    ${serious}`,
   `TOTAL unexpected console errors: ${unexpectedErrors}`,
+  `TOTAL checker failures:     ${checkerFailures}`,
+  `TOTAL capture failures:     ${captureFailures}`,
+  `NOT RUN (missing record id): ${notRunPages}`,
   "",
-  `GATE: ${criticals === 0 && serious === 0 && unexpectedErrors === 0 ? "PASS" : "FAIL"}`,
+  `GATE: ${passed ? "PASS" : "FAIL"}`,
 ].join("\n");
 fs.writeFileSync(path.join(OUT, "summary.txt"), summary);
 console.log("\n" + summary);
-process.exit(criticals === 0 && serious === 0 && unexpectedErrors === 0 ? 0 : 1);
+process.exit(passed ? 0 : 1);

@@ -140,6 +140,10 @@ jobs:
       - name: Test
         run: npm run test
 
+      # The design audit's pass/fail rules, without a browser.
+      - name: Design gate rules
+        run: node --test ../scripts/design_audit_gate.test.mjs
+
       - name: Build
         run: npm run build
 

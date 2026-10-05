@@ -58,7 +58,7 @@ Each priority holds an **ordered notification escalation** of up to **3 stages**
 
 Per stage you pick a **channel** and (for non-final stages) a **wait** before the next stage escalates. Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
 
-**Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered.
+**Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone asked to help after the incident has an owner gets all of their stages.
 
 **Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 

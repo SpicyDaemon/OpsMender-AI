@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Personal notification steps are now claimed under a database lock. Two
+  schedulers can no longer send the same step twice, and an acknowledgement
+  or resolution that arrives while a step is being sent waits for that send,
+  then stops the rest: nothing is sent after it, and the step keeps the
+  acknowledged or resolved status. A team handoff, responder removal or
+  deletion during a send waits instead of failing, and steps still running on
+  a closed incident now stop.
 - Permanently deleting an incident, singly or in bulk, now records an Activity
   entry for each incident (who deleted it, its title and when) in the same
   transaction, and keeps its AI sessions' earlier Activity entries instead of

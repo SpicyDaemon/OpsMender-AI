@@ -30,6 +30,7 @@ from backend.db.repos import (
     ServiceEscalationChainRepo,
     ServiceRepo,
     TeamRepo,
+    UserNotificationPrefRepo,
     UserRepo,
 )
 from backend.paging import escalation as _esc
@@ -636,6 +637,60 @@ async def test_removing_responder_keeps_their_live_chain_notifications(world):
     assert removed.status_code == 204
     async with world.app.state.session_factory() as db:
         assert (await db.get(NotificationEscalation, stage_id)).status == "running"
+
+
+async def test_a_responder_on_an_owned_incident_gets_every_step(world):
+    """Ownership alone never ends steps. An ACK ends the steps running then;
+    someone asked to help afterwards gets their whole routing."""
+    a1 = await _user(world.app, "rs-a1")
+    helper = await _user(world.app, "rs-helper")
+    _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
+    incident_id = await _incident_on(world, service_a, chain_a)
+    await _own(world, incident_id, a1)
+    # Channel ids nobody configured: each step is recorded as skipped.
+    first, second = str(uuid.uuid4()), str(uuid.uuid4())
+    async with world.app.state.session_factory() as db:
+        await UserNotificationPrefRepo.upsert(
+            db,
+            TEST_ORG_ID,
+            helper,
+            routing={
+                "P1": [
+                    {"channel_id": first, "delay_seconds": 60},
+                    {"channel_id": second, "delay_seconds": 60},
+                ]
+            },
+        )
+        await db.commit()
+    added = await world.client.post(
+        f"/incidents/{incident_id}/responders",
+        json={"user_ids": [str(helper)]},
+        headers=world.admin,
+    )
+    assert added.status_code == 201, added.text
+    async with world.app.state.session_factory() as db:
+        state = await NotificationEscalationRepo.get(
+            db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
+        )
+        assert (state.status, state.current_stage) == ("running", 0)
+        due = state.next_stage_due_at.replace(tzinfo=timezone.utc)
+
+    sent = []
+
+    async def sender(db, org_id, *, channel_id, user, **_):
+        sent.append((channel_id, user.id))
+        return "sent", None
+
+    async with world.app.state.session_factory() as db:
+        assert await _ne.tick_all_due(db, sender=sender, at=due) == 1
+        await db.commit()
+    assert sent == [(second, helper)]
+    async with world.app.state.session_factory() as db:
+        state = await NotificationEscalationRepo.get(
+            db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
+        )
+        assert (state.status, state.current_stage) == ("exhausted", 1)
+    assert await _owner(world.app, incident_id) == a1
 
 
 async def test_paging_the_same_person_again_restarts_a_finished_escalation(world):

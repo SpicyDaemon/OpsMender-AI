@@ -1754,7 +1754,7 @@ async def _ensure_eligible_owner(db, org_id, user_id: uuid.UUID) -> None:
     if not await _esc.is_eligible_owner(db, org_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="That user can't own incidents (inactive or not a member).",
+            detail="That user can't own incidents (a viewer, inactive or not a member).",
         )
 
 

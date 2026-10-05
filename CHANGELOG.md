@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Viewers are no longer paged or made incident owners. Team levels page only
+  their admins and operators; a user or roster level whose person is now a
+  viewer on People is skipped as empty; adding an escalation level for a viewer
+  or assigning an incident to one is refused.
 - Phone keypad actions now check the caller's access when the key is pressed:
   an active account, workspace membership and the Admin or Operator role shown
   on People. Viewers, removed members and disabled or deleted users can no

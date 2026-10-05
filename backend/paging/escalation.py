@@ -106,6 +106,18 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
+def _active_responder(user) -> bool:
+    """Active admins and operators respond. Viewers are read-only: never paged
+    and never owners. The role is the one People shows (``User.role``)."""
+
+    return (
+        user is not None
+        and user.is_active
+        and user.deleted_at is None
+        and user.role in ("admin", "operator")
+    )
+
+
 async def _resolve_step_targets(
     db: AsyncSession,
     org_id: uuid.UUID,
@@ -118,7 +130,7 @@ async def _resolve_step_targets(
 
     if target_type == "user":
         user = await UserRepo.get_by_id(db, target_id)
-        if user is None or not user.is_active or user.deleted_at is not None:
+        if not _active_responder(user):
             return []
         return (
             [target_id]
@@ -130,8 +142,7 @@ async def _resolve_step_targets(
         members = await TeamRepo.list_members(db, org_id, target_id)
         eligible = []
         for member in members:
-            user = await UserRepo.get_by_id(db, member.user_id)
-            if user is not None and user.is_active and user.deleted_at is None:
+            if _active_responder(await UserRepo.get_by_id(db, member.user_id)):
                 eligible.append(member.user_id)
         return eligible
     if target_type == "roster":
@@ -139,10 +150,15 @@ async def _resolve_step_targets(
         if roster is None or not roster.is_active:
             return []
         # Same context as the API and calendars: the Roster's real coverage
-        # window, active members only (KI-017).
+        # window, active members only (KI-017). A viewer on shift leaves the
+        # level empty, so the chain moves on.
         ctx = await load_on_call_context(db, org_id, roster)
         user_id = on_call_at(ctx, at)
-        return [user_id] if user_id is not None else []
+        if user_id is None or not _active_responder(
+            await UserRepo.get_by_id(db, user_id)
+        ):
+            return []
+        return [user_id]
     return []
 
 
@@ -526,10 +542,10 @@ def _lock_deadline(state, last_activity: datetime) -> datetime:
 async def is_eligible_owner(
     db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
 ) -> bool:
-    """An active, non-deleted member of the workspace can own an incident."""
+    """An active admin or operator in the workspace can own an incident."""
 
     user = await UserRepo.get_by_id(db, user_id)
-    if user is None or not user.is_active or user.deleted_at is not None:
+    if not _active_responder(user):
         return False
     # The workspace is the user's primary org (see ``get_current_org``).
     return user.primary_org_id == org_id or await UserRepo.is_member(

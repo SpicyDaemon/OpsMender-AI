@@ -126,13 +126,14 @@ async def _make_team(app, *, name="T") -> uuid.UUID:
 
 
 async def _make_user(app, *, username) -> uuid.UUID:
+    # A page target: viewers are never paged, so responders are operators.
     async with app.state.session_factory() as db:
         u = await UserRepo.create(
             db,
             username=username,
             email=f"{username}@test.com",
             password_hash="x",
-            role="viewer",
+            role="operator",
             primary_org_id=TEST_ORG_ID,
         )
         await db.commit()

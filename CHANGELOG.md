@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reassigning an incident to another team and moving it to another service
+  now require a note. A missing or blank note is refused and nothing moves;
+  the note appears on the incident timeline. The Reassign and Manage incident
+  dialogs mark the note as required.
 - Chat actions and role-based notices now use the role shown on People, the
   same role as sign-in and phone keys. A viewer demoted there can no longer
   act from chat, an operator promoted there can, and new-incident, approval

@@ -915,6 +915,31 @@ class TestVoiceKeypadAuthorization:
         assert await self._snapshot(session_factory) == before
         assert keypad["deliveries"] == [] and keypad["notices"] == []
 
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_people_demotion_revokes_existing_phone_link(
+        self, digit, keypad, client, admin_headers, session_factory
+    ):
+        demotion = await client.patch(
+            f"/auth/users/{keypad['actor']}",
+            json={"role": "viewer"},
+            headers=admin_headers,
+        )
+        assert demotion.status_code == 200 and demotion.json()["role"] == "viewer"
+        async with session_factory() as db:
+            actor = await UserRepo.get_by_id(db, keypad["actor"])
+            membership = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
+            assert actor.role == "viewer" and membership.role == "operator"
+        before = await self._snapshot(session_factory)
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        assert (
+            ET.fromstring(response.text).find("Say").text
+            == "You can't act on this incident. Goodbye."
+        )
+        assert await self._snapshot(session_factory) == before
+        assert keypad["deliveries"] == [] and keypad["notices"] == []
+
 
 @pytest.mark.integration
 class TestVoiceKeypadAuthorizationPostgres(

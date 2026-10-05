@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Phone keypad actions now check the caller's current workspace role and active
-  account. Viewers, removed members and disabled or deleted users cannot
+- Phone keypad actions now check the caller's current account and workspace
+  roles and active account. Viewers, removed members and disabled or deleted users cannot
   acknowledge, escalate or resolve an incident through an unexpired phone link.
 - Darkened the green, amber and cyan initials-avatar backgrounds so their white
   text meets the minimum contrast ratio without changing saved color choices.

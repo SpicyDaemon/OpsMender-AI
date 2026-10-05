@@ -106,7 +106,10 @@ async def voice_ack(
         from backend.bots.actions import IncidentActionError, _authorized_operator
 
         try:
-            await _authorized_operator(db, org_id=org_id, user_id=user_id)
+            actor = await _authorized_operator(db, org_id=org_id, user_id=user_id)
+            # People updates the account role independently of membership.
+            if actor.role not in {"admin", "operator"}:
+                raise IncidentActionError("actor_not_authorized")
         except IncidentActionError:
             return _twiml("You can't act on this incident. Goodbye.")
 

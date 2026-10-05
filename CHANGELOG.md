@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Monolith startup now stops AI sessions interrupted by an app restart,
+  records the interruption in their summaries and incident timelines, and
+  expires their pending approvals. Their model slots are freed for queued
+  sessions without retrying interrupted work. Queued sessions and approval
+  holds remain with their existing queue and expiry rules.
 - Personal notification steps are now claimed under a database lock. Two
   schedulers can no longer send the same step twice, and an acknowledgement
   or resolution that arrives while a step is being sent waits for that send,

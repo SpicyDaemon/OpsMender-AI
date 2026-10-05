@@ -20,6 +20,7 @@ from backend.db.models import (
     IncidentComment,
     IncidentMemory,
     IncidentResponder,
+    MaintenanceWindow,
 )
 from backend.db.repos import TeamRepo
 from tests.test_ownership_lifecycle import (
@@ -217,6 +218,10 @@ async def test_operator_token_maintenance_waits_for_an_admin(world):
     )
     assert requested.status_code == 201, requested.text
     assert requested.json()["approved"] is False
+    async with world.app.state.session_factory() as db:
+        saved = await db.get(MaintenanceWindow, uuid.UUID(requested.json()["id"]))
+        assert saved is not None and saved.approved is False
+        assert saved.scope_type == "global"
 
     admin = await _token(world, "admin")
     approved = await world.client.post(
@@ -224,6 +229,10 @@ async def test_operator_token_maintenance_waits_for_an_admin(world):
     )
     assert approved.status_code == 201, approved.text
     assert approved.json()["approved"] is True
+    async with world.app.state.session_factory() as db:
+        saved = await db.get(MaintenanceWindow, uuid.UUID(approved.json()["id"]))
+        assert saved is not None and saved.approved is True
+        assert saved.scope_type == "global"
 
 
 async def test_operator_token_cannot_resolve_across_services(world):

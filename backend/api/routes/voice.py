@@ -9,6 +9,8 @@ The token is the bearer credential: unguessable, single-purpose, and expiring,
 so the endpoint needs no session auth - Twilio cannot present one. Only
 OpsMender (holding the JWT secret) can mint a valid token, and it is scoped to
 exactly one incident + responder for a short window.
+Mutation keys also require the responder to remain an active admin or operator
+member of the token's workspace when the callback arrives.
 """
 
 from __future__ import annotations
@@ -99,6 +101,14 @@ async def voice_ack(
     incident_id = uuid.UUID(payload["incident_id"])
     user_id = uuid.UUID(payload["user_id"])
     digit = Digits.strip()
+
+    if digit in {"1", "2", "3"}:
+        from backend.bots.actions import IncidentActionError, _authorized_operator
+
+        try:
+            await _authorized_operator(db, org_id=org_id, user_id=user_id)
+        except IncidentActionError:
+            return _twiml("You can't act on this incident. Goodbye.")
 
     # Repeat: re-read the menu (relative action posts back to this same URL).
     if digit == "*":

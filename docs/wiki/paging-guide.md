@@ -221,6 +221,13 @@ optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
 as-is: OpsMender has no route that receives it, so leave it unset unless you
 collect call status elsewhere.
 
+Keys `1`, `2` and `3` check that the person linked to the call is still an
+active admin or operator in that workspace. A viewer, removed member, disabled
+account or deleted user hears "You can't act on this incident. Goodbye." No
+incident, ownership, paging or session state changes. An unexpired link does
+not preserve permission after a role change. Repeat and empty input do not
+change incident state.
+
 Immediate phone pages and Voice Call stages share the same spoken summary and
 signed keypad link. Answering the call does not acknowledge it. A stage with no
 calling configuration or phone number records a skipped attempt and retains

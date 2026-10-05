@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Phone keypad actions now check the caller's current workspace role and active
+  account. Viewers, removed members and disabled or deleted users cannot
+  acknowledge, escalate or resolve an incident through an unexpired phone link.
+- Darkened the green, amber and cyan initials-avatar backgrounds so their white
+  text meets the minimum contrast ratio without changing saved color choices.
 - Voice Call stages now reach the configured calling channel and use the same
   spoken summary and signed keypad link as immediate phone pages. Missing
   configuration or a phone number records a skipped attempt with its reason;

@@ -22,7 +22,8 @@ removes the incident, its sessions, comments, paging state and approvals.
 Activity keeps an entry for the deletion (who deleted which incident, and when)
 and the sessions' earlier entries, with their session links cleared. Independent
 ingest, bot-action, finding, and memory records are retained the same way. Bulk
-deletion writes one entry per incident. This action cannot be undone. Operators
+deletion writes one entry per incident. A repeated deletion reports the incident
+as not found and does not add another entry. This action cannot be undone. Operators
 and viewers never see or receive access to this action.
 
 ## 2. Interacting with Session Chat

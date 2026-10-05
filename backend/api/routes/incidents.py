@@ -803,7 +803,7 @@ async def delete_incident(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id, for_update=True)
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2045,15 +2045,20 @@ async def bulk_incident_action(
     unique_ids = list(dict.fromkeys(body.incident_ids))
 
     if action in {"resolve", "reopen", "delete"}:
-        incidents = []
-        for incident_id in unique_ids:
-            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        incidents_by_id = {}
+        # Acquire deletion locks in a stable order for overlapping selections.
+        lookup_ids = sorted(unique_ids, key=str) if action == "delete" else unique_ids
+        for incident_id in lookup_ids:
+            incident = await IncidentRepo.get_by_id(
+                db, org_id, incident_id, for_update=action == "delete"
+            )
             if incident is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Incident {incident_id} not found",
                 )
-            incidents.append(incident)
+            incidents_by_id[incident_id] = incident
+        incidents = [incidents_by_id[incident_id] for incident_id in unique_ids]
 
         if action == "delete":
             if user.role != "admin":

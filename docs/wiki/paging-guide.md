@@ -172,11 +172,16 @@ responder was paged, and the service editor warns for P0/P1.
 Each level waits for its configured timeout before the next level fires. The
 final level waits too, then the chain ends with one exhaustion notice in the
 team's Notification Channels and responders' Inbox. An empty level (no active
-target user) is skipped immediately and explained on the timeline; a level
+admin or operator to page) is skipped immediately and explained on the timeline; a level
 whose delivery is suppressed or unavailable still keeps its timeout. Removing
 a level compacts the remaining list without repeating or skipping levels in
 an active chain. Service handoffs begin a new page round, so a responder can
 be paged again on the new chain.
+
+Viewers are never paged and never own an incident. A team level pages only
+its admins and operators, and a user or roster level whose person is now a
+viewer on the People page counts as empty. Adding a level that targets a
+viewer, or assigning an incident to one, is refused.
 
 The Escalation Chain Calendar shows who is expected to respond at each escalation level over a selected time range. It is resolved from chain levels, roster schedules, rotation order, coverage windows, and active users.
 

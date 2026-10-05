@@ -771,16 +771,23 @@ class TestVoiceKeypadAuthorization:
             "notices": notices,
         }
 
+    # (account role, membership role). People edits only the account role, so
+    # the membership row's role can be stale and must neither grant nor block.
+    ROLE_STATES = {
+        "viewer": ("viewer", "viewer"),
+        "viewer_stale_admin_member": ("viewer", "admin"),
+        "admin": ("admin", "admin"),
+        "operator_stale_viewer_member": ("operator", "viewer"),
+    }
+
     async def _change_actor(self, factory, keypad, state):
         from backend.api.routes.voice import encode_voice_ack_token
 
         async with factory() as db:
             actor = await UserRepo.get_by_id(db, keypad["actor"])
             member = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
-            if state in {"viewer", "demoted", "admin"}:
-                member.role = "viewer" if state != "admin" else "admin"
-                # Workspace role must win even over a global admin role.
-                actor.role = "admin" if state in {"demoted", "admin"} else "viewer"
+            if state in self.ROLE_STATES:
+                actor.role, member.role = self.ROLE_STATES[state]
             elif state == "inactive":
                 actor.is_active = False
             elif state == "deleted":
@@ -825,44 +832,7 @@ class TestVoiceKeypadAuthorization:
                 result[name] = [dict(row) for row in rows.mappings()]
         return result
 
-    @pytest.mark.parametrize("digit", ["1", "2", "3"])
-    @pytest.mark.parametrize(
-        "state",
-        [
-            "viewer",
-            "demoted",
-            "inactive",
-            "deleted",
-            "removed",
-            "foreign_member",
-            "missing_user",
-        ],
-    )
-    async def test_rejected_actor_changes_nothing(
-        self, state, digit, keypad, client, session_factory
-    ):
-        await self._change_actor(session_factory, keypad, state)
-        before = await self._snapshot(session_factory)
-        response = await client.post(keypad["path"], data={"Digits": digit})
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/xml")
-        xml = ET.fromstring(response.text)
-        assert xml.find("Say").text == "You can't act on this incident. Goodbye."
-        assert xml.find("Hangup") is not None
-        assert await self._snapshot(session_factory) == before
-        assert keypad["deliveries"] == [] and keypad["notices"] == []
-
-    @pytest.mark.parametrize("role", ["operator", "admin"])
-    @pytest.mark.parametrize("digit", ["1", "2", "3"])
-    async def test_active_workspace_member_can_act(
-        self, role, digit, keypad, client, session_factory
-    ):
-        await self._change_actor(session_factory, keypad, role)
-        response = await client.post(keypad["path"], data={"Digits": f" {digit} "})
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/xml")
-        spoken = ET.fromstring(response.text).find("Say").text
-        saved = await self._snapshot(session_factory)
+    def _assert_acted(self, digit, spoken, saved, keypad):
         incident = saved["incidents"][0]
         chain = saved["incident_chain_states"][0]
         stage = saved["notification_escalations"][0]
@@ -897,6 +867,47 @@ class TestVoiceKeypadAuthorization:
             )
         assert keypad["deliveries"] == []
         assert len(keypad["notices"]) == (1 if digit == "3" else 0)
+
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    @pytest.mark.parametrize(
+        "state",
+        [
+            "viewer",
+            "viewer_stale_admin_member",
+            "inactive",
+            "deleted",
+            "removed",
+            "foreign_member",
+            "missing_user",
+        ],
+    )
+    async def test_rejected_actor_changes_nothing(
+        self, state, digit, keypad, client, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, state)
+        before = await self._snapshot(session_factory)
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        xml = ET.fromstring(response.text)
+        assert xml.find("Say").text == "You can't act on this incident. Goodbye."
+        assert xml.find("Hangup") is not None
+        assert await self._snapshot(session_factory) == before
+        assert keypad["deliveries"] == [] and keypad["notices"] == []
+
+    @pytest.mark.parametrize(
+        "state", ["operator", "admin", "operator_stale_viewer_member"]
+    )
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_active_workspace_member_can_act(
+        self, state, digit, keypad, client, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, state)
+        response = await client.post(keypad["path"], data={"Digits": f" {digit} "})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        spoken = ET.fromstring(response.text).find("Say").text
+        self._assert_acted(digit, spoken, await self._snapshot(session_factory), keypad)
 
     @pytest.mark.parametrize("digit", ["*", "", "9"])
     async def test_viewer_read_only_menu_changes_nothing(
@@ -939,6 +950,27 @@ class TestVoiceKeypadAuthorization:
         )
         assert await self._snapshot(session_factory) == before
         assert keypad["deliveries"] == [] and keypad["notices"] == []
+
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_people_promotion_allows_phone_actions(
+        self, digit, keypad, client, admin_headers, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, "viewer")
+        promotion = await client.patch(
+            f"/auth/users/{keypad['actor']}",
+            json={"role": "operator"},
+            headers=admin_headers,
+        )
+        assert promotion.status_code == 200 and promotion.json()["role"] == "operator"
+        async with session_factory() as db:
+            actor = await UserRepo.get_by_id(db, keypad["actor"])
+            membership = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
+            assert actor.role == "operator" and membership.role == "viewer"
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        spoken = ET.fromstring(response.text).find("Say").text
+        self._assert_acted(digit, spoken, await self._snapshot(session_factory), keypad)
 
 
 @pytest.mark.integration

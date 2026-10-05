@@ -11,12 +11,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.config_loader import AppConfig
 from backend.bots.capabilities import supports_interactive_actions
-from backend.db.models import BotConnector, User, UserOrganization
+from backend.db.models import BotConnector, User
 from backend.db.repos import (
     BotActionAuditRepo,
     BotUserLinkRepo,
@@ -208,18 +207,11 @@ async def _authorized_operator(
     user = await UserRepo.get_by_id(db, user_id)
     if user is None or not user.is_active or user.deleted_at is not None:
         raise IncidentActionError("actor_not_active")
-    membership = (
-        await db.execute(
-            select(UserOrganization).where(
-                UserOrganization.org_id == org_id,
-                UserOrganization.user_id == user_id,
-            )
-        )
-    ).scalar_one_or_none()
-    if membership is None:
+    if not await UserRepo.is_member(db, user_id, org_id):
         raise IncidentActionError("actor_not_authorized")
-    role = membership.role
-    if role not in {"admin", "operator"}:
+    # The role People shows and edits. The membership row's role is set once
+    # at creation and goes stale after a role change.
+    if user.role not in {"admin", "operator"}:
         raise IncidentActionError("actor_not_authorized")
     return user
 

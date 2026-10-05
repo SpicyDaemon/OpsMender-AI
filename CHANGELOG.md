@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Chat actions and role-based notices now use the role shown on People, the
+  same role as sign-in and phone keys. A viewer demoted there can no longer
+  act from chat, an operator promoted there can, and new-incident, approval
+  and other role-targeted notices follow People role changes.
 - Viewers are no longer paged or made incident owners. Team levels page only
   their admins and operators; a user or roster level whose person is now a
   viewer on People is skipped as empty; adding an escalation level for a viewer

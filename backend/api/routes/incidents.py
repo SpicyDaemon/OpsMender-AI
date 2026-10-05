@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
+from backend.auth.roles import request_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     DEFAULT_POSTMORTEM_TEMPLATE,
@@ -1334,7 +1335,7 @@ async def delete_incident_comment(
             status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
         )
     # Only the author or an admin may delete a comment.
-    if user.role != "admin" and comment.author_user_id != user.id:
+    if request_role(user) != "admin" and comment.author_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the author or an admin can delete this comment.",
@@ -1789,7 +1790,7 @@ async def _ensure_eligible_owner(db, org_id, user_id: uuid.UUID) -> None:
 async def _ensure_can_act_on_incident(db, org_id, user, incident) -> None:
     """Allow admins/operators globally OR the active assignee (D-021 #9)."""
 
-    if user.role in ("admin", "operator"):
+    if request_role(user) in ("admin", "operator"):
         return
     active = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
     if active is not None and active.assigned_to == user.id:
@@ -1847,9 +1848,9 @@ async def get_incident_paging(
                 incident=incident,
                 active=assignment,
                 actor_id=user.id,
-                is_admin=user.role == "admin",
+                is_admin=request_role(user) == "admin",
             )
-            if user.role in ("admin", "operator")
+            if request_role(user) in ("admin", "operator")
             else False
         ),
         can_reassign=await _reassign.can_reassign(db, org_id, incident, user),
@@ -1928,7 +1929,7 @@ async def assign_incident(
     # Self-takeover: any authenticated user may grab an unassigned incident
     # via self_ack (incident-scoped authority kicks in afterwards).
     target_user_id = body.user_id or user.id
-    if target_user_id != user.id and user.role not in ("admin", "operator"):
+    if target_user_id != user.id and request_role(user) not in ("admin", "operator"):
         raise HTTPException(
             status_code=403,
             detail="Only admin/operator can assign other users",
@@ -2061,12 +2062,12 @@ async def bulk_incident_action(
         incidents = [incidents_by_id[incident_id] for incident_id in unique_ids]
 
         if action == "delete":
-            if user.role != "admin":
+            if request_role(user) != "admin":
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only Admins can permanently delete incidents.",
                 )
-        elif user.role == "operator":
+        elif request_role(user) == "operator":
             service_ids = {incident.service_id for incident in incidents}
             if len(service_ids) != 1 or None in service_ids:
                 raise HTTPException(
@@ -2155,7 +2156,7 @@ async def bulk_incident_action(
                 status_code=400,
                 detail="reassign requires user_id",
             )
-        if body.user_id != user.id and user.role not in ("admin", "operator"):
+        if body.user_id != user.id and request_role(user) not in ("admin", "operator"):
             raise HTTPException(
                 status_code=403,
                 detail="Only admin/operator can reassign other users",
@@ -2183,7 +2184,10 @@ async def bulk_incident_action(
 
             if action == "acknowledge":
                 target = body.user_id or user.id
-                if target != user.id and user.role not in ("admin", "operator"):
+                if target != user.id and request_role(user) not in (
+                    "admin",
+                    "operator",
+                ):
                     items.append(
                         IncidentBulkActionResult(
                             incident_id=incident_id,
@@ -2566,7 +2570,7 @@ async def take_incident(
             incident_id=incident_id,
             actor_id=user.id,
             reason=reason,
-            is_admin=user.role == "admin",
+            is_admin=request_role(user) == "admin",
         )
         if result != "taken":
             await db.rollback()

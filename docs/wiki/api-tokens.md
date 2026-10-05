@@ -19,12 +19,16 @@ full secret is not available after the create modal closes.
 Send the token in the `Authorization` header:
 
 ```bash
-curl -H "Authorization: Bearer omk_..." https://<host>/api/v1/incidents
+curl -H "Authorization: Bearer omk_..." https://<host>/incidents
 ```
 
-The token's role is the effective role for the request. For example, an
-Operator token can use operator-accessible read and action endpoints but cannot
-use administrator-only endpoints.
+A token acts as the person who created it, with the lower of two roles: the
+token's own role and that person's current role. An Operator token can use
+operator-accessible read and action endpoints but never administrator-only
+ones, even when an Admin created it. Team-scoped actions, such as reassigning
+an incident or force-taking it, check the creator's team memberships. If the
+creator is demoted, their tokens drop to the new role; if the creator is
+deactivated or deleted, their tokens stop working.
 
 API tokens are not accepted for sign-in, self-service profile routes,
 multi-factor enrollment, or live WebSocket streams.

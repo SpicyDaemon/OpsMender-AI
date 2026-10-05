@@ -26,6 +26,7 @@ from backend.api.auth import (
     require_role,
 )
 from backend.api.deps import get_db
+from backend.auth.roles import request_role
 from backend.api.schemas import (
     ChainWhereUsedItem,
     ChainWhereUsedResponse,
@@ -423,13 +424,12 @@ async def list_services(
     team_id: uuid.UUID | None = Query(default=None),
 ):
     items = await ServiceRepo.list_all(db, org_id, team_id=team_id)
-    effective_role = getattr(user, "effective_role", user.role)
     return ServiceListResponse(
         items=await _service_responses(
             db,
             org_id,
             items,
-            include_tool_source_overlaps=effective_role in _TOOL_SOURCE_ROLES,
+            include_tool_source_overlaps=request_role(user) in _TOOL_SOURCE_ROLES,
         ),
         total=len(items),
     )

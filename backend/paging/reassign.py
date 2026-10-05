@@ -13,6 +13,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.auth.roles import request_role
 from backend.db.models import EscalationChain, Incident, Team, User
 from backend.db.repos import (
     EscalationChainRepo,
@@ -60,9 +61,10 @@ async def can_reassign(
 ) -> bool:
     """Admins, and operators on the incident's team (any operator when it has none)."""
 
-    if user.role == "admin":
+    role = request_role(user)
+    if role == "admin":
         return True
-    if user.role != "operator":
+    if role != "operator":
         return False
     member = await on_incident_team(db, org_id, incident, user.id)
     return member is None or member

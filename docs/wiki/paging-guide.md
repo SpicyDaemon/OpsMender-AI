@@ -172,11 +172,16 @@ responder was paged, and the service editor warns for P0/P1.
 Each level waits for its configured timeout before the next level fires. The
 final level waits too, then the chain ends with one exhaustion notice in the
 team's Notification Channels and responders' Inbox. An empty level (no active
-target user) is skipped immediately and explained on the timeline; a level
+admin or operator to page) is skipped immediately and explained on the timeline; a level
 whose delivery is suppressed or unavailable still keeps its timeout. Removing
 a level compacts the remaining list without repeating or skipping levels in
 an active chain. Service handoffs begin a new page round, so a responder can
 be paged again on the new chain.
+
+Viewers are never paged and never own an incident. A team level pages only
+its admins and operators, and a user or roster level whose person is now a
+viewer on the People page counts as empty. Adding a level that targets a
+viewer, or assigning an incident to one, is refused.
 
 The Escalation Chain Calendar shows who is expected to respond at each escalation level over a selected time range. It is resolved from chain levels, roster schedules, rotation order, coverage windows, and active users.
 
@@ -221,6 +226,19 @@ optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
 as-is: OpsMender has no route that receives it, so leave it unset unless you
 collect call status elsewhere.
 
+Keys `1`, `2` and `3` check the person linked to the call when the key is
+pressed: they must still be active, a member of the workspace and an Admin or
+Operator on the People page. Anyone else, such as a viewer, a removed member or
+a disabled or deleted user, hears "You can't act on this incident. Goodbye."
+and the incident, its ownership, paging and AI sessions stay as they were. A
+role change on People also applies to calls already made. `*` and any other
+key never change the incident.
+
+Immediate phone pages and Voice Call stages share the same spoken summary and
+signed keypad link. Answering the call does not acknowledge it. A stage with no
+calling configuration or phone number records a skipped attempt and retains
+its wait before the next stage; it is not retried.
+
 **Taking over from someone.** **Take over** on an incident someone else owns
 asks them to hand it over and sends an Inbox notice. The owner can confirm
 with **Hand over** within five minutes; an unanswered request expires without
@@ -239,7 +257,7 @@ none.
 - For P0 and P1 incidents, the new team's chain pages from the first level in
   a new round. P2 and P3 incidents notify instead of paging, so the new
   team's members get an Inbox notice.
-- An optional note for the new team appears on the timeline.
+- A note for the new team is required and appears on the timeline.
 
 The incident keeps its service, so it still shows which system alerted. From
 then on the new team handles it:
@@ -250,8 +268,8 @@ then on the new team handles it:
 - paging again if it is reopened.
 
 Moving an incident to another service (**Manage incident** on the incident
-list) hands it to that service's team instead, and records the handoff note
-on the timeline.
+list) hands it to that service's team instead. A handoff note is required and
+is recorded on the timeline.
 
 **Adding responders.** **Add responders** asks up to three people to help,
 besides the owner.
@@ -330,6 +348,12 @@ When an incoming alert matches an active window, OpsMender drops it at intake.
 It does not create a visible incident and does not show a suppressed incident in
 the main incident list. A page that a window suppresses later is recorded on the
 incident as not delivered, with the reason.
+
+Active, approved global, service and team windows also cover matching uptime
+samples and prevent new SLO burn incidents. Covered samples count as up, while
+the actual probe result remains in Outage History. Roster windows do not cover
+samples. Legacy target IDs and `*` remain supported for probe coverage. See
+[Reliability](reliability-guide.md#maintenance-and-uptime) for the uptime math.
 
 A window can repeat. Give it an iCalendar recurrence rule such as
 `FREQ=WEEKLY;BYDAY=SU`: each repeat starts at an occurrence of the rule and lasts

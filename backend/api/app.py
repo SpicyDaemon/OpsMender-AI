@@ -117,6 +117,25 @@ async def _lifespan(app: FastAPI):
 
         await bootstrap_model_config(factory, config.providers)
 
+    if deployment.mode == "monolith":
+        # A monolith runs every AI session in this one process, so sessions
+        # still marked active were cut off when the last process stopped and
+        # keep holding their model slots. Release them before the queue drain
+        # starts. In distributed mode sessions run on workers that may still
+        # be up, so nothing is released here.
+        try:
+            from backend.services.session_orchestration import (
+                release_interrupted_sessions,
+            )
+
+            await release_interrupted_sessions(factory)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "sessions: startup release failed: %s", exc
+            )
+
     pool = MCPServerPool(factory, env_fallback=config.mcp_servers)
     set_mcp_pool(pool)
     app.state.mcp_pool = pool

@@ -55,7 +55,7 @@ export function ReassignIncidentModal({
     setBusy(true);
     setError("");
     try {
-      await reassignIncident(incidentId, { team_id: teamId, note: note.trim() || undefined });
+      await reassignIncident(incidentId, { team_id: teamId, note: note.trim() });
       await onReassigned(choice.team_name, choice.chain_id !== null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -124,7 +124,7 @@ export function ReassignIncidentModal({
         )}
 
         <div>
-          <Label htmlFor="reassign-note">Note for the new team (optional)</Label>
+          <Label htmlFor="reassign-note">Note for the new team (required)</Label>
           <Textarea
             id="reassign-note"
             value={note}
@@ -132,6 +132,7 @@ export function ReassignIncidentModal({
             placeholder="The alert is from the orders database, which your team owns"
             maxLength={500}
             rows={2}
+            required
           />
         </div>
 
@@ -141,7 +142,7 @@ export function ReassignIncidentModal({
           <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy || !teamId} data-testid="confirm-reassign">
+          <Button type="submit" disabled={busy || !teamId || !note.trim()} data-testid="confirm-reassign">
             {busy ? <Loader2 size={14} className="animate-spin" /> : null}
             Reassign
           </Button>

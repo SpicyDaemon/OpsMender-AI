@@ -24,6 +24,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Protocol
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import backend.bots  # noqa: F401  -- registers built-in connector adapters
@@ -124,9 +125,23 @@ def build_notification_sender(
             if channel is None:
                 return ("skipped", "channel_unconfigured")
             try:
-                attempt = await channel.send(
-                    recipient=recipient, subject=subject, body=body
-                )
+                if channel_id == "voice":
+                    from backend.paging.page_text import build_voice_page_content
+
+                    summary, ack_url = await build_voice_page_content(
+                        db, org_id, incident=incident, user_id=user.id
+                    )
+                    attempt = await channel.send(
+                        recipient=recipient,
+                        subject=subject,
+                        body=body,
+                        summary=summary,
+                        ack_url=ack_url,
+                    )
+                else:
+                    attempt = await channel.send(
+                        recipient=recipient, subject=subject, body=body
+                    )
                 return (attempt.status, attempt.error)
             except Exception as exc:  # noqa: BLE001
                 return ("failed", str(exc))
@@ -263,6 +278,12 @@ async def start_escalation(
     await db.flush()
 
 
+def _finish(state, status: str, at: datetime) -> None:
+    state.status = status
+    state.finished_at = at
+    state.next_stage_due_at = None
+
+
 async def _advance(
     db: AsyncSession,
     org_id: uuid.UUID,
@@ -271,7 +292,11 @@ async def _advance(
     sender: NotificationSender,
     at: datetime,
 ) -> bool:
-    """Fire the next due stage for one running state. Returns True if fired."""
+    """Fire the next due stage for one state that ``list_due`` locked.
+
+    Returns True if the state changed: a stage fired or the escalation
+    stopped.
+    """
     if state.status != "running":
         return False
     due = _aware(state.next_stage_due_at)
@@ -281,28 +306,38 @@ async def _advance(
     stages = parse_stages(state.stages)
     next_idx = state.current_stage + 1
     if next_idx >= len(stages):
-        state.status = "exhausted"
-        state.finished_at = at
-        state.next_stage_due_at = None
+        _finish(state, "exhausted", at)
         await db.flush()
-        return False
+        return True
 
-    from backend.db.repos import IncidentRepo
-
-    incident = await IncidentRepo.get_by_id(db, org_id, state.incident_id)
+    # Read the incident fresh under a key-share lock, without waiting. The
+    # page row written below needs that lock for its foreign key anyway;
+    # taking it first means a handoff, responder removal or deletion that
+    # holds the incident and then stops this row waits for this tick,
+    # instead of each waiting on the other.
+    incident = (
+        await db.execute(
+            select(Incident)
+            .where(Incident.org_id == org_id, Incident.id == state.incident_id)
+            .with_for_update(read=True, key_share=True, skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if incident is None:
-        state.status = "cancelled"
-        state.finished_at = at
-        state.next_stage_due_at = None
+        from backend.db.repos import IncidentRepo
+
+        if await IncidentRepo.get_by_id(db, org_id, state.incident_id) is not None:
+            # A change in progress holds the incident. It stops this row,
+            # or a later tick sends the stage.
+            return False
+        _finish(state, "cancelled", at)
         await db.flush()
-        return False
-    # Stop if the incident is already resolved.
-    if incident.status == "resolved":
-        state.status = "resolved"
-        state.finished_at = at
-        state.next_stage_due_at = None
+        return True
+    if incident.status in ("resolved", "merged"):
+        # Every close stops staged notifications; this catches older rows.
+        _finish(state, "resolved", at)
         await db.flush()
-        return False
+        return True
 
     from backend.db.repos import UserRepo
 
@@ -321,9 +356,7 @@ async def _advance(
     if next_idx + 1 < len(stages):
         state.next_stage_due_at = at + timedelta(seconds=stages[next_idx].delay_seconds)
     else:
-        state.status = "exhausted"
-        state.finished_at = at
-        state.next_stage_due_at = None
+        _finish(state, "exhausted", at)
     await db.flush()
     return True
 
@@ -334,18 +367,24 @@ async def tick_all_due(
     sender: NotificationSender,
     at: datetime | None = None,
 ) -> int:
-    """Advance every running escalation whose next stage is due. Returns the
-    number of stages fired. Safe to call repeatedly (scheduler-driven)."""
+    """Advance every running escalation whose next stage is due. Returns how
+    many changed (a stage fired or the escalation stopped), so the caller
+    knows to commit.
+
+    Safe to run repeatedly and from more than one scheduler: each due row is
+    claimed under its lock, and a failure rolls back only that row.
+    """
     now = at or _utcnow()
     due = await NotificationEscalationRepo.list_due(db, now=now)
-    fired = 0
+    changed = 0
     for state in due:
         try:
-            if await _advance(db, state.org_id, state, sender=sender, at=now):
-                fired += 1
+            async with db.begin_nested():
+                if await _advance(db, state.org_id, state, sender=sender, at=now):
+                    changed += 1
         except Exception as exc:  # noqa: BLE001
             logger.warning("notification_escalation advance failed: %s", exc)
-    return fired
+    return changed
 
 
 async def stop_escalation(

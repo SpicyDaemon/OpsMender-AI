@@ -2,28 +2,42 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
-from urllib.parse import parse_qs
+from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
+from xml.etree import ElementTree as ET
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.engine import make_url
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_session_factory
 from backend.auth.secrets import encrypt_secret
 from backend.config_loader import set_env_path
-from backend.db.models import Base, Organization
+from backend.db.models import Base, Organization, UserOrganization
 from backend.db.repos import (
     AuditEntryRepo,
+    EscalationChainRepo,
+    EscalationStepRepo,
+    IncidentAssignmentRepo,
     IncidentPageRepo,
     IncidentRepo,
+    NotificationEscalationRepo,
     OrgVoiceSettingsRepo,
+    ServiceRepo,
+    SessionRepo,
+    TeamRepo,
     UserNotificationPrefRepo,
     UserRepo,
 )
-from backend.paging.dispatch import dispatch_page
+from backend.paging import notification_escalation as ne
+from backend.paging import escalation
+from backend.paging.dispatch import DeliveryAttempt, dispatch_page
 from backend.paging.voice_settings import resolve_voice_settings
 
 TEST_ORG_ID = uuid.UUID("20000000-0000-0000-0000-000000000001")
@@ -327,3 +341,640 @@ async def test_verify_twilio_credentials_rejected():
     await client.aclose()
     assert ok is False
     assert "rejected" in message.lower()
+
+
+class TestStagedVoiceDelivery:
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "saved_settings",
+            "later_stage",
+            "environment_settings",
+            "recipient_override",
+            "unconfigured",
+            "missing_phone",
+            "no_public_url",
+            "provider_rejected",
+            "foreign_service",
+            "immediate_control",
+        ],
+    )
+    async def test_voice_delivery_and_keypad(
+        self, case, client, app, admin_headers, session_factory, monkeypatch
+    ):
+        import backend.paging.channels as channels
+
+        for key in tuple(os.environ):
+            if key.startswith("OPSMENDER_TWILIO_"):
+                monkeypatch.delenv(key)
+        monkeypatch.setenv("OPSMENDER_PUBLIC_URL", "https://paging.example.test/")
+        if case == "no_public_url":
+            monkeypatch.delenv("OPSMENDER_PUBLIC_URL")
+        configured = case != "unconfigured"
+        if case == "environment_settings":
+            monkeypatch.setenv("OPSMENDER_TWILIO_ACCOUNT_SID", "ACENV")
+            monkeypatch.setenv("OPSMENDER_TWILIO_AUTH_TOKEN", "fake-env-token")
+            monkeypatch.setenv("OPSMENDER_TWILIO_FROM_NUMBER", "+15551111111")
+            monkeypatch.setenv("OPSMENDER_TWILIO_VOICE_FROM_NUMBER", "+15552222222")
+        elif configured:
+            saved = await client.put(
+                "/api/v1/voice-settings",
+                headers=admin_headers,
+                json={
+                    "enabled": True,
+                    "account_sid": "ACDB",
+                    "auth_token": "fake-db-token",
+                    "sms_from_number": "+15551111111",
+                    "voice_from_number": "+15552222222",
+                },
+            )
+            assert saved.status_code == 200
+            assert saved.json()["configured"] is True
+            assert "auth_token" not in saved.json()
+
+        available = await client.get(
+            "/api/v1/paging/channel-availability", headers=admin_headers
+        )
+        assert available.status_code == 200
+        assert available.json()["voice"] is configured
+
+        async with session_factory() as db:
+            user = await UserRepo.get_by_username(db, "admin")
+            user.phone = None if case == "missing_phone" else "+15553333333"
+            user_id = user.id
+            service_org = TEST_ORG_ID
+            if case == "foreign_service":
+                service_org = uuid.uuid4()
+                db.add(Organization(id=service_org, name="Private Org", slug="private"))
+                await db.flush()
+            team = await TeamRepo.create(
+                db, service_org, name="Payments", slug="payments"
+            )
+            service = await ServiceRepo.create(
+                db, service_org, team_id=team.id, name="Payments & API", slug="api"
+            )
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Database <pool> exhausted",
+                description="Connection failures",
+                priority="P0",
+                response_mode="page",
+                service_id=service.id,
+            )
+            incident_id = incident.id
+            page = await IncidentPageRepo.create(
+                db, TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+            )
+            await db.commit()
+
+        stages = [
+            {"channel_id": "voice", "delay_seconds": 300},
+            {"channel_id": "email", "delay_seconds": 300},
+        ]
+        if case == "later_stage":
+            stages.reverse()
+        routing = {"P0": ["voice"] if case == "immediate_control" else stages}
+        destinations = {"voice": "+15554444444"} if case == "recipient_override" else {}
+        prefs = await client.put(
+            "/users/me/notification-preferences",
+            headers=admin_headers,
+            json={"routing": routing, "channels": destinations},
+        )
+        assert prefs.status_code == 200
+        assert prefs.json()["routing"] == routing
+
+        calls = []
+        email_calls = []
+
+        def handler(request):
+            calls.append(
+                {
+                    key: value[0]
+                    for key, value in parse_qs(request.content.decode()).items()
+                }
+            )
+            if case == "provider_rejected":
+                return httpx.Response(400, json={"message": "synthetic rejection"})
+            return httpx.Response(201, json={"sid": "CAFAKE", "status": "queued"})
+
+        monkeypatch.setattr(
+            channels,
+            "_default_http_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+
+        class RecordingEmail:
+            async def send(self, *, recipient, subject, body):
+                email_calls.append(recipient)
+                return DeliveryAttempt("email", "sent")
+
+        def factory(key):
+            return RecordingEmail() if key == "email" else None
+
+        sender = ne.build_notification_sender(factory)
+        now = datetime.now(timezone.utc)
+        async with session_factory() as db:
+            result = await dispatch_page(
+                db,
+                TEST_ORG_ID,
+                incident=await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id),
+                user=await UserRepo.get_by_id(db, user_id),
+                page=page,
+                channel_factory=factory,
+                at=now,
+            )
+            assert result.staged is (case != "immediate_control")
+            await db.commit()
+
+        if case == "later_stage":
+            assert calls == [] and len(email_calls) == 1
+            async with session_factory() as db:
+                assert (
+                    await ne.tick_all_due(
+                        db, sender=sender, at=now + timedelta(seconds=299)
+                    )
+                    == 0
+                )
+                assert (
+                    await ne.tick_all_due(
+                        db, sender=sender, at=now + timedelta(seconds=300)
+                    )
+                    == 1
+                )
+                await db.commit()
+
+        expected_status, expected_error = "sent", None
+        if case == "unconfigured":
+            expected_status, expected_error = "skipped", "channel_unconfigured"
+        elif case == "missing_phone":
+            expected_status, expected_error = "skipped", "no_recipient"
+        elif case == "provider_rejected":
+            expected_status, expected_error = "failed", "http 400: synthetic rejection"
+
+        async with session_factory() as db:
+            persisted = await UserNotificationPrefRepo.get_for_user(
+                db, TEST_ORG_ID, user_id
+            )
+            assert persisted.routing == routing and persisted.channels == destinations
+            pages = await IncidentPageRepo.list_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+            voice_pages = [row for row in pages if row.channel == "voice"]
+            assert len(voice_pages) == 1
+            assert voice_pages[0].delivery_status == expected_status
+            assert voice_pages[0].delivery_error == expected_error
+            incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+            assert incident.acknowledged_at is None
+            assert (
+                await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, incident_id)
+                is None
+            )
+            state = await NotificationEscalationRepo.get(
+                db, TEST_ORG_ID, incident_id=incident_id, user_id=user_id
+            )
+            if case == "immediate_control":
+                assert state is None
+            else:
+                assert state.current_stage == (1 if case == "later_stage" else 0)
+                assert state.status == (
+                    "exhausted" if case == "later_stage" else "running"
+                )
+                if case != "later_stage":
+                    assert state.next_stage_due_at.replace(
+                        tzinfo=timezone.utc
+                    ) == now + timedelta(seconds=300)
+
+        if expected_status == "skipped":
+            assert calls == []
+        else:
+            assert len(calls) == 1
+            assert calls[0]["From"] == "+15552222222"
+            assert calls[0]["To"] == (
+                "+15554444444" if case == "recipient_override" else "+15553333333"
+            )
+            menu = ET.fromstring(calls[0]["Twiml"])
+            summary = "Voice Org. Critical severity incident"
+            if case != "foreign_service":
+                summary += " on Payments & API"
+            summary += ": Database <pool> exhausted."
+            assert summary in "".join(menu.itertext())
+            gather = menu.find("Gather")
+            if case == "no_public_url":
+                assert gather is None
+            else:
+                assert gather is not None and gather.attrib["numDigits"] == "1"
+                assert gather.attrib["method"] == "POST"
+                spoken = gather.find("Say").text
+                assert all(
+                    text in spoken
+                    for text in ("Press 1", "Press 2", "Press 3", "Press star")
+                )
+                callback = urlparse(gather.attrib["action"])
+                assert callback.netloc == "paging.example.test"
+                assert callback.path.startswith("/paging/voice/ack/")
+                repeat = await client.post(callback.path, data={"Digits": "*"})
+                assert repeat.status_code == 200
+                assert summary in "".join(ET.fromstring(repeat.text).itertext())
+                no_input = await client.post(callback.path, data={"Digits": ""})
+                assert (
+                    no_input.status_code == 200
+                    and "No acknowledgement" in no_input.text
+                )
+                async with session_factory() as db:
+                    unchanged = await IncidentRepo.get_by_id(
+                        db, TEST_ORG_ID, incident_id
+                    )
+                    assert unchanged.acknowledged_at is None
+                    assert (
+                        await IncidentAssignmentRepo.get_active(
+                            db, TEST_ORG_ID, incident_id
+                        )
+                        is None
+                    )
+                if expected_status == "sent":
+                    ack = await client.post(callback.path, data={"Digits": "1"})
+                    assert (
+                        ack.status_code == 200 and "Incident acknowledged" in ack.text
+                    )
+                    async with session_factory() as db:
+                        owned = await IncidentRepo.get_by_id(
+                            db, TEST_ORG_ID, incident_id
+                        )
+                        assert owned.acknowledged_at is not None
+                        assignment = await IncidentAssignmentRepo.get_active(
+                            db, TEST_ORG_ID, incident_id
+                        )
+                        assert (
+                            assignment is not None and assignment.assigned_to == user_id
+                        )
+                        if state is not None and case != "later_stage":
+                            stopped = await NotificationEscalationRepo.get(
+                                db,
+                                TEST_ORG_ID,
+                                incident_id=incident_id,
+                                user_id=user_id,
+                            )
+                            assert (
+                                stopped.status == "acked"
+                                and stopped.next_stage_due_at is None
+                            )
+
+        async with session_factory() as db:
+            fired = await ne.tick_all_due(
+                db, sender=sender, at=now + timedelta(seconds=600)
+            )
+            await db.commit()
+            assert fired == (
+                1
+                if case
+                in {
+                    "unconfigured",
+                    "missing_phone",
+                    "provider_rejected",
+                    "no_public_url",
+                }
+                else 0
+            )
+            pages = await IncidentPageRepo.list_for_incident(
+                db, TEST_ORG_ID, incident_id
+            )
+            assert sum(row.channel == "voice" for row in pages) == 1
+        assert len(calls) == (0 if expected_status == "skipped" else 1)
+
+
+class _PostgresVoiceFixture:
+    @pytest.fixture
+    async def session_factory(self):
+        url = os.environ.get("PART4_PG_URL")
+        assert url, "Supply the isolated PostgreSQL fixture"
+        database = make_url(url).database or ""
+        # Hosted verification owns a fresh PostgreSQL service for this job.
+        assert database.startswith("qa_") or (
+            os.environ.get("GITHUB_ACTIONS") == "true" and database == "opsmender"
+        ), "Use a disposable qa_ database locally"
+        engine = create_async_engine(url)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            db.add(Organization(id=TEST_ORG_ID, name="Voice Org", slug="voice-org"))
+            await db.commit()
+        try:
+            yield factory
+        finally:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
+
+
+@pytest.mark.integration
+class TestStagedVoiceDeliveryPostgres(TestStagedVoiceDelivery, _PostgresVoiceFixture):
+    pass
+
+
+class TestVoiceKeypadAuthorization:
+    @pytest.fixture
+    async def keypad(self, app, session_factory, monkeypatch):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        # Every escalation target uses a recording-only dispatch. Resolution
+        # notifications are recorded too; neither action can contact recipients.
+        deliveries = []
+        notices = []
+
+        async def record_dispatch(db, org_id, *, incident, user, **kwargs):
+            deliveries.append((incident.id, user.id))
+            return type("RecordedDispatch", (), {"attempts": [], "staged": False})()
+
+        async def record_notice(db, incident_id, org_id, event_type, **kwargs):
+            notices.append((incident_id, event_type))
+
+        monkeypatch.setattr(escalation, "dispatch_page", record_dispatch)
+        monkeypatch.setattr(
+            "backend.paging.channel_factory.build_channel_factory", lambda: None
+        )
+        monkeypatch.setattr(
+            "backend.api.routes.incidents._notify_channels", record_notice
+        )
+        now = datetime.now(timezone.utc)
+        async with session_factory() as db:
+            actor = await UserRepo.create(
+                db,
+                username="keypad-actor",
+                email="keypad-actor@example.test",
+                password_hash="unused",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            next_user = await UserRepo.create(
+                db,
+                username="keypad-next",
+                email="keypad-next@example.test",
+                password_hash="unused",
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            for user in (actor, next_user):
+                await UserRepo.add_to_organization(
+                    db, user_id=user.id, org_id=TEST_ORG_ID, role="operator"
+                )
+            team = await TeamRepo.create(db, TEST_ORG_ID, name="Keypad", slug="keypad")
+            chain = await EscalationChainRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Keypad chain"
+            )
+            for index, user in enumerate((actor, next_user)):
+                await EscalationStepRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    chain_id=chain.id,
+                    step_index=index,
+                    target_type="user",
+                    target_id=user.id,
+                    timeout_seconds=300,
+                )
+            incident = await IncidentRepo.create(
+                db,
+                TEST_ORG_ID,
+                title="Keypad authorization",
+                description="Synthetic callback permission check",
+                severity="high",
+            )
+            await escalation.start_chain(
+                db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id, at=now
+            )
+            stage = await NotificationEscalationRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                user_id=actor.id,
+                priority="P1",
+                stages=[{"channel_id": "email", "delay_seconds": 300}] * 2,
+            )
+            stage.next_stage_due_at = now + timedelta(seconds=300)
+            await SessionRepo.create(
+                db, TEST_ORG_ID, tier=2, incident_id=incident.id, status="queued"
+            )
+            await db.commit()
+        token = encode_voice_ack_token(
+            org_id=TEST_ORG_ID,
+            incident_id=incident.id,
+            user_id=actor.id,
+            summary="Keypad authorization",
+        )
+        return {
+            "actor": actor.id,
+            "next_user": next_user.id,
+            "incident": incident.id,
+            "path": f"/paging/voice/ack/{token}",
+            "deliveries": deliveries,
+            "notices": notices,
+        }
+
+    # (account role, membership role). People edits only the account role, so
+    # the membership row's role can be stale and must neither grant nor block.
+    ROLE_STATES = {
+        "viewer": ("viewer", "viewer"),
+        "viewer_stale_admin_member": ("viewer", "admin"),
+        "admin": ("admin", "admin"),
+        "operator_stale_viewer_member": ("operator", "viewer"),
+    }
+
+    async def _change_actor(self, factory, keypad, state):
+        from backend.api.routes.voice import encode_voice_ack_token
+
+        async with factory() as db:
+            actor = await UserRepo.get_by_id(db, keypad["actor"])
+            member = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
+            if state in self.ROLE_STATES:
+                actor.role, member.role = self.ROLE_STATES[state]
+            elif state == "inactive":
+                actor.is_active = False
+            elif state == "deleted":
+                actor.deleted_at = datetime.now(timezone.utc)
+            elif state in {"removed", "foreign_member"}:
+                await db.delete(member)
+                if state == "foreign_member":
+                    foreign_org = Organization(name="Foreign", slug="foreign")
+                    db.add(foreign_org)
+                    await db.flush()
+                    await UserRepo.add_to_organization(
+                        db,
+                        user_id=actor.id,
+                        org_id=foreign_org.id,
+                        role="admin",
+                    )
+            elif state == "missing_user":
+                token = encode_voice_ack_token(
+                    org_id=TEST_ORG_ID,
+                    incident_id=keypad["incident"],
+                    user_id=uuid.uuid4(),
+                )
+                keypad["path"] = f"/paging/voice/ack/{token}"
+            await db.commit()
+
+    async def _snapshot(self, factory):
+        result = {}
+        async with factory() as db:
+            for name in (
+                "incidents",
+                "incident_pages",
+                "incident_assignments",
+                "incident_chain_states",
+                "notification_escalations",
+                "sessions",
+                "incident_comments",
+                "audit_entries",
+                "in_app_notifications",
+            ):
+                table = Base.metadata.tables[name]
+                rows = await db.execute(select(table).order_by(*table.primary_key))
+                result[name] = [dict(row) for row in rows.mappings()]
+        return result
+
+    def _assert_acted(self, digit, spoken, saved, keypad):
+        incident = saved["incidents"][0]
+        chain = saved["incident_chain_states"][0]
+        stage = saved["notification_escalations"][0]
+        if digit == "1":
+            assert "Incident acknowledged" in spoken
+            assert incident["acknowledged_at"] is not None
+            assert saved["incident_assignments"][0]["assigned_to"] == keypad["actor"]
+            assert saved["incident_pages"][0]["ack_via"] == "voice"
+            assert chain["status"] == stage["status"] == "acked"
+            assert stage["next_stage_due_at"] is None
+        elif digit == "2":
+            assert "Escalating to the next responder" in spoken
+            assert incident["acknowledged_at"] is None
+            assert chain["current_step_index"] == 1
+            assert len(saved["incident_pages"]) == 2
+            assert any(
+                row["user_id"] == keypad["next_user"] and row["step_index"] == 1
+                for row in saved["incident_pages"]
+            )
+            assert saved["incident_assignments"] == []
+        else:
+            assert "Incident resolved" in spoken
+            assert incident["status"] == "resolved"
+            assert incident["resolved_at"] is not None
+            assert chain["status"] == "cancelled"
+            assert stage["status"] == "resolved"
+            assert saved["sessions"][0]["status"] == "cancelled"
+            assert any(
+                row["author_user_id"] == keypad["actor"]
+                and row["body"] == "Resolved the incident from a phone page."
+                for row in saved["incident_comments"]
+            )
+        assert keypad["deliveries"] == []
+        assert len(keypad["notices"]) == (1 if digit == "3" else 0)
+
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    @pytest.mark.parametrize(
+        "state",
+        [
+            "viewer",
+            "viewer_stale_admin_member",
+            "inactive",
+            "deleted",
+            "removed",
+            "foreign_member",
+            "missing_user",
+        ],
+    )
+    async def test_rejected_actor_changes_nothing(
+        self, state, digit, keypad, client, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, state)
+        before = await self._snapshot(session_factory)
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        xml = ET.fromstring(response.text)
+        assert xml.find("Say").text == "You can't act on this incident. Goodbye."
+        assert xml.find("Hangup") is not None
+        assert await self._snapshot(session_factory) == before
+        assert keypad["deliveries"] == [] and keypad["notices"] == []
+
+    @pytest.mark.parametrize(
+        "state", ["operator", "admin", "operator_stale_viewer_member"]
+    )
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_active_workspace_member_can_act(
+        self, state, digit, keypad, client, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, state)
+        response = await client.post(keypad["path"], data={"Digits": f" {digit} "})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        spoken = ET.fromstring(response.text).find("Say").text
+        self._assert_acted(digit, spoken, await self._snapshot(session_factory), keypad)
+
+    @pytest.mark.parametrize("digit", ["*", "", "9"])
+    async def test_viewer_read_only_menu_changes_nothing(
+        self, digit, keypad, client, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, "viewer")
+        before = await self._snapshot(session_factory)
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        if digit == "*":
+            assert ET.fromstring(response.text).find("Gather") is not None
+            assert "Keypad authorization" in response.text
+        else:
+            assert "No acknowledgement was recorded" in response.text
+        assert await self._snapshot(session_factory) == before
+        assert keypad["deliveries"] == [] and keypad["notices"] == []
+
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_people_demotion_revokes_existing_phone_link(
+        self, digit, keypad, client, admin_headers, session_factory
+    ):
+        demotion = await client.patch(
+            f"/auth/users/{keypad['actor']}",
+            json={"role": "viewer"},
+            headers=admin_headers,
+        )
+        assert demotion.status_code == 200 and demotion.json()["role"] == "viewer"
+        async with session_factory() as db:
+            actor = await UserRepo.get_by_id(db, keypad["actor"])
+            membership = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
+            assert actor.role == "viewer" and membership.role == "operator"
+        before = await self._snapshot(session_factory)
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        assert (
+            ET.fromstring(response.text).find("Say").text
+            == "You can't act on this incident. Goodbye."
+        )
+        assert await self._snapshot(session_factory) == before
+        assert keypad["deliveries"] == [] and keypad["notices"] == []
+
+    @pytest.mark.parametrize("digit", ["1", "2", "3"])
+    async def test_people_promotion_allows_phone_actions(
+        self, digit, keypad, client, admin_headers, session_factory
+    ):
+        await self._change_actor(session_factory, keypad, "viewer")
+        promotion = await client.patch(
+            f"/auth/users/{keypad['actor']}",
+            json={"role": "operator"},
+            headers=admin_headers,
+        )
+        assert promotion.status_code == 200 and promotion.json()["role"] == "operator"
+        async with session_factory() as db:
+            actor = await UserRepo.get_by_id(db, keypad["actor"])
+            membership = await db.get(UserOrganization, (actor.id, TEST_ORG_ID))
+            assert actor.role == "operator" and membership.role == "viewer"
+        response = await client.post(keypad["path"], data={"Digits": digit})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/xml")
+        spoken = ET.fromstring(response.text).find("Say").text
+        self._assert_acted(digit, spoken, await self._snapshot(session_factory), keypad)
+
+
+@pytest.mark.integration
+class TestVoiceKeypadAuthorizationPostgres(
+    TestVoiceKeypadAuthorization, _PostgresVoiceFixture
+):
+    pass

@@ -30,6 +30,7 @@ from backend.db.repos import (
     ServiceEscalationChainRepo,
     ServiceRepo,
     TeamRepo,
+    UserNotificationPrefRepo,
     UserRepo,
 )
 from backend.paging import escalation as _esc
@@ -210,7 +211,7 @@ async def test_reassign_permissions(world):
     _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
     team_b, _, _ = await _team(world, "Data", levels=[outsider])
     incident_id = await _incident_on(world, service_a, chain_a)
-    body = {"team_id": str(team_b)}
+    body = {"team_id": str(team_b), "note": "Handoff note"}
 
     for name in ("rp-out", "rp-viewer"):
         headers = await _headers(world.client, name)
@@ -244,7 +245,7 @@ async def test_reassign_to_a_team_without_a_chain_says_nobody_was_paged(world):
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_c)},
+        json={"team_id": str(team_c), "note": "Handoff note"},
         headers=world.admin,
     )
 
@@ -252,7 +253,7 @@ async def test_reassign_to_a_team_without_a_chain_says_nobody_was_paged(world):
     assert (await _state(world.app, incident_id)).status == "cancelled"
     assert (
         "Reassigned from Platform to Quiet. Quiet has no active Escalation Chain, "
-        "so nobody was paged."
+        "so nobody was paged. Note: Handoff note"
     ) in await _comments(world.app, incident_id)
 
 
@@ -265,7 +266,7 @@ async def test_reassigning_a_notify_incident_tells_the_team_in_their_inbox(world
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
 
@@ -284,7 +285,7 @@ async def test_reassigning_back_to_the_service_team_clears_the_reassignment(worl
     for team_id in (team_b, team_a):
         resp = await world.client.post(
             f"/incidents/{incident_id}/reassign",
-            json={"team_id": str(team_id)},
+            json={"team_id": str(team_id), "note": "Handoff note"},
             headers=world.admin,
         )
         assert resp.status_code == 200, resp.text
@@ -292,7 +293,7 @@ async def test_reassigning_back_to_the_service_team_clears_the_reassignment(worl
     assert (await _incident_row(world, incident_id)).team_id is None
     same = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_a)},
+        json={"team_id": str(team_a), "note": "Handoff note"},
         headers=world.admin,
     )
     assert same.status_code == 409
@@ -310,7 +311,7 @@ async def test_resolved_incidents_cannot_be_reassigned(world):
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
     assert resp.status_code == 409
@@ -328,7 +329,7 @@ async def test_the_handling_team_drives_force_take_filters_and_reopen(world):
     incident_id = await _incident_on(world, service_a, chain_a)
     moved = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
     assert moved.status_code == 200, moved.text
@@ -369,7 +370,7 @@ async def test_a_service_change_follows_the_same_rule_and_clears_the_team(world)
     incident_id = await _incident_on(world, service_a, chain_a)
     await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
 
@@ -636,6 +637,60 @@ async def test_removing_responder_keeps_their_live_chain_notifications(world):
     assert removed.status_code == 204
     async with world.app.state.session_factory() as db:
         assert (await db.get(NotificationEscalation, stage_id)).status == "running"
+
+
+async def test_a_responder_on_an_owned_incident_gets_every_step(world):
+    """Ownership alone never ends steps. An ACK ends the steps running then;
+    someone asked to help afterwards gets their whole routing."""
+    a1 = await _user(world.app, "rs-a1")
+    helper = await _user(world.app, "rs-helper")
+    _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
+    incident_id = await _incident_on(world, service_a, chain_a)
+    await _own(world, incident_id, a1)
+    # Channel ids nobody configured: each step is recorded as skipped.
+    first, second = str(uuid.uuid4()), str(uuid.uuid4())
+    async with world.app.state.session_factory() as db:
+        await UserNotificationPrefRepo.upsert(
+            db,
+            TEST_ORG_ID,
+            helper,
+            routing={
+                "P1": [
+                    {"channel_id": first, "delay_seconds": 60},
+                    {"channel_id": second, "delay_seconds": 60},
+                ]
+            },
+        )
+        await db.commit()
+    added = await world.client.post(
+        f"/incidents/{incident_id}/responders",
+        json={"user_ids": [str(helper)]},
+        headers=world.admin,
+    )
+    assert added.status_code == 201, added.text
+    async with world.app.state.session_factory() as db:
+        state = await NotificationEscalationRepo.get(
+            db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
+        )
+        assert (state.status, state.current_stage) == ("running", 0)
+        due = state.next_stage_due_at.replace(tzinfo=timezone.utc)
+
+    sent = []
+
+    async def sender(db, org_id, *, channel_id, user, **_):
+        sent.append((channel_id, user.id))
+        return "sent", None
+
+    async with world.app.state.session_factory() as db:
+        assert await _ne.tick_all_due(db, sender=sender, at=due) == 1
+        await db.commit()
+    assert sent == [(second, helper)]
+    async with world.app.state.session_factory() as db:
+        state = await NotificationEscalationRepo.get(
+            db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
+        )
+        assert (state.status, state.current_stage) == ("exhausted", 1)
+    assert await _owner(world.app, incident_id) == a1
 
 
 async def test_paging_the_same_person_again_restarts_a_finished_escalation(world):

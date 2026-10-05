@@ -65,10 +65,10 @@ class EscalationScheduler:
                 # Advance staged per-priority notification escalations too.
                 from backend.paging import notification_escalation as _ne
 
-                fired = await _ne.tick_all_due(
+                staged = await _ne.tick_all_due(
                     db, at=now, sender=_ne.build_notification_sender(factory)
                 )
-                if advanced or fired:
+                if advanced or staged:
                     await db.commit()
             except Exception:
                 await db.rollback()

@@ -651,7 +651,7 @@ export default function IncidentsPage() {
     async (incident: IncidentResponse) => {
       if (
         !window.confirm(
-          `Permanently delete incident "${incident.title}"? This also removes its sessions and operational history. This action cannot be undone.`,
+          `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.`,
         )
       ) {
         return;
@@ -1073,7 +1073,7 @@ export default function IncidentsPage() {
           {confirmingAction === "delete"
             ? `Are you sure you want to permanently delete ${selectedIds.size} ${
                 selectedIds.size === 1 ? "incident" : "incidents"
-              }? This removes their sessions and operational history and cannot be undone.`
+              }? This removes them with their timelines and AI sessions. Activity keeps a record of each deletion and of the earlier session entries. This action cannot be undone.`
             : confirmingAction === "reopen"
               ? `Are you sure you want to reopen ${selectedIds.size} ${
                   selectedIds.size === 1 ? "incident" : "incidents"
@@ -1404,7 +1404,7 @@ function ManageIncidentModal({
         severity,
         service_id: serviceId || null,
         service_id_set: true,
-        handoff_reason: handoffReason || undefined,
+        handoff_reason: serviceChanged ? handoffReason.trim() : undefined,
       });
       onUpdated();
     } catch (err) {
@@ -1472,13 +1472,14 @@ function ManageIncidentModal({
         </div>
         {serviceChanged ? (
           <div>
-            <Label htmlFor="incident-handoff-reason">Handoff note (optional)</Label>
+            <Label htmlFor="incident-handoff-reason">Handoff note (required)</Label>
             <Textarea
               id="incident-handoff-reason"
               rows={3}
               value={handoffReason}
               onChange={(e) => setHandoffReason(e.target.value)}
               placeholder="Why is this moving to another service/team?"
+              required
             />
           </div>
         ) : null}
@@ -1487,7 +1488,11 @@ function ManageIncidentModal({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} loading={loading} disabled={!incident}>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!incident || (serviceChanged && !handoffReason.trim())}
+          >
             Save changes
           </Button>
         </div>

@@ -398,9 +398,9 @@ class VoiceChannel:
     cannot place PSTN calls never expose this channel.
 
     Places an outbound call that speaks the page via inline TwiML ``<Say>``. An
-    optional ``status_callback_url`` lets the provider report the answered/ack
-    signal back to OpsMender (mapping answered → ack is wired through the
-    existing inbound webhook).
+    optional ``status_callback_url`` is forwarded to the provider, but OpsMender
+    has no receiving route for it. Answering a call is not an acknowledgement;
+    the responder must use the signed keypad action to acknowledge the incident.
     """
 
     key: ClassVar[str] = "voice"

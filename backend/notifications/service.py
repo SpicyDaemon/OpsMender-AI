@@ -196,14 +196,17 @@ async def emit_notification(
 async def org_user_ids_with_roles(
     db: AsyncSession, org_id: uuid.UUID, roles: Iterable[str]
 ) -> list[uuid.UUID]:
-    """User ids in *org_id* whose org role is one of *roles* (e.g. approvers)."""
+    """Members of *org_id* whose role is one of *roles* (e.g. approvers).
+
+    The role is the one People shows and edits (``User.role``); the membership
+    row only places the user in the workspace."""
     wanted = {str(r) for r in roles}
     stmt = (
         select(User.id)
         .join(UserOrganization, UserOrganization.user_id == User.id)
         .where(
             UserOrganization.org_id == org_id,
-            UserOrganization.role.in_(wanted),
+            User.role.in_(wanted),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
         )

@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Monolith startup now stops AI sessions interrupted by an app restart,
+  records the interruption in their summaries and incident timelines, and
+  expires their pending approvals. Their model slots are freed for queued
+  sessions without retrying interrupted work. Queued sessions and approval
+  holds remain with their existing queue and expiry rules.
+- Personal notification steps are now claimed under a database lock. Two
+  schedulers can no longer send the same step twice, and an acknowledgement
+  or resolution that arrives while a step is being sent waits for that send,
+  then stops the rest: nothing is sent after it, and the step keeps the
+  acknowledged or resolved status. A team handoff, responder removal or
+  deletion during a send waits instead of failing, and steps still running on
+  a closed incident now stop.
+- Permanently deleting an incident, singly or in bulk, now records an Activity
+  entry for each incident (who deleted it, its title and when) in the same
+  transaction, and keeps its AI sessions' earlier Activity entries instead of
+  deleting them. Overlapping deletion requests cannot add duplicate entries.
+  The delete confirmations say so.
+- Reassigning an incident to another team and moving it to another service
+  now require a note. A missing or blank note is refused and nothing moves;
+  the note appears on the incident timeline. The Reassign and Manage incident
+  dialogs mark the note as required.
+- Chat actions and role-based notices now use the role shown on People, the
+  same role as sign-in and phone keys. A viewer demoted there can no longer
+  act from chat, an operator promoted there can, and new-incident, approval
+  and other role-targeted notices follow People role changes.
+- Viewers are no longer paged or made incident owners. Team levels page only
+  their admins and operators; a user or roster level whose person is now a
+  viewer on People is skipped as empty; adding an escalation level for a viewer
+  or assigning an incident to one is refused.
+- Phone keypad actions now check the caller's access when the key is pressed:
+  an active account, workspace membership and the Admin or Operator role shown
+  on People. Viewers, removed members and disabled or deleted users can no
+  longer acknowledge, escalate or resolve an incident through an unexpired
+  phone link.
+- Darkened the green, amber and cyan initials-avatar backgrounds so their white
+  text meets the minimum contrast ratio without changing saved color choices.
+- Voice Call stages now reach the configured calling channel and use the same
+  spoken summary and signed keypad link as immediate phone pages. Missing
+  configuration or a phone number records a skipped attempt with its reason;
+  answering a call does not acknowledge the incident.
+- Approved active Maintenance Windows now cover uptime samples by global,
+  service or team scope as well as legacy target lists. Roster windows do not
+  cover samples. Matching windows prevent new SLO burn incidents, including
+  burns from earlier outages; checks resume normally when the window ends.
 - Raised the PyJWT minimum to 2.14 and refreshed the locked package to include
   upstream fixes for token verification and key handling vulnerabilities.
 - Updated the locked urllib3 to 2.8.0 for upstream fixes to HTTPS proxy TLS
@@ -31,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Uptime and SLO percentages count maintenance samples as up instead of
+  excluding them. Two up, one down and two maintenance samples now report 80%
+  uptime, with one minute of downtime and two minutes of maintenance. Probe
+  results remain available in Outage History. Reliability now describes covered
+  samples as up, matching these numbers.
 - Refreshed all 13 demo screenshots from one clean seed, including the Tier 1
   approval view. The capture script checks for test debris and real email
   addresses. Browser QA now verifies policy widening, advisory-only services,

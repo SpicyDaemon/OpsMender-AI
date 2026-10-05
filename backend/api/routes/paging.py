@@ -1521,8 +1521,14 @@ async def add_escalation_step(
         if await TeamRepo.get_by_id(db, org_id, body.target_id) is None:
             raise HTTPException(status_code=400, detail="Target team not found")
     elif body.target_type == "user":
-        if await UserRepo.get_by_id(db, body.target_id) is None:
+        target = await UserRepo.get_by_id(db, body.target_id)
+        if target is None:
             raise HTTPException(status_code=400, detail="Target user not found")
+        if target.role == "viewer":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Viewers are never paged. Choose an admin or operator.",
+            )
     try:
         step = await EscalationStepRepo.create(
             db,

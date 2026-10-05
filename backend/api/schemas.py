@@ -2785,7 +2785,16 @@ class IncidentRespondersAddRequest(BaseModel):
 
 class IncidentReassignRequest(BaseModel):
     team_id: uuid.UUID
-    note: Optional[str] = Field(default=None, max_length=500)
+    # Required: the receiving team needs to know why it is theirs now.
+    note: str = Field(max_length=500)
+
+    @field_validator("note")
+    @classmethod
+    def _note_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A note for the new team is required.")
+        return value
 
 
 class IncidentReassignOption(BaseModel):

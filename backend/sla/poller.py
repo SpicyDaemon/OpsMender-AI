@@ -17,12 +17,14 @@ from backend.db.models import Incident
 from backend.db.repos import (
     IncidentRepo,
     MaintenanceWindowRepo,
+    ServiceRepo,
     SLATargetRepo,
     SLORepo,
     UptimeSampleRepo,
     OrganizationRepo,
 )
 from backend.services.session_orchestration import admit_session
+from backend.paging.maintenance import window_matches
 from backend.paging.service import apply_priority_to_incident, page_new_incident
 from backend.ingest.autostart import (
     has_active_session_for_incident,
@@ -35,6 +37,35 @@ if TYPE_CHECKING:
     from backend.db.models import SLATarget
 
 logger = logging.getLogger(__name__)
+
+
+async def _target_in_maintenance(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    target: SLATarget,
+    at: datetime,
+) -> bool:
+    windows = await MaintenanceWindowRepo.list_active_at(db, org_id, at)
+    if not windows:
+        return False
+    service = (
+        await ServiceRepo.get_by_id(db, org_id, target.service_id)
+        if target.service_id is not None
+        else None
+    )
+    return any(
+        window.scope_type != "roster"
+        and (
+            str(target.id) in (window.target_ids or [])
+            or "*" in (window.target_ids or [])
+            or window_matches(
+                window,
+                service_id=target.service_id,
+                team_id=service.team_id if service is not None else None,
+            )
+        )
+        for window in windows
+    )
 
 
 def _status_tokens(config: dict) -> list[object]:
@@ -222,6 +253,11 @@ class SLAPoller:
                     burn_rate = float("inf") if error_used > 0 else 0.0
 
                 if burn_rate > float(slo.burn_alert_threshold):
+                    target = await SLATargetRepo.get_by_id(db, org_id, slo.target_id)
+                    if target is not None and await _target_in_maintenance(
+                        db, org_id, target, now
+                    ):
+                        continue
                     if slo.id not in self._violated_slo_ids:
                         self._violated_slo_ids.add(slo.id)
 
@@ -240,7 +276,6 @@ class SLAPoller:
 
                     # A violation after the last one resolved opens a new
                     # incident, as intake does, and pages like any other.
-                    target = await SLATargetRepo.get_by_id(db, org_id, slo.target_id)
                     incident = Incident(
                         org_id=org_id,
                         title=f"SLO Violation: {slo.name}",
@@ -300,16 +335,8 @@ class SLAPoller:
             up, latency_ms = await self._probe_target(target)
 
             async with self._session_factory() as db:
-                # Check for maintenance windows
                 now = datetime.now(timezone.utc)
-                windows = await MaintenanceWindowRepo.list_active_at(db, org_id, now)
-
-                suppressed = False
-                for w in windows:
-                    target_ids = w.target_ids or []
-                    if str(target.id) in target_ids or "*" in target_ids:
-                        suppressed = True
-                        break
+                suppressed = await _target_in_maintenance(db, org_id, target, now)
 
                 await UptimeSampleRepo.create(
                     db,

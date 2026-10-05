@@ -58,7 +58,7 @@ Each priority holds an **ordered notification escalation** of up to **3 stages**
 
 Per stage you pick a **channel** and (for non-final stages) a **wait** before the next stage escalates. Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
 
-**Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered.
+**Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone asked to help after the incident has an owner gets all of their stages.
 
 **Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 
@@ -73,6 +73,14 @@ delivery-only.
 Notification Channel posts to that channel's first allowed chat, which is a
 shared channel, not a direct message to you. Voice and SMS stages call or text
 your own number.
+
+**Voice Call stages.** A configured voice stage reads the organization, severity,
+service and incident title. Set `OPSMENDER_PUBLIC_URL` to the address your phone
+provider can reach to offer the signed keypad menu: `1` acknowledge, `2` escalate,
+`3` resolve and `*` repeat. Without that URL the call only reads the summary.
+Answering a call or hearing the message does not acknowledge the incident.
+Missing calling configuration or a phone number records a skipped attempt;
+the next stage still waits for the configured interval. Stages do not retry.
 
 **What "sent" means.** A delivery marked **sent** means the provider accepted
 it: the chat API, mail server or phone provider returned success. OpsMender
@@ -139,6 +147,9 @@ Inside the window:
 - A page that a window holds back later is recorded on the incident as not
   delivered, with the reason.
 - Non-matching alerts still create incidents and page as usual.
+- Approved global, service and team windows cover matching uptime samples,
+  which count as up, and prevent new SLO burn incidents while active. Roster
+  windows do not cover samples. See [Reliability](reliability-guide.md#maintenance-and-uptime).
 
 A window can repeat with an iCalendar recurrence rule such as
 `FREQ=WEEKLY;BYDAY=SU`; see the [Paging Guide](paging-guide.md#7-maintenance-windows).

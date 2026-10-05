@@ -104,6 +104,9 @@ jobs:
           uv run pytest -m integration --run-integration
           tests/test_escalation_part4_postgres.py
           tests/test_admin_audit_postgres.py
+          tests/test_notification_stage_claims_postgres.py
+          tests/test_sla_api.py
+          tests/test_voice_settings.py
           -q --timeout=180 --timeout-method=thread
 
   frontend:

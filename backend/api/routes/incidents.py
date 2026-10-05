@@ -770,6 +770,28 @@ async def list_incidents(
     )
 
 
+async def _record_incident_deletion(
+    db: AsyncSession, org_id: uuid.UUID, incident, user: User, *, bulk: bool
+) -> None:
+    """One Activity entry per permanently deleted incident, written in the same
+    transaction as the deletion, so a failed write rolls the deletion back."""
+    await AuditEntryRepo.create(
+        db,
+        org_id,
+        session_id=None,
+        tier=0,
+        entry_type="incident_deleted",
+        tool_name="bulk_delete_incidents" if bulk else "delete_incident",
+        tool_parameters={
+            "actor": user.username,
+            "actor_id": str(user.id),
+            "incident_id": str(incident.id),
+            "title": incident.title,
+        },
+        result={"ok": True},
+    )
+
+
 @router.delete(
     "/{incident_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -782,7 +804,7 @@ async def delete_incident(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
-    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id, for_update=True)
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -797,6 +819,7 @@ async def delete_incident(
         request.app,
         session_ids=[session.id for session in sessions],
     )
+    await _record_incident_deletion(db, org_id, incident, user, bulk=False)
     await IncidentRepo.delete_permanently(db, org_id, incident_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -881,6 +904,11 @@ async def update_incident(
                 "Only an admin or a member of this incident's team can move it "
                 "to another service."
             ),
+        )
+    if service_changed and not (body.handoff_reason or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A handoff note is required to move an incident to another service.",
         )
     if service_changed and prior_status not in _CLOSED_STATUSES:
         await IncidentChainStateRepo.get_for_incident(
@@ -1755,7 +1783,7 @@ async def _ensure_eligible_owner(db, org_id, user_id: uuid.UUID) -> None:
     if not await _esc.is_eligible_owner(db, org_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="That user can't own incidents (inactive or not a member).",
+            detail="That user can't own incidents (a viewer, inactive or not a member).",
         )
 
 
@@ -2018,15 +2046,20 @@ async def bulk_incident_action(
     unique_ids = list(dict.fromkeys(body.incident_ids))
 
     if action in {"resolve", "reopen", "delete"}:
-        incidents = []
-        for incident_id in unique_ids:
-            incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+        incidents_by_id = {}
+        # Acquire deletion locks in a stable order for overlapping selections.
+        lookup_ids = sorted(unique_ids, key=str) if action == "delete" else unique_ids
+        for incident_id in lookup_ids:
+            incident = await IncidentRepo.get_by_id(
+                db, org_id, incident_id, for_update=action == "delete"
+            )
             if incident is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Incident {incident_id} not found",
                 )
-            incidents.append(incident)
+            incidents_by_id[incident_id] = incident
+        incidents = [incidents_by_id[incident_id] for incident_id in unique_ids]
 
         if action == "delete":
             if request_role(user) != "admin":
@@ -2074,6 +2107,7 @@ async def bulk_incident_action(
                 session_ids.extend(session.id for session in sessions)
             await cancel_session_workflows(request.app, session_ids=session_ids)
             for incident in incidents:
+                await _record_incident_deletion(db, org_id, incident, user, bulk=True)
                 await IncidentRepo.delete_permanently(db, org_id, incident.id)
         else:
             next_status = "resolved" if action == "resolve" else "open"
@@ -2675,7 +2709,7 @@ async def reassign_incident(
             incident=incident,
             team=team,
             actor=user,
-            note=(body.note or "").strip() or None,
+            note=body.note,
             channel_factory=build_channel_factory(),
         )
     except PermissionError as exc:

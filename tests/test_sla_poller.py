@@ -245,6 +245,7 @@ class TestSLAPoller:
             starts_at=now - timedelta(minutes=5),
             ends_at=now + timedelta(minutes=5),
             target_ids=[str(target.id)],
+            scope_type="service",
         )
         db.add(mw)
         await db.commit()

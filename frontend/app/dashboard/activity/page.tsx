@@ -40,6 +40,7 @@ const TYPE_FILTER_OPTIONS = [
   { value: "admin_change", label: "Configuration change" },
   { value: "approval_decision", label: "Approval decision" },
   { value: "tier_override", label: "Tier override" },
+  { value: "incident_deleted", label: "Incident deleted" },
   { value: "pre", label: "Tool call" },
   { value: "post", label: "Tool result" },
 ];

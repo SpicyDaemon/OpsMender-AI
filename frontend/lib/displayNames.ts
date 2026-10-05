@@ -17,6 +17,7 @@ const AUDIT_ENTRY_LABELS: Record<string, string> = {
   admin_change: "Configuration change",
   approval_decision: "Approval decision",
   tier_override: "Tier override",
+  incident_deleted: "Incident deleted",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {

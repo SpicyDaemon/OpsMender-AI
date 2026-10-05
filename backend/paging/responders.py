@@ -13,6 +13,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.auth.roles import request_role
 from backend.db.models import Incident, IncidentPage, IncidentResponder, User
 from backend.db.repos import (
     IncidentAssignmentRepo,
@@ -54,9 +55,10 @@ async def can_manage_responders(
     """Admins, the owner, and operators on the incident's team (any operator
     when it has none)."""
 
-    if user.role == "admin":
+    role = request_role(user)
+    if role == "admin":
         return True
-    if user.role != "operator":
+    if role != "operator":
         return False
     owner = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
     if owner is not None and owner.assigned_to == user.id:

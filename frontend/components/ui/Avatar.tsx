@@ -12,10 +12,10 @@ import type { UserResponse } from "@/lib/types";
 export const AVATAR_PALETTE: Record<string, string> = {
   violet: "#7c3aed",
   blue: "#2563eb",
-  green: "#16a34a",
-  amber: "#d97706",
+  green: "#15803d",
+  amber: "#b45309",
   rose: "#e11d48",
-  cyan: "#0891b2",
+  cyan: "#0e7490",
   slate: "#475569",
   pink: "#db2777",
 };

@@ -388,8 +388,9 @@ curl -X POST https://<your-opsmender-url>/bot-connectors/<connector-id>/user-lin
   -d '{"platform_user_id": "12345678", "opsmender_user_id": "<opsmender-user-uuid>"}'
 ```
 
-Linked users still need an OpsMender role of `admin` or `operator` to run any
-mutating command. Viewers are blocked with a `role_denied` reply.
+Linked users still need an OpsMender role of `admin` or `operator`, as shown
+on the People page, to run any mutating command. Viewers are blocked with a
+`role_denied` reply. A role change on People applies right away.
 Unlinked users see a "not linked" reply that includes their Telegram
 user ID for the admin to copy.
 
@@ -554,7 +555,8 @@ Repeated delivery of the same interaction ID is deduplicated.
 
 Identity mapping (RBAC): Use the Discord User ID (e.g.,
 `123456789012345678`) as the platform user ID and link it to an active
-OpsMender Admin or Operator. Unlinked users and Viewer-role users are refused.
+OpsMender Admin or Operator (the role shown on People). Unlinked users and
+Viewer-role users are refused.
 
 ### Google Chat
 

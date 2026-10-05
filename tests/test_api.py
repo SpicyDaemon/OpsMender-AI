@@ -1825,6 +1825,7 @@ class TestIncidents:
                 username="original-handoff-responder",
                 email="original-handoff-responder@example.test",
                 password_hash="x",
+                role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
             target_responder = await UserRepo.create(
@@ -1832,6 +1833,7 @@ class TestIncidents:
                 username="target-handoff-responder",
                 email="target-handoff-responder@example.test",
                 password_hash="x",
+                role="operator",
                 primary_org_id=TEST_ORG_ID,
             )
             await EscalationStepRepo.create(
@@ -1888,7 +1890,11 @@ class TestIncidents:
 
         resp = await client.patch(
             f"/incidents/{incident_id}",
-            json={"service_id": str(target_service_id), "service_id_set": True},
+            json={
+                "service_id": str(target_service_id),
+                "service_id_set": True,
+                "handoff_reason": "Owned by the target team",
+            },
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.text
@@ -8505,11 +8511,23 @@ class TestNotificationEventHooks:
         async with app.state.session_factory() as db:
             return (await UserRepo.get_by_username(db, "viewer1")).id
 
+    @staticmethod
+    async def _assignee_id(client, app, auth_headers, viewer_headers):
+        """The second login, promoted on People: viewers can't own incidents."""
+        user_id = await TestNotificationEventHooks._viewer_id(app)
+        r = await client.patch(
+            f"/auth/users/{user_id}", json={"role": "operator"}, headers=auth_headers
+        )
+        assert r.status_code == 200
+        # Drain the role-change notice so each test sees only its own event.
+        await client.post("/notifications/read-all", headers=viewer_headers)
+        return user_id
+
     async def test_assign_to_other_notifies(
         self, client: AsyncClient, app, auth_headers, viewer_headers
     ):
         inc_id = await self._seed_incident(app)
-        viewer_id = await self._viewer_id(app)
+        viewer_id = await self._assignee_id(client, app, auth_headers, viewer_headers)
         r = await client.post(
             f"/incidents/{inc_id}/assign",
             json={"user_id": str(viewer_id)},
@@ -8540,7 +8558,7 @@ class TestNotificationEventHooks:
     ):
         primary = await self._seed_incident(app, "Primary")
         secondary = await self._seed_incident(app, "Secondary")
-        viewer_id = await self._viewer_id(app)
+        viewer_id = await self._assignee_id(client, app, auth_headers, viewer_headers)
         # assign the secondary to the viewer
         await client.post(
             f"/incidents/{secondary}/assign",

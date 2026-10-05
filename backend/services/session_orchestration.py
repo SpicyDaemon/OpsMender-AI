@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.bots.notifier import schedule_session_chat_event
@@ -32,8 +33,11 @@ from backend.notifications import (
     emit_to_users,
     org_user_ids_with_roles,
 )
+from backend.services.incident_timeline import record_lifecycle_comment
 
 log = logging.getLogger(__name__)
+
+INTERRUPTED_SUMMARY = "Stopped: the app restarted while this session was running."
 
 
 def _utcnow() -> datetime:
@@ -568,6 +572,56 @@ async def sweep_approval_holds(app) -> int:
         log.info("session.approval_hold expired=%s", expired_count)
         schedule_queue_drain(app)
     return warned
+
+
+async def release_interrupted_sessions(factory) -> int:
+    """Stop the sessions a stopped process left ``active``.
+
+    Monolith startup only, before any scheduler runs. A monolith runs every
+    AI session in its one process, so at startup no ``active`` session is
+    still running: each one is an orphan that keeps a slot against its
+    model's concurrency cap. It is stopped with ``ended_at`` and a summary,
+    its pending approvals expire, and its incident gets a timeline note.
+    Nothing it was doing is retried. Queued and approval-held sessions stay
+    as they are; the queue drain and the approval hold sweep handle them.
+    Returns how many sessions were stopped.
+    """
+    now = _utcnow()
+    async with factory() as db:
+        orphans = (
+            (await db.execute(select(Session).where(Session.status == "active")))
+            .scalars()
+            .all()
+        )
+        for session in orphans:
+            for request in await ApprovalRequestRepo.list_pending(
+                db, session.org_id, session_id=session.id
+            ):
+                await ApprovalRequestRepo.resolve(
+                    db, session.org_id, request.id, status="expired"
+                )
+            await SessionRepo.set_status(
+                db,
+                session.org_id,
+                session.id,
+                status="stopped",
+                summary=INTERRUPTED_SUMMARY,
+                ended_at=now,
+            )
+            await record_lifecycle_comment(
+                db,
+                session.org_id,
+                incident_id=session.incident_id,
+                body=(
+                    "The app restarted while an AI session was working on this "
+                    "incident, so the session was stopped. Nothing it was doing "
+                    "was retried."
+                ),
+            )
+        await db.commit()
+    if orphans:
+        log.warning("session.startup_release stopped=%s", len(orphans))
+    return len(orphans)
 
 
 class SessionQueueScheduler:

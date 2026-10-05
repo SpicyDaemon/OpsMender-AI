@@ -1101,11 +1101,15 @@ class IncidentRepo:
                     ApprovalRequest.session_id.in_(session_ids),
                 )
             )
+            # Activity outlives the incident: keep each session's entries,
+            # detached from the session row that is about to go (D-031).
             await db.execute(
-                delete(AuditEntry).where(
+                update(AuditEntry)
+                .where(
                     AuditEntry.org_id == org_id,
                     AuditEntry.session_id.in_(session_ids),
                 )
+                .values(session_id=None)
             )
 
         for model in (
@@ -7462,12 +7466,21 @@ class NotificationEscalationRepo:
     async def list_due(
         db: AsyncSession, *, now: datetime
     ) -> Sequence[NotificationEscalation]:
-        """Running escalations whose next stage is due (any org)."""
+        """Running escalations whose next stage is due (any org), locked
+        until the caller commits.
+
+        Rows another transaction holds are skipped, so one tick claims each
+        due stage, and a stop (ACK, resolve, handoff) waits for the tick that
+        is sending the row.
+        """
         stmt = (
             select(NotificationEscalation)
             .where(NotificationEscalation.status == "running")
             .where(NotificationEscalation.next_stage_due_at.is_not(None))
             .where(NotificationEscalation.next_stage_due_at <= now)
+            .order_by(NotificationEscalation.id)
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
         return (await db.execute(stmt)).scalars().all()
 
@@ -7475,6 +7488,9 @@ class NotificationEscalationRepo:
     async def list_running_for_incident(
         db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
     ) -> Sequence[NotificationEscalation]:
+        """Unlocked on purpose: a stop that finds a row a tick is sending
+        waits on that row's lock, then writes its own status over the
+        tick's, so an ACK during the last step still ends as acked."""
         stmt = (
             select(NotificationEscalation)
             .where(NotificationEscalation.org_id == org_id)

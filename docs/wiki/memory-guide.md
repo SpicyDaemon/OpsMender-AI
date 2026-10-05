@@ -50,9 +50,9 @@ The retained signal is “this session produced a useful outcome,” not merely
 - **Structured writeback.** A dedicated post-session node validates the
   generated memory before persistence.
 - **Auditable.** Recall logs show which memories shaped each session.
-- **Team-owned mutation.** Admins may edit or delete any memory. Operators may
-  edit or delete only memories whose service belongs to one of their teams.
-  Global memories are admin-only for edit/delete. Viewers are read-only.
+- **Team-owned mutation.** Admins may create, edit or delete any memory.
+  Operators may create, edit or delete only memories whose service belongs to
+  one of their teams. Global memories are admin-only. Viewers are read-only.
 
 ## Managing memories
 

@@ -175,6 +175,7 @@ async def test_reopen_with_service_handoff_pages_once_and_notes_it(world):
             "status": "open",
             "service_id": str(next_service.id),
             "service_id_set": True,
+            "handoff_reason": "Handoff note",
         },
         headers=world.admin,
     )

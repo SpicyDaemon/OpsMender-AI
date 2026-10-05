@@ -7,6 +7,7 @@ route returns and what stays committed when the audit write fails.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from types import SimpleNamespace
@@ -24,11 +25,19 @@ from backend.config_loader import set_env_path
 from backend.db.models import (
     AuditEntry,
     Base,
+    Incident,
     IngestToken,
     Organization,
     PasswordResetToken,
+    Session,
 )
-from backend.db.repos import TeamRepo, UserRepo
+from backend.db.repos import (
+    AuditEntryRepo,
+    IncidentRepo,
+    SessionRepo,
+    TeamRepo,
+    UserRepo,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -246,3 +255,224 @@ async def test_rolled_back_savepoint_leaves_no_entry(pg_app):
     assert sorted(entry.tool_parameters["entity_id"] for entry in entries) == sorted(
         [str(kept.id), str(also_kept.id)]
     )
+
+
+async def _incident_with_session(pg_app):
+    async with pg_app.factory() as db:
+        incident = await IncidentRepo.create(
+            db, pg_app.org_id, title="Deleted incident", description="M1-18 check"
+        )
+        session = await SessionRepo.create(
+            db, pg_app.org_id, tier=1, incident_id=incident.id, status="completed"
+        )
+        for entry_type in ("session_start", "session_end"):
+            await AuditEntryRepo.create(
+                db,
+                pg_app.org_id,
+                session_id=session.id,
+                tier=1,
+                entry_type=entry_type,
+                result={"ok": True},
+            )
+        await db.commit()
+        return incident.id, session.id
+
+
+async def test_incident_deletion_commits_with_one_entry(pg_app):
+    incident_id, session_id = await _incident_with_session(pg_app)
+
+    response = await pg_app.client.delete(
+        f"/incidents/{incident_id}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id == incident_id),
+        await _count(pg_app.factory, Session, Session.id == session_id),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id.is_(None)),
+    )
+    # (status, incidents, sessions, deletion entries, detached entries)
+    assert observed == (204, 0, 0, 1, 3)
+
+
+async def test_rejected_entry_rolls_back_incident_deletion(pg_app):
+    incident_id, session_id = await _incident_with_session(pg_app)
+    await _reject_audit_rows(pg_app.engine)
+
+    response = await pg_app.client.delete(
+        f"/incidents/{incident_id}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id == incident_id),
+        await _count(pg_app.factory, Session, Session.id == session_id),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id == session_id),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+    )
+    # An error, and the incident, its session and attached entries all remain.
+    assert observed == (500, 1, 1, 2, 0)
+
+
+async def test_later_rejected_entry_rolls_back_bulk_incident_deletion(pg_app):
+    first, first_session = await _incident_with_session(pg_app)
+    second, second_session = await _incident_with_session(pg_app)
+    async with pg_app.engine.begin() as connection:
+        await connection.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION audit_check_reject() RETURNS trigger "
+                "LANGUAGE plpgsql AS $$ BEGIN "
+                "IF NEW.entry_type = 'incident_deleted' AND EXISTS ("
+                "SELECT 1 FROM audit_entries a "
+                "WHERE a.org_id = NEW.org_id AND a.entry_type = 'incident_deleted' "
+                "AND NOT EXISTS (SELECT 1 FROM incidents i "
+                "WHERE i.id::text = a.tool_parameters->>'incident_id')) THEN "
+                "RAISE EXCEPTION 'audit row rejected by test'; END IF; "
+                "RETURN NEW; END $$"
+            )
+        )
+        await connection.execute(
+            text(
+                "CREATE TRIGGER audit_check_reject BEFORE INSERT ON audit_entries "
+                "FOR EACH ROW EXECUTE FUNCTION audit_check_reject()"
+            )
+        )
+
+    # Reject the later entry only after the first incident was really deleted
+    # inside the transaction. A partial commit must not survive the HTTP error.
+    response = await pg_app.client.post(
+        "/incidents/bulk",
+        json={"action": "delete", "incident_ids": [str(first), str(second)]},
+        headers=pg_app.headers,
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id.in_((first, second))),
+        await _count(
+            pg_app.factory, Session, Session.id.in_((first_session, second_session))
+        ),
+        await _count(
+            pg_app.factory,
+            AuditEntry,
+            AuditEntry.session_id.in_((first_session, second_session)),
+        ),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id.is_(None)),
+    )
+    assert observed == (500, 2, 2, 4, 0, 0)
+
+
+@pytest.mark.parametrize("bulk", [False, True], ids=["single", "bulk"])
+async def test_concurrent_incident_deletion_records_each_incident_once(
+    pg_app, monkeypatch, bulk
+):
+    from backend.api.routes import incidents as routes
+
+    pairs = [await _incident_with_session(pg_app)]
+    if bulk:
+        pairs.append(await _incident_with_session(pg_app))
+    incident_ids = [pair[0] for pair in pairs]
+    session_ids = [pair[1] for pair in pairs]
+    connections = {}
+    reached_audit = set()
+    first_ready = asyncio.Event()
+    second_connected = asyncio.Event()
+    release = asyncio.Event()
+    original_get = IncidentRepo.get_by_id
+    original_record = routes._record_incident_deletion
+
+    async def tracked_get(db, *args, **kwargs):
+        if id(db) not in connections:
+            connections[id(db)] = await db.scalar(text("SELECT pg_backend_pid()"))
+            if len(connections) == 2:
+                second_connected.set()
+        return await original_get(db, *args, **kwargs)
+
+    async def paused_record(db, *args, **kwargs):
+        reached_audit.add(id(db))
+        first_ready.set()
+        await release.wait()
+        await original_record(db, *args, **kwargs)
+
+    monkeypatch.setattr(IncidentRepo, "get_by_id", tracked_get)
+    monkeypatch.setattr(routes, "_record_incident_deletion", paused_record)
+
+    async def delete(ids):
+        if bulk:
+            return await pg_app.client.post(
+                "/incidents/bulk",
+                json={"action": "delete", "incident_ids": list(map(str, ids))},
+                headers=pg_app.headers,
+            )
+        return await pg_app.client.delete(
+            f"/incidents/{ids[0]}", headers=pg_app.headers
+        )
+
+    async def wait_for_overlap():
+        while len(reached_audit) < 2:
+            second_pid = list(connections.values())[1]
+            async with pg_app.factory() as db:
+                blocked = await db.scalar(
+                    text(
+                        "SELECT wait_event_type = 'Lock' FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": second_pid},
+                )
+            if blocked:
+                return
+            await asyncio.sleep(0.01)
+
+    first = asyncio.create_task(delete(incident_ids))
+    second = None
+    try:
+        await asyncio.wait_for(first_ready.wait(), timeout=10)
+        # Reversed bulk selection exercises consistent lock ordering, too.
+        second = asyncio.create_task(delete(list(reversed(incident_ids))))
+        await asyncio.wait_for(second_connected.wait(), timeout=10)
+        await asyncio.wait_for(wait_for_overlap(), timeout=10)
+        assert len(set(connections.values())) == 2
+        release.set()
+        responses = await asyncio.wait_for(asyncio.gather(first, second), timeout=15)
+    finally:
+        release.set()
+        tasks = [task for task in (first, second) if task is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    statuses = sorted(response.status_code for response in responses)
+    observed = (
+        statuses,
+        await _count(pg_app.factory, Incident, Incident.id.in_(incident_ids)),
+        await _count(pg_app.factory, Session, Session.id.in_(session_ids)),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+        await _count(
+            pg_app.factory,
+            AuditEntry,
+            AuditEntry.entry_type.in_(("session_start", "session_end")),
+            AuditEntry.session_id.is_(None),
+        ),
+    )
+    assert observed == ([200 if bulk else 204, 404], 0, 0, len(pairs), 2 * len(pairs))
+    async with pg_app.factory() as db:
+        entries = (
+            await db.scalars(
+                select(AuditEntry).where(AuditEntry.entry_type == "incident_deleted")
+            )
+        ).all()
+        assert sorted(
+            entry.tool_parameters["incident_id"] for entry in entries
+        ) == sorted(map(str, incident_ids))
+        assert all(entry.session_id is None and entry.timestamp for entry in entries)

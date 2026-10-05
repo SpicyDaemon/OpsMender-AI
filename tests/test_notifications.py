@@ -34,8 +34,24 @@ async def factory():
     f = async_sessionmaker(engine, expire_on_commit=False)
     async with f() as db:
         db.add(Organization(id=ORG, name="Org", slug="org"))
-        db.add(User(id=USER_A, username="a", email="a@x.com", password_hash="x"))
-        db.add(User(id=USER_B, username="b", email="b@x.com", password_hash="x"))
+        db.add(
+            User(
+                id=USER_A,
+                username="a",
+                email="a@x.com",
+                password_hash="x",
+                role="operator",
+            )
+        )
+        db.add(
+            User(
+                id=USER_B,
+                username="b",
+                email="b@x.com",
+                password_hash="x",
+                role="viewer",
+            )
+        )
         await db.commit()
     yield f
     await engine.dispose()

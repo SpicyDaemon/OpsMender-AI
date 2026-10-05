@@ -21,7 +21,7 @@ single-channel routing becomes Stage 1."
 
 ``channel_id`` is either a configured Notification Channel id (a
 ``BotConnector`` UUID, as a string) or a legacy delivery key
-(``slack_dm`` / ``teams_dm`` / ``teams_dm_graph`` / ``email`` / ``sms``).
+(``slack_dm`` / ``teams_dm`` / ``teams_dm_graph`` / ``email`` / ``sms`` / ``voice``).
 The dispatcher resolves both.
 """
 
@@ -32,7 +32,7 @@ from typing import Any
 
 # Delivery keys the legacy paging channel factory understands directly.
 LEGACY_CHANNEL_KEYS: frozenset[str] = frozenset(
-    {"slack_dm", "teams_dm", "teams_dm_graph", "email", "sms"}
+    {"slack_dm", "teams_dm", "teams_dm_graph", "email", "sms", "voice"}
 )
 
 MAX_STAGES = 3

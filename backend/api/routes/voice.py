@@ -9,6 +9,9 @@ The token is the bearer credential: unguessable, single-purpose, and expiring,
 so the endpoint needs no session auth - Twilio cannot present one. Only
 OpsMender (holding the JWT secret) can mint a valid token, and it is scoped to
 exactly one incident + responder for a short window.
+Keys that change the incident also require the responder to still be an
+active admin or operator and a member of the token's workspace when the
+callback arrives.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config
 from backend.api.deps import get_db
-from backend.db.repos import IncidentRepo
+from backend.db.repos import IncidentRepo, UserRepo
 
 router = APIRouter(prefix="/paging/voice", tags=["voice"])
 
@@ -99,6 +102,20 @@ async def voice_ack(
     incident_id = uuid.UUID(payload["incident_id"])
     user_id = uuid.UUID(payload["user_id"])
     digit = Digits.strip()
+
+    if digit in {"1", "2", "3"}:
+        # Check access now, not when the link was minted. The account role is
+        # the one People edits and every signed-in check uses; the membership
+        # row's role is set once at creation and goes stale.
+        actor = await UserRepo.get_by_id(db, user_id)
+        if (
+            actor is None
+            or not actor.is_active
+            or actor.deleted_at is not None
+            or actor.role not in {"admin", "operator"}
+            or not await UserRepo.is_member(db, user_id, org_id)
+        ):
+            return _twiml("You can't act on this incident. Goodbye.")
 
     # Repeat: re-read the menu (relative action posts back to this same URL).
     if digit == "*":

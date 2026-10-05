@@ -221,6 +221,14 @@ optional `OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL` is passed to the provider
 as-is: OpsMender has no route that receives it, so leave it unset unless you
 collect call status elsewhere.
 
+Keys `1`, `2` and `3` check the person linked to the call when the key is
+pressed: they must still be active, a member of the workspace and an Admin or
+Operator on the People page. Anyone else, such as a viewer, a removed member or
+a disabled or deleted user, hears "You can't act on this incident. Goodbye."
+and the incident, its ownership, paging and AI sessions stay as they were. A
+role change on People also applies to calls already made. `*` and any other
+key never change the incident.
+
 Immediate phone pages and Voice Call stages share the same spoken summary and
 signed keypad link. Answering the call does not acknowledge it. A stage with no
 calling configuration or phone number records a skipped attempt and retains

@@ -172,6 +172,12 @@ describe("Reassign", () => {
     expect(screen.getByTestId("confirm-reassign")).toHaveProperty("disabled", true);
 
     fireEvent.click(screen.getByRole("radio", { name: /Data/ }));
+    // A team alone is not enough: the receiving team needs a note.
+    expect(screen.getByTestId("confirm-reassign")).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText(/Note for the new team/), {
+      target: { value: "   " },
+    });
+    expect(screen.getByTestId("confirm-reassign")).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText(/Note for the new team/), {
       target: { value: "The orders database is theirs" },
     });

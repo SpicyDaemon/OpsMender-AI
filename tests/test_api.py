@@ -1890,7 +1890,11 @@ class TestIncidents:
 
         resp = await client.patch(
             f"/incidents/{incident_id}",
-            json={"service_id": str(target_service_id), "service_id_set": True},
+            json={
+                "service_id": str(target_service_id),
+                "service_id_set": True,
+                "handoff_reason": "Owned by the target team",
+            },
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.text

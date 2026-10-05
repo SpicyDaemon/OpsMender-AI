@@ -257,7 +257,7 @@ none.
 - For P0 and P1 incidents, the new team's chain pages from the first level in
   a new round. P2 and P3 incidents notify instead of paging, so the new
   team's members get an Inbox notice.
-- An optional note for the new team appears on the timeline.
+- A note for the new team is required and appears on the timeline.
 
 The incident keeps its service, so it still shows which system alerted. From
 then on the new team handles it:
@@ -268,8 +268,8 @@ then on the new team handles it:
 - paging again if it is reopened.
 
 Moving an incident to another service (**Manage incident** on the incident
-list) hands it to that service's team instead, and records the handoff note
-on the timeline.
+list) hands it to that service's team instead. A handoff note is required and
+is recorded on the timeline.
 
 **Adding responders.** **Add responders** asks up to three people to help,
 besides the owner.

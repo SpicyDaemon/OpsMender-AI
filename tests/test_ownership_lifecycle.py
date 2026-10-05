@@ -1316,7 +1316,11 @@ async def test_l07_handoff_restarts_only_a_live_incident(world):
     live = await _paged_incident(world)
     resp = await world.client.patch(
         f"/incidents/{live}",
-        json={"service_id": str(new_service), "service_id_set": True},
+        json={
+            "service_id": str(new_service),
+            "service_id_set": True,
+            "handoff_reason": "Handoff note",
+        },
         headers=world.admin,
     )
     assert resp.status_code == 200, resp.text
@@ -1330,7 +1334,11 @@ async def test_l07_handoff_restarts_only_a_live_incident(world):
     pages_before = await _recorded_pages(world.app, closed)
     resp = await world.client.patch(
         f"/incidents/{closed}",
-        json={"service_id": str(new_service), "service_id_set": True},
+        json={
+            "service_id": str(new_service),
+            "service_id_set": True,
+            "handoff_reason": "Handoff note",
+        },
         headers=world.admin,
     )
     assert resp.status_code == 200, resp.text

@@ -210,7 +210,7 @@ async def test_reassign_permissions(world):
     _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
     team_b, _, _ = await _team(world, "Data", levels=[outsider])
     incident_id = await _incident_on(world, service_a, chain_a)
-    body = {"team_id": str(team_b)}
+    body = {"team_id": str(team_b), "note": "Handoff note"}
 
     for name in ("rp-out", "rp-viewer"):
         headers = await _headers(world.client, name)
@@ -244,7 +244,7 @@ async def test_reassign_to_a_team_without_a_chain_says_nobody_was_paged(world):
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_c)},
+        json={"team_id": str(team_c), "note": "Handoff note"},
         headers=world.admin,
     )
 
@@ -252,7 +252,7 @@ async def test_reassign_to_a_team_without_a_chain_says_nobody_was_paged(world):
     assert (await _state(world.app, incident_id)).status == "cancelled"
     assert (
         "Reassigned from Platform to Quiet. Quiet has no active Escalation Chain, "
-        "so nobody was paged."
+        "so nobody was paged. Note: Handoff note"
     ) in await _comments(world.app, incident_id)
 
 
@@ -265,7 +265,7 @@ async def test_reassigning_a_notify_incident_tells_the_team_in_their_inbox(world
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
 
@@ -284,7 +284,7 @@ async def test_reassigning_back_to_the_service_team_clears_the_reassignment(worl
     for team_id in (team_b, team_a):
         resp = await world.client.post(
             f"/incidents/{incident_id}/reassign",
-            json={"team_id": str(team_id)},
+            json={"team_id": str(team_id), "note": "Handoff note"},
             headers=world.admin,
         )
         assert resp.status_code == 200, resp.text
@@ -292,7 +292,7 @@ async def test_reassigning_back_to_the_service_team_clears_the_reassignment(worl
     assert (await _incident_row(world, incident_id)).team_id is None
     same = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_a)},
+        json={"team_id": str(team_a), "note": "Handoff note"},
         headers=world.admin,
     )
     assert same.status_code == 409
@@ -310,7 +310,7 @@ async def test_resolved_incidents_cannot_be_reassigned(world):
 
     resp = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
     assert resp.status_code == 409
@@ -328,7 +328,7 @@ async def test_the_handling_team_drives_force_take_filters_and_reopen(world):
     incident_id = await _incident_on(world, service_a, chain_a)
     moved = await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
     assert moved.status_code == 200, moved.text
@@ -369,7 +369,7 @@ async def test_a_service_change_follows_the_same_rule_and_clears_the_team(world)
     incident_id = await _incident_on(world, service_a, chain_a)
     await world.client.post(
         f"/incidents/{incident_id}/reassign",
-        json={"team_id": str(team_b)},
+        json={"team_id": str(team_b), "note": "Handoff note"},
         headers=world.admin,
     )
 

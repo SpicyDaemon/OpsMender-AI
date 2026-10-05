@@ -881,6 +881,11 @@ async def update_incident(
                 "to another service."
             ),
         )
+    if service_changed and not (body.handoff_reason or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A handoff note is required to move an incident to another service.",
+        )
     if service_changed and prior_status not in _CLOSED_STATUSES:
         await IncidentChainStateRepo.get_for_incident(
             db, org_id, incident_id, for_update=True
@@ -2671,7 +2676,7 @@ async def reassign_incident(
             incident=incident,
             team=team,
             actor=user,
-            note=(body.note or "").strip() or None,
+            note=body.note,
             channel_factory=build_channel_factory(),
         )
     except PermissionError as exc:

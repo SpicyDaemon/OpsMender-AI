@@ -1404,7 +1404,7 @@ function ManageIncidentModal({
         severity,
         service_id: serviceId || null,
         service_id_set: true,
-        handoff_reason: handoffReason || undefined,
+        handoff_reason: serviceChanged ? handoffReason.trim() : undefined,
       });
       onUpdated();
     } catch (err) {
@@ -1472,13 +1472,14 @@ function ManageIncidentModal({
         </div>
         {serviceChanged ? (
           <div>
-            <Label htmlFor="incident-handoff-reason">Handoff note (optional)</Label>
+            <Label htmlFor="incident-handoff-reason">Handoff note (required)</Label>
             <Textarea
               id="incident-handoff-reason"
               rows={3}
               value={handoffReason}
               onChange={(e) => setHandoffReason(e.target.value)}
               placeholder="Why is this moving to another service/team?"
+              required
             />
           </div>
         ) : null}
@@ -1487,7 +1488,11 @@ function ManageIncidentModal({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} loading={loading} disabled={!incident}>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!incident || (serviceChanged && !handoffReason.trim())}
+          >
             Save changes
           </Button>
         </div>

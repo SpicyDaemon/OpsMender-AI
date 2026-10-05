@@ -1702,7 +1702,7 @@ export async function getReassignOptions(
 }
 export async function reassignIncident(
   incidentId: string,
-  body: { team_id: string; note?: string },
+  body: { team_id: string; note: string },
 ): Promise<IncidentResponse> {
   return api.post<IncidentResponse>(`/incidents/${incidentId}/reassign`, body);
 }

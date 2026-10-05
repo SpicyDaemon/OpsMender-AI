@@ -55,6 +55,14 @@ are acknowledgment-gated, if capacity is full at that point, wait for a slot or
 use the explicit audited **Force start** override rather than leaving delayed
 work behind.
 
+If OpsMender restarts while an AI session is running, that session stops: it
+is marked stopped with the summary "Stopped: the app restarted while this
+session was running.", and the incident timeline says so. Nothing the session
+was doing is retried, and its model slot is freed for queued sessions. Queued
+sessions stay in the queue, and a session waiting for an approval keeps its
+hold until the hold expires. Start a new session if the incident still needs
+one. This applies to the single-process (monolith) deployment.
+
 ## 4. Approvals (Tier 1 is interactive)
 
 At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not just destructive ones); read-only investigation runs freely, and deny-listed actions are never offered. (For MCP Skills that declare an explicit per-operation Tier 1 policy, that policy decides.)

@@ -24,11 +24,19 @@ from backend.config_loader import set_env_path
 from backend.db.models import (
     AuditEntry,
     Base,
+    Incident,
     IngestToken,
     Organization,
     PasswordResetToken,
+    Session,
 )
-from backend.db.repos import TeamRepo, UserRepo
+from backend.db.repos import (
+    AuditEntryRepo,
+    IncidentRepo,
+    SessionRepo,
+    TeamRepo,
+    UserRepo,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -246,3 +254,65 @@ async def test_rolled_back_savepoint_leaves_no_entry(pg_app):
     assert sorted(entry.tool_parameters["entity_id"] for entry in entries) == sorted(
         [str(kept.id), str(also_kept.id)]
     )
+
+
+async def _incident_with_session(pg_app):
+    async with pg_app.factory() as db:
+        incident = await IncidentRepo.create(
+            db, pg_app.org_id, title="Deleted incident", description="M1-18 check"
+        )
+        session = await SessionRepo.create(
+            db, pg_app.org_id, tier=1, incident_id=incident.id, status="completed"
+        )
+        for entry_type in ("session_start", "session_end"):
+            await AuditEntryRepo.create(
+                db,
+                pg_app.org_id,
+                session_id=session.id,
+                tier=1,
+                entry_type=entry_type,
+                result={"ok": True},
+            )
+        await db.commit()
+        return incident.id, session.id
+
+
+async def test_incident_deletion_commits_with_one_entry(pg_app):
+    incident_id, session_id = await _incident_with_session(pg_app)
+
+    response = await pg_app.client.delete(
+        f"/incidents/{incident_id}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id == incident_id),
+        await _count(pg_app.factory, Session, Session.id == session_id),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id.is_(None)),
+    )
+    # (status, incidents, sessions, deletion entries, detached entries)
+    assert observed == (204, 0, 0, 1, 3)
+
+
+async def test_rejected_entry_rolls_back_incident_deletion(pg_app):
+    incident_id, session_id = await _incident_with_session(pg_app)
+    await _reject_audit_rows(pg_app.engine)
+
+    response = await pg_app.client.delete(
+        f"/incidents/{incident_id}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id == incident_id),
+        await _count(pg_app.factory, Session, Session.id == session_id),
+        await _count(pg_app.factory, AuditEntry, AuditEntry.session_id == session_id),
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+    )
+    # An error, and the incident, its session and attached entries all remain.
+    assert observed == (500, 1, 1, 2, 0)

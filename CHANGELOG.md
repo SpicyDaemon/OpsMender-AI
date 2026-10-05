@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Permanently deleting an incident, singly or in bulk, now records an Activity
+  entry for each incident (who deleted it, its title and when) in the same
+  transaction, and keeps its AI sessions' earlier Activity entries instead of
+  deleting them. The delete confirmations say so.
 - Reassigning an incident to another team and moving it to another service
   now require a note. A missing or blank note is refused and nothing moves;
   the note appears on the incident timeline. The Reassign and Manage incident

@@ -233,7 +233,7 @@ export function IncidentCommandStrip({
   const handleDelete = async () => {
     if (
       !window.confirm(
-        `Permanently delete incident "${incident.title}"? This also removes its sessions and operational history. This action cannot be undone.`,
+        `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.`,
       )
     ) {
       return;

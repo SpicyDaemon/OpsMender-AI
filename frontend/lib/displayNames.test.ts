@@ -15,6 +15,7 @@ describe("display name helpers", () => {
   it("maps audit entry and workflow identifiers to operator-facing labels", () => {
     expect(auditEntryTypeLabel("session_start")).toBe("Session started");
     expect(auditEntryTypeLabel("post")).toBe("Tool result");
+    expect(auditEntryTypeLabel("incident_deleted")).toBe("Incident deleted");
     expect(workflowNodeLabel("tier_gate")).toBe("Tier gate");
     expect(workflowNodeLabel("custom_step")).toBe("Custom Step");
   });

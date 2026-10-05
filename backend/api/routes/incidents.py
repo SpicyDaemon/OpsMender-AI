@@ -769,6 +769,28 @@ async def list_incidents(
     )
 
 
+async def _record_incident_deletion(
+    db: AsyncSession, org_id: uuid.UUID, incident, user: User, *, bulk: bool
+) -> None:
+    """One Activity entry per permanently deleted incident, written in the same
+    transaction as the deletion, so a failed write rolls the deletion back."""
+    await AuditEntryRepo.create(
+        db,
+        org_id,
+        session_id=None,
+        tier=0,
+        entry_type="incident_deleted",
+        tool_name="bulk_delete_incidents" if bulk else "delete_incident",
+        tool_parameters={
+            "actor": user.username,
+            "actor_id": str(user.id),
+            "incident_id": str(incident.id),
+            "title": incident.title,
+        },
+        result={"ok": True},
+    )
+
+
 @router.delete(
     "/{incident_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -796,6 +818,7 @@ async def delete_incident(
         request.app,
         session_ids=[session.id for session in sessions],
     )
+    await _record_incident_deletion(db, org_id, incident, user, bulk=False)
     await IncidentRepo.delete_permanently(db, org_id, incident_id)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2078,6 +2101,7 @@ async def bulk_incident_action(
                 session_ids.extend(session.id for session in sessions)
             await cancel_session_workflows(request.app, session_ids=session_ids)
             for incident in incidents:
+                await _record_incident_deletion(db, org_id, incident, user, bulk=True)
                 await IncidentRepo.delete_permanently(db, org_id, incident.id)
         else:
             next_status = "resolved" if action == "resolve" else "open"

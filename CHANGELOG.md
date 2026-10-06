@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holds one of the three responder slots until it is answered, expires after
   30 minutes or the incident closes, and the requester learns the outcome.
 
+### Removed
+
+- Memory feedback: the thumbs on the Memories page and in a session's
+  Memories used panel, and `POST /memories/{id}/feedback`. Recall ranking and
+  eviction no longer weigh old feedback; pinned memories are still never
+  evicted.
+
 ### Fixed
 
 - Saving a postmortem's memory candidates follows the memory rules: operators

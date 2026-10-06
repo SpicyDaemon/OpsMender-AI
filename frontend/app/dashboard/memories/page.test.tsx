@@ -25,7 +25,6 @@ const apiMocks = vi.hoisted(() => ({
   updateMemory: vi.fn(),
   deleteMemory: vi.fn(),
   bulkDeleteMemories: vi.fn(),
-  recordMemoryFeedback: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -40,8 +39,6 @@ function memory(id: string, title: string, canManage = true) {
     title,
     summary_md: "Roll the deployment.",
     tags: [],
-    helpful_count: 0,
-    unhelpful_count: 0,
     can_edit: canManage,
     can_delete: canManage,
     created_by_user_id: null,

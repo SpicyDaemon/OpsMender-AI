@@ -4191,8 +4191,8 @@ class TestIncidentMemoryAPI:
         assert body["service_id"] == str(service_id)
         # Tags get lower-cased + trimmed by the route.
         assert body["tags"] == ["k8s", "oom"]
-        assert body["helpful_count"] == 0
-        assert body["unhelpful_count"] == 0
+        # Memory feedback was removed (M1-20).
+        assert "helpful_count" not in body and "unhelpful_count" not in body
         assert body["can_edit"] is True
         assert body["can_delete"] is True
         assert "review_status" not in body
@@ -4287,7 +4287,7 @@ class TestIncidentMemoryAPI:
         # service_id stays untouched when service_id_set is omitted/false.
         assert body["service_id"] == str(service_id)
 
-    async def test_feedback_increments_counter(
+    async def test_memory_feedback_was_removed(
         self, client: AsyncClient, auth_headers, app
     ):
         service_id = await self._seed_service(app)
@@ -4301,23 +4301,12 @@ class TestIncidentMemoryAPI:
             },
         )
         memory_id = create.json()["id"]
-
-        for _ in range(3):
-            resp = await client.post(
-                f"/memories/{memory_id}/feedback",
-                headers=auth_headers,
-                json={"helpful": True},
-            )
-            assert resp.status_code == 200
         resp = await client.post(
             f"/memories/{memory_id}/feedback",
             headers=auth_headers,
-            json={"helpful": False},
+            json={"helpful": True},
         )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["helpful_count"] == 3
-        assert body["unhelpful_count"] == 1
+        assert resp.status_code in (404, 405)
 
     async def test_delete_admin_and_viewer_permissions(
         self, client: AsyncClient, auth_headers, viewer_headers, app

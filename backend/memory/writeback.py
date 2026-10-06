@@ -51,9 +51,8 @@ COMPACTION_THRESHOLD = 50
 
 # v2 Phase 8 - bounded memory growth (opt-in). Off by default. When enabled and
 # a service's memory count exceeds the configured ceiling, evict the
-# lowest-value memories down to the ceiling. Operator-pinned and high-recall
-# (helpful_count >= EVICTION_PROTECT_HELPFUL) memories are never evicted.
-EVICTION_PROTECT_HELPFUL = 3
+# least-recently-used memories down to the ceiling. Operator-pinned memories
+# are never evicted.
 DEFAULT_EVICTION_MAX = 500
 
 
@@ -416,15 +415,14 @@ async def maybe_evict(
     service_id: uuid.UUID | None,
     max_total: int | None = None,
     enabled: bool | None = None,
-    protect_helpful: int = EVICTION_PROTECT_HELPFUL,
 ) -> dict[str, Any]:
     """Opt-in bounded-growth eviction for one service group (v2 Phase 8).
 
     Off by default. When enabled and the group exceeds ``max_total``, evict the
     least-valuable memories down to the ceiling - oldest by ``last_used_at``
-    (falling back to ``created_at``) first. **Never** evicts pinned or
-    high-recall (``helpful_count >= protect_helpful``) memories. Returns an
-    observable report and logs each eviction. Best-effort; never raises.
+    (falling back to ``created_at``) first. **Never** evicts pinned
+    memories. Returns an observable report and logs each eviction.
+    Best-effort; never raises.
     """
     enabled = _eviction_enabled() if enabled is None else enabled
     max_total = _eviction_max() if max_total is None else max_total
@@ -443,11 +441,7 @@ async def maybe_evict(
                 db, org_id, service_id=service_id, global_only=service_id is None
             )
         )
-        evictable = [
-            m
-            for m in memories
-            if not m.pinned and (m.helpful_count or 0) < protect_helpful
-        ]
+        evictable = [m for m in memories if not m.pinned]
         report["protected"] = len(memories) - len(evictable)
         # Least-recently-used first; never-used sort by age.
         evictable.sort(key=lambda m: m.last_used_at or m.created_at)
@@ -457,12 +451,11 @@ async def maybe_evict(
             await IncidentMemoryRepo.delete(db, memory_id=memory.id, org_id=org_id)
             evicted += 1
             logger.info(
-                "memory.evicted org=%s service=%s memory=%s title=%r helpful=%s",
+                "memory.evicted org=%s service=%s memory=%s title=%r",
                 org_id,
                 service_id,
                 memory.id,
                 memory.title,
-                memory.helpful_count,
             )
         await db.commit()
         report["evicted"] = evicted

@@ -1,8 +1,8 @@
 # AI Incident Memory
 
 > **Status (2026-06-19):** The continuous memory loop, REST API, operator UI,
-> feedback, per-session recall trail, and service-scoped auto-compaction are
-> live. Memories do not have approval or hidden states: every saved memory is
+> per-session recall trail, and service-scoped auto-compaction are live.
+> Helpful/unhelpful feedback was removed in v1.1.1. Memories do not have approval or hidden states: every saved memory is
 > immediately eligible for recall.
 
 OpsMender uses memory to carry successful incident lessons into later AI
@@ -23,7 +23,6 @@ session for the same service.
 5. Once a service has more than 50 memories, the next write runs one bounded
    compaction pass for that service only. Global memories form their own
    separate compaction group.
-6. Helpful/unhelpful feedback influences future retrieval ranking.
 
 ## What gets remembered
 
@@ -57,7 +56,7 @@ The retained signal is “this session produced a useful outcome,” not merely
 ## Managing memories
 
 `/dashboard/memories` (**Memories** in the sidebar, for admins and operators)
-provides search, service and team filtering, feedback, creation, editing, and
+provides search, service and team filtering, creation, editing, and
 deletion. The **Team** column shows the team that owns each memory's service,
 or **Global**. Operators see global memories and their teams' memories, and
 edit or delete only their teams'.
@@ -89,8 +88,8 @@ cannot include memories from another service. Memories with no service
 
 ## Retrieval ranking
 
-The current composite ranking uses service match, tag overlap, keyword match,
-and helpful/unhelpful feedback. SQL retrieval is intentional in v1; embeddings
+The current composite ranking uses service match, tag overlap and keyword
+match. SQL retrieval is intentional in v1; embeddings
 remain deferred until retrieval quality demonstrates a need for them.
 
 ## REST API
@@ -105,7 +104,6 @@ All routes are scoped to the active organization.
 | `PUT` | `/memories/{id}` | admin or owning-team operator | Updates one memory |
 | `DELETE` | `/memories/{id}` | admin or owning-team operator | Permanent single delete |
 | `POST` | `/memories/bulk-delete` | admin or owning-team operator | Atomic delete; rejects the whole mixed unauthorized selection |
-| `POST` | `/memories/{id}/feedback` | admin/operator | Records helpful/unhelpful feedback |
 | `GET` | `/sessions/{id}/memories-used` | authenticated | Returns the session recall trail |
 
 Example bulk delete:

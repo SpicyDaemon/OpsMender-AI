@@ -83,10 +83,10 @@ async def test_evicts_oldest_first_down_to_ceiling(factory):
     assert remaining == {"m0", "m1", "m2"}
 
 
-async def test_pinned_and_high_recall_are_protected(factory):
+async def test_only_pinned_memories_are_protected(factory):
     async with factory() as db:
-        # Oldest two are protected (pinned / high helpful) and must survive even
-        # though they're the least-recently-used.
+        # A pinned memory survives even though it is the least-recently-used.
+        # Old feedback counts no longer protect anything (M1-20).
         await _add(db, title="pinned-old", age_days=100, pinned=True)
         await _add(db, title="loved-old", age_days=99, helpful=5)
         await _add(db, title="plain-a", age_days=3)
@@ -97,7 +97,7 @@ async def test_pinned_and_high_recall_are_protected(factory):
     report = await maybe_evict(
         factory, org_id=ORG_ID, service_id=SERVICE_ID, enabled=True, max_total=3
     )
-    assert report["protected"] == 2
+    assert report["protected"] == 1
     assert report["evicted"] == 2  # 5 total - 3 ceiling
     async with factory() as db:
         remaining = {
@@ -106,7 +106,5 @@ async def test_pinned_and_high_recall_are_protected(factory):
                 db, ORG_ID, service_id=SERVICE_ID
             )
         }
-    # Protected pair survives; only plain memories are evictable (oldest first).
-    assert "pinned-old" in remaining and "loved-old" in remaining
-    assert "plain-c" in remaining
-    assert "plain-a" not in remaining and "plain-b" not in remaining
+    # Oldest unpinned memories go first, whatever their old feedback.
+    assert remaining == {"pinned-old", "plain-b", "plain-c"}

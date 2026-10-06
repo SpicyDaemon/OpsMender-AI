@@ -2,20 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Brain, ChevronDown, ChevronRight, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 
-import {
-  getSessionMemoriesUsed,
-  recordMemoryFeedback,
-} from "@/lib/api";
-import type {
-  IncidentMemoryResponse,
-  SessionMemoriesUsedItem,
-} from "@/lib/types";
+import { getSessionMemoriesUsed } from "@/lib/api";
+import type { SessionMemoriesUsedItem } from "@/lib/types";
 import { formatDateTime } from "@/lib/formatDate";
-import { useAuth } from "@/context/auth";
 import { Badge } from "@/components/ui/Badge";
-import { useToast } from "@/components/ui/Toast";
 
 interface Props {
   sessionId: string;
@@ -23,10 +15,6 @@ interface Props {
 }
 
 export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) {
-  const toast = useToast();
-  const { user } = useAuth();
-  const canVote = user?.role === "admin" || user?.role === "operator";
-
   const [open, setOpen] = useState(defaultOpen);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<SessionMemoriesUsedItem[]>([]);
@@ -54,21 +42,6 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
       load();
     }
   }, [open, fetched, load]);
-
-  const vote = async (memory: IncidentMemoryResponse, helpful: boolean) => {
-    if (!canVote) return;
-    try {
-      const updated = await recordMemoryFeedback(memory.id, helpful);
-      setItems((prev) =>
-        prev.map((it) =>
-          it.memory.id === updated.id ? { ...it, memory: updated } : it,
-        ),
-      );
-      toast.success(helpful ? "Thanks, marked as helpful" : "Thanks, marked as not helpful");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   return (
     <section className="rounded-xl border border-border-subtle bg-bg-panel shadow-sm">
@@ -115,37 +88,15 @@ export function SessionMemoriesPanel({ sessionId, defaultOpen = false }: Props) 
                   key={item.memory.id}
                   className="rounded-md border border-border-subtle bg-bg-elevated p-3"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-semibold text-fg-primary">
-                        {item.memory.title}
-                      </h4>
-                      <p className="mt-0.5 text-[11px] text-fg-muted">
-                        Surfaced {formatDateTime(item.surfaced_at)}
-                        {item.score != null &&
-                          ` · relevance ${item.score.toFixed(2)}`}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => vote(item.memory, true)}
-                        disabled={!canVote}
-                        title="Helpful"
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <ThumbsUp size={12} /> {item.memory.helpful_count}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => vote(item.memory, false)}
-                        disabled={!canVote}
-                        title="Not helpful"
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <ThumbsDown size={12} /> {item.memory.unhelpful_count}
-                      </button>
-                    </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-semibold text-fg-primary">
+                      {item.memory.title}
+                    </h4>
+                    <p className="mt-0.5 text-[11px] text-fg-muted">
+                      Surfaced {formatDateTime(item.surfaced_at)}
+                      {item.score != null &&
+                        ` · relevance ${item.score.toFixed(2)}`}
+                    </p>
                   </div>
                   {item.memory.tags.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">

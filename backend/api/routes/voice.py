@@ -169,6 +169,14 @@ async def voice_ack(
         return _twiml("Escalating to the next responder. Goodbye.")
 
     if digit == "3":
+        from backend.db.repos import UserRepo
+        from backend.paging.reassign import can_resolve
+
+        caller = await UserRepo.get_by_id(db, user_id)
+        if caller is None or not await can_resolve(db, org_id, incident, caller):
+            return _twiml(
+                "Only this incident's team or an admin can resolve it. Goodbye."
+            )
         if incident.status in ("resolved", "merged"):
             return _twiml("This incident was already resolved. Goodbye.")
         from backend.api.session_runner import stop_incident_sessions

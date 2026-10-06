@@ -2011,6 +2011,8 @@ export interface IncidentPagingPanelResponse {
   can_force_take?: boolean;
   /** Admins and operators on the incident's team can hand it to another team. */
   can_reassign?: boolean;
+  /** Admins and operators on the incident's team can resolve or reopen it. */
+  can_resolve?: boolean;
   /** Admins, the owner, and operators on the incident's team. */
   can_manage_responders?: boolean;
   /** People asked to help besides the owner, oldest first. */

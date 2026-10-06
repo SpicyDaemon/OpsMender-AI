@@ -343,6 +343,7 @@ function IncidentDetailContent() {
         canTake={pagingPanel?.can_take ?? false}
         canForceTake={pagingPanel?.can_force_take ?? false}
         canReassign={pagingPanel?.can_reassign ?? false}
+        canResolve={pagingPanel?.can_resolve ?? false}
         canManageResponders={pagingPanel?.can_manage_responders ?? false}
         responders={pagingPanel?.responders ?? []}
         responderLimit={pagingPanel?.responder_limit ?? 3}

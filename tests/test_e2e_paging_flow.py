@@ -177,6 +177,9 @@ async def _seed_paging_topology(app) -> dict:
         )
 
         team = await TeamRepo.create(db, TEST_ORG_ID, name="SRE", slug="sre")
+        # The paged operator is on the team that handles the service, so they
+        # can resolve it too (M1-12).
+        await TeamRepo.add_member(db, TEST_ORG_ID, team.id, user_id=operator.id)
         service = await ServiceRepo.create(
             db,
             TEST_ORG_ID,

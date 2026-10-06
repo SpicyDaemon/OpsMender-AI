@@ -79,6 +79,7 @@ function renderStrip(
   pendingTakeover?: PendingTakeover | null,
   canForceTake = false,
   canTake = true,
+  canResolve = true,
 ) {
   return render(
     <IncidentCommandStrip
@@ -90,6 +91,7 @@ function renderStrip(
       pendingTakeover={pendingTakeover}
       canForceTake={canForceTake}
       canTake={canTake}
+      canResolve={canResolve}
     />,
   );
 }
@@ -101,13 +103,34 @@ describe("IncidentCommandStrip", () => {
     vi.clearAllMocks();
   });
 
-  it("hides Acknowledge and Take from someone outside the handling team", () => {
-    renderStrip("open", null, null, null, false, false);
+  it("hides Acknowledge, Take and Resolve from someone outside the handling team", () => {
+    renderStrip("open", null, null, null, false, false, false);
 
     expect(screen.queryByTestId("action-acknowledge")).toBeNull();
     expect(screen.queryByTestId("action-take")).toBeNull();
+    expect(screen.queryByTestId("action-resolve")).toBeNull();
     expect(screen.getByTestId("action-start-session")).toBeTruthy();
-    expect(screen.getByTestId("action-resolve")).toBeTruthy();
+  });
+
+  it("lets a paged responder from another team acknowledge but not resolve", () => {
+    renderStrip("open", null, null, null, false, true, false);
+
+    expect(screen.getByTestId("action-acknowledge")).toBeTruthy();
+    expect(screen.getByTestId("action-take")).toBeTruthy();
+    expect(screen.queryByTestId("action-resolve")).toBeNull();
+  });
+
+  it("resolves through the bulk action for the handling team", async () => {
+    apiMocks.bulkIncidentAction.mockResolvedValue({});
+    renderStrip("in_progress");
+
+    fireEvent.click(screen.getByTestId("action-resolve"));
+    await waitFor(() =>
+      expect(apiMocks.bulkIncidentAction).toHaveBeenCalledWith("resolve", [
+        "incident-1",
+      ]),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith("Incident resolved");
   });
 
   it("shows the open-state action set for an unassigned incident", () => {
@@ -128,6 +151,13 @@ describe("IncidentCommandStrip", () => {
     expect(screen.getByTestId("action-release")).toBeTruthy();
     expect(screen.queryByTestId("action-take")).toBeNull();
     expect(screen.queryByTestId("action-postmortem")).toBeNull();
+  });
+
+  it("hides Acknowledge on an open incident someone else owns", () => {
+    renderStrip("open", makeAssignment("user-other"), "sre-alex");
+
+    expect(screen.queryByTestId("action-acknowledge")).toBeNull();
+    expect(screen.getByTestId("action-take").textContent).toContain("Take over");
   });
 
   it("shows takeover copy and resolved owner label for someone else's incident", () => {

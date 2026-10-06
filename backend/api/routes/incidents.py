@@ -905,6 +905,16 @@ async def update_incident(
                 "to another service."
             ),
         )
+    # Resolving, reopening or any other status change follows the Resolve rule.
+    status_changed = body.status is not None and body.status != prior_status
+    if status_changed and not await _reassign.can_resolve(db, org_id, incident, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Only an admin or a member of this incident's team can change "
+                "its status. Ask one of them."
+            ),
+        )
     if service_changed and not (body.handoff_reason or "").strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -1960,6 +1970,7 @@ async def get_incident_paging(
         ),
         can_take=await _reassign.can_take(db, org_id, incident, user),
         can_reassign=await _reassign.can_reassign(db, org_id, incident, user),
+        can_resolve=await _reassign.can_resolve(db, org_id, incident, user),
         can_manage_responders=await _responders.can_manage_responders(
             db, org_id, incident, user
         ),
@@ -2167,7 +2178,8 @@ async def bulk_incident_action(
 
     Resolve/reopen/delete are validated atomically before any row is changed.
     Admins may run them across services. Operators may resolve or reopen only
-    when every selected incident belongs to the same service.
+    when every selected incident belongs to the same service and their team
+    handles each one.
     """
     action = body.action
     unique_ids = list(dict.fromkeys(body.incident_ids))
@@ -2209,6 +2221,12 @@ async def bulk_incident_action(
             {"open", "in_progress"} if action == "resolve" else {"resolved"}
         )
         if action != "delete":
+            for incident in incidents:
+                if not await _reassign.can_resolve(db, org_id, incident, user):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=_reassign.RESOLVE_FORBIDDEN,
+                    )
             invalid = [
                 incident
                 for incident in incidents
@@ -2480,6 +2498,15 @@ async def combine_incidents(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Incident {sid} is already merged.",
+            )
+        # Combining closes the secondary, so it follows the Resolve rule.
+        if not await _reassign.can_resolve(db, org_id, sec, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f'Only an admin or a member of the team handling "{sec.title}" '
+                    "can combine it into another incident."
+                ),
             )
         secondaries.append(sec)
 

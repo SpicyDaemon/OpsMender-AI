@@ -48,7 +48,7 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | `/ack [incident-id]` | Acknowledge. With no id, OpsMender resolves your most recently paged active incident. |
 | `/take [incident-id]` | Take an unowned incident, or ask the owner to hand it over (they have five minutes to confirm). An incident without an Escalation Chain (P2/P3 notify) can't hold that request: ask the owner to release it, or use Force take in OpsMender with a reason. |
 | `/release [incident-id]` | Release the incident. Only the owner or an admin can. If the owner held it under an acknowledgement, the next level is paged straight away. |
-| `/resolve [incident-id]` | Cancel chain and mark the incident resolved. |
+| `/resolve [incident-id]` | Cancel chain and mark the incident resolved. Only admins and operators on the team handling the incident can. |
 | `/snooze [duration] [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
 | `/status [incident-id]` | Without an id, lists the org's active chains. With an id, prints status / step index / next-due-at / current owner. |
 

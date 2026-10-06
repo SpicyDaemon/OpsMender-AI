@@ -320,6 +320,10 @@ async def execute_incident_action(
         )
 
     if claims.action == "resolve":
+        from backend.paging.reassign import can_resolve
+
+        if not await can_resolve(db, claims.org_id, incident, operator):
+            raise IncidentActionError("actor_cannot_resolve")
         await SessionRepo.cancel_queued_for_incident(
             db,
             claims.org_id,

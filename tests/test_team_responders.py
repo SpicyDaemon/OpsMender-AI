@@ -67,7 +67,9 @@ async def _snapshot(w: World, incident_id: uuid.UUID) -> dict:
     async with w.app.state.session_factory() as db:
 
         async def count(model, *where) -> int:
-            return await db.scalar(select(func.count()).select_from(model).where(*where))
+            return await db.scalar(
+                select(func.count()).select_from(model).where(*where)
+            )
 
         responders = (
             await db.execute(

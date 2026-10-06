@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The design audit gate (`scripts/design_audit.mjs`) now fails when the
+  accessibility checker crashes on a page, when a page can't be captured, or
+  when nothing was captured at all. Pages that need a record the environment
+  doesn't have are listed as NOT RUN instead of being skipped silently. CI
+  checks these rules without a browser.
 - Reliability Maintenance Windows now send an explicit scope: All Targets
   covers the workspace, a linked target covers its service, and a standalone
   target covers only that probe. Create and update reject specific target IDs

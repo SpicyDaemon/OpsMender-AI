@@ -60,6 +60,7 @@ from backend.db.repos import (
 )
 from backend.mcp.client import list_tools as mcp_list_tools
 from backend.mcp.pool import MCPServerPool
+from backend.paging import reassign as _reassign
 from backend.skills.parser import loads as load_skill_def
 from backend.tiers.enforcement import normalize_tier
 from backend.tiers.resolution import resolve_session_tier_for_incident
@@ -159,6 +160,22 @@ async def _allowed_model_config_ids_for_session(
     return allowed
 
 
+async def _ensure_session_control(
+    db: AsyncSession, org_id: uuid.UUID, session, user: User
+) -> None:
+    """The incident's owner and admins control its AI session; others watch.
+
+    Sessions without an incident keep the admin/operator rule.
+    """
+    if session.incident_id is None:
+        return
+    if not await _reassign.can_control_session(db, org_id, session.incident_id, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=_reassign.SESSION_CONTROL_FORBIDDEN,
+        )
+
+
 @router.post(
     "",
     response_model=SessionResponse,
@@ -180,6 +197,13 @@ async def create_session(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Incident not found",
+            )
+        # The incident's owner and admins start its AI session; others watch.
+        # Starting never changes who owns the incident.
+        if not await _reassign.can_control_session(db, org_id, incident.id, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=_reassign.SESSION_CONTROL_FORBIDDEN,
             )
 
     default_profile = await get_or_create_workflow_settings(db, org_id)
@@ -233,20 +257,6 @@ async def create_session(
         if session.status in _RUNNING_STATUSES:
             cancel_session_workflow(request.app, session_id=session.id)
             await _expire_pending_approvals(db, org_id, session.id)
-        if incident is not None and session.status != "queued":
-            from backend.paging.escalation import acknowledge
-
-            # Taking over the AI session takes ownership: paging stops and the
-            # user holds the acknowledgement lock.
-            await acknowledge(
-                db,
-                org_id,
-                incident_id=incident.id,
-                assignee_id=user.id,
-                via="session",
-                assigned_by="session_takeover",
-                replace_owner=True,
-            )
         await AuditEntryRepo.create(
             db,
             org_id,
@@ -436,6 +446,9 @@ async def cancel_queued_session(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
+    session = await SessionRepo.get_by_id(db, org_id, session_id)
+    if session is not None:
+        await _ensure_session_control(db, org_id, session, user)
     ok = await SessionRepo.cancel_queued_session(
         db, org_id, session_id, reason=f"Removed from queue by {user.username}"
     )
@@ -577,6 +590,7 @@ async def switch_session_model(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
+    await _ensure_session_control(db, org_id, session, user)
 
     allowed_model_config_ids = await _allowed_model_config_ids_for_session(
         db, org_id, session
@@ -648,6 +662,7 @@ async def stop_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
+    await _ensure_session_control(db, org_id, session, user)
     if session.status not in _STOPPABLE_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -728,6 +743,7 @@ async def override_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
+    await _ensure_session_control(db, org_id, session, user)
     if session.status not in _RUNNING_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -751,8 +767,9 @@ async def override_session(
     await SessionRepo.set_status(db, org_id, session_id, status="active")
     session.tier = target_tier
 
-    # A human is now in control - record them as the incident assignee so the
-    # incident is acknowledged/owned (mirrors the Tier 1/2 ack-then-start gate).
+    # A human is now in control. An unowned incident becomes theirs (mirrors
+    # the Tier 1/2 ack-then-start gate); an owner keeps it, refreshing the lock
+    # when it is them. Override never replaces someone else.
     if session.incident_id is not None:
         from backend.paging.escalation import acknowledge
 
@@ -763,7 +780,6 @@ async def override_session(
             assignee_id=user.id,
             via="session",
             assigned_by="override",
-            replace_owner=True,
         )
     await AuditEntryRepo.create(
         db,
@@ -851,6 +867,7 @@ async def create_session_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
+    await _ensure_session_control(db, org_id, session, user)
 
     message = await SessionMessageRepo.create(
         db,

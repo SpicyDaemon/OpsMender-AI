@@ -1,7 +1,9 @@
 """One decision path for approval requests, from the web or from chat.
 
 Both surfaces must refuse an expired request, record who decided, and count
-the decision as the incident owner's activity (KI-046).
+the decision as the incident owner's activity (KI-046). Requests from an
+incident's AI session are answered by its owner, operators of the team
+handling it and admins (M1-13).
 """
 
 from __future__ import annotations
@@ -12,15 +14,34 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import ApprovalRequest
-from backend.db.repos import ApprovalRequestRepo, AuditEntryRepo, SessionRepo
+from backend.db.models import ApprovalRequest, User
+from backend.db.repos import (
+    ApprovalRequestRepo,
+    AuditEntryRepo,
+    IncidentRepo,
+    SessionRepo,
+)
 
 
 @dataclasses.dataclass
 class Decision:
-    # "decided" | "expired" | "not_found" | "not_pending" | "failed"
+    # "decided" | "expired" | "not_found" | "not_pending" | "forbidden" | "failed"
     outcome: str
     request: ApprovalRequest | None
+
+
+async def can_decide(
+    db: AsyncSession, org_id: uuid.UUID, request: ApprovalRequest, user: User
+) -> bool:
+    """Whether ``user`` may answer ``request``: for an incident's AI session,
+    its owner, operators of the team handling it and admins."""
+    from backend.paging.reassign import can_approve
+
+    session = await SessionRepo.get_by_id(db, org_id, request.session_id)
+    if session is None or session.incident_id is None:
+        return True
+    incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
+    return incident is None or await can_approve(db, org_id, incident, user)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -37,15 +58,21 @@ async def decide(
     request_id: uuid.UUID,
     *,
     decision: str,
-    resolver_id: uuid.UUID,
+    resolver: User,
     resolution_note: str | None = None,
 ) -> Decision:
-    """Approve or reject a pending request, or expire it if it's too late."""
+    """Approve or reject a pending request, or expire it if it's too late.
+
+    Someone who may not answer it gets ``forbidden`` and changes nothing.
+    """
     request = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
     if request is None:
         return Decision("not_found", None)
     if request.status != "pending":
         return Decision("not_pending", request)
+    if not await can_decide(db, org_id, request, resolver):
+        return Decision("forbidden", request)
+    resolver_id = resolver.id
 
     now = datetime.now(timezone.utc)
     if now >= _as_utc(request.expires_at):

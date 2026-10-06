@@ -29,6 +29,7 @@ import {
   approveRequest,
   connectSessionStream,
   getIncident,
+  getIncidentPaging,
   getSession,
   listAudit,
   listModelConfigs,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/api";
 import type {
   ApprovalRequestResponse,
+  IncidentPagingPanelResponse,
   IncidentResponse,
   MCPServerResponse,
   ModelConfigResponse,
@@ -417,11 +419,17 @@ function SessionPageContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const { user } = useAuth();
-  const canChat = user?.role === "admin" || user?.role === "operator";
+  const isViewer = !(user?.role === "admin" || user?.role === "operator");
   const canRollback = user?.role === "admin";
 
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
+  const [pagingPanel, setPagingPanel] = useState<IncidentPagingPanelResponse | null>(null);
+  // An incident's owner and admins steer its AI session and the owner, its
+  // team's operators and admins answer approvals; others watch.
+  const onIncident = !!session?.incident_id;
+  const canChat = !isViewer && (!onIncident || (pagingPanel?.can_control_session ?? false));
+  const canDecideApprovals = !isViewer && (!onIncident || (pagingPanel?.can_approve ?? false));
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<LogEvent[]>([]);
   const [messages, setMessages] = useState<SessionMessageResponse[]>([]);
@@ -521,6 +529,12 @@ function SessionPageContent() {
             if (!cancelled) setIncident(inc);
           } catch {
             // ignore - incident may have been deleted
+          }
+          try {
+            const panel = await getIncidentPaging(s.incident_id);
+            if (!cancelled) setPagingPanel(panel);
+          } catch {
+            // ignore - without the panel the controls stay read-only
           }
         }
         const [history, auditHistory] = await Promise.all([
@@ -766,12 +780,13 @@ function SessionPageContent() {
   const chatDisabled = !canChat || (!!session && isTerminalStatus(session.status));
 
   const inputPlaceholder = useMemo(() => {
-    if (!canChat) return "Chat is read-only for viewers.";
+    if (isViewer) return "Chat is read-only for viewers.";
+    if (!canChat) return "Only the incident's owner or an admin can message its AI session.";
     if (session && isTerminalStatus(session.status)) {
       return "This session has ended. Chat is read-only.";
     }
     return "Add context or ask anything…";
-  }, [canChat, session]);
+  }, [canChat, isViewer, session]);
 
   const tier0Timer = useMemo(() => {
     // Only a live tier-0 run has a meaningful countdown. Terminal and queued
@@ -877,7 +892,7 @@ function SessionPageContent() {
                     <Select
                       id="session-model-picker"
                       value={selectedModelValue}
-                      disabled={modelSwitching || isTerminalStatus(session.status)}
+                      disabled={!canChat || modelSwitching || isTerminalStatus(session.status)}
                       onChange={(event) => handleModelSwitch(event.target.value)}
                       className="h-8 py-1 text-xs font-mono"
                     >
@@ -1048,21 +1063,23 @@ function SessionPageContent() {
                 <p className="mt-1.5 text-xs text-fg-muted tabular-nums font-mono">
                   Expires {formatTime(a.expires_at)}
                 </p>
-                <div className="mt-2.5">
-                  <Label htmlFor={`redirect-${a.id}`} className="text-[11px]">
-                    Redirect (steer the AI instead of approving)
-                  </Label>
-                  <textarea
-                    id={`redirect-${a.id}`}
-                    value={redirectDrafts[a.id] ?? ""}
-                    onChange={(e) =>
-                      setRedirectDrafts((prev) => ({ ...prev, [a.id]: e.target.value }))
-                    }
-                    placeholder="e.g. drain the node first, then restart the pod"
-                    rows={2}
-                    className="mt-1 w-full resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-xs shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-                  />
-                </div>
+                {canDecideApprovals && (
+                  <div className="mt-2.5">
+                    <Label htmlFor={`redirect-${a.id}`} className="text-[11px]">
+                      Redirect (steer the AI instead of approving)
+                    </Label>
+                    <textarea
+                      id={`redirect-${a.id}`}
+                      value={redirectDrafts[a.id] ?? ""}
+                      onChange={(e) =>
+                        setRedirectDrafts((prev) => ({ ...prev, [a.id]: e.target.value }))
+                      }
+                      placeholder="e.g. drain the node first, then restart the pod"
+                      rows={2}
+                      className="mt-1 w-full resize-none rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-xs shadow-sm placeholder:text-fg-muted focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+                    />
+                  </div>
+                )}
                 <div className="mt-3">
                   <button
                     type="button"
@@ -1095,36 +1112,43 @@ function SessionPageContent() {
                   </pre>
                 </div>
               </div>
-              <div className="flex flex-col gap-2 sm:shrink-0">
-                <Button
-                  size="sm"
-                  variant="success"
-                  onClick={() => handleApprove(a.id)}
-                  className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
-                >
-                  <CheckCircle2 size={14} />
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleReject(a.id)}
-                  className="h-11 w-full justify-center text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:h-auto sm:min-w-[100px] sm:w-auto"
-                >
-                  <XCircle size={14} />
-                  Reject
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => handleRedirect(a.id)}
-                  disabled={!(redirectDrafts[a.id] ?? "").trim()}
-                  className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
-                >
-                  <CornerUpRight size={14} />
-                  Redirect
-                </Button>
-              </div>
+              {canDecideApprovals ? (
+                <div className="flex flex-col gap-2 sm:shrink-0">
+                  <Button
+                    size="sm"
+                    variant="success"
+                    onClick={() => handleApprove(a.id)}
+                    className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
+                  >
+                    <CheckCircle2 size={14} />
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleReject(a.id)}
+                    className="h-11 w-full justify-center text-status-critical hover:bg-status-critical-bg hover:text-status-critical sm:h-auto sm:min-w-[100px] sm:w-auto"
+                  >
+                    <XCircle size={14} />
+                    Reject
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleRedirect(a.id)}
+                    disabled={!(redirectDrafts[a.id] ?? "").trim()}
+                    className="h-11 w-full justify-center sm:h-auto sm:min-w-[100px] sm:w-auto"
+                  >
+                    <CornerUpRight size={14} />
+                    Redirect
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-fg-muted sm:max-w-[220px]" data-testid="approval-read-only">
+                  Only the incident&apos;s owner, an operator of the team handling it or an admin
+                  can answer this approval.
+                </p>
+              )}
             </div>
           ))}
         </div>

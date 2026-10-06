@@ -21,6 +21,7 @@ from backend.db.models import Base, Incident, Organization
 from backend.db.repos import (
     BotConnectorRepo,
     BotUserLinkRepo,
+    IncidentAssignmentRepo,
     IncidentRepo,
     NativeActionInvocationRepo,
     UserRepo,
@@ -380,8 +381,14 @@ class TestTeamsActivityEndpoint:
 
     async def test_duplicate_activity_is_deduplicated(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
-        await _seed_user_and_link(app, connector_id=connector.id)
+        user, _ = await _seed_user_and_link(app, connector_id=connector.id)
         incident = await _seed_incident(app)
+        # The owner may start the incident's AI session (M1-13).
+        async with app.state.session_factory() as db:
+            await IncidentAssignmentRepo.assign(
+                db, TEST_ORG_ID, incident_id=incident.id, user_id=user.id
+            )
+            await db.commit()
         body = _activity_payload(
             action=ACTION_START_AI_SESSION,
             incident_id=incident.id,

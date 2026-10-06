@@ -2831,6 +2831,10 @@ class IncidentPagingPanelResponse(BaseModel):
     can_force_take: bool = False
     can_reassign: bool = False
     can_resolve: bool = False
+    # The owner and admins start, stop and steer the incident's AI session.
+    can_control_session: bool = False
+    # The owner, operators of the handling team and admins answer approvals.
+    can_approve: bool = False
     can_manage_responders: bool = False
     responders: list[IncidentResponderResponse] = Field(default_factory=list)
     responder_limit: int = 3

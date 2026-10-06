@@ -19,7 +19,8 @@
  * | resolved     | Create postmortem                                    |
  *
  * Acknowledge, Take, Reassign, Add responders and Resolve show only when
- * the server allows them.
+ * the server allows them. Start session is enabled for the incident's owner
+ * and admins, and shown disabled to others who could take it first.
  *
  * Approve / Reject + Escalate land in Sprint A step 2 (right-rail
  * context) and Sprint B (governed AI) - they need state the detail
@@ -87,6 +88,8 @@ interface Props {
   canReassign?: boolean;
   /** Admins and operators on the incident's team can resolve it. */
   canResolve?: boolean;
+  /** The owner and admins start the incident's AI session; others watch. */
+  canControlSession?: boolean;
   /** Admins, the owner, and operators on the incident's team. */
   canManageResponders?: boolean;
   /** People asked to help besides the owner. */
@@ -109,6 +112,7 @@ export function IncidentCommandStrip({
   canForceTake = false,
   canReassign = false,
   canResolve = false,
+  canControlSession = false,
   canManageResponders = false,
   responders = [],
   responderLimit = 3,
@@ -436,12 +440,17 @@ export function IncidentCommandStrip({
             </Button>
           )}
 
-          {!isResolved && (
+          {!isResolved && (canControlSession || canTake) && (
             <Button
               size="sm"
-              disabled={!!busy}
+              disabled={!!busy || !canControlSession}
               onClick={onStartSession}
               data-testid="action-start-session"
+              title={
+                canControlSession
+                  ? undefined
+                  : "Take the incident first. Only its owner or an admin can start its AI session."
+              }
             >
               <Play size={14} />
               Start session

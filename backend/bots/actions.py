@@ -376,6 +376,13 @@ async def execute_incident_action(
         )
 
     if claims.action == "start_ai_session":
+        from backend.paging.reassign import can_control_session
+
+        # The incident's owner and admins start its AI session; others watch.
+        if not await can_control_session(
+            db, claims.org_id, claims.incident_id, operator
+        ):
+            raise IncidentActionError("actor_cannot_control_session")
         sessions = await SessionRepo.list_by_incident(
             db, claims.org_id, claims.incident_id
         )

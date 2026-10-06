@@ -344,6 +344,7 @@ function IncidentDetailContent() {
         canForceTake={pagingPanel?.can_force_take ?? false}
         canReassign={pagingPanel?.can_reassign ?? false}
         canResolve={pagingPanel?.can_resolve ?? false}
+        canControlSession={pagingPanel?.can_control_session ?? false}
         canManageResponders={pagingPanel?.can_manage_responders ?? false}
         responders={pagingPanel?.responders ?? []}
         responderLimit={pagingPanel?.responder_limit ?? 3}
@@ -581,6 +582,8 @@ function IncidentDetailContent() {
           <IncidentSessionSidecar
             sessionId={activeSessionId}
             onClose={() => setActiveSessionId("")}
+            canControlSession={pagingPanel?.can_control_session ?? false}
+            canApproveActions={pagingPanel?.can_approve ?? false}
           />
         ) : null}
       </div>

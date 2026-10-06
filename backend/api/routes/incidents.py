@@ -1971,6 +1971,10 @@ async def get_incident_paging(
         can_take=await _reassign.can_take(db, org_id, incident, user),
         can_reassign=await _reassign.can_reassign(db, org_id, incident, user),
         can_resolve=await _reassign.can_resolve(db, org_id, incident, user),
+        can_control_session=await _reassign.can_control_session(
+            db, org_id, incident.id, user
+        ),
+        can_approve=await _reassign.can_approve(db, org_id, incident, user),
         can_manage_responders=await _responders.can_manage_responders(
             db, org_id, incident, user
         ),

@@ -144,14 +144,21 @@ function displayStatus(value: string | null | undefined): string {
 export function IncidentSessionSidecar({
   sessionId,
   onClose,
+  canControlSession,
+  canApproveActions,
 }: {
   sessionId: string;
   onClose: () => void;
+  /** The incident's owner and admins steer its AI session; others watch. */
+  canControlSession: boolean;
+  /** The owner, operators of the handling team and admins answer approvals. */
+  canApproveActions: boolean;
 }) {
   const { user } = useAuth();
   const toast = useToast();
-  const canChat = user?.role === "admin" || user?.role === "operator";
-  const canApprove = canChat;
+  const isViewer = !(user?.role === "admin" || user?.role === "operator");
+  const canChat = !isViewer && canControlSession;
+  const canApprove = !isViewer && canApproveActions;
 
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -298,10 +305,11 @@ export function IncidentSessionSidecar({
   }
 
   const inputPlaceholder = useMemo(() => {
-    if (!canChat) return "Chat is read-only for viewers.";
+    if (isViewer) return "Chat is read-only for viewers.";
+    if (!canChat) return "Only the incident's owner or an admin can message its AI session.";
     if (session?.status === "completed") return "Session complete. Chat is still open.";
     return "Ask the co-pilot or add context…";
-  }, [canChat, session?.status]);
+  }, [canChat, isViewer, session?.status]);
 
   return (
     <aside className="flex min-h-[600px] flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-sm xl:sticky xl:top-8 xl:max-h-[calc(100vh-8rem)]">

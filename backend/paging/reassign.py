@@ -142,6 +142,45 @@ RESOLVE_FORBIDDEN = (
 )
 
 
+async def can_control_session(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID, user: User
+) -> bool:
+    """Whether ``user`` may start, stop, steer or take over the AI session of
+    the incident ``incident_id``: admins and the incident's owner. Others watch.
+    """
+
+    role = request_role(user)
+    if role == "admin":
+        return True
+    if role != "operator":
+        return False
+    owner = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    return owner is not None and owner.assigned_to == user.id
+
+
+SESSION_CONTROL_FORBIDDEN = (
+    "Take the incident first. Only its owner or an admin can start, stop or "
+    "steer its AI session."
+)
+
+
+async def can_approve(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident, user: User
+) -> bool:
+    """Approvals from the incident's AI session: its owner, operators on the
+    team handling it (any operator when it has no team) and admins."""
+
+    return await can_reassign(db, org_id, incident, user) or await can_control_session(
+        db, org_id, incident.id, user
+    )
+
+
+APPROVAL_FORBIDDEN = (
+    "Only the incident's owner, an operator of the team handling it or an "
+    "admin can answer this approval."
+)
+
+
 async def select_chain_for_team(
     db: AsyncSession,
     org_id: uuid.UUID,

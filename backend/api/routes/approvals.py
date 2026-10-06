@@ -18,9 +18,10 @@ from backend.api.schemas import (
     WSMessage,
 )
 from backend.api.routes.ws import publish
-from backend.approvals.decisions import decide
+from backend.approvals.decisions import can_decide, decide
 from backend.db.models import ApprovalRequest, Session as SessionModel, User
 from backend.db.repos import ApprovalRequestRepo
+from backend.paging.reassign import APPROVAL_FORBIDDEN
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -103,7 +104,7 @@ async def _resolve_request(
         org_id,
         request_id,
         decision=decision,
-        resolver_id=resolver.id,
+        resolver=resolver,
         resolution_note=resolution_note,
     )
     if result.outcome == "not_found":
@@ -115,6 +116,10 @@ async def _resolve_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Approval request is already {result.request.status}",
+        )
+    if result.outcome == "forbidden":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=APPROVAL_FORBIDDEN
         )
     if result.outcome == "expired":
         from backend.services.session_orchestration import schedule_queue_drain
@@ -265,6 +270,10 @@ async def extend_request(
     approval = await ApprovalRequestRepo.get_by_id(db, org_id, request_id)
     if approval is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    if not await can_decide(db, org_id, approval, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=APPROVAL_FORBIDDEN
+        )
     if approval.status != "pending":
         raise HTTPException(
             status_code=409,

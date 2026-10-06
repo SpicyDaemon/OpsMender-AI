@@ -175,7 +175,14 @@ incident's priority wins; otherwise an unfiltered chain is used. Ties use a
 stable order. If neither exists, the incident timeline records that no
 responder was paged, and the service editor warns for P0/P1.
 
-Each level waits for its configured timeout before the next level fires. The
+Each level waits for its configured timeout before the next level fires, and
+also until everyone it paged has had all their own notification stages (My
+Routing) plus an answer window after the last one: that stage's wait, 5
+minutes by default. A last stage that couldn't be sent gets no answer window;
+someone without stages gets one answer window after a page that reached them,
+and none when nothing did. A level
+never waits more than 30 minutes, and an acknowledgement stops it at once.
+With the default stages (5-minute waits) levels fire 15 minutes apart. The
 final level waits too, then the chain ends with one exhaustion notice in the
 team's Notification Channels and responders' Inbox. An empty level (no active
 admin or operator to page) is skipped immediately and explained on the timeline; a level

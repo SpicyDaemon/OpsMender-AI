@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The next Escalation Chain level no longer pages before the people the
+  current level paged have had all their own notification stages. A level
+  escalates at the later of its timeout and the end of everyone's stages plus
+  an answer window (the last stage's wait, 5 minutes by default; none if that
+  stage couldn't be sent; for someone without stages, 5 minutes after a page
+  that reached them), at most 30 minutes after it fired. With default
+  stages, levels fire 15 minutes apart. My Routing shows the last stage's wait
+  as the answer window.
 - A recovery that arrives during a Maintenance Window now closes the incident
   it clears, stopping its Escalation Chain and AI session without paging
   anyone. Before, the window dropped it with every other alert, so an incident

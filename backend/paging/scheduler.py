@@ -61,13 +61,14 @@ class EscalationScheduler:
         factory = build_channel_factory()
         async with self._session_factory() as db:
             try:
-                advanced = await tick_all_due(db, at=now, channel_factory=factory)
-                # Advance staged per-priority notification escalations too.
+                # Personal notification steps go first, so a level that
+                # waits for its people sees their latest step (M1-22).
                 from backend.paging import notification_escalation as _ne
 
                 staged = await _ne.tick_all_due(
                     db, at=now, sender=_ne.build_notification_sender(factory)
                 )
+                advanced = await tick_all_due(db, at=now, channel_factory=factory)
                 # Requests to join as a responder expire after 30 minutes.
                 from backend.paging import responders as _responders
 

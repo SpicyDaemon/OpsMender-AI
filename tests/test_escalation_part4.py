@@ -439,8 +439,10 @@ async def test_logical_marker_ignores_physical_rows_and_handoff_gets_new_round(a
             step_index=0,
             round=0,
         )
+        # The sent pages reached the user, so the level also waits one answer
+        # window after them (M1-22) before the next level fires.
         await esc.tick(
-            db, TEST_ORG_ID, incident_id=incident.id, at=T0 + timedelta(seconds=20)
+            db, TEST_ORG_ID, incident_id=incident.id, at=T0 + timedelta(minutes=5)
         )
         await db.commit()
         assert len(await _markers(db, incident.id)) == 2
@@ -449,7 +451,7 @@ async def test_logical_marker_ignores_physical_rows_and_handoff_gets_new_round(a
             TEST_ORG_ID,
             incident_id=incident.id,
             chain_id=chain.id,
-            at=T0 + timedelta(seconds=21),
+            at=T0 + timedelta(minutes=5, seconds=1),
         )
         await db.commit()
         markers = await _markers(db, incident.id)

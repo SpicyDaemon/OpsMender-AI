@@ -56,7 +56,7 @@ Each priority holds an **ordered notification escalation** of up to **3 stages**
 > 2. SMS Primary → wait 5 min
 > 3. Telegram Ops
 
-Per stage you pick a **channel** and (for non-final stages) a **wait** before the next stage escalates. Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
+Per stage you pick a **channel** and a **wait**: for non-final stages, the wait before the next stage; for the last stage, the **answer window**, how long the next Escalation Chain level waits for your answer before it pages someone else (it waits at most 30 minutes from its own page). Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone asked to help after the incident has an owner gets all of their stages.
 

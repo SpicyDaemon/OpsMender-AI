@@ -4762,11 +4762,23 @@ export function NotificationPreferencesPanel({
                             Configure in Settings → Voice &amp; SMS calling.
                           </span>
                         ) : null}
-                        {idx < stages.length - 1 && (
-                          <label className="inline-flex items-center gap-1 text-xs text-fg-muted">
-                            Wait
+                        {/* The last stage's wait is the answer window: how long the
+                            next escalation level waits for you after it (M1-22). */}
+                        <label
+                          className="inline-flex items-center gap-1 text-xs text-fg-muted"
+                          title={
+                            idx < stages.length - 1
+                              ? undefined
+                              : "After your last stage, the next escalation level waits this long for your answer."
+                          }
+                        >
+                            {idx < stages.length - 1 ? "Wait" : "Answer window"}
                             <Select
-                              aria-label={`${p} stage ${idx + 1} delay`}
+                              aria-label={
+                                idx < stages.length - 1
+                                  ? `${p} stage ${idx + 1} delay`
+                                  : `${p} answer window`
+                              }
                               value={String(stage.delay_seconds)}
                               onChange={(e) =>
                                 setStageDelay(p, idx, Number(e.target.value))
@@ -4780,7 +4792,6 @@ export function NotificationPreferencesPanel({
                               ))}
                             </Select>
                           </label>
-                        )}
                         <div className="ml-auto flex items-center gap-0.5">
                           <button
                             type="button"

@@ -46,10 +46,11 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Incident, IncidentAssignment
+from backend.db.models import Incident, IncidentAssignment, IncidentPage
 from backend.db.repos import (
     BotConnectorRepo,
     chain_is_live,
@@ -59,6 +60,7 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     EscalationChainRepo,
+    NotificationEscalationRepo,
     RosterRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
@@ -79,6 +81,11 @@ HARD_INACTIVITY_TIMEOUT_SECONDS = 15 * 60
 # D-021: an acknowledgement lock lapses 15 min after the assignee's last write.
 ACK_LOCK_INACTIVITY_SECONDS = 15 * 60
 CLOSED_INCIDENT_STATUSES = ("resolved", "merged")
+# M1-22: a level waits for the people it paged to have had all their own
+# steps, plus an answer window after the last one, but no longer than this
+# after the level fired. The window is that step's stored wait.
+LEVEL_WAIT_CAP = timedelta(minutes=30)
+DEFAULT_ANSWER_WINDOW = timedelta(minutes=5)
 
 
 @dataclasses.dataclass(slots=True)
@@ -593,6 +600,8 @@ async def _fire_next_level(
             continue
         state.status = "running"
         state.next_step_due_at = now + timedelta(seconds=step.timeout_seconds)
+        # The latest this level waits for its people (M1-22).
+        state.hard_deadline_at = now + LEVEL_WAIT_CAP
         await db.flush()
         if result.users_paged and not result.delivery_recorded:
             await record_lifecycle_comment(
@@ -678,6 +687,13 @@ async def _tick_state(
             if changed:
                 await db.flush()
             return None, changed
+        # The level's timeout has passed; it still waits for the people it
+        # paged to have had all their own steps (M1-22).
+        hold = await _level_wait(db, org_id, state, now=now)
+        if hold is not None:
+            state.next_step_due_at = hold
+            await db.flush()
+            return None, True
         return (
             await _fire_next_level(
                 db, org_id, state, now=now, channel_factory=channel_factory
@@ -741,6 +757,119 @@ async def _tick_state(
         ),
         True,
     )
+
+
+async def _answer_window(db: AsyncSession, org_id: uuid.UUID, row) -> timedelta:
+    """The answer window after a person's last step: that step's stored wait,
+    or none when it could not be sent."""
+    from backend.paging.routing import parse_stages
+
+    stages = parse_stages(row.stages)
+    if not stages:
+        return timedelta(0)
+    last = len(stages) - 1
+    page = (
+        await db.execute(
+            select(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == row.incident_id,
+                IncidentPage.user_id == row.user_id,
+                IncidentPage.chain_id.is_(None),
+                IncidentPage.step_index == last,
+                IncidentPage.channel == stages[last].channel_id,
+            )
+            .order_by(IncidentPage.sent_at.desc(), IncidentPage.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if page is None or page.delivery_status != "sent":
+        return timedelta(0)
+    return timedelta(seconds=stages[last].delay_seconds)
+
+
+async def _reached_at_level(
+    db: AsyncSession, org_id: uuid.UUID, state, user_id: uuid.UUID
+) -> bool:
+    """Whether an immediate page of the current level was sent to them."""
+    sent = (
+        await db.execute(
+            select(IncidentPage.id)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == state.incident_id,
+                IncidentPage.user_id == user_id,
+                IncidentPage.chain_id == state.chain_id,
+                IncidentPage.round == state.round,
+                IncidentPage.step_index == state.current_step_index,
+                IncidentPage.channel != "recorded",
+                IncidentPage.delivery_status == "sent",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return sent is not None
+
+
+async def _level_wait(
+    db: AsyncSession, org_id: uuid.UUID, state, *, now: datetime
+) -> datetime | None:
+    """When to look at a due level again, or None when it may escalate now.
+
+    A level escalates once everyone it paged has had all their own steps plus
+    the answer window after the last one, and its timeout has passed (the
+    caller checks that), unless someone acknowledges. A person still running
+    through their steps is checked again when their next step is due; one on
+    legacy immediate routing is done one default answer window after the page
+    when it reached them, and at once when nothing did (a step that could not
+    be sent gets no answer window). The wait never runs past the level start
+    plus ``LEVEL_WAIT_CAP``.
+    """
+    cap = _aware(state.hard_deadline_at)
+    if cap is None or now >= cap:
+        return None
+    level_start = cap - LEVEL_WAIT_CAP
+    user_ids = (
+        (
+            await db.execute(
+                select(IncidentPage.user_id)
+                .where(
+                    IncidentPage.org_id == org_id,
+                    IncidentPage.incident_id == state.incident_id,
+                    IncidentPage.chain_id == state.chain_id,
+                    IncidentPage.round == state.round,
+                    IncidentPage.step_index == state.current_step_index,
+                    IncidentPage.channel == "recorded",
+                )
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    wait_until: datetime | None = None
+    for user_id in user_ids:
+        row = await NotificationEscalationRepo.get(
+            db, org_id, incident_id=state.incident_id, user_id=user_id
+        )
+        if row is None:
+            if not await _reached_at_level(db, org_id, state, user_id):
+                continue
+            until = level_start + DEFAULT_ANSWER_WINDOW
+        elif row.status == "running":
+            # Not used up yet: look again when their next step is due.
+            next_due = _aware(row.next_stage_due_at) or now
+            until = max(next_due, now + timedelta(seconds=1))
+        elif row.status == "exhausted":
+            finished = _aware(row.finished_at) or now
+            until = finished + await _answer_window(db, org_id, row)
+        else:
+            until = _aware(row.finished_at) or now
+        if until > now and (wait_until is None or until > wait_until):
+            wait_until = until
+    if wait_until is None:
+        return None
+    return min(wait_until, cap)
 
 
 async def tick(

@@ -285,7 +285,6 @@ export default function MemoriesPage() {
       },
     ],
     [
-      canEdit,
       serviceFilterOptions,
       serviceNameById,
       teamFilterOptions,

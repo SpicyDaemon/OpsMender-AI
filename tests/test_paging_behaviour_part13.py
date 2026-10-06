@@ -281,13 +281,24 @@ async def test_taking_an_unowned_incident_still_works(world):
 async def test_admins_can_still_reassign_to_someone_else(world):
     incident_id = await _service_incident(world)
     await _own(world, incident_id, world.level1)
-    reassigned = await world.client.post(
+    # Replacing an owner needs a note (M1-11).
+    no_note = await world.client.post(
         f"/incidents/{incident_id}/assign",
         json={"user_id": str(world.level3)},
         headers=world.admin,
     )
+    assert no_note.status_code == 422, no_note.text
+    assert await _owner(world.app, incident_id) == world.level1
+    reassigned = await world.client.post(
+        f"/incidents/{incident_id}/assign",
+        json={"user_id": str(world.level3), "note": "Covering while lc-l1 is out."},
+        headers=world.admin,
+    )
     assert reassigned.status_code == 200, reassigned.text
     assert await _owner(world.app, incident_id) == world.level3
+    async with world.app.state.session_factory() as db:
+        inbox = await InAppNotificationRepo.list_for_user(db, TEST_ORG_ID, world.level1)
+    assert any(item.event_type == "incident.reassigned" for item in inbox)
 
 
 async def test_bulk_acknowledge_skips_incidents_someone_else_holds(world):

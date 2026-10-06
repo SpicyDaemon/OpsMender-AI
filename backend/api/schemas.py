@@ -2718,6 +2718,8 @@ class IncidentAssignmentResponse(BaseModel):
 
 class IncidentAssignRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None  # null means self
+    # Required when assigning someone else replaces the current owner.
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class IncidentBulkActionRequest(BaseModel):
@@ -2732,6 +2734,9 @@ class IncidentBulkActionRequest(BaseModel):
     incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     # For action="reassign" (also used to set the assignee when acknowledging).
     user_id: Optional[uuid.UUID] = None
+    # For "reassign", or "acknowledge" for someone else: required when the
+    # assignment replaces an owner.
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class IncidentBulkActionResult(BaseModel):

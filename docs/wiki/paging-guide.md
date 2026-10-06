@@ -253,6 +253,17 @@ team as the current owner, can use **Force take** immediately. They must enter
 a reason. The former owner gets an Inbox notice, and the reason appears on
 the timeline. Taking an unowned incident still assigns it immediately.
 
+**Replacing an owner.** An owner keeps the incident at every priority until
+they release it, hand it over on a takeover request, or someone force-takes it
+with a reason. Others who try to acknowledge or take it are told who owns it
+and how to ask for it. An admin, or an operator of the handling team, can also
+assign it to another member of that team, one incident at a time or in bulk;
+replacing the owner that way needs a note, which goes on the timeline and in a
+notice to the previous owner. Only the owner or an admin can release an
+incident, in OpsMender or with Slack `/release`. On an incident without an
+Escalation Chain (P2 and P3 notify), **Take over** (or Slack `/take`) can't
+wait for the owner's answer, so it points to **Force take** instead.
+
 **Reassigning to another team.** When an alert reaches the wrong team,
 **Reassign** hands the incident to the team it belongs to. Admins, and
 operators on the incident's current team, can reassign it. Pick the team: the

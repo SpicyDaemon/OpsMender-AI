@@ -847,12 +847,10 @@ async def acknowledge(
         return AckOutcome("closed")
 
     active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
-    locked_by_other = (
-        active is not None
-        and active.assigned_to != assignee_id
-        and chain_is_live(state)
-        and state.status == "acked"
-    )
+    # Any active owner holds the incident (P0 to P3), not only one under a
+    # live acknowledged chain. Replacing them takes consent, eligible force or
+    # an explicit reassignment with a note.
+    locked_by_other = active is not None and active.assigned_to != assignee_id
     if locked_by_other and not replace_owner:
         return AckOutcome("owned_by_other")
 

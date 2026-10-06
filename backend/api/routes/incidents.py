@@ -1853,6 +1853,7 @@ async def get_incident_paging(
             if request_role(user) in ("admin", "operator")
             else False
         ),
+        can_take=await _reassign.can_take(db, org_id, incident, user),
         can_reassign=await _reassign.can_reassign(db, org_id, incident, user),
         can_manage_responders=await _responders.can_manage_responders(
             db, org_id, incident, user
@@ -1938,6 +1939,10 @@ async def assign_incident(
     _ensure_open(incident)
     if target_user_id != user.id:
         await _ensure_eligible_owner(db, org_id, target_user_id)
+    elif not await _reassign.can_take(db, org_id, incident, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=_reassign.TAKE_FORBIDDEN
+        )
 
     # Taking or assigning ownership acknowledges the incident: paging stops
     # and the owner holds the D-021 lock (KI-021). Taking it for yourself
@@ -2198,6 +2203,18 @@ async def bulk_incident_action(
                     failed += 1
                     continue
                 _ensure_open(incident)
+                if target == user.id and not await _reassign.can_take(
+                    db, org_id, incident, user
+                ):
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id,
+                            ok=False,
+                            error=_reassign.TAKE_FORBIDDEN,
+                        )
+                    )
+                    failed += 1
+                    continue
                 outcome = await _esc.acknowledge(
                     db,
                     org_id,
@@ -2473,6 +2490,10 @@ async def ack_incident(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     _ensure_open(incident)
+    if not await _reassign.can_take(db, org_id, incident, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=_reassign.TAKE_FORBIDDEN
+        )
     cancelled_queued = await SessionRepo.cancel_queued_for_incident(
         db,
         org_id,
@@ -2609,6 +2630,10 @@ async def take_incident(
                 }[result],
             )
     else:
+        if not await _reassign.can_take(db, org_id, incident, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=_reassign.TAKE_FORBIDDEN
+            )
         await _esc.handle_takeover_request(
             db, org_id, incident_id=incident_id, requester_id=user.id
         )

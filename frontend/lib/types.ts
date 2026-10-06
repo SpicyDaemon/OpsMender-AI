@@ -2006,6 +2006,8 @@ export interface IncidentPagingPanelResponse {
   suppressed_by_maintenance_window: SuppressedByMaintenanceWindow | null;
   /** Someone asked the owner to hand the incident over. */
   pending_takeover?: PendingTakeover | null;
+  /** Admins, the handling team's operators and people its Escalation Chain paged now. */
+  can_take?: boolean;
   can_force_take?: boolean;
   /** Admins and operators on the incident's team can hand it to another team. */
   can_reassign?: boolean;

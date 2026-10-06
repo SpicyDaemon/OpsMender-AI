@@ -11,10 +11,11 @@ from __future__ import annotations
 import dataclasses
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.roles import request_role
-from backend.db.models import EscalationChain, Incident, Team, User
+from backend.db.models import EscalationChain, Incident, IncidentPage, Team, User
 from backend.db.repos import (
     EscalationChainRepo,
     IncidentAssignmentRepo,
@@ -54,6 +55,58 @@ async def on_incident_team(
     if team_id is None:
         return None
     return await TeamRepo.is_member(db, org_id, team_id, user_id)
+
+
+async def paged_in_current_run(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident, user_id: uuid.UUID
+) -> bool:
+    """Whether the incident's Escalation Chain paged ``user_id`` in its
+    current run (a ``recorded`` page for the chain and round now running)."""
+
+    state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident.id)
+    if state is None:
+        return False
+    page = (
+        await db.execute(
+            select(IncidentPage.id)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == incident.id,
+                IncidentPage.user_id == user_id,
+                IncidentPage.chain_id == state.chain_id,
+                IncidentPage.round == state.round,
+                IncidentPage.channel == "recorded",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return page is not None
+
+
+async def can_take(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident, user: User
+) -> bool:
+    """Whether ``user`` may take or acknowledge ``incident`` for themselves.
+
+    Admins always. Operators on the team handling it (any operator when it
+    has no team), and anyone its Escalation Chain paged in the current run.
+    """
+
+    role = request_role(user)
+    if role == "admin":
+        return True
+    if role != "operator":
+        return False
+    member = await on_incident_team(db, org_id, incident, user.id)
+    if member is None or member:
+        return True
+    return await paged_in_current_run(db, org_id, incident, user.id)
+
+
+TAKE_FORBIDDEN = (
+    "Only an admin, a member of this incident's team or someone its "
+    "Escalation Chain paged can take or acknowledge it."
+)
 
 
 async def can_reassign(

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Only the team handling an incident can take or acknowledge it. Operators
+  outside that team are refused on every path (Take, Acknowledge, bulk
+  acknowledge, takeover requests, Slack `/ack` and `/take`, chat buttons and
+  phone key 1) unless its Escalation Chain paged them in the current run.
+  Admins always can, and incidents with no team keep the any-operator rule.
+  Take and Acknowledge show only for people who can use them.
 - The design audit gate (`scripts/design_audit.mjs`) now fails when the
   accessibility checker crashes on a page, when a page can't be captured, or
   when nothing was captured at all. Pages that need a record the environment

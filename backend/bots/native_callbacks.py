@@ -31,6 +31,10 @@ ERROR_MESSAGES = {
     ),
     "actor_not_active": "Your linked OpsMender account is inactive.",
     "actor_not_authorized": "Your OpsMender role cannot perform this action.",
+    "actor_not_on_team": (
+        "Only an admin, a member of this incident's team or someone its "
+        "Escalation Chain paged can acknowledge it."
+    ),
     "incident_not_found": "That incident no longer exists.",
     "action_in_progress": "That action is already being processed.",
 }

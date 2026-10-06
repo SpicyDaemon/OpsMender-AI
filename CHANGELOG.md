@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An active owner now keeps an incident at every priority. Others who try to
+  acknowledge or take it are refused; assigning someone else over an owner
+  needs an admin or an operator of the handling team, a member of that team
+  as the new owner, and a note, which the previous owner receives in a notice.
+  Bulk reassign follows the same rule, only the owner or an admin can release
+  an incident, and Take over on an incident without an Escalation Chain now
+  says to use Force take instead of doing nothing.
 - Only the team handling an incident can take or acknowledge it. Operators
   outside that team are refused on every path (Take, Acknowledge, bulk
   acknowledge, takeover requests, Slack `/ack` and `/take`, chat buttons and

@@ -38,6 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
+from backend.auth.roles import request_role
 from backend.bots.actions import (
     ExternalActorIdentity,
     IncidentActionError,
@@ -305,6 +306,28 @@ def _fmt_incident(inc: Incident) -> str:
     return f"[{pri}] {inc.title}"
 
 
+async def _owner_name(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> str:
+    assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    owner = (
+        await UserRepo.get_by_id(db, assignment.assigned_to)
+        if assignment is not None
+        else None
+    )
+    return owner.username if owner is not None else "another responder"
+
+
+async def _ask_owner_hint(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> str:
+    """How to ask the owner for the incident. A takeover request waits on the
+    Escalation Chain, and P2/P3 notify incidents have none."""
+    if await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id) is None:
+        return "Ask them to release it, or use Force take in OpsMender with a reason."
+    return "Use `/take` to request a takeover."
+
+
 async def _handle_slash(
     db: AsyncSession,
     *,
@@ -379,19 +402,9 @@ async def _handle_slash(
             via="slash_command",
         )
         if outcome.status == "owned_by_other":
-            assignment = await IncidentAssignmentRepo.get_active(
-                db, connector.org_id, incident_id
-            )
-            owner = (
-                await UserRepo.get_by_id(db, assignment.assigned_to)
-                if assignment is not None
-                else None
-            )
-            owner_name = owner.username if owner is not None else "another responder"
-            return _ephemeral(
-                f"*{incident.title}* is owned by {owner_name}. "
-                "Use `/take` to request a takeover."
-            )
+            owner_name = await _owner_name(db, connector.org_id, incident_id)
+            hint = await _ask_owner_hint(db, connector.org_id, incident_id)
+            return _ephemeral(f"*{incident.title}* is owned by {owner_name}. {hint}")
         verb = "acknowledged" if outcome.chain_locked else "recorded"
         return _ephemeral(f"You {verb} *{incident.title}*.")
 
@@ -414,12 +427,31 @@ async def _handle_slash(
         elif result == "closed":
             msg = f"*{incident.title}* is already {incident.status}."
         else:
-            msg = f"Take-over for *{incident.title}* requires an admin (chain ended)."
+            # requires_admin: no Escalation Chain holds the incident, so a
+            # takeover request has nowhere to wait for the owner's answer.
+            owner_name = await _owner_name(db, connector.org_id, incident_id)
+            msg = (
+                f"*{incident.title}* is owned by {owner_name}, and without an "
+                "Escalation Chain a takeover request can't wait for their answer. "
+                "Ask them to release it, or use Force take in OpsMender with a reason."
+            )
         return _ephemeral(msg)
 
     if command == "/release":
         from backend.paging.channel_factory import build_channel_factory
 
+        # Same rule as the web: only the owner or an admin releases.
+        active = await IncidentAssignmentRepo.get_active(
+            db, connector.org_id, incident_id
+        )
+        if (
+            active is not None
+            and active.assigned_to != actor.id
+            and request_role(actor) != "admin"
+        ):
+            return _ephemeral(
+                f"Only the owner or an admin can release *{incident.title}*."
+            )
         state = await IncidentChainStateRepo.get_for_incident(
             db, connector.org_id, incident_id
         )

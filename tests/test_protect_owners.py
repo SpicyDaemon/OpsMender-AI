@@ -31,6 +31,7 @@ from tests.test_ownership_lifecycle import (
     _chain,
     _headers,
     _owner,
+    _slack,
     _user,
     app as _app_fixture,
     client as _client_fixture,
@@ -343,3 +344,31 @@ async def test_the_owner_and_an_admin_can_release(world):
     resp = await world.client.post(f"/incidents/{second}/release", headers=world.admin)
     assert resp.status_code == 204, resp.text
     assert await _owner(world.app, second) is None
+
+
+async def test_slack_release_by_another_operator_is_refused(world):
+    incident_id = await _team_incident(world)
+    await _owned_by_level2(world, incident_id)
+    before = await _snapshot(world, incident_id)
+    text = await _slack(world, "/release", str(incident_id), "U-mate", world.level3)
+    assert text == "Only the owner or an admin can release *owner protection*."
+    assert await _snapshot(world, incident_id) == before
+
+    text = await _slack(world, "/release", str(incident_id), "U-owner", world.level2)
+    assert text.startswith("Released *owner protection*."), text
+    assert await _owner(world.app, incident_id) is None
+
+
+async def test_slack_on_an_owned_p2_incident_points_to_force_take(world):
+    incident_id = await _team_incident(world, paging=False)
+    await _owned_by_level2(world, incident_id)
+    before = await _snapshot(world, incident_id)
+    ack = await _slack(world, "/ack", str(incident_id), "U-mate", world.level3)
+    assert ack == (
+        "*owner protection* is owned by lc-l2. Ask them to release it, or use "
+        "Force take in OpsMender with a reason."
+    )
+    take = await _slack(world, "/take", str(incident_id), "U-mate", world.level3)
+    assert take.startswith("*owner protection* is owned by lc-l2, and without")
+    assert take.endswith("use Force take in OpsMender with a reason.")
+    assert await _snapshot(world, incident_id) == before

@@ -1757,14 +1757,17 @@ export interface IncidentBulkActionResponse {
 }
 
 export async function bulkIncidentAction(
-  action: "acknowledge" | "resolve" | "reopen" | "reassign" | "delete",
+  action: "acknowledge" | "resolve" | "reopen" | "reassign" | "handoff" | "delete",
   incidentIds: string[],
   userId?: string,
+  options: { teamId?: string; note?: string } = {},
 ): Promise<IncidentBulkActionResponse> {
   return api.post<IncidentBulkActionResponse>("/incidents/bulk", {
     action,
     incident_ids: incidentIds,
     ...(userId ? { user_id: userId } : {}),
+    ...(options.teamId ? { team_id: options.teamId } : {}),
+    ...(options.note !== undefined ? { note: options.note } : {}),
   });
 }
 

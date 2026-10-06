@@ -411,6 +411,7 @@ export default function IncidentsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showTest, setShowTest] = useState(false);
   const [showCombine, setShowCombine] = useState(false);
+  const [showHandoff, setShowHandoff] = useState(false);
   const [managingIncident, setManagingIncident] = useState<IncidentResponse | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -780,6 +781,23 @@ export default function IncidentsPage() {
             </button>
             <button
               type="button"
+              data-testid="incident-action-handoff"
+              disabled={bulkBusy || !allOpenOrInProgress}
+              title={
+                !allOpenOrInProgress
+                  ? "Only open or in-progress incidents can be handed off."
+                  : undefined
+              }
+              onClick={() => {
+                setShowHandoff(true);
+                setActionsOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-fg-primary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Hand off to team
+            </button>
+            <button
+              type="button"
               disabled={bulkBusy || selectedIds.size < 2}
               onClick={() => {
                 setShowCombine(true);
@@ -1035,6 +1053,18 @@ export default function IncidentsPage() {
           } else {
             toast.success(result.message, opts);
           }
+          loadIncidents();
+        }}
+      />
+      <BulkHandoffModal
+        open={showHandoff}
+        incidentIds={Array.from(selectedIds)}
+        teams={teams}
+        onClose={() => setShowHandoff(false)}
+        onHandedOff={(count, teamName) => {
+          setShowHandoff(false);
+          setSelectedIds(new Set());
+          toast.success(`Handed ${count} incident${count === 1 ? "" : "s"} to ${teamName}.`);
           loadIncidents();
         }}
       />
@@ -1775,6 +1805,113 @@ function FireTestIncidentModal({
           </Button>
           <Button onClick={handleSubmit} loading={loading}>
             Fire Test Incident
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BulkHandoffModal({
+  open,
+  incidentIds,
+  teams,
+  onClose,
+  onHandedOff,
+}: {
+  open: boolean;
+  incidentIds: string[];
+  teams: TeamResponse[];
+  onClose: () => void;
+  onHandedOff: (count: number, teamName: string) => void;
+}) {
+  const [teamId, setTeamId] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTeamId("");
+    setNote("");
+    setError("");
+  }, [open]);
+
+  async function handleSubmit() {
+    const team = teams.find((t) => t.id === teamId);
+    if (!team) {
+      setError("Choose the team to hand these incidents to.");
+      return;
+    }
+    if (!note.trim()) {
+      setError("A note for the new team is required.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      await bulkIncidentAction("handoff", incidentIds, undefined, {
+        teamId: team.id,
+        note: note.trim(),
+      });
+      onHandedOff(incidentIds.length, team.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to hand off incidents");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const count = incidentIds.length;
+  return (
+    <Modal open={open} onClose={onClose} title="Hand off to another team">
+      <div className="space-y-4">
+        <p className="text-sm text-fg-secondary">
+          Hand {count} incident{count === 1 ? "" : "s"} to another team. Each keeps its
+          service; its owner is released, and the new team&apos;s Escalation Chain pages
+          P0 and P1 incidents. The note goes on every incident&apos;s timeline. If any
+          incident can&apos;t be handed off, none are.
+        </p>
+        <div>
+          <Label htmlFor="handoff-team">Team</Label>
+          <Select
+            id="handoff-team"
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+            data-testid="handoff-team"
+          >
+            <option value="">Choose a team…</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="handoff-note">Note for the new team</Label>
+          <Textarea
+            id="handoff-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Why these incidents belong to them…"
+            maxLength={500}
+            rows={3}
+            data-testid="handoff-note"
+          />
+        </div>
+        {error && <FormError message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!teamId || !note.trim()}
+            data-testid="confirm-handoff"
+          >
+            Hand off {count} incident{count === 1 ? "" : "s"}
           </Button>
         </div>
       </div>

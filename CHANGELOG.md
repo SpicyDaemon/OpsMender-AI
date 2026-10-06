@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Hand several incidents to another team at once from the incident list
+  (Actions > Hand off to team), with one required note. Each incident keeps
+  its service and gets the note on its timeline; if any can't be handed off,
+  none move.
 - Operators can ask someone from another team to join an incident as a
   responder. The person gets an Inbox notice and an email naming who asked,
   and only they accept or decline from the incident page. A pending request

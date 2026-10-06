@@ -2730,11 +2730,16 @@ class IncidentBulkActionRequest(BaseModel):
     failed, never aborting on the first error.
     """
 
-    action: str = Field(..., pattern="^(acknowledge|resolve|reopen|reassign|delete)$")
+    action: str = Field(
+        ..., pattern="^(acknowledge|resolve|reopen|reassign|handoff|delete)$"
+    )
     incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     # For action="reassign" (also used to set the assignee when acknowledging).
     user_id: Optional[uuid.UUID] = None
-    # For "reassign", or "acknowledge" for someone else: required when the
+    # For action="handoff": the team that handles the incidents next.
+    team_id: Optional[uuid.UUID] = None
+    # Required for "handoff" (one note on every incident's timeline); for
+    # "reassign", or "acknowledge" for someone else, required when the
     # assignment replaces an owner.
     note: Optional[str] = Field(default=None, max_length=500)
 

@@ -210,7 +210,10 @@ Ownership is a lock with a timer:
 - **Releasing** hands it back: the chain pages the next level straight away,
   never level 1 again.
 - **Resolving or combining** the incident ends all paging for it, whatever
-  state the chain is in. Phone keypad `3` resolves it too.
+  state the chain is in. Phone keypad `3` resolves it too. Only admins and
+  operators on the team handling the incident can resolve, reopen or combine
+  it, whether or not they own it or are helping; responders and owners from
+  another team can't, and don't see **Resolve**.
 - **Reopening a resolved P0 or P1 incident** releases its former owner and
   starts a new escalation round at the first level. The timeline explains
   when no chain matches or the incident notifies instead of paging.

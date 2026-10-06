@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Only admins and operators on the team handling an incident can resolve,
+  reopen or combine it, whether or not they own it or are helping. Responders
+  and owners from another team are refused on the incident page, the incident
+  list, Slack `/resolve`, chat buttons and phone key 3, and the incident page
+  shows Resolve only to people who can use it. Acknowledge no longer shows on
+  an incident someone else owns; Take over asks them instead.
 - An active owner now keeps an incident at every priority. Others who try to
   acknowledge or take it are refused; assigning someone else over an owner
   needs an admin or an operator of the handling team, a member of that team

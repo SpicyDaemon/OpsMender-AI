@@ -19,6 +19,7 @@ vi.mock("@/components/ui/Toast", () => ({
 const apiMocks = vi.hoisted(() => ({
   listMemories: vi.fn(),
   listServices: vi.fn(),
+  listTeams: vi.fn(),
   createMemory: vi.fn(),
   updateMemory: vi.fn(),
   deleteMemory: vi.fn(),
@@ -74,6 +75,10 @@ beforeEach(() => {
   apiMocks.listMemories.mockResolvedValue({
     items: [memory("m1", "First lesson"), memory("m2", "Second lesson")],
     total: 2,
+  });
+  apiMocks.listTeams.mockResolvedValue({
+    items: [{ id: "team1", name: "Payments", slug: "payments" }],
+    total: 1,
   });
   apiMocks.bulkDeleteMemories.mockResolvedValue({ deleted: 2 });
   apiMocks.deleteMemory.mockResolvedValue(undefined);
@@ -158,5 +163,17 @@ describe("Memories selection and actions", () => {
     fireEvent.click(screen.getAllByTitle("Delete")[0]);
     fireEvent.click(screen.getByTestId("confirm-memory-delete"));
     await waitFor(() => expect(apiMocks.deleteMemory).toHaveBeenCalledWith("m1"));
+  });
+
+  it("shows each memory's team, and Global for global memories", async () => {
+    apiMocks.listMemories.mockResolvedValue({
+      items: [memory("m1", "Team lesson"), { ...memory("m3", "Shared lesson"), service_id: null }],
+      total: 2,
+    });
+    render(<MemoriesPage />);
+    await waitFor(() => expect(screen.getByText("Team lesson")).toBeTruthy());
+    expect(screen.getByRole("columnheader", { name: /Team/ })).toBeTruthy();
+    expect(screen.getAllByText("Payments").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Global").length).toBeGreaterThan(0);
   });
 });

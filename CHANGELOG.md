@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Operators can open the Memories page. It lists global memories and their
+  teams' memories, with a Team column (Global for global memories) and a team
+  filter; operators edit or delete only their teams' memories.
 - Hand several incidents to another team at once from the incident list
   (Actions > Hand off to team), with one required note. Each incident keeps
   its service and gets the note on its timeline; if any can't be handed off,

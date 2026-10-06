@@ -18,12 +18,14 @@ import {
   deleteMemory,
   listMemories,
   listServices,
+  listTeams,
   recordMemoryFeedback,
   updateMemory,
 } from "@/lib/api";
 import type {
   IncidentMemoryResponse,
   ServiceResponse,
+  TeamResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
@@ -84,6 +86,7 @@ export default function MemoriesPage() {
 
   const [memories, setMemories] = useState<IncidentMemoryResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
+  const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -96,9 +99,10 @@ export default function MemoriesPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [memResp, svcResp] = await Promise.all([
+      const [memResp, svcResp, teamResp] = await Promise.all([
         listMemories(),
         listServices(),
+        listTeams().catch(() => ({ items: [] as TeamResponse[], total: 0 })),
       ]);
       setMemories(memResp.items);
       setSelectedKeys((current) => {
@@ -106,6 +110,7 @@ export default function MemoriesPage() {
         return new Set([...current].filter((id) => valid.has(id)));
       });
       setServices(svcResp.items);
+      setTeams(teamResp.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -122,6 +127,32 @@ export default function MemoriesPage() {
     for (const s of services) map.set(s.id, s.name);
     return map;
   }, [services]);
+
+  // A memory's team is its service's team; global memories have none.
+  const teamNameByServiceId = useMemo(() => {
+    const teamNames = new Map(teams.map((team) => [team.id, team.name]));
+    const map = new Map<string, string>();
+    for (const s of services) map.set(s.id, teamNames.get(s.team_id) ?? "Unknown team");
+    return map;
+  }, [services, teams]);
+
+  const teamOf = useCallback(
+    (memory: IncidentMemoryResponse) =>
+      memory.service_id
+        ? teamNameByServiceId.get(memory.service_id) ?? "Unknown team"
+        : "Global",
+    [teamNameByServiceId],
+  );
+
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: "Global", label: "Global" },
+      ...Array.from(new Set(teamNameByServiceId.values()))
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({ value: name, label: name })),
+    ],
+    [teamNameByServiceId],
+  );
 
   const serviceFilterOptions = useMemo(
     () => [
@@ -189,6 +220,19 @@ export default function MemoriesPage() {
         filterChips: {
           options: serviceFilterOptions,
           valueOf: (memory) => memory.service_id ?? GLOBAL_SERVICE,
+        },
+      },
+      {
+        id: "team",
+        label: "Team",
+        accessor: (memory) => teamOf(memory),
+        cell: (memory) => (
+          <span className="text-sm text-fg-secondary">{teamOf(memory)}</span>
+        ),
+        sortable: true,
+        filterChips: {
+          options: teamFilterOptions,
+          valueOf: (memory) => teamOf(memory),
         },
       },
       {
@@ -266,6 +310,8 @@ export default function MemoriesPage() {
       handleFeedback,
       serviceFilterOptions,
       serviceNameById,
+      teamFilterOptions,
+      teamOf,
     ],
   );
 

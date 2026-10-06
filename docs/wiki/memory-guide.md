@@ -56,8 +56,11 @@ The retained signal is “this session produced a useful outcome,” not merely
 
 ## Managing memories
 
-`/dashboard/memories` provides search, service filtering, feedback, creation,
-editing, and deletion.
+`/dashboard/memories` (**Memories** in the sidebar, for admins and operators)
+provides search, service and team filtering, feedback, creation, editing, and
+deletion. The **Team** column shows the team that owns each memory's service,
+or **Global**. Operators see global memories and their teams' memories, and
+edit or delete only their teams'.
 
 - Select a row with its checkbox. The header checkbox selects every row on the
   current page.

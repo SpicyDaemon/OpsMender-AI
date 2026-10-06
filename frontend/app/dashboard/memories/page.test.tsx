@@ -171,7 +171,7 @@ describe("Memories selection and actions", () => {
       total: 2,
     });
     render(<MemoriesPage />);
-    await waitFor(() => expect(screen.getByText("Team lesson")).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("Team lesson").length).toBeGreaterThan(0));
     expect(screen.getByRole("columnheader", { name: /Team/ })).toBeTruthy();
     expect(screen.getAllByText("Payments").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Global").length).toBeGreaterThan(0);

@@ -291,30 +291,30 @@ export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {
                 that role and yours, and stops working if your account is deactivated.
               </p>
             ) : (
-            <div>
-              <Label htmlFor="api-token-role">Role</Label>
-              <Select
-                id="api-token-role"
-                value={role}
-                onChange={(event) => setRole(event.target.value as ApiTokenRole)}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {roleLabel(option.value)}
-                  </option>
-                ))}
-              </Select>
-              <div className="mt-2 space-y-1 text-xs text-fg-muted">
-                {ROLE_OPTIONS.map((option) => (
-                  <p key={option.value}>
-                    <span className="font-medium text-fg-secondary">
-                      {roleLabel(option.value)}:
-                    </span>{" "}
-                    {option.description}
-                  </p>
-                ))}
+              <div>
+                <Label htmlFor="api-token-role">Role</Label>
+                <Select
+                  id="api-token-role"
+                  value={role}
+                  onChange={(event) => setRole(event.target.value as ApiTokenRole)}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {roleLabel(option.value)}
+                    </option>
+                  ))}
+                </Select>
+                <div className="mt-2 space-y-1 text-xs text-fg-muted">
+                  {ROLE_OPTIONS.map((option) => (
+                    <p key={option.value}>
+                      <span className="font-medium text-fg-secondary">
+                        {roleLabel(option.value)}:
+                      </span>{" "}
+                      {option.description}
+                    </p>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={resetCreate}>

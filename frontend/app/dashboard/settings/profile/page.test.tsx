@@ -40,6 +40,9 @@ vi.mock("@/components/ui/Toast", () => ({
 const apiMocks = vi.hoisted(() => ({
   updateMe: vi.fn().mockResolvedValue({}),
   changeMyPassword: vi.fn().mockResolvedValue(undefined),
+  listApiTokens: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  createApiToken: vi.fn(),
+  revokeApiToken: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -50,6 +53,22 @@ beforeEach(() => {
 });
 
 describe("My profile page", () => {
+  it("shows operators their own API tokens", async () => {
+    render(<ProfileSettingsPage />);
+    expect(screen.getByTestId("profile-api-tokens")).toBeTruthy();
+    await waitFor(() => expect(apiMocks.listApiTokens).toHaveBeenCalled());
+  });
+
+  it("leaves API tokens to Settings for admins", () => {
+    MOCK_USER.role = "admin";
+    try {
+      render(<ProfileSettingsPage />);
+      expect(screen.queryByTestId("profile-api-tokens")).toBeNull();
+    } finally {
+      MOCK_USER.role = "operator";
+    }
+  });
+
   it("renders profile fields populated from the current user", () => {
     render(<ProfileSettingsPage />);
     expect(screen.getByText("My profile")).toBeTruthy();

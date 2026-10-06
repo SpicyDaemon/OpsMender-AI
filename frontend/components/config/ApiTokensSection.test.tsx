@@ -26,10 +26,10 @@ const baseToken: ApiTokenResponse = {
   revoked_at: null,
 };
 
-function renderSection() {
+function renderSection(props: React.ComponentProps<typeof ApiTokensSection> = {}) {
   return render(
     <ToastProvider>
-      <ApiTokensSection />
+      <ApiTokensSection {...props} />
     </ToastProvider>,
   );
 }
@@ -79,6 +79,29 @@ describe("ApiTokensSection", () => {
 
     await waitFor(() =>
       expect(apiMocks.revokeApiToken).toHaveBeenCalledWith("token-1"),
+    );
+  });
+
+  it("lets an operator mint only Operator tokens from their profile", async () => {
+    const user = userEvent.setup();
+    renderSection({ fixedRole: "operator" });
+
+    await waitFor(() => expect(screen.getAllByText("deploy-script").length).toBeGreaterThan(0));
+    expect(screen.getByText(/with the Operator role at most/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+    expect(screen.queryByLabelText("Role")).toBeNull();
+    expect(screen.getByTestId("api-token-fixed-role").textContent).toContain(
+      "The token uses the Operator role.",
+    );
+    await user.type(screen.getByLabelText("Name"), "nightly-job");
+    const createButtons = screen.getAllByRole("button", { name: "Create token" });
+    await user.click(createButtons[createButtons.length - 1]);
+
+    await waitFor(() =>
+      expect(apiMocks.createApiToken).toHaveBeenCalledWith({
+        name: "nightly-job",
+        role: "operator",
+      }),
     );
   });
 });

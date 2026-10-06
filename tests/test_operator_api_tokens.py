@@ -87,6 +87,19 @@ async def test_operators_see_and_revoke_only_their_own(world):
     ).status_code == 401
 
 
+async def test_an_admin_made_operator_token_acts_as_an_operator(world):
+    operator = await _headers(world.client, "lc-l3")
+    await _create(world, operator, name="theirs")
+    capped = (await _create(world, world.admin, name="capped")).json()
+    assert capped["role"] == "operator"
+    token = _bearer(capped["token"])
+    listed = await world.client.get("/api/v1/api-tokens", headers=token)
+    assert listed.status_code == 200, listed.text
+    assert [row["name"] for row in listed.json()["items"]] == ["capped"]
+    refused = await _create(world, token, role="admin")
+    assert refused.status_code == 401, refused.text
+
+
 async def test_an_admin_revokes_an_operators_token(world):
     mine = await _headers(world.client, "lc-l3")
     own = (await _create(world, mine)).json()

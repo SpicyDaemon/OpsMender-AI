@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An operator's Maintenance Window on services their teams own, or on their
+  own teams, now takes effect at once instead of waiting for an admin. Other
+  operator windows still wait for approval, and a window naming a service,
+  team or Roster that doesn't exist is refused.
 - Updated the locked langgraph to 1.2.14, which brings langgraph-sdk 0.4.6
   with the upstream fix for an authorization bypass in its resource handler
   registration (CVE-2026-104873), along with langchain-core 1.6.7. OpsMender

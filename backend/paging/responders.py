@@ -160,7 +160,9 @@ async def add_responders(
             if team is not None:
                 where = f"{team.name}, {where}"
             raise ResponderError(
-                403, f"{name} isn't on {where}. Ask an admin to add them."
+                403,
+                f"{name} isn't on {where}. Send them a request to join, "
+                "or ask an admin to add them.",
             )
         users.append(user)
     _check_slots(len(current) + len(held), len(users))

@@ -41,7 +41,7 @@ world = pytest.fixture(_world_fixture.__wrapped__)
 def _off_team(name: str, team: str) -> str:
     return (
         f"{name} isn't on {team}, the team handling this incident. "
-        "Ask an admin to add them."
+        "Send them a request to join, or ask an admin to add them."
     )
 
 

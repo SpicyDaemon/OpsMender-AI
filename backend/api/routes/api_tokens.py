@@ -1,4 +1,9 @@
-"""Named REST API token management."""
+"""Named REST API token management.
+
+Admins mint Admin, Operator or Viewer tokens and see and revoke all of them.
+Operators, signed in, mint Operator tokens for themselves and see and revoke
+only their own.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,7 @@ from backend.api.schemas import (
     ApiTokenResponse,
 )
 from backend.auth.api_tokens import mint_api_token
+from backend.auth.roles import request_role
 from backend.db.models import User
 from backend.db.repos import ApiTokenRepo, AuditEntryRepo
 
@@ -60,13 +66,19 @@ async def _audit_token_change(
     )
 
 
+def _is_admin(user: User) -> bool:
+    return request_role(user) == "admin"
+
+
 @router.get("", response_model=ApiTokenListResponse)
 async def list_api_tokens(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     rows = await ApiTokenRepo.list_by_org(db, org_id)
+    if not _is_admin(user):
+        rows = [row for row in rows if row.created_by == user.id]
     return ApiTokenListResponse(
         items=[ApiTokenResponse.model_validate(row) for row in rows],
         total=len(rows),
@@ -82,8 +94,21 @@ async def create_api_token(
     body: ApiTokenCreate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
+    if not _is_admin(user):
+        # Operators mint their own tokens while signed in, never with a token.
+        if getattr(user, "api_token_name", None):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API tokens are not accepted for this endpoint",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if body.role != "operator":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Operators can create only Operator tokens.",
+            )
     name = body.name.strip()
     if not name:
         raise HTTPException(
@@ -127,9 +152,12 @@ async def revoke_api_token(
     token_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
     row = await ApiTokenRepo.get_by_id(db, org_id, token_id)
+    # Operators revoke only their own; others' tokens look absent to them.
+    if row is not None and not _is_admin(user) and row.created_by != user.id:
+        row = None
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

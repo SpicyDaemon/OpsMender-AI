@@ -6,10 +6,16 @@ secret exactly once when created.
 
 ## Create
 
+Admins create Admin, Operator or Viewer tokens and manage everyone's:
+
 1. Open **Settings**.
 2. In **API Tokens**, choose **Create token**.
 3. Enter a name and role.
 4. Copy the `omk_...` token from the one-time confirmation.
+
+Operators create Operator tokens for themselves from **Profile** → **API
+Tokens**, the same way, with the role fixed. They must be signed in to create
+one (a token can't create another), and they see and revoke only their own.
 
 The stored record keeps only a sha256 hash and a short prefix for display. The
 full secret is not available after the create modal closes.
@@ -35,7 +41,9 @@ multi-factor enrollment, or live WebSocket streams.
 
 ## Revoke
 
-Open **Settings** → **API Tokens**, then choose the revoke action for the token.
+Admins open **Settings** → **API Tokens**; operators open **Profile** → **API
+Tokens**. Then choose the revoke action for the token. An operator can revoke
+only their own tokens.
 Revocation is immediate: the bearer credential returns `401` on its next use.
 
 A password change revokes every token the person created, at that moment:

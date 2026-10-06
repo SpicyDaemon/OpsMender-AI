@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Operators can create, see and revoke their own Operator API tokens from
+  Profile. Admins still create any role from Settings and see everyone's.
 - Operators can open the Memories page. It lists global memories and their
   teams' memories, with a Team column (Global for global memories) and a team
   filter; operators edit or delete only their teams' memories.

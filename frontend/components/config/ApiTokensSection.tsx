@@ -45,14 +45,19 @@ function tokenStatus(row: ApiTokenResponse) {
   return row.revoked_at ? "Revoked" : "Active";
 }
 
-export function ApiTokensSection() {
+/**
+ * Admins (Settings) see and mint every role. With ``fixedRole`` (Profile, for
+ * operators) the section lists only the person's own tokens, as the API does,
+ * and mints that role only.
+ */
+export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {}) {
   const [tokens, setTokens] = useState<ApiTokenResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [role, setRole] = useState<ApiTokenRole>("operator");
+  const [role, setRole] = useState<ApiTokenRole>(fixedRole ?? "operator");
   const [created, setCreated] = useState<ApiTokenCreateResponse | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenResponse | null>(null);
   const [revoking, setRevoking] = useState(false);
@@ -77,7 +82,7 @@ export function ApiTokensSection() {
 
   const resetCreate = () => {
     setName("");
-    setRole("operator");
+    setRole(fixedRole ?? "operator");
     setCreated(null);
     setCreateOpen(false);
   };
@@ -187,7 +192,9 @@ export function ApiTokensSection() {
             API Tokens
           </h2>
           <p className="mt-1 text-sm text-fg-secondary">
-            Named bearer tokens for scripts and automation.
+            {fixedRole
+              ? "Your bearer tokens for scripts and automation. They act as you, with the Operator role at most."
+              : "Named bearer tokens for scripts and automation."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -278,6 +285,12 @@ export function ApiTokensSection() {
                 placeholder="deploy-script"
               />
             </div>
+            {fixedRole ? (
+              <p className="text-xs text-fg-muted" data-testid="api-token-fixed-role">
+                The token uses the {roleLabel(fixedRole)} role. It acts with the lower of
+                that role and yours, and stops working if your account is deactivated.
+              </p>
+            ) : (
             <div>
               <Label htmlFor="api-token-role">Role</Label>
               <Select
@@ -302,6 +315,7 @@ export function ApiTokensSection() {
                 ))}
               </div>
             </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={resetCreate}>
                 Cancel

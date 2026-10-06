@@ -106,7 +106,7 @@ async def create_api_token(
             )
         if body.role != "operator":
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Operators can create only Operator tokens.",
             )
     name = body.name.strip()

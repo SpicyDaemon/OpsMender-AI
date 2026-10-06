@@ -4772,26 +4772,26 @@ export function NotificationPreferencesPanel({
                               : "After your last stage, the next escalation level waits this long for your answer."
                           }
                         >
-                            {idx < stages.length - 1 ? "Wait" : "Answer window"}
-                            <Select
-                              aria-label={
-                                idx < stages.length - 1
-                                  ? `${p} stage ${idx + 1} delay`
-                                  : `${p} answer window`
-                              }
-                              value={String(stage.delay_seconds)}
-                              onChange={(e) =>
-                                setStageDelay(p, idx, Number(e.target.value))
-                              }
-                              className="h-9"
-                            >
-                              {STAGE_DELAY_OPTIONS.map((d) => (
-                                <option key={d.value} value={d.value}>
-                                  {d.label}
-                                </option>
-                              ))}
-                            </Select>
-                          </label>
+                          {idx < stages.length - 1 ? "Wait" : "Answer window"}
+                          <Select
+                            aria-label={
+                              idx < stages.length - 1
+                                ? `${p} stage ${idx + 1} delay`
+                                : `${p} answer window`
+                            }
+                            value={String(stage.delay_seconds)}
+                            onChange={(e) =>
+                              setStageDelay(p, idx, Number(e.target.value))
+                            }
+                            className="h-9"
+                          >
+                            {STAGE_DELAY_OPTIONS.map((d) => (
+                              <option key={d.value} value={d.value}>
+                                {d.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
                         <div className="ml-auto flex items-center gap-0.5">
                           <button
                             type="button"

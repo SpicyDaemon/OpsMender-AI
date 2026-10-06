@@ -3073,7 +3073,9 @@ class TestIncidentAutoStartPolicy:
 class TestIncidentBulkActions:
     """Sprint 50 - POST /incidents/bulk."""
 
-    async def _operator_headers(self, app) -> dict[str, str]:
+    async def _operator_headers(
+        self, app, team_id: uuid.UUID | None = None
+    ) -> dict[str, str]:
         from backend.api.auth import create_access_token
 
         async with app.state.session_factory() as db:
@@ -3085,6 +3087,8 @@ class TestIncidentBulkActions:
                 role="operator",
             )
             operator.primary_org_id = TEST_ORG_ID
+            if team_id is not None:
+                await TeamRepo.add_member(db, TEST_ORG_ID, team_id, user_id=operator.id)
             await db.commit()
         return {
             "Authorization": (
@@ -3218,8 +3222,14 @@ class TestIncidentBulkActions:
     async def test_operator_lifecycle_actions_require_one_service(
         self, client: AsyncClient, auth_headers, app
     ):
-        operator_headers = await self._operator_headers(app)
         same_service_ids = await self._seed_incidents(client, auth_headers, count=2)
+        # Operators resolve only incidents their team handles (M1-12).
+        incident = await client.get(
+            f"/incidents/{same_service_ids[0]}", headers=auth_headers
+        )
+        operator_headers = await self._operator_headers(
+            app, uuid.UUID(incident.json()["team_id"])
+        )
         allowed = await client.post(
             "/incidents/bulk",
             json={"action": "resolve", "incident_ids": same_service_ids},

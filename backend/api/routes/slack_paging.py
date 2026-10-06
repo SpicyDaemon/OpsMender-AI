@@ -392,6 +392,12 @@ async def _handle_slash(
         return _ephemeral(
             f"You can't take *{incident.title}*: {_reassign.TAKE_FORBIDDEN}"
         )
+    if command == "/resolve" and not await _reassign.can_resolve(
+        db, connector.org_id, incident, actor
+    ):
+        return _ephemeral(
+            f"You can't resolve *{incident.title}*: {_reassign.RESOLVE_FORBIDDEN}"
+        )
 
     if command == "/ack":
         outcome = await _esc.acknowledge(

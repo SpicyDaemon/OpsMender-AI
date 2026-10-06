@@ -123,6 +123,25 @@ async def can_reassign(
     return member is None or member
 
 
+async def can_resolve(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident, user: User
+) -> bool:
+    """Whether ``user`` may resolve or reopen ``incident``: the Reassign rule.
+
+    Admins, and operators on the team handling it whether or not they own it
+    or respond to it (any operator when it has no team). Owners and
+    responders from another team cannot.
+    """
+
+    return await can_reassign(db, org_id, incident, user)
+
+
+RESOLVE_FORBIDDEN = (
+    "Only an admin or a member of this incident's team can resolve or reopen "
+    "it. Ask one of them."
+)
+
+
 async def select_chain_for_team(
     db: AsyncSession,
     org_id: uuid.UUID,

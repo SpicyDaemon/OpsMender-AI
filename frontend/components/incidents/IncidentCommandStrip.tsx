@@ -18,7 +18,8 @@
  * |              | Start session, Resolve                               |
  * | resolved     | Create postmortem                                    |
  *
- * Reassign and Add responders show only when the server allows them.
+ * Acknowledge, Take, Reassign, Add responders and Resolve show only when
+ * the server allows them.
  *
  * Approve / Reject + Escalate land in Sprint A step 2 (right-rail
  * context) and Sprint B (governed AI) - they need state the detail
@@ -84,6 +85,8 @@ interface Props {
   canForceTake?: boolean;
   /** Admins and operators on the incident's team can hand it to another team. */
   canReassign?: boolean;
+  /** Admins and operators on the incident's team can resolve it. */
+  canResolve?: boolean;
   /** Admins, the owner, and operators on the incident's team. */
   canManageResponders?: boolean;
   /** People asked to help besides the owner. */
@@ -105,6 +108,7 @@ export function IncidentCommandStrip({
   canTake = false,
   canForceTake = false,
   canReassign = false,
+  canResolve = false,
   canManageResponders = false,
   responders = [],
   responderLimit = 3,
@@ -305,7 +309,8 @@ export function IncidentCommandStrip({
 
         {/* Right: actions */}
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-          {isOpen && canTake && (
+          {/* Someone else's incident is asked for through Take over. */}
+          {isOpen && canTake && !isAssignedToSomeoneElse && (
             <Button
               size="sm"
               variant="secondary"
@@ -443,7 +448,7 @@ export function IncidentCommandStrip({
             </Button>
           )}
 
-          {!isResolved && (
+          {!isResolved && canResolve && (
             <Button
               size="sm"
               variant="secondary"

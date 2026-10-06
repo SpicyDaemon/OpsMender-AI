@@ -2830,6 +2830,7 @@ class IncidentPagingPanelResponse(BaseModel):
     can_take: bool = False
     can_force_take: bool = False
     can_reassign: bool = False
+    can_resolve: bool = False
     can_manage_responders: bool = False
     responders: list[IncidentResponderResponse] = Field(default_factory=list)
     responder_limit: int = 3

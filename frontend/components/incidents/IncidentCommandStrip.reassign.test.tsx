@@ -14,9 +14,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+const authState = vi.hoisted(() => ({ role: "operator" }));
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({
-    user: { id: "user-me", username: "me", role: "operator" },
+    user: { id: "user-me", username: "me", role: authState.role },
   }),
 }));
 
@@ -207,7 +208,11 @@ describe("Add responders", () => {
     expect(button.getAttribute("title")).toBe("All 3 responder slots are taken");
   });
 
-  it("offers teammates first, never the owner, viewers, inactive people or current responders", async () => {
+  beforeEach(() => {
+    authState.role = "operator";
+  });
+
+  it("offers an operator only the handling team, never the owner, viewers, inactive people or current responders", async () => {
     apiMocks.listTeamMembers.mockResolvedValue({
       items: [
         {
@@ -237,7 +242,10 @@ describe("Add responders", () => {
     expect(await screen.findByText("2 of 3 slots left.", { exact: false })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("Operator on Platform")).toBeTruthy());
     const choices = screen.getAllByRole("checkbox").map((box) => box.closest("label")?.textContent);
-    expect(choices).toEqual(["zedOperator on Platform", "anaAdmin"]);
+    expect(choices).toEqual(["zedOperator on Platform"]);
+    expect(screen.getByTestId("responders-team-only").textContent).toContain(
+      "You can add members of Platform. Ask an admin to add someone from another team.",
+    );
 
     fireEvent.click(screen.getByRole("checkbox", { name: /zed/ }));
     fireEvent.change(screen.getByLabelText(/Message/), {
@@ -253,5 +261,30 @@ describe("Add responders", () => {
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(toastSpies.success).toHaveBeenCalledWith("Asked zed to help");
+  });
+
+  it("offers an admin anyone who can respond, teammates first", async () => {
+    authState.role = "admin";
+    apiMocks.listTeamMembers.mockResolvedValue({
+      items: [
+        {
+          id: "m1",
+          team_id: "team-platform",
+          user_id: "u-teammate",
+          role: "member",
+          added_at: "2026-09-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    renderStrip({
+      users: [person("u-admin", "ana", "admin"), person("u-teammate", "zed"), person("u-data", "dee")],
+    });
+
+    fireEvent.click(screen.getByTestId("action-add-responders"));
+    await waitFor(() => expect(screen.getByText("Operator on Platform")).toBeTruthy());
+    const choices = screen.getAllByRole("checkbox").map((box) => box.closest("label")?.textContent);
+    expect(choices).toEqual(["zedOperator on Platform", "anaAdmin", "deeOperator"]);
+    expect(screen.queryByTestId("responders-team-only")).toBeNull();
   });
 });

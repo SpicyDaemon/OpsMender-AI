@@ -11,13 +11,16 @@ import type { IncidentResponderResponse, UserResponse } from "@/lib/types";
 
 /**
  * Ask up to the limit of people to help with an incident. Each one is paged
- * through their own notification settings and gets an Inbox notice.
+ * through their own notification settings and gets an Inbox notice. Admins
+ * can ask anyone; operators ask members of the team handling the incident
+ * (anyone when it has no team).
  */
 export function AddRespondersModal({
   open,
   incidentId,
   teamId,
   teamName,
+  canAddAnyone,
   ownerId,
   responders,
   limit,
@@ -29,6 +32,8 @@ export function AddRespondersModal({
   incidentId: string;
   teamId: string | null;
   teamName: string | null;
+  /** Admins add anyone; operators add members of the handling team. */
+  canAddAnyone: boolean;
   ownerId: string | null;
   responders: IncidentResponderResponse[];
   limit: number;
@@ -65,6 +70,7 @@ export function AddRespondersModal({
   }, [open, teamId]);
 
   const slotsLeft = Math.max(0, limit - responders.length);
+  const teamOnly = !canAddAnyone && teamId !== null;
 
   const options = useMemo<MultiSelectOption[]>(() => {
     const taken = new Set(responders.map((responder) => responder.user_id));
@@ -75,7 +81,8 @@ export function AddRespondersModal({
           !user.deleted_at &&
           (user.role === "admin" || user.role === "operator") &&
           user.id !== ownerId &&
-          !taken.has(user.id),
+          !taken.has(user.id) &&
+          (!teamOnly || teammates.has(user.id)),
       )
       .sort((a, b) => {
         const aTeam = teammates.has(a.id) ? 0 : 1;
@@ -92,7 +99,7 @@ export function AddRespondersModal({
               ? "Admin"
               : "Operator",
       }));
-  }, [ownerId, responders, teamName, teammates, users]);
+  }, [ownerId, responders, teamName, teamOnly, teammates, users]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,9 +142,19 @@ export function AddRespondersModal({
             onChange={setSelected}
             maxSelections={slotsLeft}
             placeholder="Search people…"
-            emptyLabel="Nobody else can respond to incidents yet."
+            emptyLabel={
+              teamOnly
+                ? `Nobody else on ${teamName ?? "this team"} can respond to incidents.`
+                : "Nobody else can respond to incidents yet."
+            }
             ariaLabel="People to add as responders"
           />
+          {teamOnly && (
+            <p className="mt-1.5 text-xs text-fg-muted" data-testid="responders-team-only">
+              You can add members of {teamName ?? "the team handling this incident"}. Ask an
+              admin to add someone from another team.
+            </p>
+          )}
         </div>
 
         <div>

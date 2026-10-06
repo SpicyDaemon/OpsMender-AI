@@ -165,6 +165,41 @@ async def test_bulk_reassign_to_yourself_over_an_owner_is_refused(world):
     assert await _snapshot(world, incident_id) == before
 
 
+async def test_bulk_acknowledge_for_someone_else_follows_the_assignment_rule(world):
+    incident_id = await _team_incident(world)
+    await _owned_by_level2(world, incident_id)
+    target = await _member(world, incident_id, "po-bulk-target")
+    before = await _snapshot(world, incident_id)
+
+    async def bulk(username: str, note: str | None = None) -> dict:
+        body = {
+            "action": "acknowledge",
+            "incident_ids": [str(incident_id)],
+            "user_id": str(target),
+        }
+        if note is not None:
+            body["note"] = note
+        resp = await world.client.post(
+            "/incidents/bulk", json=body, headers=await _headers(world.client, username)
+        )
+        assert resp.status_code == 200, resp.text
+        (item,) = resp.json()["items"]
+        return item
+
+    outsider = await bulk("lc-l1", NOTE)
+    assert outsider["ok"] is False
+    assert "operator of the team handling this incident" in outsider["error"]
+    no_note = await bulk("lc-l3")
+    assert no_note["ok"] is False and "Add a note" in no_note["error"]
+    assert await _snapshot(world, incident_id) == before
+
+    assert (await bulk("lc-l3", NOTE))["ok"] is True
+    after = await _snapshot(world, incident_id)
+    assert after["owner"] == target
+    assert any(NOTE in body and "replacing lc-l2" in body for body in after["comments"])
+    assert (world.level2, "incident.reassigned") in after["notices"]
+
+
 async def test_a_teammate_assigns_another_member_with_a_note(world):
     incident_id = await _team_incident(world)
     await _owned_by_level2(world, incident_id)
@@ -258,8 +293,10 @@ async def test_on_a_p2_incident_others_cannot_assign_or_acknowledge(world):
             f"/incidents/{incident_id}/{path}", json={}, headers=teammate
         )
         assert resp.status_code == 409, (path, resp.text)
-        assert (
-            "lc-l2" in resp.json()["detail"] or "Someone else" in resp.json()["detail"]
+        # No chain to hold a takeover request, so it names the other ways.
+        assert resp.json()["detail"] == (
+            "lc-l2 owns this incident. Ask them to release it, or use Force take "
+            "with a reason."
         )
         assert await _snapshot(world, incident_id) == before
 

@@ -1768,6 +1768,24 @@ async def _owner_name(
     return owner.username if owner else "Someone else"
 
 
+async def _owner_holds_detail(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> str:
+    """Who holds the incident, and how to ask for it."""
+    owner = await _owner_name(db, org_id, incident_id)
+    if await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id) is None:
+        # Without an Escalation Chain a takeover request has nowhere to wait
+        # for the owner's answer (P2/P3 notify).
+        return (
+            f"{owner} owns this incident. Ask them to release it, or use Force "
+            "take with a reason."
+        )
+    return (
+        f"{owner} owns this incident. "
+        "Request a takeover: they have five minutes to hand it over."
+    )
+
+
 _CLOSED_STATUSES = ("resolved", "merged")
 
 
@@ -1814,10 +1832,7 @@ async def _authorize_assignment(
         if replacing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"{await _owner_name(db, org_id, incident.id)} owns this incident. "
-                    "Request a takeover: they have five minutes to hand it over."
-                ),
+                detail=await _owner_holds_detail(db, org_id, incident.id),
             )
         return active, False
     if request_role(actor) != "admin":
@@ -2057,10 +2072,7 @@ async def assign_incident(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"{await _owner_name(db, org_id, incident_id)} owns this incident. "
-                "Request a takeover: they have five minutes to hand it over."
-            ),
+            detail=await _owner_holds_detail(db, org_id, incident_id),
         )
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     assert assignment is not None
@@ -2143,8 +2155,9 @@ async def bulk_incident_action(
     """Apply ``action`` to every id in ``incident_ids``.
 
     Lifecycle and delete actions are atomic. Legacy acknowledge/reassign
-    actions retain per-row result reporting. Self-only enforcement on reassign
-    matches the per-incident `/assign` route.
+    actions retain per-row result reporting. Both apply the per-incident
+    `/assign` rule to each row (who may take or assign, and the note needed to
+    replace an owner).
 
     Acknowledge = acknowledge for the current user (or ``user_id``) through
     the same path as ``/incidents/{id}/ack`` - paging stops and the owner
@@ -2298,32 +2311,18 @@ async def bulk_incident_action(
 
             if action == "acknowledge":
                 target = body.user_id or user.id
-                if target != user.id and request_role(user) not in (
-                    "admin",
-                    "operator",
-                ):
-                    items.append(
-                        IncidentBulkActionResult(
-                            incident_id=incident_id,
-                            ok=False,
-                            error="Only admin/operator can assign other users",
-                        )
-                    )
-                    failed += 1
-                    continue
                 _ensure_open(incident)
-                if target == user.id and not await _reassign.can_take(
-                    db, org_id, incident, user
-                ):
-                    items.append(
-                        IncidentBulkActionResult(
-                            incident_id=incident_id,
-                            ok=False,
-                            error=_reassign.TAKE_FORBIDDEN,
-                        )
-                    )
-                    failed += 1
-                    continue
+                # Acknowledging for someone else assigns them: same rule as a
+                # single assignment. A refusal fails this item before anything
+                # is written.
+                active, replacing = await _authorize_assignment(
+                    db, org_id, incident, user, target, body.note
+                )
+                note = (
+                    await _replacement_note(db, org_id, incident_id, target, body.note)
+                    if replacing
+                    else None
+                )
                 outcome = await _esc.acknowledge(
                     db,
                     org_id,
@@ -2333,17 +2332,22 @@ async def bulk_incident_action(
                     via="web_ui",
                     assigned_by="self_ack" if target == user.id else "manual",
                     replace_owner=target != user.id,
+                    note=note,
                 )
                 if outcome.status == "owned_by_other":
                     items.append(
                         IncidentBulkActionResult(
                             incident_id=incident_id,
                             ok=False,
-                            error="Someone else owns it. Request a takeover.",
+                            error=await _owner_holds_detail(db, org_id, incident_id),
                         )
                     )
                     failed += 1
                     continue
+                if replacing:
+                    await _notify_replaced_owner(
+                        db, org_id, incident, active.assigned_to, user, body.note
+                    )
                 if target != user.id:
                     await emit_notification(
                         db,
@@ -2637,10 +2641,7 @@ async def ack_incident(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Someone else owns this incident. Ask them to release it, or "
-                "request a takeover."
-            ),
+            detail=await _owner_holds_detail(db, org_id, incident_id),
         )
     await db.commit()
     for session in cancelled_queued:

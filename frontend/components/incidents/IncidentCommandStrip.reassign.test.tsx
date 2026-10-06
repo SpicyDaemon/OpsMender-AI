@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IncidentCommandStrip } from "@/components/incidents/IncidentCommandStrip";
@@ -41,6 +41,7 @@ const apiMocks = vi.hoisted(() => ({
   reassignIncident: vi.fn(),
   addIncidentResponders: vi.fn(),
   listTeamMembers: vi.fn(),
+  requestIncidentResponders: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -241,10 +242,15 @@ describe("Add responders", () => {
     fireEvent.click(screen.getByTestId("action-add-responders"));
     expect(await screen.findByText("2 of 3 slots left.", { exact: false })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("Operator on Platform")).toBeTruthy());
-    const choices = screen.getAllByRole("checkbox").map((box) => box.closest("label")?.textContent);
-    expect(choices).toEqual(["zedOperator on Platform"]);
+    const labels = (group: string) =>
+      within(screen.getByLabelText(group))
+        .getAllByRole("checkbox")
+        .map((box) => box.closest("label")?.textContent);
+    expect(labels("People to add as responders")).toEqual(["zedOperator on Platform"]);
+    // Others are asked, not added.
+    expect(labels("People from other teams to ask")).toEqual(["anaAdmin"]);
     expect(screen.getByTestId("responders-team-only").textContent).toContain(
-      "You can add members of Platform. Ask an admin to add someone from another team.",
+      "You can add members of Platform directly. People from another team join only if they accept your request.",
     );
 
     fireEvent.click(screen.getByRole("checkbox", { name: /zed/ }));
@@ -286,5 +292,65 @@ describe("Add responders", () => {
     const choices = screen.getAllByRole("checkbox").map((box) => box.closest("label")?.textContent);
     expect(choices).toEqual(["zedOperator on Platform", "anaAdmin", "deeOperator"]);
     expect(screen.queryByTestId("responders-team-only")).toBeNull();
+  });
+
+  it("lets an operator ask someone from another team to join", async () => {
+    apiMocks.listTeamMembers.mockResolvedValue({
+      items: [
+        {
+          id: "m1",
+          team_id: "team-platform",
+          user_id: "u-teammate",
+          role: "member",
+          added_at: "2026-09-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    });
+    apiMocks.requestIncidentResponders.mockResolvedValue({ items: [], limit: 3 });
+    const { onChanged } = renderStrip({
+      users: [person("u-teammate", "zed"), person("u-data", "dee")],
+    });
+
+    fireEvent.click(screen.getByTestId("action-add-responders"));
+    await waitFor(() => expect(screen.getByText("Operator on Platform")).toBeTruthy());
+    fireEvent.click(screen.getByRole("checkbox", { name: /dee/ }));
+    expect(screen.getByTestId("confirm-add-responders").textContent).toContain("Send request");
+    fireEvent.click(screen.getByTestId("confirm-add-responders"));
+
+    await waitFor(() =>
+      expect(apiMocks.requestIncidentResponders).toHaveBeenCalledWith("incident-1", {
+        user_ids: ["u-data"],
+        message: undefined,
+      }),
+    );
+    expect(apiMocks.addIncidentResponders).not.toHaveBeenCalled();
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(toastSpies.success).toHaveBeenCalledWith(
+      "Asked dee to join; they have 30 minutes to accept",
+    );
+  });
+
+  it("counts a pending request toward the responder slots", () => {
+    renderStrip({
+      responders: [responder("r1", "ana"), responder("r2", "ben")],
+      responderRequests: [
+        {
+          id: "req-1",
+          incident_id: "incident-1",
+          user_id: "u-data",
+          username: "dee",
+          requested_by_user_id: "user-me",
+          requested_by_username: "me",
+          status: "pending",
+          created_at: "2026-10-06T00:00:00Z",
+          expires_at: "2026-10-06T00:30:00Z",
+        },
+      ],
+      responderLimit: 3,
+    });
+    const button = screen.getByTestId("action-add-responders");
+    expect(button).toHaveProperty("disabled", true);
+    expect(button.getAttribute("title")).toBe("All 3 responder slots are taken");
   });
 });

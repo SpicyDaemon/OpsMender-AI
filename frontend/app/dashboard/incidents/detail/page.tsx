@@ -26,6 +26,7 @@ import {
   listProviders,
   listUsers,
   removeIncidentResponder,
+  answerResponderRequest,
 } from "@/lib/api";
 import type {
   IncidentPagingPanelResponse,
@@ -313,7 +314,20 @@ function IncidentDetailContent() {
 
   const acknowledgedByDetail = acknowledgedByName(incident);
   const responders = pagingPanel?.responders ?? [];
+  const responderRequests = pagingPanel?.responder_requests ?? [];
+  const myRequest = responderRequests.find((request) => request.user_id === user?.id) ?? null;
   const incidentClosed = incident.status === "resolved" || incident.status === "merged";
+  async function handleAnswerRequest(accept: boolean) {
+    if (!incident || !myRequest) return;
+    try {
+      await answerResponderRequest(incident.id, myRequest.id, accept);
+      toast.success(accept ? "You joined the responders" : "You declined the request");
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      await reload();
+    }
+  }
   async function handleRemoveResponder(responder: IncidentResponderResponse) {
     if (!incident) return;
     try {
@@ -347,6 +361,7 @@ function IncidentDetailContent() {
         canControlSession={pagingPanel?.can_control_session ?? false}
         canManageResponders={pagingPanel?.can_manage_responders ?? false}
         responders={pagingPanel?.responders ?? []}
+        responderRequests={responderRequests}
         responderLimit={pagingPanel?.responder_limit ?? 3}
         users={users}
       />
@@ -360,6 +375,37 @@ function IncidentDetailContent() {
           >
             Open the primary incident →
           </Link>
+        </div>
+      )}
+
+      {myRequest && !incidentClosed && (
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-status-info-border bg-status-info-bg px-4 py-3 text-sm text-status-info"
+          data-testid="responder-request-banner"
+        >
+          <p>
+            <strong>{myRequest.requested_by_username ?? "Someone"}</strong> asked you to join
+            as a responder.
+            {myRequest.message ? ` Message: ${myRequest.message}` : ""} The request expires at{" "}
+            {formatDateTime(myRequest.expires_at)}.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => void handleAnswerRequest(true)}
+              data-testid="accept-responder-request"
+            >
+              Accept
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void handleAnswerRequest(false)}
+              data-testid="decline-responder-request"
+            >
+              Decline
+            </Button>
+          </div>
         </div>
       )}
 
@@ -381,7 +427,7 @@ function IncidentDetailContent() {
         {acknowledgedByDetail && (
           <span className="text-xs text-fg-muted">Acknowledged by {acknowledgedByDetail}</span>
         )}
-        {responders.length > 0 && (
+        {(responders.length > 0 || responderRequests.length > 0) && (
           <>
             <span className="ml-1 text-[11px] font-medium uppercase tracking-wide text-fg-muted sm:ml-3">
               Also responding
@@ -422,6 +468,16 @@ function IncidentDetailContent() {
                 </span>
               );
             })}
+            {responderRequests.map((request) => (
+              <span
+                key={request.id}
+                className="inline-flex items-center rounded-full border border-dashed border-border-subtle px-2.5 py-0.5 text-xs text-fg-muted"
+                title={`Asked by ${request.requested_by_username ?? "someone"}; expires at ${formatDateTime(request.expires_at)}`}
+                data-testid="incident-responder-request"
+              >
+                {request.user_id === user?.id ? "You" : request.username}: asked
+              </span>
+            ))}
           </>
         )}
       </div>

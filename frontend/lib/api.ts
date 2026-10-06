@@ -1510,6 +1510,8 @@ import type {
   IncidentPagingPanelResponse,
   IncidentReassignOptionsResponse,
   IncidentResponderListResponse,
+  IncidentResponderRequestListResponse,
+  IncidentResponderRequestResponse,
   OnCallResolveResponse,
   OnCallRangeResponse,
   PriorityRuleCreate,
@@ -1713,6 +1715,25 @@ export async function addIncidentResponders(
   return api.post<IncidentResponderListResponse>(
     `/incidents/${incidentId}/responders`,
     body,
+  );
+}
+/** Ask people from other teams to join; only they accept or decline. */
+export async function requestIncidentResponders(
+  incidentId: string,
+  body: { user_ids: string[]; message?: string },
+): Promise<IncidentResponderRequestListResponse> {
+  return api.post<IncidentResponderRequestListResponse>(
+    `/incidents/${incidentId}/responder-requests`,
+    body,
+  );
+}
+export async function answerResponderRequest(
+  incidentId: string,
+  requestId: string,
+  accept: boolean,
+): Promise<IncidentResponderRequestResponse> {
+  return api.post<IncidentResponderRequestResponse>(
+    `/incidents/${incidentId}/responder-requests/${requestId}/${accept ? "accept" : "decline"}`,
   );
 }
 export async function removeIncidentResponder(

@@ -60,6 +60,7 @@ import {
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import type {
   IncidentAssignmentResponse,
+  IncidentResponderRequestResponse,
   IncidentResponderResponse,
   IncidentResponse,
   PendingTakeover,
@@ -94,6 +95,8 @@ interface Props {
   canManageResponders?: boolean;
   /** People asked to help besides the owner. */
   responders?: IncidentResponderResponse[];
+  /** People from other teams asked to join; each holds a slot. */
+  responderRequests?: IncidentResponderRequestResponse[];
   responderLimit?: number;
   /** Workspace people, for choosing responders. */
   users?: UserResponse[];
@@ -115,6 +118,7 @@ export function IncidentCommandStrip({
   canControlSession = false,
   canManageResponders = false,
   responders = [],
+  responderRequests = [],
   responderLimit = 3,
   users = [],
   className,
@@ -132,7 +136,7 @@ export function IncidentCommandStrip({
   const isOpen = status === "open";
   const isResolved = status === "resolved";
   const isClosed = isResolved || status === "merged";
-  const respondersFull = responders.length >= responderLimit;
+  const respondersFull = responders.length + responderRequests.length >= responderLimit;
 
   const isAssignedToMe =
     assignment !== null &&
@@ -566,12 +570,20 @@ export function IncidentCommandStrip({
         assignment && assignment.released_at === null ? assignment.assigned_to : null
       }
       responders={responders}
+      pendingRequests={responderRequests}
       limit={responderLimit}
       users={users}
       onClose={() => setRespondersOpen(false)}
-      onAdded={async (names) => {
+      onAdded={async (added, requested) => {
         setRespondersOpen(false);
-        toast.success(`Asked ${names.join(", ")} to help`);
+        const parts = [];
+        if (added.length > 0) parts.push(`Asked ${added.join(", ")} to help`);
+        if (requested.length > 0) {
+          parts.push(
+            `${added.length > 0 ? "asked" : "Asked"} ${requested.join(", ")} to join; they have 30 minutes to accept`,
+          );
+        }
+        toast.success(parts.join(" and "));
         await onChanged();
       }}
     />

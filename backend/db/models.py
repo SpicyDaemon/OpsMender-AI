@@ -2398,6 +2398,58 @@ class IncidentResponder(Base):
     )
 
 
+class IncidentResponderRequest(Base):
+    """A request for someone outside the handling team to join as a responder.
+
+    Only the requested person accepts or declines. While pending it holds one
+    of the incident's responder slots; it expires after 30 minutes and is
+    cancelled when the incident closes.
+    """
+
+    __tablename__ = "incident_responder_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # pending | accepted | declined | expired | cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_incident_responder_requests_pending",
+            "incident_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        Index("ix_incident_responder_requests_due", "status", "expires_at"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Escalation chains (Sprint 34) - additive paging engine. State machine lives
 # in backend/paging/escalation.py; the tables here only persist the chain

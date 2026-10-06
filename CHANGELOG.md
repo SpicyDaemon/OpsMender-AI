@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Operators, including an owner from another team, add responders only from
+  the team handling the incident (anyone when it has no team); admins still
+  add anyone. A refusal names the person and adds nobody, and the Add
+  responders dialog lists only the handling team for operators.
 - The owner and admins now control an incident's AI session: they start it,
   take it over, stop it, switch its model, override its tier and message it,
   on the web and from chat. Others watch; Start session stays disabled until

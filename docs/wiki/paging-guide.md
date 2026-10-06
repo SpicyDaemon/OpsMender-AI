@@ -296,7 +296,10 @@ besides the owner.
 
 - **Who can add them:** admins, the owner, and operators on the incident's
   team.
-- **Who can be added:** any active admin or operator.
+- **Who can be added:** admins can add any active admin or operator.
+  Operators, including an owner from another team, add members of the team
+  handling the incident (anyone when it has no team); ask an admin to add
+  someone from another team.
 - **How they're reached:** each one is paged once through their own
   notification settings. Their quiet hours apply, though P0 always breaks
   through, and Maintenance Windows don't hold the request. They also get an

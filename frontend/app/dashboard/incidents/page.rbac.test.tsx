@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const search = { current: "" };
@@ -389,6 +389,57 @@ describe("Incidents page RBAC", () => {
         undefined,
       ),
     );
+  });
+
+  it("hands the selected incidents to another team with one note", async () => {
+    role.current = "operator";
+    apiMocks.listTeams.mockResolvedValue({
+      items: [{ id: "team-data", name: "Data" }],
+      total: 1,
+    });
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        incident("inc-1", "open", "svc-1"),
+        incident("inc-2", "in_progress", "svc-1"),
+      ],
+      total: 2,
+    });
+    apiMocks.bulkIncidentAction.mockResolvedValue({
+      action: "handoff",
+      succeeded: 2,
+      failed: 0,
+      items: [],
+    });
+    await renderAndSettle();
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
+    );
+    fireEvent.click(screen.getByTestId("incident-actions-trigger"));
+    fireEvent.click(screen.getByTestId("incident-action-handoff"));
+    expect(screen.getByTestId("confirm-handoff").hasAttribute("disabled")).toBe(true);
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("handoff-team")).getByRole("option", { name: "Data" }),
+      ).toBeTruthy(),
+    );
+    fireEvent.change(screen.getByTestId("handoff-team"), {
+      target: { value: "team-data" },
+    });
+    fireEvent.change(screen.getByTestId("handoff-note"), {
+      target: { value: "  Data owns the orders pipeline now. " },
+    });
+    fireEvent.click(screen.getByTestId("confirm-handoff"));
+    await waitFor(() =>
+      expect(apiMocks.bulkIncidentAction).toHaveBeenCalledWith(
+        "handoff",
+        ["inc-1", "inc-2"],
+        undefined,
+        { teamId: "team-data", note: "Data owns the orders pipeline now." },
+      ),
+    );
+    expect(toastSpies.success).toHaveBeenCalledWith("Handed 2 incidents to Data.");
   });
 
   it("allows operators to resolve one-service selections", async () => {

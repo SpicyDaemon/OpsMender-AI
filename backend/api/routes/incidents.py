@@ -2937,16 +2937,32 @@ async def _bulk_handoff(
             )
     from backend.paging.channel_factory import build_channel_factory
 
-    for incident_id in incident_ids:
-        await _reassign.reassign_to_team(
-            db,
-            org_id,
-            incident=incidents[incident_id],
-            team=team,
-            actor=user,
-            note=note,
-            channel_factory=build_channel_factory(),
-        )
+    try:
+        for incident_id in incident_ids:
+            await _reassign.reassign_to_team(
+                db,
+                org_id,
+                incident=incidents[incident_id],
+                team=team,
+                actor=user,
+                note=note,
+                channel_factory=build_channel_factory(),
+            )
+    except PermissionError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "You can no longer hand off one of these incidents; nothing was "
+                "handed off."
+            ),
+        ) from exc
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{exc} Nothing was handed off.",
+        ) from exc
     await db.commit()
     return IncidentBulkActionResponse(
         action="handoff",

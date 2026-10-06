@@ -118,7 +118,11 @@ async def test_one_forbidden_incident_moves_none(world):
     before = await _rows(world, ids)
     resp = await _handoff(world, ids, s["ops"])
     assert resp.status_code == 403, resp.text
-    assert "nothing was handed off" in resp.json()["detail"]
+    # Every incident is checked before any of them is handed off or paged.
+    assert resp.json()["detail"] == (
+        'Only an admin or a member of its team can hand off "orders db is slow"; '
+        "nothing was handed off."
+    )
     assert await _rows(world, ids) == before
 
 
@@ -153,6 +157,31 @@ async def test_a_note_and_a_new_team_are_required(world):
         headers=await _headers(world.client, "lc-l3"),
     )
     assert missing.status_code == 422, missing.text
+    assert await _rows(world, [first, second]) == before
+
+
+async def test_a_handoff_that_fails_partway_moves_none(world, monkeypatch):
+    from backend.paging import reassign
+
+    s = await _setup(world)
+    first, second = s["platform_incidents"]
+    before = await _rows(world, [first, second])
+    real = reassign.reassign_to_team
+    calls = []
+
+    async def membership_changed(db, org_id, *, incident, **kwargs):
+        calls.append(incident.id)
+        if len(calls) == 2:
+            raise PermissionError("The actor is no longer on this incident's team.")
+        return await real(db, org_id, incident=incident, **kwargs)
+
+    monkeypatch.setattr(reassign, "reassign_to_team", membership_changed)
+    resp = await _handoff(world, [first, second], s["data"])
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == (
+        "You can no longer hand off one of these incidents; nothing was handed off."
+    )
+    assert calls == [first, second]
     assert await _rows(world, [first, second]) == before
 
 

@@ -287,6 +287,12 @@ then on the new team handles it:
 - team-scoped channel updates;
 - paging again if it is reopened.
 
+To hand several incidents to one team at once, select them on the incident
+list and use **Actions > Hand off to team**. Pick the team and write one note;
+each incident is reassigned as above, keeps its service and gets the same note
+on its timeline. If any selected incident is closed, already with that team or
+not yours to reassign, none move.
+
 Moving an incident to another service (**Manage incident** on the incident
 list) hands it to that service's team instead. A handoff note is required and
 is recorded on the timeline.

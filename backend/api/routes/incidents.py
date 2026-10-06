@@ -48,7 +48,7 @@ from backend.api.schemas import (
     SessionResponse,
 )
 from backend.config_loader import Config
-from backend.db.models import User
+from backend.db.models import Incident, User
 from backend.db.repos import (
     AuditEntryRepo,
     BotConnectorRepo,
@@ -2227,6 +2227,9 @@ async def bulk_incident_action(
     action = body.action
     unique_ids = list(dict.fromkeys(body.incident_ids))
 
+    if action == "handoff":
+        return await _bulk_handoff(db, org_id, unique_ids, body, user)
+
     if action in {"resolve", "reopen", "delete"}:
         incidents_by_id = {}
         # Acquire deletion locks in a stable order for overlapping selections.
@@ -2868,6 +2871,94 @@ async def take_incident(
 _REASSIGN_FORBIDDEN = (
     "Only an admin or a member of this incident's team can reassign it."
 )
+
+
+async def _bulk_handoff(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_ids: list[uuid.UUID],
+    body: IncidentBulkActionRequest,
+    user: User,
+) -> IncidentBulkActionResponse:
+    """Hand every selected incident to one team with one note, or none.
+
+    Locks each incident's chain state and row in sorted id order (the same
+    order as every ownership change), checks them all, then hands each off
+    exactly as the single Reassign does.
+    """
+    note = (body.note or "").strip()
+    if body.team_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Choose the team to hand these incidents to.",
+        )
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A note for the new team is required.",
+        )
+    team = await TeamRepo.get_by_id(db, org_id, body.team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    incidents: dict[uuid.UUID, Incident] = {}
+    for incident_id in sorted(incident_ids, key=str):
+        await IncidentChainStateRepo.get_for_incident(
+            db, org_id, incident_id, for_update=True
+        )
+        incident = await IncidentRepo.get_by_id(
+            db, org_id, incident_id, for_update=True
+        )
+        if incident is None:
+            raise HTTPException(
+                status_code=404, detail=f"Incident {incident_id} not found"
+            )
+        incidents[incident_id] = incident
+    for incident in incidents.values():
+        if incident.status in _CLOSED_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f'"{incident.title}" is {incident.status}; nothing was handed off.',
+            )
+        if not await _reassign.can_reassign(db, org_id, incident, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f'Only an admin or a member of its team can hand off "{incident.title}"; '
+                    "nothing was handed off."
+                ),
+            )
+        if await _reassign.incident_team_id(db, org_id, incident) == team.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f'{team.name} already handles "{incident.title}"; nothing was '
+                    "handed off."
+                ),
+            )
+    from backend.paging.channel_factory import build_channel_factory
+
+    for incident_id in incident_ids:
+        await _reassign.reassign_to_team(
+            db,
+            org_id,
+            incident=incidents[incident_id],
+            team=team,
+            actor=user,
+            note=note,
+            channel_factory=build_channel_factory(),
+        )
+    await db.commit()
+    return IncidentBulkActionResponse(
+        action="handoff",
+        succeeded=len(incident_ids),
+        failed=0,
+        items=[
+            IncidentBulkActionResult(incident_id=incident_id, ok=True)
+            for incident_id in incident_ids
+        ],
+    )
+
+
 _RESPONDERS_FORBIDDEN = (
     "Only an admin, the owner, or a member of this incident's team can "
     "change its responders."

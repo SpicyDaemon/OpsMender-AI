@@ -1209,6 +1209,355 @@ class TestMaintenanceCoveragePostgres(TestMaintenanceCoverage):
             await engine.dispose()
 
 
+class TestMaintenanceTargetScope:
+    @pytest.mark.parametrize("operation", ["create", "update"])
+    @pytest.mark.parametrize(
+        "variant",
+        [
+            "global-specific",
+            "global-mixed",
+            "global-scope-ids",
+            "malformed",
+            "unknown",
+            "other-workspace",
+            "overridden-invalid",
+        ],
+    )
+    async def test_invalid_targets_do_not_write(
+        self, operation, variant, app_db, client
+    ):
+        from sqlalchemy import select
+        from backend.db.models import MaintenanceWindow, Organization
+        from backend.db.repos import SLATargetRepo, ServiceRepo, TeamRepo
+
+        _, factory, _ = app_db
+        target_response = await client.post(
+            "/sla-targets", json={"name": "Scoped probe", "kind": "external"}
+        )
+        assert target_response.status_code == 201
+        target_id = target_response.json()["id"]
+        async with factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="Team", slug="scope-team"
+            )
+            service = await ServiceRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Service", slug="scope-service"
+            )
+            foreign_org = Organization(name="Foreign", slug="foreign-scope")
+            db.add(foreign_org)
+            await db.flush()
+            foreign_target = await SLATargetRepo.create(
+                db, foreign_org.id, name="Foreign probe", kind="external"
+            )
+            await db.commit()
+        now = datetime.now(timezone.utc)
+        original = {
+            "name": "Original window",
+            "starts_at": now.isoformat(),
+            "ends_at": (now + timedelta(hours=1)).isoformat(),
+            "scope_type": "global",
+            "target_ids": ["*"],
+        }
+        if operation == "update":
+            response = await client.post("/maintenance-windows", json=original)
+            assert response.status_code == 201
+            window_id = uuid.UUID(response.json()["id"])
+        body = {**original, "name": "Rejected change", "scope_type": "service"}
+        if variant.startswith("global"):
+            body["scope_type"] = "global"
+            body["target_ids"] = (
+                [target_id] if variant == "global-specific" else ["*", target_id]
+            )
+            if variant == "global-scope-ids":
+                body["target_ids"] = ["*"]
+                body["scope_ids"] = [str(service.id)]
+        else:
+            body["target_ids"] = [
+                "not-a-uuid"
+                if variant == "malformed"
+                else str(foreign_target.id)
+                if variant == "other-workspace"
+                else str(uuid.uuid4())
+            ]
+            if variant == "overridden-invalid":
+                body["scope_ids"] = [str(service.id)]
+        response = await (
+            client.post("/maintenance-windows", json=body)
+            if operation == "create"
+            else client.put(f"/maintenance-windows/{window_id}", json=body)
+        )
+        assert response.status_code == 422
+        async with factory() as db:
+            windows = list((await db.scalars(select(MaintenanceWindow))).all())
+            assert len(windows) == (0 if operation == "create" else 1)
+            if windows:
+                assert windows[0].name == original["name"]
+                assert windows[0].scope_type == "global"
+                assert windows[0].target_ids == ["*"]
+                assert windows[0].scope_id is None
+
+    @pytest.mark.parametrize("variant", ["rename-legacy-global", "widen-service"])
+    async def test_update_validates_the_resulting_global_scope(
+        self, variant, app_db, client
+    ):
+        from backend.db.repos import MaintenanceWindowRepo, SLATargetRepo
+
+        _, factory, _ = app_db
+        now = datetime.now(timezone.utc)
+        async with factory() as db:
+            target = await SLATargetRepo.create(
+                db, TEST_ORG_ID, name="Legacy", kind="external"
+            )
+            window = await MaintenanceWindowRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="Legacy window",
+                starts_at=now,
+                ends_at=now + timedelta(hours=1),
+                target_ids=[str(target.id)],
+                scope_type="global" if variant == "rename-legacy-global" else "service",
+            )
+            original_scope = window.scope_type
+            await db.commit()
+        body = (
+            {"name": "Changed"}
+            if variant == "rename-legacy-global"
+            else {"scope_type": "global"}
+        )
+        response = await client.put(f"/maintenance-windows/{window.id}", json=body)
+        assert response.status_code == 422
+        async with factory() as db:
+            saved = await MaintenanceWindowRepo.get_by_id(db, TEST_ORG_ID, window.id)
+            assert saved.name == "Legacy window"
+            assert saved.scope_type == original_scope
+            assert saved.target_ids == [str(target.id)]
+
+    @pytest.mark.parametrize("selection", ["linked", "standalone", "all"])
+    async def test_selected_scope_keeps_unrelated_intake_and_pages_active(
+        self, selection, app_db, client
+    ):
+        from sqlalchemy import select
+        from backend.db.models import (
+            Incident,
+            IngestLog,
+            MaintenanceWindow,
+            UptimeSample,
+        )
+        from backend.db.repos import IncidentPageRepo, IncidentRepo, SLATargetRepo
+        from backend.paging.dispatch import DeliveryAttempt, dispatch_page
+        from backend.sla.poller import SLAPoller
+
+        _, factory, _ = app_db
+        team_response = await client.post(
+            "/teams", json={"name": "Scope team", "slug": "scope-team"}
+        )
+        assert team_response.status_code == 201
+        services = []
+        for index in range(2):
+            response = await client.post(
+                "/services",
+                json={
+                    "name": f"Service {index}",
+                    "slug": f"scope-{index}",
+                    "team_id": team_response.json()["id"],
+                    "priority": "P1",
+                },
+            )
+            assert response.status_code == 201
+            services.append(response.json())
+        target_response = await client.post(
+            "/sla-targets",
+            json={
+                "name": "Selected probe",
+                "kind": "external",
+                "service_id": services[0]["id"] if selection == "linked" else None,
+            },
+        )
+        assert target_response.status_code == 201
+        target_id = uuid.UUID(target_response.json()["id"])
+        now = datetime.now(timezone.utc)
+        response = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "Selected window",
+                "starts_at": (now - timedelta(minutes=1)).isoformat(),
+                "ends_at": (now + timedelta(hours=1)).isoformat(),
+                "scope_type": "global" if selection == "all" else "service",
+                "scope_ids": [services[0]["id"]] if selection == "linked" else [],
+                "target_ids": ["*"] if selection == "all" else [str(target_id)],
+            },
+        )
+        assert response.status_code == 201
+        window_id = uuid.UUID(response.json()["id"])
+        async with factory() as db:
+            saved = await db.get(MaintenanceWindow, window_id)
+            assert saved.scope_type == ("global" if selection == "all" else "service")
+            assert saved.scope_id == (
+                uuid.UUID(services[0]["id"]) if selection == "linked" else None
+            )
+            assert saved.target_ids == (
+                [services[0]["id"]]
+                if selection == "linked"
+                else ["*"]
+                if selection == "all"
+                else [str(target_id)]
+            )
+
+        with (
+            patch(
+                "backend.api.routes.ingest.dispatch_incident_created",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.ingest.service.choose_model_for_incident_service",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            for index, service in enumerate(services):
+                intake = await client.post(
+                    service["intake_url"],
+                    json={
+                        "title": f"Intake {index}",
+                        "description": "Scope regression",
+                        "severity": "high",
+                        "external_id": f"scope-{index}",
+                    },
+                )
+                assert intake.status_code == 200
+                covered = selection == "all" or (selection == "linked" and index == 0)
+                assert intake.json()["dedup_action"] == (
+                    "skipped" if covered else "created"
+                )
+                assert (intake.json()["incident_id"] is None) is covered
+        async with factory() as db:
+            incidents = list((await db.scalars(select(Incident))).all())
+            assert {row.title for row in incidents} == (
+                set()
+                if selection == "all"
+                else {"Intake 1"}
+                if selection == "linked"
+                else {"Intake 0", "Intake 1"}
+            )
+            logs = list((await db.scalars(select(IngestLog))).all())
+            assert len(logs) == 2
+            assert sum(row.dedup_action == "skipped" for row in logs) == (
+                2 if selection == "all" else 1 if selection == "linked" else 0
+            )
+            user = (await db.scalars(select(User))).one()
+            for index, service in enumerate(services):
+                incident = await IncidentRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    title=f"Existing page {index}",
+                    description="Scope regression",
+                    service_id=uuid.UUID(service["id"]),
+                    priority="P1",
+                    response_mode="page",
+                )
+                page = await IncidentPageRepo.create(
+                    db,
+                    TEST_ORG_ID,
+                    incident_id=incident.id,
+                    user_id=user.id,
+                    channel="recorded",
+                    delivery_status="recorded",
+                )
+                fake_channel = AsyncMock()
+                fake_channel.key = "email"
+                fake_channel.send.return_value = DeliveryAttempt(
+                    channel="email", status="sent"
+                )
+                result = await dispatch_page(
+                    db,
+                    TEST_ORG_ID,
+                    incident=incident,
+                    user=user,
+                    page=page,
+                    channel_factory=lambda key: fake_channel,
+                    at=now,
+                )
+                await db.commit()
+                covered = selection == "all" or (selection == "linked" and index == 0)
+                assert result.suppressed is covered
+                assert fake_channel.send.await_count == (0 if covered else 1)
+                pages = await IncidentPageRepo.list_for_incident(
+                    db, TEST_ORG_ID, incident.id
+                )
+                assert len(pages) == 2
+                assert (
+                    sum(
+                        row.delivery_status == ("skipped" if covered else "sent")
+                        for row in pages
+                    )
+                    == 1
+                )
+                assert incident.suppressed_by_maintenance_window_id == (
+                    window_id if covered else None
+                )
+            target = await SLATargetRepo.get_by_id(db, TEST_ORG_ID, target_id)
+        poller = SLAPoller(factory, AppConfig.load())
+        with patch.object(poller, "_probe_target", AsyncMock(return_value=(False, 37))):
+            await poller._probe_and_record(TEST_ORG_ID, target)
+        async with factory() as db:
+            sample = (await db.scalars(select(UptimeSample))).one()
+            assert sample.target_id == target_id
+            assert sample.up is False and sample.suppressed is True
+
+    @pytest.mark.parametrize("selection", ["standalone", "all"])
+    async def test_update_clears_the_old_service_scope(self, selection, app_db, client):
+        from backend.db.repos import MaintenanceWindowRepo, ServiceRepo, TeamRepo
+
+        _, factory, _ = app_db
+        async with factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="Team", slug="scope-team"
+            )
+            service = await ServiceRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Service", slug="scope-service"
+            )
+            await db.commit()
+        target_response = await client.post(
+            "/sla-targets", json={"name": "Standalone", "kind": "external"}
+        )
+        assert target_response.status_code == 201
+        now = datetime.now(timezone.utc)
+        original = await client.post(
+            "/maintenance-windows",
+            json={
+                "name": "Original",
+                "starts_at": now.isoformat(),
+                "ends_at": (now + timedelta(hours=1)).isoformat(),
+                "scope_type": "service",
+                "scope_ids": [str(service.id)],
+            },
+        )
+        assert original.status_code == 201
+        ids = ["*"] if selection == "all" else [target_response.json()["id"]]
+        response = await client.put(
+            f"/maintenance-windows/{original.json()['id']}",
+            json={
+                "scope_type": "global" if selection == "all" else "service",
+                "scope_ids": [],
+                "target_ids": ids,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["target_ids"] == ids
+        assert response.json()["scope_id"] is None
+        async with factory() as db:
+            saved = await MaintenanceWindowRepo.get_by_id(
+                db, TEST_ORG_ID, uuid.UUID(original.json()["id"])
+            )
+            assert saved.target_ids == ids
+            assert saved.scope_id is None
+            assert saved.scope_type == ("global" if selection == "all" else "service")
+
+
+@pytest.mark.integration
+class TestMaintenanceTargetScopePostgres(TestMaintenanceTargetScope):
+    app_db = TestMaintenanceCoveragePostgres.app_db
+
+
 class TestSLATargetServiceLink:
     """v1.2 Phase 6 - SLA target ↔ Service linkage + SLO recommendations."""
 

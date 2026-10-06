@@ -33,6 +33,20 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  let initialTargetId = "*";
+  if (initialData) {
+    const onlyTargetId = initialData.target_ids.length === 1 ? initialData.target_ids[0] : null;
+    const directTarget = targets.find((target) => target.id === onlyTargetId);
+    const serviceTarget = initialData.scope_type === "service" && initialData.scope_ids.length === 1
+      ? targets.find((target) => target.service_id === initialData.scope_ids[0])
+      : undefined;
+    initialTargetId = initialData.scope_type === "global" && initialData.target_ids.every((id) => id === "*")
+      ? "*"
+      : initialData.scope_type === "service" || initialData.scope_type === "global"
+        ? directTarget?.id ?? serviceTarget?.id ?? ""
+        : "";
+  }
+
   useEffect(() => {
     if (open) {
       if (initialData) {
@@ -41,7 +55,7 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
           reason: initialData.reason ?? "",
           starts_at: formatDateForInput(initialData.starts_at),
           ends_at: formatDateForInput(initialData.ends_at),
-          target_id: initialData.target_ids[0] ?? "*",
+          target_id: initialTargetId,
           rrule: initialData.rrule ?? "",
         });
       } else {
@@ -58,7 +72,9 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
       }
       setError("");
     }
-  }, [open, initialData]);
+  }, [open, initialData, initialTargetId]);
+
+  const selectedTarget = targets.find((target) => target.id === form.target_id);
 
   async function handleSubmit() {
     if (!form.name.trim()) {
@@ -67,6 +83,10 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
     }
     if (!form.starts_at || !form.ends_at) {
       setError("Start and end times are required");
+      return;
+    }
+    if (form.target_id !== "*" && !selectedTarget) {
+      setError("Choose a target before saving this window.");
       return;
     }
 
@@ -79,7 +99,9 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
         reason: form.reason.trim() || null,
         starts_at: new Date(form.starts_at).toISOString(),
         ends_at: new Date(form.ends_at).toISOString(),
-        target_ids: [form.target_id], // backend expects an array
+        scope_type: form.target_id === "*" ? "global" : "service",
+        scope_ids: selectedTarget?.service_id ? [selectedTarget.service_id] : [],
+        target_ids: [form.target_id],
         rrule: form.rrule.trim() || null,
       };
 
@@ -134,6 +156,7 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
             value={form.target_id}
             onChange={(e) => setForm({ ...form, target_id: e.target.value })}
           >
+            <option value="" disabled>Choose a target</option>
             <option value="*">All Targets</option>
             {targets.map((t) => (
               <option key={t.id} value={t.id}>
@@ -141,6 +164,15 @@ export function MaintenanceWindowModal({ open, onClose, onSaved, targets, initia
               </option>
             ))}
           </Select>
+          <p className="mt-1 text-xs text-fg-muted">
+            {form.target_id === "*"
+              ? "Covers all service alerts, paging and uptime targets."
+              : selectedTarget?.service_id
+                ? `Covers alerts, paging and uptime targets for ${selectedTarget.service_name ?? "the linked service"}.`
+                : selectedTarget
+                  ? "Covers this uptime target only; service alerts and paging stay active."
+                  : "Choose a target explicitly to replace this window's scope, or use Paging to edit its existing scope."}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reliability Maintenance Windows now send an explicit scope: All Targets
+  covers the workspace, a linked target covers its service, and a standalone
+  target covers only that probe. Create and update reject specific target IDs
+  under global scope and reject unknown or other-workspace probe IDs. Changing
+  a selection clears the previous service scope. Loading targets preserves
+  a new window's draft. Existing windows are not
+  rewritten automatically.
 - Monolith startup now stops AI sessions interrupted by an app restart,
   records the interruption in their summaries and incident timelines, and
   expires their pending approvals. Their model slots are freed for queued

@@ -310,15 +310,62 @@ async def test_the_request_email_names_who_asked(world, monkeypatch):
     monkeypatch.setattr(
         "backend.reports.email.build_email_channel", lambda _settings: _Channel()
     )
+    monkeypatch.setattr(
+        world.app.state.config.people, "public_base_url", "https://ops.example.test"
+    )
     incident_id = await _setup(world)
-    resp = await _ask(world, incident_id, [world.level2])
+    # A forged host header never reaches the link.
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/responder-requests",
+        json={"user_ids": [str(world.level2)], "message": NOTE},
+        headers={
+            **await _headers(world.client, "lc-l3"),
+            "X-Forwarded-Host": "phish.example.test",
+        },
+    )
     assert resp.status_code == 201, resp.text
     (mail,) = sent
     assert mail["recipient"] == "lc-l2@test.com"
     assert mail["subject"] == "lc-l3 asked you to help with orders db is slow"
     assert "lc-l3 asked you to help as a responder" in mail["body"]
     assert f"Message from lc-l3: {NOTE}" in mail["body"]
-    assert f"/dashboard/incidents/detail?id={incident_id}" in mail["body"]
+    assert (
+        f"https://ops.example.test/dashboard/incidents/detail?id={incident_id}"
+        in mail["body"]
+    )
+    assert "phish.example.test" not in mail["body"]
+
+
+async def test_without_a_public_url_the_email_has_no_link(world, monkeypatch):
+    sent: list[str] = []
+
+    class _Channel:
+        async def send(self, *, recipient, subject, body):
+            sent.append(body)
+            return type("Attempt", (), {"status": "sent", "error": None})()
+
+    async def _settings(*_args, **_kwargs):
+        return object()
+
+    monkeypatch.setattr("backend.reports.email.resolve_email_settings", _settings)
+    monkeypatch.setattr(
+        "backend.reports.email.build_email_channel", lambda _settings: _Channel()
+    )
+    monkeypatch.setattr(world.app.state.config.people, "public_base_url", None)
+    monkeypatch.delenv("OPSMENDER_PUBLIC_URL", raising=False)
+    incident_id = await _setup(world)
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/responder-requests",
+        json={"user_ids": [str(world.level2)]},
+        headers={
+            **await _headers(world.client, "lc-l3"),
+            "Host": "phish.example.test",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    (body,) = sent
+    assert "Open the incident in OpsMender to accept or decline." in body
+    assert "http" not in body and "phish.example.test" not in body
 
 
 async def test_without_email_settings_the_request_still_stands(world):

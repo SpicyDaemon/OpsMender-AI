@@ -3037,16 +3037,18 @@ async def request_incident_responders(
     await db.commit()
     # Email after the requests are saved, so a slow or failed send can't
     # undo them.
-    from backend.api.routes.invites import _resolve_public_base_url
-
+    # The link uses the configured public URL only, never the request's Host
+    # or forwarded headers, which the caller controls.
+    config = request.app.state.config
+    public_url = config.people.public_base_url or os.environ.get("OPSMENDER_PUBLIC_URL")
     await _responders.send_request_emails(
         db,
         org_id,
         requests=created,
         incident=incident,
         actor=user,
-        base_url=_resolve_public_base_url(request),
-        config=request.app.state.config,
+        base_url=public_url,
+        config=config,
     )
     return IncidentResponderRequestListResponse(
         items=await _responder_request_items(db, org_id, incident_id),

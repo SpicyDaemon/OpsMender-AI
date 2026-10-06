@@ -304,7 +304,9 @@ besides the owner.
   who asked, and accepts or declines from a banner on the incident page; only
   they can answer. A pending request holds one of the three slots. It expires
   after 30 minutes, or when the incident is resolved or combined, and the
-  requester gets an Inbox notice with the outcome.
+  requester gets an Inbox notice with the outcome. The email links to the
+  incident at `OPSMENDER_PUBLIC_BASE_URL` (else `OPSMENDER_PUBLIC_URL`); with
+  neither set it has no link.
 - **How they're reached:** each one is paged once through their own
   notification settings. Their quiet hours apply, though P0 always breaks
   through, and Maintenance Windows don't hold the request. They also get an

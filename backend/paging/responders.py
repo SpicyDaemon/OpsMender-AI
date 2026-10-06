@@ -417,13 +417,14 @@ async def send_request_emails(
     requests: list[IncidentResponderRequest],
     incident: Incident,
     actor: User,
-    base_url: str,
+    base_url: str | None,
     config=None,
     channel=None,
 ) -> int:
     """Email each requested person, naming who asked. Best effort: skipped
     when email isn't configured, and a failed send doesn't undo the request.
-    Returns how many were sent."""
+    The incident link uses ``base_url`` (the configured public URL) and is
+    left out without one. Returns how many were sent."""
 
     if channel is None:
         from backend.reports.email import build_email_channel, resolve_email_settings
@@ -432,7 +433,11 @@ async def send_request_emails(
         if settings is None:
             return 0
         channel = build_email_channel(settings)
-    link = f"{base_url.rstrip('/')}/dashboard/incidents/detail?id={incident.id}"
+    link = (
+        f"{base_url.rstrip('/')}/dashboard/incidents/detail?id={incident.id}"
+        if base_url
+        else None
+    )
     sent = 0
     for request in requests:
         user = await UserRepo.get_by_id(db, request.user_id)
@@ -449,12 +454,12 @@ async def send_request_emails(
         if request.message:
             lines += [f"Message from {actor.username}: {request.message}", ""]
         lines += [
-            "Open the incident to accept or decline. The request expires in 30 "
-            f"minutes, at {_aware(request.expires_at):%H:%M} UTC.",
-            "",
-            link,
+            "Open the incident in OpsMender to accept or decline. The request "
+            f"expires in 30 minutes, at {_aware(request.expires_at):%H:%M} UTC.",
             "",
         ]
+        if link:
+            lines += [link, ""]
         try:
             attempt = await channel.send(
                 recipient=user.email,

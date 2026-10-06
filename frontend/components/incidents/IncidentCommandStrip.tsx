@@ -561,6 +561,7 @@ export function IncidentCommandStrip({
       incidentId={incident.id}
       teamId={incident.team_id ?? null}
       teamName={incident.team_name ?? null}
+      canAddAnyone={user?.role === "admin"}
       ownerId={
         assignment && assignment.released_at === null ? assignment.assigned_to : null
       }

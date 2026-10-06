@@ -472,7 +472,9 @@ async def test_who_can_be_added_and_who_can_add(world):
     helper = await _user(world.app, "rw-helper")
     viewer = await _user(world.app, "rw-viewer", role="viewer")
     outsider = await _user(world.app, "rw-out")
-    _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
+    _, service_a, chain_a = await _team(
+        world, "Platform", members=[a1, helper], levels=[a1]
+    )
     incident_id = await _incident_on(world, service_a, chain_a)
     await _own(world, incident_id, outsider)
     async with world.app.state.session_factory() as db:
@@ -497,12 +499,14 @@ async def test_who_can_be_added_and_who_can_add(world):
     assert (await add(viewer)).status_code == 422
     assert (await add(inactive.id)).status_code == 422
     assert (await add(outsider)).status_code == 409  # already the owner
-    # The owner can add responders even though they aren't on the team.
+    stranger = await _user(world.app, "rw-stranger")
+    # The owner can add responders even though they aren't on the team, but
+    # only the team's members, like any operator (M1-16).
     owner_headers = await _headers(world.client, "rw-out")
+    assert (await add(stranger, owner_headers)).status_code == 403
     assert (await add(helper, owner_headers)).status_code == 201
     assert (await add(helper)).status_code == 409  # already a responder
 
-    stranger = await _user(world.app, "rw-stranger")
     stranger_headers = await _headers(world.client, "rw-stranger")
     assert (await add(stranger, stranger_headers)).status_code == 403
     removed_by_stranger = await world.client.delete(

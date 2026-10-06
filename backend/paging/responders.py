@@ -21,12 +21,13 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     IncidentResponderRepo,
+    TeamRepo,
     UserRepo,
     chain_is_live,
 )
 from backend.notifications import CATEGORY_INCIDENT, emit_notification
 from backend.paging.dispatch import ChannelFactory, dispatch_page
-from backend.paging.reassign import on_incident_team
+from backend.paging.reassign import incident_team_id, on_incident_team
 from backend.services.incident_timeline import record_lifecycle_comment
 
 RESPONDER_LIMIT = 3
@@ -91,9 +92,11 @@ async def add_responders(
 ) -> list[IncidentResponder]:
     """Add people as responders and ask each one for help.
 
-    The caller checks permission and that the incident is open. Raises
-    ``ResponderError`` for anyone who can't be added or when the limit
-    would be passed; nothing is added in that case.
+    The caller checks permission and that the incident is open. Admins add
+    anyone; operators add only members of the team handling the incident
+    (anyone when it has no team). Raises ``ResponderError`` for anyone who
+    can't be added or when the limit would be passed; nothing is added in
+    that case.
     """
 
     # Concurrent adds wait here, so the limit holds.
@@ -112,6 +115,11 @@ async def add_responders(
     current = await IncidentResponderRepo.list_for_incident(db, org_id, incident.id)
     current_ids = {row.user_id for row in current}
     owner = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
+    team_id = (
+        None
+        if request_role(actor) == "admin"
+        else await incident_team_id(db, org_id, incident)
+    )
     users: list[User] = []
     for user_id in wanted:
         user = await UserRepo.get_by_id(db, user_id)
@@ -122,6 +130,16 @@ async def add_responders(
             raise ResponderError(409, f"{name} is already a responder.")
         if not await can_respond(db, org_id, user):
             raise ResponderError(422, f"{name} can't respond to incidents.")
+        if team_id is not None and not await TeamRepo.is_member(
+            db, org_id, team_id, user_id
+        ):
+            team = await TeamRepo.get_by_id(db, org_id, team_id)
+            where = "the team handling this incident"
+            if team is not None:
+                where = f"{team.name}, {where}"
+            raise ResponderError(
+                403, f"{name} isn't on {where}. Ask an admin to add them."
+            )
         users.append(user)
     if len(current) + len(users) > RESPONDER_LIMIT:
         left = RESPONDER_LIMIT - len(current)

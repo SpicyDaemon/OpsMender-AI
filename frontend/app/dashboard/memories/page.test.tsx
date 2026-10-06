@@ -295,4 +295,13 @@ describe("Memories selection and actions", () => {
       "Checkout",
     ]);
   });
+
+  it("has no feedback column or buttons", async () => {
+    render(<MemoriesPage />);
+    await waitFor(() => expect(screen.getAllByText("First lesson").length).toBeGreaterThan(0));
+    // Memory feedback was removed (M1-20).
+    expect(screen.queryByRole("columnheader", { name: /Feedback/ })).toBeNull();
+    expect(screen.queryByTitle("Helpful")).toBeNull();
+    expect(screen.queryByTitle("Not helpful")).toBeNull();
+  });
 });

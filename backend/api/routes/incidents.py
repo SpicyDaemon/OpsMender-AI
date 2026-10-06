@@ -61,6 +61,7 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     IncidentResponderRepo,
+    IncidentResponderRequestRepo,
     IngestLogRepo,
     MaintenanceWindowRepo,
     SessionRepo,
@@ -90,6 +91,8 @@ from backend.api.schemas import (
     IncidentReassignOptionsResponse,
     IncidentReassignRequest,
     IncidentResponderListResponse,
+    IncidentResponderRequestListResponse,
+    IncidentResponderRequestResponse,
     IncidentResponderResponse,
     IncidentRespondersAddRequest,
     PendingTakeoverResponse,
@@ -1979,6 +1982,7 @@ async def get_incident_paging(
             db, org_id, incident, user
         ),
         responders=await _responder_items(db, org_id, incident_id),
+        responder_requests=await _responder_request_items(db, org_id, incident_id),
         responder_limit=_responders.RESPONDER_LIMIT,
     )
 
@@ -2007,6 +2011,41 @@ async def _responder_items(
         )
         for row in rows
     ]
+
+
+async def _request_response(db: AsyncSession, row) -> IncidentResponderRequestResponse:
+    async def name(user_id):
+        person = await UserRepo.get_by_id(db, user_id)
+        return (
+            person.username
+            if person is not None
+            else f"Deleted user {str(user_id)[:8]}"
+        )
+
+    return IncidentResponderRequestResponse(
+        id=row.id,
+        incident_id=row.incident_id,
+        user_id=row.user_id,
+        username=await name(row.user_id),
+        requested_by_user_id=row.requested_by,
+        requested_by_username=(
+            await name(row.requested_by) if row.requested_by is not None else None
+        ),
+        status=row.status,
+        message=row.message,
+        created_at=row.created_at,
+        expires_at=row.expires_at,
+        decided_at=row.decided_at,
+    )
+
+
+async def _responder_request_items(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> list[IncidentResponderRequestResponse]:
+    rows = await IncidentResponderRequestRepo.list_pending_for_incident(
+        db, org_id, incident_id
+    )
+    return [await _request_response(db, row) for row in rows]
 
 
 async def _pending_takeover(
@@ -2957,6 +2996,123 @@ async def add_incident_responders(
     return IncidentResponderListResponse(
         items=await _responder_items(db, org_id, incident_id),
         limit=_responders.RESPONDER_LIMIT,
+    )
+
+
+@router.post(
+    "/{incident_id}/responder-requests",
+    response_model=IncidentResponderRequestListResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ask people from other teams to join as responders",
+)
+async def request_incident_responders(
+    incident_id: uuid.UUID,
+    body: IncidentRespondersAddRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """Each person gets an Inbox notice and an email, and only they accept or
+    decline. A pending request holds a responder slot for 30 minutes."""
+
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    _ensure_open(incident)
+    if not await _responders.can_manage_responders(db, org_id, incident, user):
+        raise HTTPException(status_code=403, detail=_RESPONDERS_FORBIDDEN)
+    try:
+        created = await _responders.request_responders(
+            db,
+            org_id,
+            incident=incident,
+            user_ids=body.user_ids,
+            actor=user,
+            message=(body.message or "").strip() or None,
+        )
+    except _responders.ResponderError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    await db.commit()
+    # Email after the requests are saved, so a slow or failed send can't
+    # undo them.
+    from backend.api.routes.invites import _resolve_public_base_url
+
+    await _responders.send_request_emails(
+        db,
+        org_id,
+        requests=created,
+        incident=incident,
+        actor=user,
+        base_url=_resolve_public_base_url(request),
+        config=request.app.state.config,
+    )
+    return IncidentResponderRequestListResponse(
+        items=await _responder_request_items(db, org_id, incident_id),
+        limit=_responders.RESPONDER_LIMIT,
+    )
+
+
+async def _answer_responder_request(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    request_id: uuid.UUID,
+    user: User,
+    *,
+    accept: bool,
+) -> IncidentResponderRequestResponse:
+    try:
+        row = await _responders.answer_request(
+            db,
+            org_id,
+            incident_id=incident_id,
+            request_id=request_id,
+            user=user,
+            accept=accept,
+        )
+    except _responders.ResponderError as exc:
+        if exc.detail == "This request expired.":
+            await db.commit()  # keep the expiry and its notice
+        else:
+            await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    await db.commit()
+    return await _request_response(db, row)
+
+
+@router.post(
+    "/{incident_id}/responder-requests/{request_id}/accept",
+    response_model=IncidentResponderRequestResponse,
+    summary="Accept a request to join as a responder",
+)
+async def accept_responder_request(
+    incident_id: uuid.UUID,
+    request_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    return await _answer_responder_request(
+        db, org_id, incident_id, request_id, user, accept=True
+    )
+
+
+@router.post(
+    "/{incident_id}/responder-requests/{request_id}/decline",
+    response_model=IncidentResponderRequestResponse,
+    summary="Decline a request to join as a responder",
+)
+async def decline_responder_request(
+    incident_id: uuid.UUID,
+    request_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    return await _answer_responder_request(
+        db, org_id, incident_id, request_id, user, accept=False
     )
 
 

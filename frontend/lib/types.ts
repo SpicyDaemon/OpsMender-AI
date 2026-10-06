@@ -2021,6 +2021,8 @@ export interface IncidentPagingPanelResponse {
   can_manage_responders?: boolean;
   /** People asked to help besides the owner, oldest first. */
   responders?: IncidentResponderResponse[];
+  /** Pending requests to people from other teams; each holds a slot. */
+  responder_requests?: IncidentResponderRequestResponse[];
   responder_limit?: number;
 }
 
@@ -2034,6 +2036,26 @@ export interface IncidentResponderResponse {
 
 export interface IncidentResponderListResponse {
   items: IncidentResponderResponse[];
+  limit: number;
+}
+
+/** A request for someone outside the handling team to join as a responder. */
+export interface IncidentResponderRequestResponse {
+  id: string;
+  incident_id: string;
+  user_id: string;
+  username: string;
+  requested_by_user_id?: string | null;
+  requested_by_username?: string | null;
+  status: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+  message?: string | null;
+  created_at: string;
+  expires_at: string;
+  decided_at?: string | null;
+}
+
+export interface IncidentResponderRequestListResponse {
+  items: IncidentResponderRequestResponse[];
   limit: number;
 }
 

@@ -298,8 +298,13 @@ besides the owner.
   team.
 - **Who can be added:** admins can add any active admin or operator.
   Operators, including an owner from another team, add members of the team
-  handling the incident (anyone when it has no team); ask an admin to add
-  someone from another team.
+  handling the incident (anyone when it has no team).
+- **Asking someone from another team:** operators send a request instead,
+  from the same dialog. The person gets an Inbox notice and an email naming
+  who asked, and accepts or declines from a banner on the incident page; only
+  they can answer. A pending request holds one of the three slots. It expires
+  after 30 minutes, or when the incident is resolved or combined, and the
+  requester gets an Inbox notice with the outcome.
 - **How they're reached:** each one is paged once through their own
   notification settings. Their quiet hours apply, though P0 always breaks
   through, and Maintenance Windows don't hold the request. They also get an

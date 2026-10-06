@@ -45,6 +45,7 @@ from backend.db.models import (
     IncidentMemoryRecallLog,
     IncidentPage,
     IncidentResponder,
+    IncidentResponderRequest,
     ServiceEscalationChain,
     PriorityLLMOverrideLog,
     PriorityRule,
@@ -848,7 +849,8 @@ class IncidentRepo:
         db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
     ) -> None:
         """Closing an incident ends all paging for it: the Escalation Chain
-        (running, snoozed, or acknowledged) and any staged notifications.
+        (running, snoozed, or acknowledged), any staged notifications and any
+        pending requests for people to join as responders.
 
         This is the single chokepoint every resolve and merge path goes
         through, so no close can leave a chain paging behind it.
@@ -858,6 +860,9 @@ class IncidentRepo:
         await IncidentChainStateRepo.cancel_live(db, org_id, incident_id)
         await _ne.stop_escalation(
             db, org_id, incident_id=incident_id, status="resolved"
+        )
+        await IncidentResponderRequestRepo.cancel_pending_for_incident(
+            db, org_id, incident_id
         )
 
     @staticmethod
@@ -6808,6 +6813,117 @@ class IncidentResponderRepo:
             )
         )
         return (result.rowcount or 0) > 0
+
+
+class IncidentResponderRequestRepo:
+    """Requests for people outside the handling team to join as responders."""
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        *,
+        incident_id: uuid.UUID,
+        user_id: uuid.UUID,
+        requested_by: uuid.UUID | None,
+        expires_at: datetime,
+        message: str | None = None,
+        created_at: datetime | None = None,
+    ) -> IncidentResponderRequest:
+        row = IncidentResponderRequest(
+            org_id=org_id,
+            incident_id=incident_id,
+            user_id=user_id,
+            requested_by=requested_by,
+            status="pending",
+            message=message,
+            expires_at=expires_at,
+        )
+        if created_at is not None:
+            row.created_at = created_at
+        db.add(row)
+        await db.flush()
+        return row
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession, org_id: uuid.UUID, request_id: uuid.UUID
+    ) -> IncidentResponderRequest | None:
+        stmt = select(IncidentResponderRequest).where(
+            IncidentResponderRequest.org_id == org_id,
+            IncidentResponderRequest.id == request_id,
+        )
+        return (await db.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_pending_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> Sequence[IncidentResponderRequest]:
+        stmt = (
+            select(IncidentResponderRequest)
+            .where(
+                IncidentResponderRequest.org_id == org_id,
+                IncidentResponderRequest.incident_id == incident_id,
+                IncidentResponderRequest.status == "pending",
+            )
+            .order_by(IncidentResponderRequest.created_at, IncidentResponderRequest.id)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_due(
+        db: AsyncSession, *, at: datetime, limit: int = 200
+    ) -> Sequence[IncidentResponderRequest]:
+        """Pending requests past their expiry, across workspaces."""
+        stmt = (
+            select(IncidentResponderRequest)
+            .where(
+                IncidentResponderRequest.status == "pending",
+                IncidentResponderRequest.expires_at <= at,
+            )
+            .order_by(IncidentResponderRequest.expires_at, IncidentResponderRequest.id)
+            .limit(limit)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def finish(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        request_id: uuid.UUID,
+        *,
+        status: str,
+        at: datetime,
+    ) -> bool:
+        """Move a pending request to ``status``. False when it was no longer
+        pending, so concurrent answers and expiry decide it only once."""
+        result = await db.execute(
+            update(IncidentResponderRequest)
+            .where(
+                IncidentResponderRequest.org_id == org_id,
+                IncidentResponderRequest.id == request_id,
+                IncidentResponderRequest.status == "pending",
+            )
+            .values(status=status, decided_at=at)
+            .execution_options(synchronize_session="fetch")
+        )
+        return (result.rowcount or 0) > 0
+
+    @staticmethod
+    async def cancel_pending_for_incident(
+        db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+    ) -> int:
+        result = await db.execute(
+            update(IncidentResponderRequest)
+            .where(
+                IncidentResponderRequest.org_id == org_id,
+                IncidentResponderRequest.incident_id == incident_id,
+                IncidentResponderRequest.status == "pending",
+            )
+            .values(status="cancelled", decided_at=datetime.now(timezone.utc))
+            .execution_options(synchronize_session="fetch")
+        )
+        return result.rowcount or 0
 
 
 class EscalationChainRepo:

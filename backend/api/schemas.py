@@ -2788,6 +2788,28 @@ class IncidentRespondersAddRequest(BaseModel):
     message: Optional[str] = Field(default=None, max_length=500)
 
 
+class IncidentResponderRequestResponse(BaseModel):
+    """A request for someone outside the handling team to join as a responder."""
+
+    id: uuid.UUID
+    incident_id: uuid.UUID
+    user_id: uuid.UUID
+    username: str
+    requested_by_user_id: Optional[uuid.UUID] = None
+    requested_by_username: Optional[str] = None
+    # pending | accepted | declined | expired | cancelled
+    status: str
+    message: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
+    decided_at: Optional[datetime] = None
+
+
+class IncidentResponderRequestListResponse(BaseModel):
+    items: list[IncidentResponderRequestResponse]
+    limit: int
+
+
 class IncidentReassignRequest(BaseModel):
     team_id: uuid.UUID
     # Required: the receiving team needs to know why it is theirs now.
@@ -2837,6 +2859,10 @@ class IncidentPagingPanelResponse(BaseModel):
     can_approve: bool = False
     can_manage_responders: bool = False
     responders: list[IncidentResponderResponse] = Field(default_factory=list)
+    # Pending requests hold responder slots until they are answered.
+    responder_requests: list[IncidentResponderRequestResponse] = Field(
+        default_factory=list
+    )
     responder_limit: int = 3
 
 

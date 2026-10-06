@@ -68,7 +68,11 @@ class EscalationScheduler:
                 staged = await _ne.tick_all_due(
                     db, at=now, sender=_ne.build_notification_sender(factory)
                 )
-                if advanced or staged:
+                # Requests to join as a responder expire after 30 minutes.
+                from backend.paging import responders as _responders
+
+                expired = await _responders.expire_due_requests(db, at=now)
+                if advanced or staged or expired:
                     await db.commit()
             except Exception:
                 await db.rollback()

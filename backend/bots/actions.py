@@ -266,12 +266,18 @@ async def execute_incident_action(
             raise IncidentActionError("actor_not_linked")
         actor_user_id = actor.id
 
-    await _authorized_operator(db, org_id=claims.org_id, user_id=actor_user_id)
+    operator = await _authorized_operator(
+        db, org_id=claims.org_id, user_id=actor_user_id
+    )
     incident = await IncidentRepo.get_by_id(db, claims.org_id, claims.incident_id)
     if incident is None:
         raise IncidentActionError("incident_not_found")
 
     if claims.action == "acknowledge":
+        from backend.paging.reassign import can_take
+
+        if not await can_take(db, claims.org_id, incident, operator):
+            raise IncidentActionError("actor_not_on_team")
         await SessionRepo.cancel_queued_for_incident(
             db,
             claims.org_id,

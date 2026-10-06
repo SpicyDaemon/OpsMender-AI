@@ -192,6 +192,12 @@ every other way of taking it: **Take**, a bulk acknowledge or reassign from the
 incident list, phone keypad `1`, a chat Acknowledge button or `/ack`, and
 taking over its AI session. Staged notifications stop too.
 
+**Who can take or acknowledge.** Admins always can. Operators can take or
+acknowledge an incident handled by their own team, and anyone its Escalation
+Chain paged in the current run can acknowledge it. An incident with no team
+can be taken by any operator. Everyone else is refused on every one of those
+paths, and **Take** and **Acknowledge** only show for people who can use them.
+
 Ownership is a lock with a timer:
 
 - **It lasts while you work.** Your own recorded actions on the incident keep

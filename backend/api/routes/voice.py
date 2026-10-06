@@ -127,8 +127,16 @@ async def voice_ack(
         return _twiml("That incident could not be found. Goodbye.")
 
     if digit == "1":
+        from backend.db.repos import UserRepo
         from backend.paging.escalation import acknowledge
+        from backend.paging.reassign import can_take
 
+        caller = await UserRepo.get_by_id(db, user_id)
+        if caller is None or not await can_take(db, org_id, incident, caller):
+            return _twiml(
+                "Only this incident's team, or someone its escalation chain "
+                "paged, can acknowledge it. Goodbye."
+            )
         # Same path as every other acknowledgement: paging stops and the
         # caller holds the lock (KI-021). Ownership is checked now, not by
         # whether anyone ever acknowledged, so a responder paged after a

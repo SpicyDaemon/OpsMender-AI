@@ -2822,6 +2822,7 @@ class IncidentPagingPanelResponse(BaseModel):
     assignment: Optional[IncidentAssignmentResponse]
     suppressed_by_maintenance_window: Optional[SuppressedByMaintenanceWindow] = None
     pending_takeover: Optional[PendingTakeoverResponse] = None
+    can_take: bool = False
     can_force_take: bool = False
     can_reassign: bool = False
     can_manage_responders: bool = False

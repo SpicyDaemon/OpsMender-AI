@@ -147,7 +147,11 @@ async def _register_login(
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
-async def _create_service(client: AsyncClient, headers, label: str) -> str:
+async def _create_service(
+    client: AsyncClient, headers, label: str, members: tuple = ()
+) -> str:
+    """A service whose team has ``members`` (login headers). Only the team
+    handling an incident can take or acknowledge it (M1-10)."""
     suffix = uuid.uuid4().hex[:8]
     team = await client.post(
         "/teams",
@@ -155,6 +159,15 @@ async def _create_service(client: AsyncClient, headers, label: str) -> str:
         headers=headers,
     )
     assert team.status_code == 201, team.text
+    for member in members:
+        me = await client.get("/auth/me", headers=member)
+        assert me.status_code == 200, me.text
+        added = await client.post(
+            f"/teams/{team.json()['id']}/members",
+            json={"user_id": me.json()["id"]},
+            headers=headers,
+        )
+        assert added.status_code == 201, added.text
     service = await client.post(
         "/services",
         json={
@@ -182,7 +195,9 @@ class TestE2EIncidentFlow:
         # 1. Register an admin (first user → auto-promoted) and an operator.
         admin = await _register_login(client, "admin_e2e")
         operator = await _register_login(client, "op_e2e", role="operator")
-        service_id = await _create_service(client, admin, "Checkout")
+        service_id = await _create_service(
+            client, admin, "Checkout", members=(operator,)
+        )
 
         # 2. Admin files an incident.
         inc_resp = await client.post(
@@ -337,7 +352,9 @@ class TestE2EIncidentFlow:
 
         admin = await _register_login(client, "admin_reject")
         operator = await _register_login(client, "op_reject", role="operator")
-        service_id = await _create_service(client, admin, "Staging")
+        service_id = await _create_service(
+            client, admin, "Staging", members=(operator,)
+        )
 
         inc_resp = await client.post(
             "/incidents",

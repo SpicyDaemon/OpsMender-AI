@@ -78,6 +78,7 @@ function renderStrip(
   ownerLabel?: string | null,
   pendingTakeover?: PendingTakeover | null,
   canForceTake = false,
+  canTake = true,
 ) {
   return render(
     <IncidentCommandStrip
@@ -88,6 +89,7 @@ function renderStrip(
       ownerLabel={ownerLabel}
       pendingTakeover={pendingTakeover}
       canForceTake={canForceTake}
+      canTake={canTake}
     />,
   );
 }
@@ -97,6 +99,15 @@ describe("IncidentCommandStrip", () => {
     role.current = "operator";
     push.mockReset();
     vi.clearAllMocks();
+  });
+
+  it("hides Acknowledge and Take from someone outside the handling team", () => {
+    renderStrip("open", null, null, null, false, false);
+
+    expect(screen.queryByTestId("action-acknowledge")).toBeNull();
+    expect(screen.queryByTestId("action-take")).toBeNull();
+    expect(screen.getByTestId("action-start-session")).toBeTruthy();
+    expect(screen.getByTestId("action-resolve")).toBeTruthy();
   });
 
   it("shows the open-state action set for an unassigned incident", () => {

@@ -212,9 +212,19 @@ async def test_reopening_with_no_matching_chain_says_so(world):
 # S-112: taking an incident someone is working
 
 
+async def _join_incident_team(w: World, incident_id: uuid.UUID, user_id: uuid.UUID):
+    """Only the handling team takes an incident (M1-10)."""
+    async with w.app.state.session_factory() as db:
+        incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        service = await ServiceRepo.get_by_id(db, TEST_ORG_ID, incident.service_id)
+        await TeamRepo.add_member(db, TEST_ORG_ID, service.team_id, user_id=user_id)
+        await db.commit()
+
+
 async def test_taking_an_incident_someone_is_working_asks_them_first(world):
     incident_id = await _service_incident(world)
     await _own(world, incident_id, world.level1)
+    await _join_incident_team(world, incident_id, world.level2)
     level2 = await _headers(world.client, "lc-l2")
 
     refused = await world.client.post(
@@ -259,6 +269,7 @@ async def test_taking_an_incident_someone_is_working_asks_them_first(world):
 
 async def test_taking_an_unowned_incident_still_works(world):
     incident_id = await _service_incident(world)
+    await _join_incident_team(world, incident_id, world.level2)
     level2 = await _headers(world.client, "lc-l2")
     taken = await world.client.post(
         f"/incidents/{incident_id}/assign", json={}, headers=level2
@@ -282,6 +293,7 @@ async def test_admins_can_still_reassign_to_someone_else(world):
 async def test_bulk_acknowledge_skips_incidents_someone_else_holds(world):
     incident_id = await _service_incident(world)
     await _own(world, incident_id, world.level1)
+    await _join_incident_team(world, incident_id, world.level2)
     level2 = await _headers(world.client, "lc-l2")
     resp = await world.client.post(
         "/incidents/bulk",

@@ -58,6 +58,7 @@ from backend.db.repos import (
     UserRepo,
 )
 from backend.paging import escalation as _esc
+from backend.paging import reassign as _reassign
 from backend.paging.slack_cards import (
     ACTION_VIEW,
     parse_incident_id_from_action,
@@ -361,6 +362,13 @@ async def _handle_slash(
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     if incident is None:
         return _ephemeral("That incident no longer exists.")
+
+    if command in ("/ack", "/take") and not await _reassign.can_take(
+        db, connector.org_id, incident, actor
+    ):
+        return _ephemeral(
+            f"You can't take *{incident.title}*: {_reassign.TAKE_FORBIDDEN}"
+        )
 
     if command == "/ack":
         outcome = await _esc.acknowledge(

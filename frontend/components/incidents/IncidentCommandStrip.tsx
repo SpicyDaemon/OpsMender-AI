@@ -77,6 +77,9 @@ interface Props {
   ownerLabel?: string | null;
   /** A live request to take the incident over from its owner. */
   pendingTakeover?: PendingTakeover | null;
+  /** Admins, operators on the incident's team, and people its Escalation
+   *  Chain paged in the current run can take or acknowledge it. */
+  canTake?: boolean;
   /** The server-authorized force path for an admin or service teammate. */
   canForceTake?: boolean;
   /** Admins and operators on the incident's team can hand it to another team. */
@@ -99,6 +102,7 @@ export function IncidentCommandStrip({
   onChanged,
   ownerLabel,
   pendingTakeover = null,
+  canTake = false,
   canForceTake = false,
   canReassign = false,
   canManageResponders = false,
@@ -301,7 +305,7 @@ export function IncidentCommandStrip({
 
         {/* Right: actions */}
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-          {isOpen && (
+          {isOpen && canTake && (
             <Button
               size="sm"
               variant="secondary"
@@ -318,7 +322,7 @@ export function IncidentCommandStrip({
             </Button>
           )}
 
-          {!isResolved && !isAssignedToMe && (
+          {!isResolved && !isAssignedToMe && canTake && (
             <Button
               size="sm"
               variant="secondary"

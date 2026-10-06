@@ -340,6 +340,7 @@ function IncidentDetailContent() {
         onChanged={reload}
         ownerLabel={ownerLabel}
         pendingTakeover={pagingPanel?.pending_takeover ?? null}
+        canTake={pagingPanel?.can_take ?? false}
         canForceTake={pagingPanel?.can_force_take ?? false}
         canReassign={pagingPanel?.can_reassign ?? false}
         canManageResponders={pagingPanel?.can_manage_responders ?? false}

@@ -41,6 +41,16 @@ The AI Autonomy Tier governs both what the AI may do and **how a session starts*
 - **Tier 0 (Autonomous):** a session auto-starts the moment the incident is created.
 - **Tier 1 / Tier 2:** **no** session auto-starts. **Acknowledge** the incident first (this records you as the owner), then click **Start Session**. Starting a Tier 1/2 session is blocked until the incident is acknowledged.
 
+**Who controls the session.** The incident's owner and admins start, take
+over, stop, steer (chat), switch the model of and override its AI session;
+everyone else watches. To start the session on someone else's incident, take
+the incident first: **Start Session** stays disabled until you own it.
+Starting, taking over or overriding a session never changes who owns the
+incident. Approvals from an incident's AI session are answered by its owner,
+operators of the team handling it and admins, on the web and in chat (`/approve`
+and `/reject`); chat `/chat` messages to the session follow the owner and admin
+rule.
+
 Queued sessions are ordered P0→P3 and FIFO within the same priority. Model
 selection is re-evaluated when the session reaches the front, so it can use a
 better model that became available while it waited. Human paging is independent

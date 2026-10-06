@@ -80,18 +80,21 @@ function renderStrip(
   canForceTake = false,
   canTake = true,
   canResolve = true,
+  canControlSession = false,
+  onStartSession = vi.fn(),
 ) {
   return render(
     <IncidentCommandStrip
       incident={makeIncident(status)}
       assignment={assignment}
-      onStartSession={vi.fn()}
+      onStartSession={onStartSession}
       onChanged={vi.fn()}
       ownerLabel={ownerLabel}
       pendingTakeover={pendingTakeover}
       canForceTake={canForceTake}
       canTake={canTake}
       canResolve={canResolve}
+      canControlSession={canControlSession}
     />,
   );
 }
@@ -103,13 +106,34 @@ describe("IncidentCommandStrip", () => {
     vi.clearAllMocks();
   });
 
-  it("hides Acknowledge, Take and Resolve from someone outside the handling team", () => {
+  it("hides Acknowledge, Take, Resolve and Start session from someone outside the handling team", () => {
     renderStrip("open", null, null, null, false, false, false);
 
     expect(screen.queryByTestId("action-acknowledge")).toBeNull();
     expect(screen.queryByTestId("action-take")).toBeNull();
     expect(screen.queryByTestId("action-resolve")).toBeNull();
-    expect(screen.getByTestId("action-start-session")).toBeTruthy();
+    expect(screen.queryByTestId("action-start-session")).toBeNull();
+  });
+
+  it("enables Start session only for the owner and admins", () => {
+    const onStartSession = vi.fn();
+    const { unmount } = renderStrip(
+      "in_progress", makeAssignment("user-other"), "sre-alex", null, false, true, true, false, onStartSession,
+    );
+    const waiting = screen.getByTestId("action-start-session");
+    expect(waiting).toHaveProperty("disabled", true);
+    expect(waiting.getAttribute("title")).toBe(
+      "Take the incident first. Only its owner or an admin can start its AI session.",
+    );
+    fireEvent.click(waiting);
+    expect(onStartSession).not.toHaveBeenCalled();
+    unmount();
+
+    renderStrip("in_progress", makeAssignment("user-me"), null, null, false, true, true, true, onStartSession);
+    const ready = screen.getByTestId("action-start-session");
+    expect(ready).toHaveProperty("disabled", false);
+    fireEvent.click(ready);
+    expect(onStartSession).toHaveBeenCalledTimes(1);
   });
 
   it("lets a paged responder from another team acknowledge but not resolve", () => {

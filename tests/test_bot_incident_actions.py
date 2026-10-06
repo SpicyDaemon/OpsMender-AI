@@ -189,6 +189,10 @@ async def test_resolve_and_start_ai_session_are_idempotent(factory):
             description="queue stalled",
             severity="medium",
         )
+        # The owner may start the incident's AI session (M1-13).
+        await IncidentAssignmentRepo.assign(
+            db, TEST_ORG_ID, incident_id=incident.id, user_id=operator.id
+        )
 
         resolved = await execute_incident_action(
             db,

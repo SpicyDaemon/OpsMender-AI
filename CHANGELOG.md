@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The owner and admins now control an incident's AI session: they start it,
+  take it over, stop it, switch its model, override its tier and message it,
+  on the web and from chat. Others watch; Start session stays disabled until
+  you take the incident. Starting, taking over or overriding a session never
+  changes who owns the incident. Approvals from an incident's AI session are
+  answered by its owner, operators of the team handling it and admins, on the
+  web and in chat.
 - Only admins and operators on the team handling an incident can resolve,
   reopen or combine it, whether or not they own it or are helping. Responders
   and owners from another team are refused on the incident page, the incident

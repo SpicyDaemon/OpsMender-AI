@@ -211,7 +211,7 @@ async def _resolve_approval_from_bot(
         org_id,
         request_id,
         decision=decision,
-        resolver_id=resolver.id,
+        resolver=resolver,
         resolution_note=f"{decision.capitalize()} in chat.",
     )
     if result.request is not None and result.outcome in ("decided", "expired"):
@@ -220,6 +220,10 @@ async def _resolve_approval_from_bot(
         return "Approval request not found."
     if result.outcome == "not_pending":
         return f"Approval request is already {result.request.status}."
+    if result.outcome == "forbidden":
+        from backend.paging.reassign import APPROVAL_FORBIDDEN
+
+        return APPROVAL_FORBIDDEN
     if result.outcome == "expired":
         return "Approval request expired before it could be resolved."
     if result.outcome == "failed":
@@ -587,6 +591,26 @@ async def dispatch_inbound(
                 session_id=target_session_id,
             )
             return DispatchResult(reply_text="Session not found.")
+        if target_session.incident_id is not None:
+            from backend.paging.reassign import (
+                SESSION_CONTROL_FORBIDDEN,
+                can_control_session,
+            )
+
+            # The incident's owner and admins steer its AI session.
+            if not await can_control_session(
+                db, org_id, target_session.incident_id, opsmender_user
+            ):
+                await _audit(
+                    db,
+                    org_id,
+                    connector,
+                    chat_id=chat_id,
+                    command=command,
+                    status="role_denied",
+                    session_id=target_session_id,
+                )
+                return DispatchResult(reply_text=SESSION_CONTROL_FORBIDDEN)
 
         new_msg = await SessionMessageRepo.create(
             db,

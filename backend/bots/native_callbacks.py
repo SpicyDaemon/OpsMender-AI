@@ -21,7 +21,7 @@ from backend.bots.actions import (
 from backend.db.models import BotConnector
 from backend.db.repos import BotConnectorRepo
 from backend.paging.channel_factory import build_channel_factory
-from backend.paging.reassign import RESOLVE_FORBIDDEN
+from backend.paging.reassign import RESOLVE_FORBIDDEN, SESSION_CONTROL_FORBIDDEN
 
 
 ERROR_MESSAGES = {
@@ -37,6 +37,7 @@ ERROR_MESSAGES = {
         "Escalation Chain paged can acknowledge it."
     ),
     "actor_cannot_resolve": RESOLVE_FORBIDDEN,
+    "actor_cannot_control_session": SESSION_CONTROL_FORBIDDEN,
     "incident_not_found": "That incident no longer exists.",
     "action_in_progress": "That action is already being processed.",
 }

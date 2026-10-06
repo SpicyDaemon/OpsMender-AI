@@ -2013,6 +2013,10 @@ export interface IncidentPagingPanelResponse {
   can_reassign?: boolean;
   /** Admins and operators on the incident's team can resolve or reopen it. */
   can_resolve?: boolean;
+  /** The owner and admins start, stop and steer the incident's AI session. */
+  can_control_session?: boolean;
+  /** The owner, operators of the handling team and admins answer approvals. */
+  can_approve?: boolean;
   /** Admins, the owner, and operators on the incident's team. */
   can_manage_responders?: boolean;
   /** People asked to help besides the owner, oldest first. */

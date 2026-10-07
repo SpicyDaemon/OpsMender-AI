@@ -80,10 +80,13 @@ The editor's right rail also shows a **section-completeness checklist** so you c
 | Role | Read | Write |
 |------|------|-------|
 | **admin** | ✓ | ✓ |
-| **operator** | ✓ | ✓ |
+| **operator on the team handling the incident** | ✓ | ✓ |
+| **operator on another team** | ✓ | No (403) |
 | **viewer** | ✓ | No (403) |
 
-Viewers see the postmortem read-only inside the editor (the Save / Clear actions don't render).
+This is the same rule as resolving: when the incident has no team, any
+operator may write. Everyone who cannot write sees the postmortem read-only
+inside the editor (the Save / Clear actions don't render).
 
 ---
 

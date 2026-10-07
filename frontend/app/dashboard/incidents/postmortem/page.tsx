@@ -102,7 +102,6 @@ function buildDraftFromIncident(incident: IncidentResponse): string {
     `- `,
   ].join(`\n`);
 }
-import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
 import { DetailSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -289,12 +288,13 @@ function IncidentPostmortemContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const toast = useToast();
-  const { user } = useAuth();
-  const canEdit = user?.role === "admin" || user?.role === "operator";
 
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [postmortem, setPostmortem] =
     useState<IncidentPostmortemResponse | null>(null);
+  // Admins and the handling team's operators write the postmortem (the
+  // Resolve rule); the server says which this person is.
+  const canEdit = postmortem?.can_edit === true;
   const [draft, setDraft] = useState<string>("");
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [loading, setLoading] = useState(true);

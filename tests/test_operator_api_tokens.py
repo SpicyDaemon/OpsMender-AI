@@ -90,14 +90,48 @@ async def test_operators_see_and_revoke_only_their_own(world):
 async def test_an_admin_made_operator_token_acts_as_an_operator(world):
     operator = await _headers(world.client, "lc-l3")
     await _create(world, operator, name="theirs")
+    full = (await _create(world, world.admin, role="admin", name="full")).json()
     capped = (await _create(world, world.admin, name="capped")).json()
     assert capped["role"] == "operator"
     token = _bearer(capped["token"])
+    # It sees only its creator's Operator and Viewer tokens, never their Admin
+    # token or anyone else's.
     listed = await world.client.get("/api/v1/api-tokens", headers=token)
     assert listed.status_code == 200, listed.text
     assert [row["name"] for row in listed.json()["items"]] == ["capped"]
+    hidden = await world.client.delete(
+        f"/api/v1/api-tokens/{full['id']}", headers=token
+    )
+    assert hidden.status_code == 404, hidden.text
+    async with world.app.state.session_factory() as db:
+        assert (await db.get(ApiToken, uuid.UUID(full["id"]))).revoked_at is None
+    assert (
+        await world.client.get("/api/v1/api-tokens", headers=_bearer(full["token"]))
+    ).status_code == 200
     refused = await _create(world, token, role="admin")
     assert refused.status_code == 401, refused.text
+
+
+async def test_a_name_another_token_holds_gets_a_clear_conflict(world):
+    await _create(world, world.admin, name="ci")
+    operator = await _headers(world.client, "lc-l3")
+    clash = await _create(world, operator, name="ci")
+    assert clash.status_code == 409, clash.text
+    assert clash.json()["detail"] == (
+        'A token named "ci" already exists in this workspace, possibly someone '
+        "else's or a revoked one. Choose another name."
+    )
+
+
+async def test_deactivating_an_operator_stops_their_token(world):
+    operator = await _headers(world.client, "lc-l2")
+    token = _bearer((await _create(world, operator)).json()["token"])
+    assert (await world.client.get("/incidents", headers=token)).status_code == 200
+    deactivated = await world.client.patch(
+        f"/auth/users/{world.level2}", json={"is_active": False}, headers=world.admin
+    )
+    assert deactivated.status_code == 200, deactivated.text
+    assert (await world.client.get("/incidents", headers=token)).status_code == 401
 
 
 async def test_an_admin_revokes_an_operators_token(world):

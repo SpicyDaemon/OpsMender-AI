@@ -23,7 +23,7 @@ from backend.api.schemas import (
     ApiTokenResponse,
 )
 from backend.auth.api_tokens import mint_api_token
-from backend.auth.roles import request_role
+from backend.auth.roles import ROLE_RANK, request_role
 from backend.db.models import User
 from backend.db.repos import ApiTokenRepo, AuditEntryRepo
 
@@ -70,15 +70,26 @@ def _is_admin(user: User) -> bool:
     return request_role(user) == "admin"
 
 
+def _manages(user: User, row) -> bool:
+    """Admins manage every token. Anyone else manages tokens they created
+    whose role is no higher than the one they act with now, so an Operator
+    token an admin made never reaches that admin's Admin tokens."""
+    if _is_admin(user):
+        return True
+    return row.created_by == user.id and ROLE_RANK.get(row.role, 99) <= ROLE_RANK.get(
+        request_role(user), -1
+    )
+
+
 @router.get("", response_model=ApiTokenListResponse)
 async def list_api_tokens(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin", "operator")),
 ):
-    rows = await ApiTokenRepo.list_by_org(db, org_id)
-    if not _is_admin(user):
-        rows = [row for row in rows if row.created_by == user.id]
+    rows = [
+        row for row in await ApiTokenRepo.list_by_org(db, org_id) if _manages(user, row)
+    ]
     return ApiTokenListResponse(
         items=[ApiTokenResponse.model_validate(row) for row in rows],
         total=len(rows),
@@ -141,9 +152,14 @@ async def create_api_token(
         return _response(row, secret=secret)
     except IntegrityError as exc:
         await db.rollback()
+        # Names are unique across the workspace and stay taken after a token
+        # is revoked, so the clash may be with a token this person can't see.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="API token name already exists",
+            detail=(
+                f'A token named "{name}" already exists in this workspace, '
+                "possibly someone else's or a revoked one. Choose another name."
+            ),
         ) from exc
 
 
@@ -155,8 +171,8 @@ async def revoke_api_token(
     user: User = Depends(require_role("admin", "operator")),
 ):
     row = await ApiTokenRepo.get_by_id(db, org_id, token_id)
-    # Operators revoke only their own; others' tokens look absent to them.
-    if row is not None and not _is_admin(user) and row.created_by != user.id:
+    # Tokens someone can't manage look absent to them.
+    if row is not None and not _manages(user, row):
         row = None
     if row is None:
         raise HTTPException(

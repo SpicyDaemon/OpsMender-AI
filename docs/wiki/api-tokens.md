@@ -15,7 +15,10 @@ Admins create Admin, Operator or Viewer tokens and manage everyone's:
 
 Operators create Operator tokens for themselves from **Profile** → **API
 Tokens**, the same way, with the role fixed. They must be signed in to create
-one (a token can't create another), and they see and revoke only their own.
+one (their tokens can't create tokens), and they see and revoke only their own.
+A token acting as an Operator, including an Operator token an admin created,
+sees and revokes only its creator's Operator and Viewer tokens. Token names
+are shared across the workspace and stay taken after a token is revoked.
 
 The stored record keeps only a sha256 hash and a short prefix for display. The
 full secret is not available after the create modal closes.

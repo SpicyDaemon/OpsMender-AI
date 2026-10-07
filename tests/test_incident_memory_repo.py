@@ -1,7 +1,6 @@
 """Sprint 45 Step 1 - IncidentMemoryRepo tests.
 
-Covers per-org isolation, retrieval scoring, feedback counters, delete, and
-recall logging.
+Covers per-org isolation, retrieval scoring, delete, and recall logging.
 """
 
 from __future__ import annotations

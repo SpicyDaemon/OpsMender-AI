@@ -146,6 +146,19 @@ export interface IncidentListResponse {
   total: number;
 }
 
+export interface RosterImpactItem {
+  roster_id: string;
+  roster_name: string;
+  on_current_shift: boolean;
+  /** Who takes the current shift once this person leaves, when they hold it. */
+  current_shift_taken_by: string | null;
+}
+
+/** The Rosters a person leaves on demotion to Viewer or deactivation. */
+export interface RosterImpactResponse {
+  items: RosterImpactItem[];
+}
+
 export interface IncidentCombineResponse {
   primary: IncidentResponse;
   merged_incident_ids: string[];

@@ -337,7 +337,8 @@ class UserRepo:
         roster before deletion is allowed."""
 
         stmt = select(func.count(RosterMember.id)).where(
-            RosterMember.user_id == user_id
+            RosterMember.user_id == user_id,
+            RosterMember.removed_at.is_(None),
         )
         result = await db.execute(stmt)
         return int(result.scalar_one() or 0)
@@ -6383,6 +6384,29 @@ class RosterRepo:
         user_id: uuid.UUID,
         position_index: int,
     ) -> RosterMember:
+        """Add a member. Someone removed earlier gets their old place back;
+        a new member's place goes after every existing one, removed places
+        included, when ``position_index`` is already taken by one."""
+        places = (
+            (
+                await db.execute(
+                    select(RosterMember).where(
+                        RosterMember.org_id == org_id,
+                        RosterMember.roster_id == roster_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        earlier = next((p for p in places if p.user_id == user_id), None)
+        if earlier is not None and earlier.removed_at is not None:
+            earlier.removed_at = None
+            earlier.added_at = datetime.now(timezone.utc)
+            await db.flush()
+            return earlier
+        if any(p.position_index == position_index and p.removed_at for p in places):
+            position_index = max(p.position_index for p in places) + 1
         m = RosterMember(
             org_id=org_id,
             roster_id=roster_id,
@@ -6395,16 +6419,56 @@ class RosterRepo:
 
     @staticmethod
     async def remove_user_everywhere(db: AsyncSession, user_id: uuid.UUID) -> int:
-        """Delete all of a user's roster memberships (e.g. on deactivation), so
-        they stop paging and don't block deletion with stale roster references.
-        Returns the number of memberships removed."""
-        from sqlalchemy import delete as sql_delete
-
+        """Take a user off every Roster (deactivation, demotion to Viewer), so
+        they stop paging and don't block deletion. Their places stay in the
+        rotation (O-03). Returns the number of memberships removed."""
         result = await db.execute(
-            sql_delete(RosterMember).where(RosterMember.user_id == user_id)
+            update(RosterMember)
+            .where(RosterMember.user_id == user_id, RosterMember.removed_at.is_(None))
+            .values(removed_at=datetime.now(timezone.utc))
         )
         await db.flush()
         return result.rowcount or 0
+
+    @staticmethod
+    async def list_rotation(
+        db: AsyncSession, org_id: uuid.UUID, roster_id: uuid.UUID
+    ) -> tuple[Sequence[RosterMember], set[uuid.UUID]]:
+        """Every place in a Roster's rotation, removed ones included, and the
+        people among them who can't be paged: removed, deactivated or deleted."""
+        rows = (
+            await db.execute(
+                select(RosterMember, User.is_active, User.deleted_at)
+                .join(User, User.id == RosterMember.user_id)
+                .where(
+                    RosterMember.org_id == org_id, RosterMember.roster_id == roster_id
+                )
+                .order_by(RosterMember.position_index)
+            )
+        ).all()
+        unavailable = {
+            member.user_id
+            for member, is_active, deleted_at in rows
+            if member.removed_at is not None or not is_active or deleted_at is not None
+        }
+        return [row[0] for row in rows], unavailable
+
+    @staticmethod
+    async def roster_names_for_user(
+        db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, str]]:
+        """The Rosters a user is a current member of, by name."""
+        rows = await db.execute(
+            select(Roster.id, Roster.name)
+            .join(RosterMember, RosterMember.roster_id == Roster.id)
+            .where(
+                Roster.org_id == org_id,
+                RosterMember.user_id == user_id,
+                RosterMember.removed_at.is_(None),
+            )
+            .order_by(Roster.name)
+        )
+        return [(row[0], row[1]) for row in rows]
 
     @staticmethod
     async def list_members(
@@ -6421,6 +6485,7 @@ class RosterRepo:
         stmt = select(RosterMember).where(
             RosterMember.org_id == org_id,
             RosterMember.roster_id == roster_id,
+            RosterMember.removed_at.is_(None),
         )
         if active_only:
             stmt = stmt.join(User, User.id == RosterMember.user_id).where(
@@ -6436,12 +6501,17 @@ class RosterRepo:
         roster_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> bool:
-        from sqlalchemy import delete as sql_delete
-
-        stmt = sql_delete(RosterMember).where(
-            RosterMember.org_id == org_id,
-            RosterMember.roster_id == roster_id,
-            RosterMember.user_id == user_id,
+        """Take a member off a Roster. Their place stays in the rotation and
+        its shifts pass to the next member (O-03)."""
+        stmt = (
+            update(RosterMember)
+            .where(
+                RosterMember.org_id == org_id,
+                RosterMember.roster_id == roster_id,
+                RosterMember.user_id == user_id,
+                RosterMember.removed_at.is_(None),
+            )
+            .values(removed_at=datetime.now(timezone.utc))
         )
         result = await db.execute(stmt)
         await db.flush()
@@ -6456,7 +6526,19 @@ class RosterRepo:
         ordered_user_ids: list[uuid.UUID],
     ) -> None:
         """Replace position_index for each listed user. Two-phase to avoid
-        running afoul of the (roster_id, position_index) UNIQUE constraint."""
+        running afoul of the (roster_id, position_index) UNIQUE constraint.
+
+        A new order starts the rotation afresh, so the places of removed
+        members go with it."""
+        from sqlalchemy import delete as sql_delete
+
+        await db.execute(
+            sql_delete(RosterMember).where(
+                RosterMember.org_id == org_id,
+                RosterMember.roster_id == roster_id,
+                RosterMember.removed_at.is_not(None),
+            )
+        )
         members = await RosterRepo.list_members(db, org_id, roster_id)
         # Phase 1: move everyone to a temporary offset to free positions.
         offset = len(members) + 1

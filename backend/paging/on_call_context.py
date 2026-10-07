@@ -17,12 +17,13 @@ from backend.paging.on_call import OnCallContext, build_context
 async def load_on_call_context(
     db: AsyncSession, org_id: uuid.UUID, roster
 ) -> OnCallContext:
-    """Active members, and Overrides whose covering user can still be paged."""
+    """Every rotation place, with the people who can't be paged marked, and
+    Overrides whose covering user can still be paged."""
 
-    members = await RosterRepo.list_members(db, org_id, roster.id, active_only=True)
+    members, unavailable = await RosterRepo.list_rotation(db, org_id, roster.id)
     overrides = []
     for override in await RosterOverrideRepo.list_for_roster(db, org_id, roster.id):
         covering = await UserRepo.get_by_id(db, override.covering_user_id)
         if covering is not None and covering.is_active and covering.deleted_at is None:
             overrides.append(override)
-    return build_context(roster, members, overrides)
+    return build_context(roster, members, overrides, unavailable=unavailable)

@@ -19,6 +19,7 @@ import {
   mintPasswordReset,
   setTemporaryPassword,
   softDeleteUser,
+  getRosterImpact,
   updateUser,
 } from "@/lib/api";
 import type {
@@ -36,6 +37,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/formatDate";
+import { rosterImpactNote } from "@/lib/rosterImpact";
 
 
 function fmtDate(iso: string): string {
@@ -315,6 +317,23 @@ function RoleEditor({
   }, [user.role]);
 
   const save = useCallback(async () => {
+    // Viewers can't be paged: say which Rosters they leave first (O-03).
+    if (role === "viewer" && user.role !== "viewer") {
+      let note = "";
+      try {
+        note = rosterImpactNote((await getRosterImpact(user.id)).items);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (
+        !window.confirm(
+          `Change ${user.username} to Viewer? Viewers can't be paged, so they leave every Roster, and making them an operator again doesn't put them back.${note}`,
+        )
+      ) {
+        return;
+      }
+    }
     setSaving(true);
     try {
       await updateUser(user.id, { role });
@@ -325,7 +344,7 @@ function RoleEditor({
     } finally {
       setSaving(false);
     }
-  }, [onSaved, role, toast, user.id]);
+  }, [onSaved, role, toast, user.id, user.role, user.username]);
 
   return (
     <section className="rounded-lg border border-border-default bg-bg-panel p-5">
@@ -383,13 +402,21 @@ function ActiveToggle({
 
   const toggle = useCallback(async () => {
     // Warn about the roster/on-call impact before deactivating.
-    if (
-      user.is_active &&
-      !window.confirm(
-        `Deactivate ${user.username}? They will be signed out, removed from all on-call rosters, and stop receiving pages. You can delete the account afterwards.`,
-      )
-    ) {
-      return;
+    if (user.is_active) {
+      let note = "";
+      try {
+        note = rosterImpactNote((await getRosterImpact(user.id)).items);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (
+        !window.confirm(
+          `Deactivate ${user.username}? They will be signed out, removed from all on-call rosters, and stop receiving pages. You can delete the account afterwards.${note}`,
+        )
+      ) {
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -401,7 +428,7 @@ function ActiveToggle({
     } finally {
       setSaving(false);
     }
-  }, [onSaved, toast, user.id, user.is_active]);
+  }, [onSaved, toast, user.id, user.is_active, user.username]);
 
   return (
     <section className="rounded-lg border border-border-default bg-bg-panel p-5">

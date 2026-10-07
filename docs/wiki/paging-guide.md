@@ -158,6 +158,12 @@ Example:
 
 The calendar view resolves who is on call for current and near-future windows from the roster's coverage window and rotation order.
 
+Taking someone off a roster keeps the rotation steady. When a member is
+removed, deactivated or demoted to Viewer, everyone else keeps their shifts,
+and the shifts that would have been theirs go to the next member in order.
+Adding them back gives them their old place. Saving a new order starts the
+rotation afresh from that order.
+
 ---
 
 ## 5. Escalation Chains

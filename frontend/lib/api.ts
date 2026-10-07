@@ -1288,6 +1288,15 @@ export async function updateUser(
   return api.patch<import("./types").UserResponse>(`/auth/users/${id}`, body);
 }
 
+/** The Rosters a person leaves on demotion to Viewer or deactivation. */
+export async function getRosterImpact(
+  id: string,
+): Promise<import("./types").RosterImpactResponse> {
+  return api.get<import("./types").RosterImpactResponse>(
+    `/auth/users/${id}/roster-impact`,
+  );
+}
+
 export async function createUser(
   body: import("./types").UserCreateRequest,
 ): Promise<import("./types").UserResponse> {

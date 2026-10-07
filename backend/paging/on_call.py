@@ -14,8 +14,10 @@ Algorithm (see ``docs/PROMPT_CONTEXT.md (D-021 - Paging Model)`` for the spec):
    Start Date and every shift-length days after it. A time before that day's
    handoff belongs to the previous day's shift. The shift index is
    ``(shift date - anchor_date) // shift length`` modulo the number of
-   members. The weekly handoff weekday is the Start Date's weekday; the legacy
-   ``handoff_day`` column is not used.
+   rotation places. A place whose member was removed, deactivated or demoted
+   keeps its turn, and that turn passes to the next member who can be paged,
+   so nobody else's shifts move (O-03). The weekly handoff weekday is the
+   Start Date's weekday; the legacy ``handoff_day`` column is not used.
 
 Time-zone math runs in the roster's configured IANA zone via ``zoneinfo``.
 """
@@ -36,6 +38,9 @@ VALID_PATTERNS = ("weekly", "daily", "custom_n_days")
 class OnCallMember:
     user_id: uuid.UUID
     position_index: int
+    # False for a place whose member can no longer be paged: its shifts pass
+    # to the next member who can.
+    available: bool = True
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -107,7 +112,7 @@ def on_call_at(ctx: OnCallContext, t: datetime) -> uuid.UUID | None:
     aware; naive timestamps are interpreted in the roster's time zone.
     """
 
-    if not ctx.members:
+    if not any(m.available for m in ctx.members):
         return None
     members = sorted(ctx.members, key=lambda m: m.position_index)
 
@@ -141,7 +146,12 @@ def on_call_at(ctx: OnCallContext, t: datetime) -> uuid.UUID | None:
     else:
         shift_index = (days_elapsed // shift_length) % len(members)
 
-    return members[shift_index].user_id
+    # A place that can't be paged passes its shift to the next one that can.
+    for step in range(len(members)):
+        member = members[(shift_index + step) % len(members)]
+        if member.available:
+            return member.user_id
+    return None
 
 
 def _utc(value: datetime) -> datetime:
@@ -150,11 +160,16 @@ def _utc(value: datetime) -> datetime:
 
 
 def build_context(
-    roster: Any, members: Iterable[Any], overrides: Iterable[Any]
+    roster: Any,
+    members: Iterable[Any],
+    overrides: Iterable[Any],
+    *,
+    unavailable: frozenset[uuid.UUID] | set[uuid.UUID] = frozenset(),
 ) -> OnCallContext:
     """The one way to turn a Roster row into an ``OnCallContext``.
 
-    ``members`` must already be the active members and ``overrides`` only those
+    ``members`` are every rotation place, removed ones included, with the
+    people who can't be paged in ``unavailable``; ``overrides`` only those
     whose covering user can still be paged (see
     ``backend.paging.on_call_context.load_on_call_context``). Every caller -
     the paging engine, the on-call API, the calendars - goes through here, so
@@ -163,7 +178,11 @@ def build_context(
 
     return OnCallContext(
         members=[
-            OnCallMember(user_id=m.user_id, position_index=m.position_index)
+            OnCallMember(
+                user_id=m.user_id,
+                position_index=m.position_index,
+                available=m.user_id not in unavailable,
+            )
             for m in members
         ],
         overrides=[

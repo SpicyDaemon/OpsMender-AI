@@ -64,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Taking someone off a Roster no longer moves everyone else's shifts. Removing,
+  deactivating or demoting a member to Viewer now keeps their place in the
+  rotation, and its shifts go to the next member. Before, the rotation was
+  recounted, so other people's shifts moved, the current one included.
+  Demoting someone to Viewer now takes them off every Roster, as deactivation
+  does (before, they stayed on it and paging skipped them), and both
+  confirmations list the Rosters and who takes the current shift.
 - Deactivating someone or making them a Viewer now stops their remaining
   notification stages at once; before, their My Routing stages kept arriving
   on incidents they could no longer act on. No stage is sent to anyone who

@@ -7,6 +7,7 @@ GET  /auth/me - return the current user profile
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import uuid
 
@@ -47,6 +48,8 @@ from backend.api.schemas import (
     LoginResponse,
     PasswordResetConsumeRequest,
     PasswordResetMintResponse,
+    RosterImpactItem,
+    RosterImpactResponse,
     RegisterRequest,
     SSOHintRequest,
     SSOHintResponse,
@@ -754,9 +757,11 @@ async def update_user(
             body="An administrator updated your access level.",
             link="/dashboard",
         )
-    # Deactivation removes the user from on-call rosters: they stop paging and
-    # no longer block deletion with stale roster references (Part 5).
-    if body.is_active is False:
+    # Deactivation and demotion to Viewer take the user off every Roster:
+    # they stop paging and don't block deletion. Their places stay in the
+    # rotation, so the others keep their shifts (Part 5, O-03). Promotion
+    # later doesn't restore membership.
+    if body.is_active is False or (body.role == "viewer" and prev_role != "viewer"):
         from backend.db.repos import RosterRepo
 
         await RosterRepo.remove_user_everywhere(db, user_id)
@@ -768,6 +773,56 @@ async def update_user(
         await notification_escalation.stop_for_user(db, user_id)
     await db.commit()
     return updated
+
+
+@router.get(
+    "/users/{user_id}/roster-impact",
+    response_model=RosterImpactResponse,
+    dependencies=[Depends(require_role("admin"))],
+    summary="Rosters a user leaves on demotion or deactivation",
+)
+async def get_roster_impact(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+):
+    """The Rosters this person is on and, where they hold the current shift,
+    who takes it once they leave: what the demotion and deactivation
+    confirmations list (O-03)."""
+    from backend.db.repos import RosterRepo
+    from backend.paging.on_call import on_call_at
+    from backend.paging.on_call_context import load_on_call_context
+
+    target = await UserRepo.get_by_id(db, user_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    now = datetime.now(timezone.utc)
+    items = []
+    for roster_id, name in await RosterRepo.roster_names_for_user(db, org_id, user_id):
+        roster = await RosterRepo.get_by_id(db, org_id, roster_id)
+        ctx = await load_on_call_context(db, org_id, roster)
+        on_shift = on_call_at(ctx, now) == user_id
+        taker = None
+        if on_shift:
+            for index, member in enumerate(ctx.members):
+                if member.user_id == user_id:
+                    ctx.members[index] = dataclasses.replace(member, available=False)
+            next_id = on_call_at(ctx, now)
+            next_user = await UserRepo.get_by_id(db, next_id) if next_id else None
+            taker = (
+                None if next_user is None else (next_user.username or next_user.email)
+            )
+        items.append(
+            RosterImpactItem(
+                roster_id=roster_id,
+                roster_name=name,
+                on_current_shift=on_shift,
+                current_shift_taken_by=taker,
+            )
+        )
+    return RosterImpactResponse(items=items)
 
 
 @router.get(

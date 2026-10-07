@@ -38,6 +38,7 @@ from backend.api.schemas import (
 from backend.db.models import SLATarget as SLATargetModel, User
 from backend.db.repos import (
     MaintenanceWindowRepo,
+    RosterRepo,
     ServiceRepo,
     SLATargetRepo,
     SLORepo,
@@ -971,6 +972,50 @@ async def _check_maintenance_targets(
             )
 
 
+_SCOPE_REPOS = {"service": ServiceRepo, "team": TeamRepo, "roster": RosterRepo}
+
+
+async def _check_scope_ids(
+    db: AsyncSession, org_id: uuid.UUID, scope_type: str, scope_ids: list[uuid.UUID]
+) -> None:
+    """Every service, team or roster a window names must exist here."""
+    repo = _SCOPE_REPOS.get(scope_type)
+    if repo is None:
+        return
+    for scope_id in scope_ids:
+        if await repo.get_by_id(db, org_id, scope_id) is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Each {scope_type} in a Maintenance Window must exist in this workspace.",
+            )
+
+
+async def _operator_owns_scope(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    user: User,
+    scope_type: str,
+    scope_ids: list[uuid.UUID],
+) -> bool:
+    """An operator's window takes effect at once when every target is one of
+    their own teams, or a service one of their teams owns. Anything else
+    (global, rosters, other teams' services, a mix) waits for an admin."""
+    if request_role(user) != "operator" or not scope_ids:
+        return False
+    if scope_type not in ("service", "team"):
+        return False
+    teams = await TeamRepo.team_ids_for_user(db, org_id, user.id)
+    if not teams:
+        return False
+    if scope_type == "team":
+        return all(scope_id in teams for scope_id in scope_ids)
+    for scope_id in scope_ids:
+        service = await ServiceRepo.get_by_id(db, org_id, scope_id)
+        if service is None or service.team_id not in teams:
+            return False
+    return True
+
+
 @router.post(
     _mw_prefix,
     response_model=MaintenanceWindowResponse,
@@ -998,10 +1043,14 @@ async def create_maintenance_window(
     await _check_maintenance_targets(
         db, org_id, body.scope_type, body.target_ids, target_ids
     )
+    await _check_scope_ids(db, org_id, body.scope_type, scope_ids)
 
-    # Admin-created windows are approved immediately; operator requests are
-    # pending until an admin explicitly approves them.
-    is_admin = request_role(user) == "admin"
+    # Admin windows, and operator windows on their own teams' services or
+    # teams, take effect immediately; other operator requests are pending
+    # until an admin approves them.
+    approved_now = request_role(user) == "admin" or await _operator_owns_scope(
+        db, org_id, user, body.scope_type, scope_ids
+    )
     now = datetime.now(timezone.utc)
 
     mw = await MaintenanceWindowRepo.create(
@@ -1017,9 +1066,9 @@ async def create_maintenance_window(
         scope_type=body.scope_type,
         scope_id=scope_id,
         created_by=user.id,
-        approved=is_admin,
-        approved_by=user.id if is_admin else None,
-        approved_at=now if is_admin else None,
+        approved=approved_now,
+        approved_by=user.id if approved_now else None,
+        approved_at=now if approved_now else None,
     )
     await db.commit()
     await db.refresh(mw)
@@ -1060,6 +1109,10 @@ async def update_maintenance_window(
         body.target_ids or [],
         target_ids if target_ids is not None else existing.target_ids,
     )
+    if scope_ids is not None:
+        await _check_scope_ids(
+            db, org_id, body.scope_type or existing.scope_type, list(scope_ids)
+        )
 
     updated = await MaintenanceWindowRepo.update(
         db,

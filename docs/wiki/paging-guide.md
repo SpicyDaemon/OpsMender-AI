@@ -380,6 +380,12 @@ A window's scope decides what it covers:
   selected Rosters. Alerts still open incidents, because the Roster isn't
   known until a level fires.
 
+**Who can start one.** Admins' windows take effect at once. An operator's
+window takes effect at once when every service it covers belongs to one of
+their teams, or every team it covers is one of theirs; any other operator
+window (global, Roster, another team's service, or a mix) waits for an admin
+to approve it. Every service, team or Roster a window names must exist.
+
 When an incoming alert matches an active window, OpsMender drops it at intake.
 It does not create a visible incident and does not show a suppressed incident in
 the main incident list. A page that a window suppresses later is recorded on the

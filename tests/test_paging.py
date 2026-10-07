@@ -2524,9 +2524,18 @@ class TestOrgNotificationSettingsAPI:
 
 
 class TestMaintenanceWindowScopeFields:
-    async def test_create_with_scope(self, client: AsyncClient, auth_headers):
+    async def test_create_with_scope(self, client: AsyncClient, app, auth_headers):
         now = datetime.now(timezone.utc)
-        scope_id = uuid.uuid4()
+        # A window may only name services that exist (M1-06).
+        async with app.state.session_factory() as db:
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="Scope team", slug="scope-team"
+            )
+            service = await ServiceRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Scope API", slug="scope-api"
+            )
+            await db.commit()
+        scope_id = service.id
         resp = await client.post(
             "/maintenance-windows",
             json={

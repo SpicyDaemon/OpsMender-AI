@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import struct
 from typing import Any, Mapping
 import defusedxml.ElementTree as ET
@@ -125,6 +126,34 @@ class WeComAdapter:
         # This verify_webhook is called for both.
         # Handshake params: msg_signature, timestamp, nonce, echostr
         # Update params: msg_signature, timestamp, nonce
+
+    def open_update(
+        self, connector: BotConnector, params: Mapping[str, str], raw_body: bytes
+    ) -> str:
+        """The decrypted XML of a POSTed update, checked in the safe order:
+        the body must parse and carry ``Encrypt``, its ``msg_signature`` must
+        match (403 otherwise), and only then is it decrypted. A malformed body
+        is a 400, never a 500 (R-20)."""
+        credentials = connector.credentials or {}
+        token = credentials.get("token")
+        if not token:
+            raise HTTPException(status_code=403, detail="WeCom token not configured")
+        try:
+            encrypt = ET.fromstring(raw_body).findtext("Encrypt")
+        except Exception as exc:  # noqa: BLE001  any parse failure is the sender's
+            raise HTTPException(status_code=400, detail="Malformed WeCom body") from exc
+        signature = params.get("msg_signature")
+        timestamp = params.get("timestamp")
+        nonce = params.get("nonce")
+        if not (encrypt and signature and timestamp and nonce):
+            raise HTTPException(status_code=400, detail="Malformed WeCom body")
+        expected = self._get_signature(token, timestamp, nonce, encrypt)
+        if not hmac.compare_digest(str(signature), expected):
+            raise HTTPException(status_code=403, detail="Invalid WeCom signature")
+        try:
+            return self._decrypt(str(credentials.get("encoding_aes_key")), encrypt)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Malformed WeCom body") from exc
 
     def handle_handshake(
         self, connector: BotConnector, params: Mapping[str, str]

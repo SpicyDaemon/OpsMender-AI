@@ -179,6 +179,12 @@ async def _sso_callback(slug: str, request: Request, db: AsyncSession):
     # JIT-provision: find existing user by email, otherwise create one.
     auth_source = f"oidc:{org.slug}"
     user = await UserRepo.get_by_email(db, email)
+    if user is not None and not user.is_active:
+        # Refused here, before anything about the account changes (R-19).
+        raise HTTPException(
+            status_code=403,
+            detail="This account is deactivated. Ask an admin to reactivate it.",
+        )
     if user is None:
         # Username defaults to local-part of email (uniquified if needed).
         base_username = email.split("@")[0]

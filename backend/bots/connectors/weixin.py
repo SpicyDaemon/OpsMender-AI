@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 from typing import Any, Mapping
 import defusedxml.ElementTree as ET
 
@@ -74,6 +75,31 @@ class WeixinAdapter:
         # For Weixin, signature verification is done on the query parameters
         # during the handshake (GET) or on every update (POST).
         pass
+
+    def open_update(
+        self, connector: BotConnector, params: Mapping[str, str], raw_body: bytes
+    ) -> str:
+        """The XML of a POSTed update once its ``signature`` matches (403
+        otherwise); a body that isn't UTF-8 XML is a 400, never a 500 (R-20)."""
+        token = (connector.credentials or {}).get("token")
+        if not token:
+            raise HTTPException(status_code=403, detail="Weixin token not configured")
+        signature = params.get("signature")
+        timestamp = params.get("timestamp")
+        nonce = params.get("nonce")
+        if not (signature and timestamp and nonce):
+            raise HTTPException(status_code=400, detail="Missing Weixin signature")
+        expected = self._get_signature(token, timestamp, nonce)
+        if not hmac.compare_digest(str(signature), expected):
+            raise HTTPException(status_code=403, detail="Invalid Weixin signature")
+        try:
+            xml = raw_body.decode("utf-8")
+            ET.fromstring(xml)
+        except Exception as exc:  # noqa: BLE001  any parse failure is the sender's
+            raise HTTPException(
+                status_code=400, detail="Malformed Weixin body"
+            ) from exc
+        return xml
 
     def handle_handshake(
         self, connector: BotConnector, params: Mapping[str, str]

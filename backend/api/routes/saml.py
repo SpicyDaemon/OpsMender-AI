@@ -271,6 +271,12 @@ async def _saml_acs(slug: str, request: Request, db: AsyncSession):
     # JIT-provision (mirrors OIDC flow exactly).
     auth_source = f"saml:{org.slug}"
     user = await UserRepo.get_by_email(db, email)
+    if user is not None and not user.is_active:
+        # Refused here, before anything about the account changes (R-19).
+        raise HTTPException(
+            status_code=403,
+            detail="This account is deactivated. Ask an admin to reactivate it.",
+        )
     if user is None:
         base_username = email.split("@")[0]
         username = base_username

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- A password change now revokes every API token the person created: their own
+  change, an admin's temporary password and a reset link. The tokens return
+  401 at once and show as revoked, each with an Activity entry. Before, a
+  reset account kept working through its tokens. Create new tokens after a
+  password change, including for automation an admin set up.
 - Intake refuses alert bodies over 1 MiB with `413` before reading them in
   full, including bodies sent without a length; set
   `OPSMENDER_INGEST_MAX_BODY_BYTES` to change the limit. Before, a body of any

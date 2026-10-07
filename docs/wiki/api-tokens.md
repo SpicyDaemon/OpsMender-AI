@@ -38,6 +38,14 @@ multi-factor enrollment, or live WebSocket streams.
 Open **Settings** → **API Tokens**, then choose the revoke action for the token.
 Revocation is immediate: the bearer credential returns `401` on its next use.
 
+A password change revokes every token the person created, at that moment:
+when they change their own password, when an admin sets them a temporary
+password, and when they set a new one from a reset link. The tokens show as
+revoked in the list, each with an Activity entry naming the reason, and return
+`401` from then on. Create new tokens afterwards. An admin who changes their
+own password revokes the tokens they minted, including ones used by
+automation. Tokens don't expire on their own.
+
 ## Audit Trail
 
 Creating or revoking a token writes an audit entry. When a token performs a

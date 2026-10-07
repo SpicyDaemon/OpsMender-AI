@@ -310,7 +310,8 @@ export default function ProfileSettingsPage() {
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
         <h2 className="text-sm font-semibold text-fg-primary">Change password</h2>
         <p className="mt-0.5 text-sm text-fg-secondary">
-          Use a strong password of at least 8 characters.
+          Use a strong password of at least 8 characters. Changing it signs
+          you out everywhere else and revokes the API tokens you created.
         </p>
         <div className="mt-4 space-y-4">
           <PasswordField

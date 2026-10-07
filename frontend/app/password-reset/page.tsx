@@ -107,7 +107,7 @@ function PasswordResetContent() {
   return (
     <AuthShell
       title="Set a new password"
-      description="Choose a new password for your OpsMender account."
+      description="Choose a new password for your OpsMender account. This signs you out everywhere and revokes the API tokens you created."
       eyebrow=""
       footer={signInFooter}
     >

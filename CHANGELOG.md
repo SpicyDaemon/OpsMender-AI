@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Viewers and viewer API tokens no longer receive credential values from SLA
+  probe targets or model configurations: probe URLs and model base URLs show
+  without user names, passwords, query strings or fragments, and probe
+  headers, bodies and other settings are left out. Exporting the Activity log
+  as CSV is now for admins and operators; Viewers still read the Activity
+  page. If a probe URL or model endpoint carried a token, rotate it.
 - Workspace settings, invite and People routes now check that the workspace
   and person named in the request are your own workspace and its members
   (404 otherwise), and OpsMender never creates a second workspace. Before,

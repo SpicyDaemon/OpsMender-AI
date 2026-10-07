@@ -195,14 +195,17 @@ async def ingest_incident(
     if provider == "auto":
         parsed.external_source = f"auto:{token.name}"
 
-    # v1 maintenance behavior: matching active windows drop intake alerts
-    # before a visible incident is created. The raw payload is still logged
-    # for operator-owned audit/replay.
+    # Matching active windows drop firing alerts before a visible incident is
+    # created. The raw payload is still logged for operator-owned
+    # audit/replay. A recovery is never dropped (O-15): it still closes the
+    # incident it clears, which never pages, so an incident opened before the
+    # window can close during it.
     service_id = token.service_id
     service = None
     if service_id is not None:
-        now = datetime.now(timezone.utc)
         service = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if service_id is not None and parsed.status != "resolved":
+        now = datetime.now(timezone.utc)
         active_windows = await MaintenanceWindowRepo.list_active_at(db, org_id, now)
         for window in active_windows:
             if window_matches(

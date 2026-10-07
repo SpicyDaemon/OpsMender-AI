@@ -36,7 +36,8 @@ LEGACY_CHANNEL_KEYS: frozenset[str] = frozenset(
 )
 
 MAX_STAGES = 3
-DEFAULT_DELAY_SECONDS = 300
+# O-02: a stage saved without a wait waits 3 minutes, as in My Routing.
+DEFAULT_DELAY_SECONDS = 180
 
 
 @dataclasses.dataclass(slots=True)

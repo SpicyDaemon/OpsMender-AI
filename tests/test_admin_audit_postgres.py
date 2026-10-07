@@ -370,6 +370,100 @@ async def test_later_rejected_entry_rolls_back_bulk_incident_deletion(pg_app):
     assert observed == (500, 2, 2, 4, 0, 0)
 
 
+async def _combined_tree(pg_app) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """A primary, one incident combined into it, and one combined into that."""
+    async with pg_app.factory() as db:
+        primary = await IncidentRepo.create(
+            db, pg_app.org_id, title="Primary", description="M1-30 check"
+        )
+        middle = await IncidentRepo.create(
+            db, pg_app.org_id, title="Middle", description="M1-30 check"
+        )
+        leaf = await IncidentRepo.create(
+            db, pg_app.org_id, title="Leaf", description="M1-30 check"
+        )
+        await IncidentRepo.combine_into(
+            db, pg_app.org_id, leaf.id, primary_id=middle.id
+        )
+        await IncidentRepo.combine_into(
+            db, pg_app.org_id, middle.id, primary_id=primary.id
+        )
+        await db.commit()
+        return primary.id, middle.id, leaf.id
+
+
+async def test_deleting_a_primary_commits_its_combined_incidents_with_it(pg_app):
+    ids = await _combined_tree(pg_app)
+
+    response = await pg_app.client.delete(
+        f"/incidents/{ids[0]}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(pg_app.factory, Incident, Incident.id.in_(ids)),
+    )
+    assert observed == (204, 0)
+    async with pg_app.factory() as db:
+        entries = (
+            await db.scalars(
+                select(AuditEntry).where(AuditEntry.entry_type == "incident_deleted")
+            )
+        ).all()
+    assert sorted(
+        (
+            entry.tool_parameters["incident_id"],
+            entry.tool_parameters.get("merged_into_incident_id"),
+        )
+        for entry in entries
+    ) == sorted(
+        [(str(ids[0]), None), (str(ids[1]), str(ids[0])), (str(ids[2]), str(ids[1]))]
+    )
+
+
+async def test_rejected_primary_entry_rolls_back_its_combined_incidents(pg_app):
+    ids = await _combined_tree(pg_app)
+    async with pg_app.engine.begin() as connection:
+        # The primary's entry is written last, after the combined incidents
+        # were already deleted inside the transaction.
+        await connection.execute(
+            text(
+                "CREATE OR REPLACE FUNCTION audit_check_reject() RETURNS trigger "
+                "LANGUAGE plpgsql AS $$ BEGIN "
+                f"IF NEW.tool_parameters->>'incident_id' = '{ids[0]}' THEN "
+                "RAISE EXCEPTION 'audit row rejected by test'; END IF; "
+                "RETURN NEW; END $$"
+            )
+        )
+        await connection.execute(
+            text(
+                "CREATE TRIGGER audit_check_reject BEFORE INSERT ON audit_entries "
+                "FOR EACH ROW EXECUTE FUNCTION audit_check_reject()"
+            )
+        )
+
+    response = await pg_app.client.delete(
+        f"/incidents/{ids[0]}", headers=pg_app.headers
+    )
+
+    observed = (
+        response.status_code,
+        await _count(
+            pg_app.factory, AuditEntry, AuditEntry.entry_type == "incident_deleted"
+        ),
+    )
+    assert observed == (500, 0)
+    async with pg_app.factory() as db:
+        pointers = {
+            row.id: row.merged_into_incident_id
+            for row in (
+                await db.scalars(select(Incident).where(Incident.id.in_(ids)))
+            ).all()
+        }
+    # All three remain, still combined the same way.
+    assert pointers == {ids[0]: None, ids[1]: ids[0], ids[2]: ids[1]}
+
+
 @pytest.mark.parametrize("bulk", [False, True], ids=["single", "bulk"])
 async def test_concurrent_incident_deletion_records_each_incident_once(
     pg_app, monkeypatch, bulk

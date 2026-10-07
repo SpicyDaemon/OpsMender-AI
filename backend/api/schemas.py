@@ -479,6 +479,24 @@ class IncidentCombineResponse(BaseModel):
     stopped_sessions: int
 
 
+class MergedIncidentLookupRequest(BaseModel):
+    # The bulk action's own limit: one lookup covers any selection.
+    incident_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+
+
+class MergedIncidentRef(BaseModel):
+    id: uuid.UUID
+    title: str
+    merged_into_incident_id: Optional[uuid.UUID]
+
+
+class MergedIncidentListResponse(BaseModel):
+    """Incidents combined into the given ones: a permanent delete of those
+    deletes these too, so the confirmation lists them."""
+
+    items: list[MergedIncidentRef]
+
+
 # Sprint 61 Step 4 - postmortem authoring surface. The default template
 # is returned alongside the stored markdown so a fresh incident's editor
 # can prefill the section headings without the frontend hardcoding the

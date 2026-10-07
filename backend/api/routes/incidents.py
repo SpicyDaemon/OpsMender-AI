@@ -86,6 +86,9 @@ from backend.api.schemas import (
     IncidentBulkActionResult,
     IncidentCombineRequest,
     IncidentCombineResponse,
+    MergedIncidentListResponse,
+    MergedIncidentLookupRequest,
+    MergedIncidentRef,
     IncidentPagingPanelResponse,
     IncidentReassignOption,
     IncidentReassignOptionsResponse,
@@ -774,10 +777,25 @@ async def list_incidents(
 
 
 async def _record_incident_deletion(
-    db: AsyncSession, org_id: uuid.UUID, incident, user: User, *, bulk: bool
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident,
+    user: User,
+    *,
+    bulk: bool,
+    merged_into: uuid.UUID | None = None,
 ) -> None:
     """One Activity entry per permanently deleted incident, written in the same
-    transaction as the deletion, so a failed write rolls the deletion back."""
+    transaction as the deletion, so a failed write rolls the deletion back.
+    ``merged_into`` names the incident it was combined into, deleted with it."""
+    parameters = {
+        "actor": user.username,
+        "actor_id": str(user.id),
+        "incident_id": str(incident.id),
+        "title": incident.title,
+    }
+    if merged_into is not None:
+        parameters["merged_into_incident_id"] = str(merged_into)
     await AuditEntryRepo.create(
         db,
         org_id,
@@ -785,14 +803,48 @@ async def _record_incident_deletion(
         tier=0,
         entry_type="incident_deleted",
         tool_name="bulk_delete_incidents" if bulk else "delete_incident",
-        tool_parameters={
-            "actor": user.username,
-            "actor_id": str(user.id),
-            "incident_id": str(incident.id),
-            "title": incident.title,
-        },
+        tool_parameters=parameters,
         result={"ok": True},
     )
+
+
+async def _delete_incidents(
+    request: Request,
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incidents: list,
+    user: User,
+    *,
+    bulk: bool,
+) -> None:
+    """Permanently delete ``incidents`` and every incident combined into them
+    (O-13): a merged incident left behind would have no primary, and its
+    alert would be skipped when it fires again. Each gets its own Activity
+    entry; the merged ones go first, while their pointer still names the
+    incident they were combined into."""
+    merged = await IncidentRepo.list_merged_tree(
+        db, org_id, [incident.id for incident in incidents], for_update=True
+    )
+    doomed = [*merged, *incidents]
+    session_ids: list[uuid.UUID] = []
+    for incident in doomed:
+        await cancel_auto_start_for_incident(request.app, incident_id=incident.id)
+        sessions = await SessionRepo.list_by_incident(db, org_id, incident.id)
+        session_ids.extend(session.id for session in sessions)
+    await cancel_session_workflows(request.app, session_ids=session_ids)
+    for incident in merged:
+        await _record_incident_deletion(
+            db,
+            org_id,
+            incident,
+            user,
+            bulk=bulk,
+            merged_into=incident.merged_into_incident_id,
+        )
+        await IncidentRepo.delete_permanently(db, org_id, incident.id)
+    for incident in incidents:
+        await _record_incident_deletion(db, org_id, incident, user, bulk=bulk)
+        await IncidentRepo.delete_permanently(db, org_id, incident.id)
 
 
 @router.delete(
@@ -813,19 +865,36 @@ async def delete_incident(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
-    await cancel_auto_start_for_incident(
-        request.app,
-        incident_id=incident_id,
-    )
-    sessions = await SessionRepo.list_by_incident(db, org_id, incident_id)
-    await cancel_session_workflows(
-        request.app,
-        session_ids=[session.id for session in sessions],
-    )
-    await _record_incident_deletion(db, org_id, incident, user, bulk=False)
-    await IncidentRepo.delete_permanently(db, org_id, incident_id)
+    await _delete_incidents(request, db, org_id, [incident], user, bulk=False)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/merged-into",
+    response_model=MergedIncidentListResponse,
+    summary="List the incidents combined into the given ones",
+)
+async def list_incidents_merged_into(
+    body: MergedIncidentLookupRequest,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin")),
+):
+    """What a permanent delete of ``incident_ids`` also deletes, so its
+    confirmation can name them. A POST only because a full bulk selection
+    would not fit in a URL; nothing changes."""
+    merged = await IncidentRepo.list_merged_tree(db, org_id, body.incident_ids)
+    return MergedIncidentListResponse(
+        items=[
+            MergedIncidentRef(
+                id=item.id,
+                title=item.title,
+                merged_into_incident_id=item.merged_into_incident_id,
+            )
+            for item in merged
+        ]
+    )
 
 
 @router.get(
@@ -2306,17 +2375,9 @@ async def bulk_incident_action(
                 )
 
         if action == "delete":
-            session_ids: list[uuid.UUID] = []
-            for incident in incidents:
-                await cancel_auto_start_for_incident(
-                    request.app, incident_id=incident.id
-                )
-                sessions = await SessionRepo.list_by_incident(db, org_id, incident.id)
-                session_ids.extend(session.id for session in sessions)
-            await cancel_session_workflows(request.app, session_ids=session_ids)
-            for incident in incidents:
-                await _record_incident_deletion(db, org_id, incident, user, bulk=True)
-                await IncidentRepo.delete_permanently(db, org_id, incident.id)
+            await _delete_incidents(
+                request, db, org_id, list(incidents), user, bulk=True
+            )
         else:
             next_status = "resolved" if action == "resolve" else "open"
             for incident in incidents:

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -79,6 +79,25 @@ describe("ApiTokensSection", () => {
 
     await waitFor(() =>
       expect(apiMocks.revokeApiToken).toHaveBeenCalledWith("token-1"),
+    );
+  });
+
+  it("shows a failed create inside the dialog", async () => {
+    const user = userEvent.setup();
+    apiMocks.createApiToken.mockRejectedValue(
+      new Error('A token named "ci" already exists in this workspace.'),
+    );
+    renderSection({ fixedRole: "operator" });
+
+    await waitFor(() => expect(screen.getAllByText("deploy-script").length).toBeGreaterThan(0));
+    await user.click(screen.getByRole("button", { name: /create token/i }));
+    await user.type(screen.getByLabelText("Name"), "ci");
+    const createButtons = screen.getAllByRole("button", { name: "Create token" });
+    await user.click(createButtons[createButtons.length - 1]);
+
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(within(dialog).getByText(/already exists in this workspace/)).toBeTruthy(),
     );
   });
 

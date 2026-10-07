@@ -54,6 +54,7 @@ export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {
   const [tokens, setTokens] = useState<ApiTokenResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -84,23 +85,24 @@ export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {
     setName("");
     setRole(fixedRole ?? "operator");
     setCreated(null);
+    setCreateError(null);
     setCreateOpen(false);
   };
 
   const submitCreate = async () => {
     if (!name.trim()) {
-      setError("Token name is required");
+      setCreateError("Token name is required");
       return;
     }
     setCreating(true);
-    setError(null);
+    setCreateError(null);
     try {
       const token = await createApiToken({ name: name.trim(), role });
       setCreated(token);
       setName("");
       await loadTokens();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "API token could not be created");
+      setCreateError(err instanceof Error ? err.message : "API token could not be created");
     } finally {
       setCreating(false);
     }
@@ -316,6 +318,7 @@ export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {
                 </div>
               </div>
             )}
+            {createError ? <FormAlert message={createError} /> : null}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={resetCreate}>
                 Cancel

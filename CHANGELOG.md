@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- When several globs in an MCP Skill match a tool, the strictest one now sets
+  its policy whatever order they are written in; before, the first listed
+  won, so a broad allow written first let a narrower blocked tool run. The
+  generic command guard also catches runner names in any case or separator
+  style (`run-command`, `kubectl-exec`, `ExecuteCommand`) and `python_repl` and
+  `code_interpreter`. Review skills that relied on a broad glob listed first.
 - SAML and OIDC sign-in now refuse a deactivated account before signing it
   in, and change nothing about it. Before, the sign-in issued a token that
   was refused only on its first use.

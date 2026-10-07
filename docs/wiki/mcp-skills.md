@@ -165,8 +165,10 @@ hardcodes prod/staging/dev.
 Generic execution tools run **arbitrary** commands, so the tool name alone does
 not bound what they can do. OpsMender detects them automatically (e.g. `shell`,
 `bash`, `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
-`python`, `node`, and `*_exec` / `run_*` / `*_cli` patterns) and guards them
-conservatively:
+`python`, `node`, `python_repl`, `code_interpreter`, and `*_exec` / `run_*` /
+`*_cli` patterns) and guards them conservatively. Names are compared without
+case and with camel case, hyphens, dots and spaces folded to underscores, so
+`ExecuteCommand`, `run-command` and `kubectl-exec` count too:
 
 - **Tier 2**: blocked.
 - **Tier 1**: **requires operator approval** before execution.
@@ -203,6 +205,14 @@ blocked at **every tier: deny always wins**, even over `allow_generic` or a
 entry below a broad glob such as `*` still blocks the tools it matches. An
 exact entry can't carve an exception out of a deny glob either; to allow one
 tool, narrow the glob.
+
+When several globs match a tool, the strictest one sets its policy, whatever
+order they are written in: a broad `delete_*` allowed with approval can't let
+through a tool that a narrower `delete_prod_*` blocks. Strictness goes by
+`deny`, then classification (`destructive` over `caution` over `safe`), then
+the strictest tier mode (blocked or disabled, advisory, approval, autonomous),
+then irreversibility. An entry with the tool's exact name still decides for
+that tool.
 
 Conservative defaults: if **no skill** resolves for a server (no server-specific
 and no global), unclassified write/remediation actions are treated as unknown

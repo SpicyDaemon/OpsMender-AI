@@ -49,14 +49,14 @@ Open the **My Routing** tab. Instead of a checkbox matrix, each incident priorit
 Only P0 and P1 incidents start an Escalation Chain, so only those rows are
 used when you're paged. The priority comes from the incident's service.
 
-Each priority holds an **ordered notification escalation** of up to **3 stages**. Stage 1 fires immediately; if the incident is still unacknowledged after the stage's configured **wait** (default 5 minutes, per stage), the next stage fires, and so on:
+Each priority holds an **ordered notification escalation** of up to **3 stages**. Stage 1 fires immediately; if the incident is still unacknowledged after the stage's configured **wait** (default 3 minutes, per stage), the next stage fires, and so on:
 
 > **P0 example**
-> 1. Teams Executive Alerts → wait 5 min
-> 2. SMS Primary → wait 5 min
+> 1. Teams Executive Alerts → wait 3 min
+> 2. SMS Primary → wait 3 min
 > 3. Telegram Ops
 
-Per stage you pick a **channel** and a **wait**: for non-final stages, the wait before the next stage; for the last stage, the **answer window**, how long the next Escalation Chain level waits for your answer before it pages someone else (it waits at most 30 minutes after the level paged you, unless that level's own timeout is longer). Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
+Per stage you pick a **channel** and a **wait**: for non-final stages, the wait before the next stage; for the last stage, the **answer window**, how long the next Escalation Chain level waits for your answer before it pages someone else (it waits at most 10 minutes after the level paged you for P0 and P1, and 20 for P2 and P3, unless that level's own timeout is longer; My Routing warns when your stages and answer window take longer). Reorder stages with the up/down controls and remove with the trash icon. **Add stage** is disabled at 3 stages.
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone asked to help after the incident has an owner gets all of their stages.
 

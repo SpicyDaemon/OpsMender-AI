@@ -80,9 +80,9 @@ export default {
     });
 
     await h.step("incident visibly progresses through the remaining level and exhausts", async () => {
-      // A page that reaches the QA user holds each level for their answer
-      // window (5 minutes). With P1 set to Do not notify, the levels move on
-      // their 20 second timeouts; the user's preferences are restored after.
+      // My Routing stages saved for P1 would hold each level for them (up to
+      // 10 minutes). With P1 set to Do not notify, the levels move on their
+      // 20 second timeouts; the user's preferences are restored after.
       const prefs = await api(h, "get", "/users/me/notification-preferences");
       const restore = {
         channels: prefs.channels ?? {},

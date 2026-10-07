@@ -67,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The next Escalation Chain level no longer pages before the people the
   current level paged have had all their own notification stages. A level
   escalates at the later of its timeout and the end of everyone's stages plus
+  an answer window (the last stage's wait; none if that stage couldn't be
+  sent), unless someone acknowledges. Someone with no stages saved, or who is
+  no longer an active admin or operator, holds nothing: the level timeout
+  alone decides. The wait for people's stages ends at most 10 minutes after
+  the level paged for P0 and P1 incidents, and 20 for P2 and P3; a longer
+  level timeout still applies. New levels and new My Routing stages wait 3
+  minutes (new levels waited 5 before), so with three stages at the default
+  wait, levels fire 9 minutes apart. My Routing shows the last stage's wait
+  as the answer window and warns when a priority's stages and answer window
+  take longer than that priority's limit; the chain editor's Preview timeline
+  shows each level's earliest time.
   an answer window (the last stage's wait, 5 minutes by default; none if that
   stage couldn't be sent; for someone without stages, 5 minutes after a page
   that reached them). The wait for people's stages ends at most 30 minutes

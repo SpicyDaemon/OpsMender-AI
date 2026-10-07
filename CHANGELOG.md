@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- SAML and OIDC sign-in now refuse a deactivated account before signing it
+  in, and change nothing about it. Before, the sign-in issued a token that
+  was refused only on its first use.
+- WeCom and Weixin updates are checked against their signature before
+  OpsMender decrypts or reads them, and a malformed body gets 400 instead of
+  a server error. Before, WeCom updates were decrypted without checking the
+  signature.
+- The Inbox and notification settings refuse API tokens, like the other
+  personal settings.
 - Open live streams of an AI session or the Inbox now close within about 15
   seconds after their account is deactivated or its password changes, and a
   session stream serves only sessions in your own workspace. Before, a

@@ -40,7 +40,8 @@ creator is demoted, their tokens drop to the new role; if the creator is
 deactivated or deleted, their tokens stop working.
 
 API tokens are not accepted for sign-in, self-service profile routes,
-multi-factor enrollment, or live WebSocket streams.
+multi-factor enrollment, the Inbox and notification settings, or live
+WebSocket streams.
 
 ## Revoke
 

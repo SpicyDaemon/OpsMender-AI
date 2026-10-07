@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Intake refuses alert bodies over 1 MiB with `413` before reading them in
+  full, including bodies sent without a length; set
+  `OPSMENDER_INGEST_MAX_BODY_BYTES` to change the limit. Before, a body of any
+  size was read and stored whole in the ingest log. The token's delivery log
+  keeps a short row with the size and the limit, never the body.
 - MCP server credentials are now shown to admins only. Before this change
   every signed-in account and API token, Viewers included, could read each
   saved MCP server's command, arguments, URL and environment values, and the

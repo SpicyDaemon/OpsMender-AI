@@ -301,14 +301,20 @@ class SessionOrchestrationConfig:
 
 @dataclasses.dataclass
 class IngestConfig:
-    """External incident ingestion rate-limiting.
+    """External incident ingestion limits.
 
     rate_limit: max requests per window per token (0 = disabled)
     rate_window: window size in seconds
+    max_body_bytes: largest alert body intake reads; larger ones get 413
     """
 
     rate_limit: int = 60
     rate_window: int = 60
+    max_body_bytes: int = 1024 * 1024
+
+    def __post_init__(self) -> None:
+        if self.max_body_bytes < 1024:
+            raise ValueError("OPSMENDER_INGEST_MAX_BODY_BYTES must be >= 1024")
 
 
 @dataclasses.dataclass
@@ -603,6 +609,9 @@ class AppConfig:
         ingest = IngestConfig(
             rate_limit=_env_int(env, "OPSMENDER_INGEST_RATE_LIMIT", 60),
             rate_window=_env_int(env, "OPSMENDER_INGEST_RATE_WINDOW", 60),
+            max_body_bytes=_env_int(
+                env, "OPSMENDER_INGEST_MAX_BODY_BYTES", 1024 * 1024
+            ),
         )
         sla = SLAConfig(
             poller_enabled=_env_bool(env, "OPSMENDER_SLA_POLLER_ENABLED", True),

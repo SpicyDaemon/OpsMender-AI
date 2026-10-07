@@ -11,6 +11,7 @@ GET  /ingest-providers - list available provider adapters
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 import uuid
 from typing import Any
@@ -159,6 +160,66 @@ def _to_token_response(tok: IngestToken) -> IngestTokenResponse:
     )
 
 
+class _BodyTooLarge(Exception):
+    """The alert body passed the intake limit; ``size`` is None when it was
+    streamed without a length and reading stopped at the limit."""
+
+    def __init__(self, size: int | None) -> None:
+        super().__init__(size)
+        self.size = size
+
+
+async def _read_body(request: Request, limit: int) -> bytes:
+    """The request body, refused once it passes ``limit`` bytes: a declared
+    length over the limit is refused unread, and a streamed body stops at the
+    first chunk that passes it."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise _BodyTooLarge(int(declared))
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            raise _BodyTooLarge(None)
+    return bytes(body)
+
+
+async def _intake_payload(
+    request: Request, db: AsyncSession, token: IngestToken
+) -> dict[str, Any] | JSONResponse:
+    """The alert's JSON, or a 413 for a body over the intake limit (O-12).
+
+    A refused body leaves a short row in the token's delivery log naming the
+    size and the limit, never the body itself.
+    """
+    limit = request.app.state.config.ingest.max_body_bytes
+    try:
+        body = await _read_body(request, limit)
+    except _BodyTooLarge as exc:
+        size = f"{exc.size:,} bytes" if exc.size is not None else "more than that"
+        await IngestLogRepo.create(
+            db,
+            token.org_id,
+            ingest_token_id=token.id,
+            provider=token.provider,
+            raw_payload={"body_bytes": exc.size, "limit_bytes": limit},
+            dedup_action="skipped",
+            error=f"Body over the {limit:,}-byte intake limit ({size}); not read",
+        )
+        await db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": f"Alert body is over the {limit:,}-byte intake limit"},
+        )
+    try:
+        return json.loads(body)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body must be valid JSON",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Webhook endpoint - token-authed, NOT JWT
 # ---------------------------------------------------------------------------
@@ -224,13 +285,9 @@ async def service_intake_webhook(
             },
         )
 
-    try:
-        payload: dict[str, Any] = await request.json()
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request body must be valid JSON",
-        )
+    payload = await _intake_payload(request, db, token)
+    if isinstance(payload, JSONResponse):
+        return payload
 
     result = await ingest_incident(
         db,
@@ -325,13 +382,9 @@ async def ingest_webhook(
         )
 
     # Parse body
-    try:
-        payload: dict[str, Any] = await request.json()
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request body must be valid JSON",
-        )
+    payload = await _intake_payload(request, db, token)
+    if isinstance(payload, JSONResponse):
+        return payload
 
     # Run ingest
     result = await ingest_incident(

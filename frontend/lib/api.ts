@@ -255,6 +255,7 @@ import type {
   IncidentCreate,
   IncidentCreateResponse,
   IncidentCombineResponse,
+  MergedIncidentListResponse,
   IncidentListResponse,
   IncidentCommentListResponse,
   IncidentCommentResponse,
@@ -316,6 +317,15 @@ export async function createIncident(
 
 export async function deleteIncident(id: string): Promise<void> {
   return api.del<void>(`/incidents/${id}`);
+}
+
+/** The incidents a permanent delete of ``incidentIds`` also deletes (admins only). */
+export async function listIncidentsMergedInto(
+  incidentIds: string[],
+): Promise<MergedIncidentListResponse> {
+  return api.post<MergedIncidentListResponse>("/incidents/merged-into", {
+    incident_ids: incidentIds,
+  });
 }
 
 export async function combineIncidents(

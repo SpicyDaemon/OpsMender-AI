@@ -36,6 +36,7 @@ const apiMocks = vi.hoisted(() => ({
   assignIncident: vi.fn(),
   bulkIncidentAction: vi.fn(),
   deleteIncident: vi.fn(),
+  listIncidentsMergedInto: vi.fn(),
   releaseIncident: vi.fn(),
   takeIncident: vi.fn(),
 }));
@@ -307,6 +308,7 @@ describe("IncidentCommandStrip", () => {
 
   it("shows permanent delete only to admins", async () => {
     role.current = "admin";
+    apiMocks.listIncidentsMergedInto.mockResolvedValue({ items: [] });
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderStrip("open");
 
@@ -316,8 +318,44 @@ describe("IncidentCommandStrip", () => {
     );
     expect(push).toHaveBeenCalledWith("/dashboard/incidents");
     expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining("This action cannot be undone"),
+      expect.stringMatching(/This action cannot be undone\.$/),
     );
+    confirmSpy.mockRestore();
+  });
+
+  it("names the incidents combined into it before deleting them too", async () => {
+    role.current = "admin";
+    apiMocks.listIncidentsMergedInto.mockResolvedValue({
+      items: [
+        { id: "m-1", title: "Disk alert", merged_into_incident_id: "incident-1" },
+        { id: "m-2", title: "CPU alert", merged_into_incident_id: "m-1" },
+      ],
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderStrip("open");
+
+    fireEvent.click(screen.getByTestId("action-delete"));
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    expect(apiMocks.listIncidentsMergedInto).toHaveBeenCalledWith(["incident-1"]);
+    expect(confirmSpy.mock.calls[0][0]).toContain(
+      'This also deletes the 2 incidents combined into it: "Disk alert", "CPU alert".',
+    );
+    expect(apiMocks.deleteIncident).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("does not offer the delete when it cannot list what it would take", async () => {
+    role.current = "admin";
+    apiMocks.listIncidentsMergedInto.mockRejectedValue(new Error("Network down"));
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderStrip("open");
+
+    fireEvent.click(screen.getByTestId("action-delete"));
+    await waitFor(() =>
+      expect(toastSpies.error).toHaveBeenCalledWith("Network down"),
+    );
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(apiMocks.deleteIncident).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 

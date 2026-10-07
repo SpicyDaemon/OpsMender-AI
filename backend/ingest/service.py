@@ -309,8 +309,10 @@ async def ingest_incident(
                         parsed,
                     )
                 )
+                # The lookup follows a merged incident to its live primary,
+                # so a merged result means the primary is gone: closed.
                 if parsed.status != "resolved" and (
-                    existing.status == "resolved" or p0_flapping_refire
+                    existing.status in ("resolved", "merged") or p0_flapping_refire
                 ):
                     incident = None
                 else:

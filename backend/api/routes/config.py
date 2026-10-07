@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, require_role
 from backend.api.deps import get_db
+from backend.auth.roles import request_role
 from backend.api.schemas import (
     ConfigResponse,
     ConfigUpdate,
@@ -57,16 +58,19 @@ def _config_to_response(
     alert_grouping_default: bool = False,
     sso_configured: bool = False,
     saml_configured: bool = False,
+    reveal_mcp: bool = True,
 ) -> ConfigResponse:
     servers = []
     for server in cfg.mcp_servers:
         entry: dict = {"name": server.name, "transport": server.transport}
-        if server.url:
-            entry["url"] = server.url
-        if server.command:
-            entry["command"] = server.command
-        if server.args:
-            entry["args"] = server.args
+        # Launch details can carry credentials: admins only (M1-29).
+        if reveal_mcp:
+            if server.url:
+                entry["url"] = server.url
+            if server.command:
+                entry["command"] = server.command
+            if server.args:
+                entry["args"] = server.args
         servers.append(entry)
 
     return ConfigResponse(
@@ -134,6 +138,7 @@ async def get_config(
         alert_grouping_default=bool(org and org.alert_grouping_default),
         sso_configured=sso_row is not None,
         saml_configured=saml_row is not None,
+        reveal_mcp=request_role(user) == "admin",
     )
 
 

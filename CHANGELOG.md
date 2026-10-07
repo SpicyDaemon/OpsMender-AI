@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- MCP server credentials are now shown to admins only. Before this change
+  every signed-in account and API token, Viewers included, could read each
+  saved MCP server's command, arguments, URL and environment values, and the
+  last connection error, from the server list; Operators could also read the
+  launch details of servers configured in the environment from Settings.
+  Others now see the name, transport, state and environment variable names.
+  **Rotate any credential stored in an MCP server's environment values,
+  arguments or URL**, since any account could read it.
+
 ### Added
 
 - Hand several incidents to another team at once from the incident list

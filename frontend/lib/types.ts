@@ -686,6 +686,8 @@ export interface MCPServerResponse {
   args: string[] | null;
   url: string | null;
   env_vars: Record<string, string> | null;
+  /** Environment variable names; command, args, URL and values are for admins only. */
+  env_keys?: string[];
   is_active: boolean;
   created_at: string;
   has_token: boolean;

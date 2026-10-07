@@ -95,6 +95,10 @@ OpsMender uses the Model Context Protocol (MCP) to interact with your infrastruc
 
 1. Go to **Config** > **MCP** to add or test an MCP server.
 2. Provide the command or transport details for the MCP server (stdio, SSE, or HTTP).
+   An MCP server's command, arguments, URL and environment values often hold
+   credentials, so only admins see them. Everyone else, including an admin's
+   Operator or Viewer API token, sees the server's name, transport, state and
+   the environment variable names.
 3. Go to **Skills** to import, edit, clone, or bind `SKILL.md` content to an MCP server.
 4. Use tiers and Skill classifications together to control what OpsMender can execute.
 

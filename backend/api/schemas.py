@@ -983,6 +983,10 @@ class MCPServerResponse(BaseModel):
     args: Optional[list[str]]
     url: Optional[str]
     env_vars: Optional[dict[str, str]]
+    # Names of the environment variables. Command, args, URL and environment
+    # values carry credentials and go to admins only; everyone else gets the
+    # key names (M1-29).
+    env_keys: list[str] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     has_token: bool

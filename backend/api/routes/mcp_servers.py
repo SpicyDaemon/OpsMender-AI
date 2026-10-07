@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
+from backend.auth.roles import request_role
 from backend.api.schemas import (
     MCPServerListResponse,
     MCPServerResponse,
@@ -125,15 +126,20 @@ def _oauth_status_from_token(token_row) -> str | None:
     return "connected"
 
 
-def _to_response(server: MCPServer, token_row=None) -> MCPServerResponse:
+def _to_response(
+    server: MCPServer, token_row=None, *, reveal: bool = True
+) -> MCPServerResponse:
+    """``reveal`` is for admins: command, args, URL and environment values
+    carry the credentials the AI uses, so others get the key names only."""
     return MCPServerResponse(
         id=server.id,
         name=server.name,
         transport=server.transport,
-        command=server.command,
-        args=server.args,
-        url=server.url,
-        env_vars=server.env_vars,
+        command=server.command if reveal else None,
+        args=server.args if reveal else None,
+        url=server.url if reveal else None,
+        env_vars=server.env_vars if reveal else None,
+        env_keys=sorted(server.env_vars or {}),
         is_active=server.is_active,
         created_at=server.created_at,
         has_token=bool(server.token),
@@ -354,8 +360,11 @@ async def list_mcp_servers(
 ):
     items = await MCPServerRepo.list_all(db, org_id)
     token_map = await MCPServerOAuthTokenRepo.map_by_server_id(db, org_id)
+    reveal = request_role(user) == "admin"
     return MCPServerListResponse(
-        items=[_to_response(item, token_map.get(item.id)) for item in items],
+        items=[
+            _to_response(item, token_map.get(item.id), reveal=reveal) for item in items
+        ],
         total=len(items),
     )
 
@@ -371,13 +380,15 @@ async def list_mcp_server_statuses(
     user: User = Depends(get_current_user),
 ):
     items = await MCPServerRepo.list_all(db, org_id)
+    # A connection error can echo the URL or a credential: admins only.
+    reveal = request_role(user) == "admin"
     return MCPServerStatusListResponse(
         items=[
             MCPServerStatusResponse(
                 server_id=item.id,
                 status=_status_from_server(item),
                 last_successful_call_at=item.last_successful_call_at,
-                last_error=item.last_error,
+                last_error=item.last_error if reveal else None,
             )
             for item in items
         ],

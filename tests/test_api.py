@@ -4170,7 +4170,8 @@ class TestIncidentMemoryAPI:
         resp = await client.get("/memories", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"items": [], "total": 0}
+        # An admin may file under any service and Global.
+        assert body == {"items": [], "total": 0, "writable_service_ids": None}
 
     async def test_create_and_get(self, client: AsyncClient, auth_headers, app):
         service_id = await self._seed_service(app)

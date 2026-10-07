@@ -3164,6 +3164,9 @@ class IncidentMemoryResponse(BaseModel):
 class IncidentMemoryListResponse(BaseModel):
     items: list[IncidentMemoryResponse]
     total: int
+    # Services this person may file memories under; None means any service and
+    # Global (admins). Operators get their teams' services; viewers none.
+    writable_service_ids: Optional[list[uuid.UUID]] = None
 
 
 class IncidentMemoryCreate(BaseModel):

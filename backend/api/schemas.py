@@ -3148,8 +3148,6 @@ class IncidentMemoryResponse(BaseModel):
     title: str
     summary_md: str
     tags: list[str] = Field(default_factory=list)
-    helpful_count: int = 0
-    unhelpful_count: int = 0
     pinned: bool = False
     can_edit: bool = False
     can_delete: bool = False
@@ -3186,10 +3184,6 @@ class IncidentMemoryUpdate(BaseModel):
     service_id_set: bool = False
     # v2 Phase 8 - pin/unpin to protect from bounded-growth eviction.
     pinned: Optional[bool] = None
-
-
-class IncidentMemoryFeedbackRequest(BaseModel):
-    helpful: bool
 
 
 class IncidentMemoryBulkDeleteRequest(BaseModel):

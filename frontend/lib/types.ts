@@ -2300,8 +2300,6 @@ export interface IncidentMemoryResponse {
   title: string;
   summary_md: string;
   tags: string[];
-  helpful_count: number;
-  unhelpful_count: number;
   can_edit: boolean;
   can_delete: boolean;
   created_by_user_id: string | null;

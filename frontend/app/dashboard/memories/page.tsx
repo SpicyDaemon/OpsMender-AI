@@ -7,8 +7,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  ThumbsDown,
-  ThumbsUp,
   Trash2,
 } from "lucide-react";
 
@@ -19,7 +17,6 @@ import {
   listMemories,
   listServices,
   listTeams,
-  recordMemoryFeedback,
   updateMemory,
 } from "@/lib/api";
 import type {
@@ -189,20 +186,6 @@ export default function MemoriesPage() {
     [expanded],
   );
 
-  const handleFeedback = useCallback(
-    async (memory: IncidentMemoryResponse, helpful: boolean) => {
-      try {
-        const updated = await recordMemoryFeedback(memory.id, helpful);
-        setMemories((prev) =>
-          prev.map((m) => (m.id === updated.id ? updated : m)),
-        );
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [toast],
-  );
-
   const columns = useMemo<DataTableColumn<IncidentMemoryResponse>[]>(
     () => [
       {
@@ -289,34 +272,6 @@ export default function MemoriesPage() {
         searchable: true,
       },
       {
-        id: "feedback",
-        label: "Feedback",
-        accessor: (memory) => memory.helpful_count - memory.unhelpful_count,
-        cell: (memory) => (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              title="Helpful"
-              onClick={() => canEdit && handleFeedback(memory, true)}
-              disabled={!canEdit}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ThumbsUp size={13} /> {memory.helpful_count}
-            </button>
-            <button
-              type="button"
-              title="Not helpful"
-              onClick={() => canEdit && handleFeedback(memory, false)}
-              disabled={!canEdit}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-secondary hover:bg-bg-hover hover:text-fg-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ThumbsDown size={13} /> {memory.unhelpful_count}
-            </button>
-          </div>
-        ),
-        sortable: true,
-      },
-      {
         id: "last_used",
         label: "Last surfaced",
         accessor: (memory) => memory.last_used_at ?? "",
@@ -330,8 +285,6 @@ export default function MemoriesPage() {
       },
     ],
     [
-      canEdit,
-      handleFeedback,
       serviceFilterOptions,
       serviceNameById,
       teamFilterOptions,

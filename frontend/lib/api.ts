@@ -2323,14 +2323,6 @@ export async function bulkDeleteMemories(
   });
 }
 
-export async function recordMemoryFeedback(
-  id: string,
-  helpful: boolean,
-): Promise<IncidentMemoryResponse> {
-  return api.post<IncidentMemoryResponse>(`/memories/${id}/feedback`, {
-    helpful,
-  });
-}
 
 export async function getSessionMemoriesUsed(
   sessionId: string,

@@ -1,7 +1,6 @@
 """Sprint 45 Step 1 - IncidentMemoryRepo tests.
 
-Covers per-org isolation, retrieval scoring, feedback counters, delete, and
-recall logging.
+Covers per-org isolation, retrieval scoring, delete, and recall logging.
 """
 
 from __future__ import annotations
@@ -199,7 +198,7 @@ class TestFindRelevant:
         ranked = {m.id: score for m, score in results}
         assert ranked[a.id] > ranked[b.id]
 
-    async def test_helpful_ratio_breaks_ties(self, db: AsyncSession):
+    async def test_old_feedback_counts_do_not_change_ranking(self, db: AsyncSession):
         svc = await _make_service(db, ORG_A, "checkout")
         liked = await IncidentMemoryRepo.create(
             db,
@@ -217,17 +216,9 @@ class TestFindRelevant:
             summary_md="payload",
             tags=["t"],
         )
-        await db.flush()
-
-        # Tie up helpful counters
-        for _ in range(5):
-            await IncidentMemoryRepo.record_feedback(
-                db, memory_id=liked.id, org_id=ORG_A, helpful=True
-            )
-        for _ in range(5):
-            await IncidentMemoryRepo.record_feedback(
-                db, memory_id=disliked.id, org_id=ORG_A, helpful=False
-            )
+        # The columns remain but nothing reads them any more (M1-20).
+        liked.helpful_count = 5
+        disliked.unhelpful_count = 5
         await db.flush()
 
         results = await IncidentMemoryRepo.find_relevant(
@@ -238,7 +229,8 @@ class TestFindRelevant:
             tags=["t"],
             limit=5,
         )
-        assert results[0][0].id == liked.id
+        scores = {m.id: score for m, score in results}
+        assert scores[liked.id] == scores[disliked.id]
 
     async def test_cross_org_memories_never_surface(self, db: AsyncSession):
         svc_a = await _make_service(db, ORG_A, "checkout")
@@ -260,34 +252,6 @@ class TestFindRelevant:
             tags=None,
         )
         assert results == []
-
-
-class TestFeedback:
-    async def test_thumbs_up_increments(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
-        await db.flush()
-
-        await IncidentMemoryRepo.record_feedback(
-            db, memory_id=m.id, org_id=ORG_A, helpful=True
-        )
-        await IncidentMemoryRepo.record_feedback(
-            db, memory_id=m.id, org_id=ORG_A, helpful=False
-        )
-        await db.flush()
-
-        refreshed = await IncidentMemoryRepo.get_by_id(db, m.id, ORG_A)
-        assert refreshed is not None
-        assert refreshed.helpful_count == 1
-        assert refreshed.unhelpful_count == 1
-
-    async def test_feedback_respects_org_boundary(self, db: AsyncSession):
-        m = await IncidentMemoryRepo.create(db, org_id=ORG_A, title="t", summary_md="x")
-        await db.flush()
-
-        result = await IncidentMemoryRepo.record_feedback(
-            db, memory_id=m.id, org_id=ORG_B, helpful=True
-        )
-        assert result is None
 
 
 class TestUpdateAndDelete:

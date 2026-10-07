@@ -25,7 +25,6 @@ const apiMocks = vi.hoisted(() => ({
   updateMemory: vi.fn(),
   deleteMemory: vi.fn(),
   bulkDeleteMemories: vi.fn(),
-  recordMemoryFeedback: vi.fn(),
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
@@ -40,8 +39,6 @@ function memory(id: string, title: string, canManage = true) {
     title,
     summary_md: "Roll the deployment.",
     tags: [],
-    helpful_count: 0,
-    unhelpful_count: 0,
     can_edit: canManage,
     can_delete: canManage,
     created_by_user_id: null,
@@ -297,5 +294,14 @@ describe("Memories selection and actions", () => {
       "Global (applies to any service)",
       "Checkout",
     ]);
+  });
+
+  it("has no feedback column or buttons", async () => {
+    render(<MemoriesPage />);
+    await waitFor(() => expect(screen.getAllByText("First lesson").length).toBeGreaterThan(0));
+    // Memory feedback was removed (M1-20).
+    expect(screen.queryByRole("columnheader", { name: /Feedback/ })).toBeNull();
+    expect(screen.queryByTitle("Helpful")).toBeNull();
+    expect(screen.queryByTitle("Not helpful")).toBeNull();
   });
 });

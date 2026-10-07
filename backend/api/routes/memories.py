@@ -1,4 +1,4 @@
-"""AI incident memory CRUD, feedback, and recall-history API.
+"""AI incident memory CRUD and recall-history API.
 
 All endpoints are org-scoped via :func:`get_current_org`. Memory is operator-
 and mutation is team-scoped for Operators. Admins may manage every memory.
@@ -10,7 +10,6 @@ Routes (prefix ``/memories``):
 - ``PUT    /memories/{id}`` - team-scoped operator edit
 - ``DELETE /memories/{id}`` - team-scoped operator delete
 - ``POST   /memories/bulk-delete`` - atomic bulk delete
-- ``POST   /memories/{id}/feedback`` - thumbs up/down (operator + admin)
 
 Also adds (no prefix mounting collision with `/sessions`):
 - ``GET    /sessions/{id}/memories-used`` - surfaced memories for a session
@@ -30,7 +29,6 @@ from backend.api.schemas import (
     IncidentMemoryBulkDeleteRequest,
     IncidentMemoryBulkDeleteResponse,
     IncidentMemoryCreate,
-    IncidentMemoryFeedbackRequest,
     IncidentMemoryListResponse,
     IncidentMemoryResponse,
     IncidentMemoryUpdate,
@@ -62,8 +60,6 @@ def _to_response(
         title=memory.title,
         summary_md=memory.summary_md,
         tags=list(memory.tags or []),
-        helpful_count=memory.helpful_count or 0,
-        unhelpful_count=memory.unhelpful_count or 0,
         pinned=bool(memory.pinned),
         can_edit=can_manage,
         can_delete=can_manage,
@@ -407,42 +403,6 @@ async def bulk_delete_memories(
     )
     await db.commit()
     return IncidentMemoryBulkDeleteResponse(deleted=deleted)
-
-
-@router.post(
-    "/{memory_id}/feedback",
-    response_model=IncidentMemoryResponse,
-    summary="Record operator thumbs up/down on a memory",
-)
-async def memory_feedback(
-    memory_id: uuid.UUID,
-    body: IncidentMemoryFeedbackRequest,
-    db: AsyncSession = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin", "operator")),
-):
-    memory = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
-    if memory is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory not found",
-        )
-    await _require_memory_visibility(db, org_id, user, memory)
-    updated = await IncidentMemoryRepo.record_feedback(
-        db,
-        memory_id=memory_id,
-        org_id=org_id,
-        helpful=body.helpful,
-    )
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory not found",
-        )
-    await db.commit()
-    await db.refresh(updated)
-    manageable = await _manageable_memory_ids(db, org_id, user, [updated])
-    return _to_response(updated, can_manage=updated.id in manageable)
 
 
 @sessions_memory_router.get(

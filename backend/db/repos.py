@@ -7707,7 +7707,6 @@ class IncidentMemoryRepo:
           - 2.0 if service_id matches exactly (or memory has no service)
           - 1.0 * number of tag overlaps
           - 0.5 if query keyword matches title or summary (ILIKE)
-          - plus helpful_ratio_boost = helpful / (helpful + unhelpful + 1)
         """
         stmt = select(IncidentMemory).where(IncidentMemory.org_id == org_id)
         rows = (await db.execute(stmt)).scalars().all()
@@ -7742,11 +7741,6 @@ class IncidentMemoryRepo:
                     if any(t in hay for t in tokens):
                         score += 0.25
 
-            helpful_ratio = row.helpful_count / float(
-                row.helpful_count + row.unhelpful_count + 1
-            )
-            score += helpful_ratio
-
             if score > 0:
                 scored.append((row, score))
 
@@ -7760,25 +7754,6 @@ class IncidentMemoryRepo:
             .where(IncidentMemory.id == memory_id)
             .values(last_used_at=datetime.now(timezone.utc))
         )
-
-    @staticmethod
-    async def record_feedback(
-        db: AsyncSession,
-        *,
-        memory_id: uuid.UUID,
-        org_id: uuid.UUID,
-        helpful: bool,
-    ) -> IncidentMemory | None:
-        row = await IncidentMemoryRepo.get_by_id(db, memory_id, org_id)
-        if row is None:
-            return None
-        if helpful:
-            row.helpful_count = row.helpful_count + 1
-        else:
-            row.unhelpful_count = row.unhelpful_count + 1
-        row.updated_at = datetime.now(timezone.utc)
-        await db.flush()
-        return row
 
     @staticmethod
     async def update(

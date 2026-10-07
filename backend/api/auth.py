@@ -223,6 +223,21 @@ async def get_current_org(
     return user.primary_org_id
 
 
+async def current_workspace(
+    org_id: uuid.UUID, current_org_id: uuid.UUID = Depends(get_current_org)
+) -> uuid.UUID:
+    """The ``org_id`` path parameter when it names the caller's own workspace.
+
+    Any other workspace is "not found" (O-11), so an admin of one never reads
+    or changes another, even if a second Organization row exists.
+    """
+    if org_id != current_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
+        )
+    return org_id
+
+
 def require_role(*allowed_roles: str):
     """Return a dependency that enforces role membership.
 

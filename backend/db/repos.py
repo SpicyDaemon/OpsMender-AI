@@ -243,10 +243,20 @@ class UserRepo:
         limit: int = 100,
         offset: int = 0,
         include_deleted: bool = False,
+        org_id: uuid.UUID | None = None,
     ) -> Sequence[User]:
+        """Users, oldest first; only ``org_id``'s members when it is given."""
         stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
         if not include_deleted:
             stmt = stmt.where(User.deleted_at.is_(None))
+        if org_id is not None:
+            stmt = stmt.where(
+                User.id.in_(
+                    select(UserOrganization.user_id).where(
+                        UserOrganization.org_id == org_id
+                    )
+                )
+            )
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -4702,6 +4712,11 @@ class OrganizationRepo:
         slug: str | None = None,
         branding: dict | None = None,
     ) -> Organization:
+        # One workspace per instance (O-11): the first is the only one.
+        if await db.scalar(select(func.count()).select_from(Organization)):
+            raise ValueError(
+                "OpsMender runs one workspace per instance, and it already exists."
+            )
         org = Organization(
             name=name, slug=slug or name.lower().replace(" ", "-"), branding=branding
         )

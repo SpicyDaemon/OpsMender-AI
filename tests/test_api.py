@@ -1318,14 +1318,15 @@ class TestIncidents:
     async def test_manual_incident_rejects_service_from_another_org(
         self, client: AsyncClient, app, auth_headers
     ):
-        from backend.db.repos import OrganizationRepo
+        from backend.db.models import Organization
 
         async with app.state.session_factory() as db:
-            other = await OrganizationRepo.create(
-                db,
-                name="Other Service Org",
-                slug=f"other-service-{uuid.uuid4().hex[:6]}",
+            # A second workspace row, as the product never creates one (O-11).
+            other = Organization(
+                name="Other Service Org", slug=f"other-service-{uuid.uuid4().hex[:6]}"
             )
+            db.add(other)
+            await db.flush()
             team = await TeamRepo.create(
                 db,
                 other.id,

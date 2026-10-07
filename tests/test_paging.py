@@ -1007,11 +1007,12 @@ class TestPagingAPI:
         assert too_many.status_code == 422
 
         async with app.state.session_factory() as db:
-            other_org = await OrganizationRepo.create(
-                db,
-                name="Other Model Org",
-                slug=f"other-model-org-{uuid.uuid4().hex[:6]}",
+            # A second workspace row, as the product never creates one (O-11).
+            other_org = Organization(
+                name="Other Model Org", slug=f"other-model-org-{uuid.uuid4().hex[:6]}"
             )
+            db.add(other_org)
+            await db.flush()
             other_model = await ModelConfigRepo.create(
                 db,
                 other_org.id,

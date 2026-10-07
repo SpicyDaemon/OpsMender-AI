@@ -23,7 +23,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import create_access_token, hash_password, require_role
+from backend.api.auth import (
+    create_access_token,
+    current_workspace,
+    hash_password,
+    require_role,
+)
 from backend.api.deps import get_db
 from backend.auth.signin_throttle import sign_in_attempt
 from backend.api.schemas import (
@@ -46,7 +51,12 @@ from backend.reports.email import build_email_channel, resolve_email_settings
 from backend.people import tokens as people_tokens
 
 
-admin_router = APIRouter(prefix="/organizations", tags=["invites"])
+# Every admin route here names a workspace in its path: only the caller's own.
+admin_router = APIRouter(
+    prefix="/organizations",
+    tags=["invites"],
+    dependencies=[Depends(current_workspace)],
+)
 public_router = APIRouter(prefix="/invites", tags=["invites"])
 
 

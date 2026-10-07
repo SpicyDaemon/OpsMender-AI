@@ -4,6 +4,11 @@ This is the default OpsMender auth model: one workspace, email + password, admin
 
 If you need **SSO (OIDC) or SAML**, those features are still in the product. They live in Settings for the single workspace so the default install stays simple. See [Advanced Auth Guide](advanced-auth-guide.md).
 
+One instance runs one workspace. OpsMender creates it with the first account
+and never creates a second. Workspace settings, invites and People actions
+work only on your own workspace and its members; any other workspace or
+person is "not found". To run several organizations, run several instances.
+
 > **Companion guide:** [People Guide](people-guide.md) covers day-to-day People-page operations (invites, password resets, soft delete, etc.) in detail. This page is the conceptual auth model, who can sign in, how accounts are created, what changes when you opt in to advanced features.
 
 ---

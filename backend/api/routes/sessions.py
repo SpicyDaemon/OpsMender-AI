@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, require_role
+from backend.auth.roles import request_role
 from backend.api.deps import get_current_session_factory, get_db, get_mcp_pool
 from backend.api.routes.ws import publish
 from backend.api.session_runner import (
@@ -190,6 +191,12 @@ async def create_session(
     user: User = Depends(require_role("admin", "operator")),
 ):
     incident = None
+    # A session with no incident is for admins only (O-10): nobody owns it.
+    if body.incident_id is None and request_role(user) != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can start an AI session without an incident.",
+        )
     # Validate linked incident exists (if provided)
     if body.incident_id is not None:
         incident = await IncidentRepo.get_by_id(db, org_id, body.incident_id)

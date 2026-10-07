@@ -2279,7 +2279,10 @@ export interface IncidentChainStateRecord {
   chain_id: string;
   status: ChainStatus;
   current_step_index: number;
+  // The level's next check: its timeout, then, while it waits for the people
+  // it paged, their next step or the end of their answer window.
   next_step_due_at: string | null;
+  // The latest the current level waits for its people (O-02).
   hard_deadline_at: string | null;
   pending_takeover_user_id: string | null;
   pending_takeover_expires_at: string | null;

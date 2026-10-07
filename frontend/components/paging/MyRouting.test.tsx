@@ -202,16 +202,79 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
     expect(shown("P2 answer window")).toBe("60 min");
   });
 
-  it("keeps legacy routing's 5 minute answer window", async () => {
+  it("shows legacy routing with no answer window and saves it that way", async () => {
+    // Legacy routing pages every channel at once and holds no level (O-01).
     render(<NotificationPreferencesPanel />);
     const answerWindow = (await screen.findByLabelText("P1 answer window")) as HTMLSelectElement;
-    expect(answerWindow.value).toBe("300");
+    expect(answerWindow.value).toBe("0");
+    expect(answerWindow.options[answerWindow.selectedIndex].textContent).toBe("None");
     fireEvent.click(screen.getByRole("button", { name: /save routing/i }));
     await waitFor(() => expect(updateMyNotificationPreferences).toHaveBeenCalled());
     const body = updateMyNotificationPreferences.mock.calls[0][0];
-    expect(body.routing.P1).toEqual([{ channel_id: "email", delay_seconds: 300 }]);
+    expect(body.routing.P1).toEqual([{ channel_id: "email", delay_seconds: 0 }]);
     expect(body.routing.P0.map((stage: { delay_seconds: number }) => stage.delay_seconds)).toEqual([
-      0, 300,
+      0, 0,
+    ]);
+  });
+
+  it("gives a new stage a 3 minute wait", async () => {
+    getMyNotificationPreferences.mockResolvedValue({ ...basePref, routing: {} });
+    render(<NotificationPreferencesPanel />);
+    const addButtons = await screen.findAllByRole("button", { name: /add stage/i });
+    fireEvent.click(addButtons[1]); // P1
+    const answerWindow = (await screen.findByLabelText("P1 answer window")) as HTMLSelectElement;
+    expect(answerWindow.value).toBe("180");
+    expect(answerWindow.options[answerWindow.selectedIndex].textContent).toBe("3 min");
+    fireEvent.click(addButtons[1]);
+    expect((screen.getByLabelText("P1 stage 1 delay") as HTMLSelectElement).value).toBe("180");
+  });
+
+  it("warns when stages and answer window outlast the level's wait", async () => {
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: {
+        P0: [
+          { channel_id: "email", delay_seconds: 600 },
+          { channel_id: "email", delay_seconds: 600 },
+          { channel_id: "email", delay_seconds: 600 },
+        ],
+        P1: [
+          { channel_id: "email", delay_seconds: 180 },
+          { channel_id: "email", delay_seconds: 180 },
+          { channel_id: "email", delay_seconds: 180 },
+        ],
+        P2: [
+          { channel_id: "email", delay_seconds: 300 },
+          { channel_id: "email", delay_seconds: 300 },
+          { channel_id: "email", delay_seconds: 300 },
+        ],
+      },
+    });
+    render(<NotificationPreferencesPanel />);
+    const p0 = await screen.findByTestId("routing-ceiling-P0");
+    expect(p0.textContent).toBe(
+      "Your stages and answer window take longer than the 10 minutes a level " +
+        "waits for you at P0: later stages run after the next person has been paged.",
+    );
+    // Three 3-minute stages take 9 minutes at P1; three 5-minute ones take 15
+    // at P2, inside its 20.
+    expect(screen.queryByTestId("routing-ceiling-P1")).toBeNull();
+    expect(screen.queryByTestId("routing-ceiling-P2")).toBeNull();
+    // A 5-minute answer window takes P1 to 11 minutes; every stage is sent by
+    // then, only the window is cut.
+    fireEvent.change(screen.getByLabelText("P1 answer window"), {
+      target: { value: "300" },
+    });
+    expect(screen.getByTestId("routing-ceiling-P1").textContent).toBe(
+      "Your stages and answer window take longer than the 10 minutes a level " +
+        "waits for you at P1: the next person is paged before your answer window ends.",
+    );
+    // The warning does not block saving.
+    fireEvent.click(screen.getByRole("button", { name: /save routing/i }));
+    await waitFor(() => expect(updateMyNotificationPreferences).toHaveBeenCalled());
+    const body = updateMyNotificationPreferences.mock.calls[0][0];
+    expect(body.routing.P0.map((stage: { delay_seconds: number }) => stage.delay_seconds)).toEqual([
+      600, 600, 600,
     ]);
   });
 

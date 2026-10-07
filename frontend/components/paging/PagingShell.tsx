@@ -3084,7 +3084,7 @@ function StepsEditor({
   const [stepForm, setStepForm] = useState({
     target_type: "roster" as EscalationTargetType,
     target_id: "",
-    timeout_seconds: 300,
+    timeout_seconds: 180,
   });
   // v1 escalation targets a roster or a user. Team-level targets are
   // deferred to v1.1, so the picker only offers roster + user here even
@@ -3321,8 +3321,9 @@ function StepsEditor({
           </ol>
           <p className="mt-2 text-[11px] text-fg-muted">
             Each level also waits for the people it paged to get their own
-            notification stages and answer window, up to 30 minutes after it
-            pages, so later levels can come later than shown.
+            notification stages and answer window: up to 10 minutes after it
+            pages for P0 and P1 incidents, and 20 for P2 and P3. Later levels
+            can come later than shown.
           </p>
         </div>
       )}
@@ -3395,7 +3396,7 @@ function StepsEditor({
                       max={86400}
                       defaultValue={s.timeout_seconds}
                       onBlur={(e) =>
-                        patchTimeout(s.id, Number(e.target.value) || 300)
+                        patchTimeout(s.id, Number(e.target.value) || 180)
                       }
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -3461,7 +3462,7 @@ function StepsEditor({
             onChange={(e) =>
               setStepForm({
                 ...stepForm,
-                timeout_seconds: Number(e.target.value) || 300,
+                timeout_seconds: Number(e.target.value) || 180,
               })
             }
           />
@@ -4317,6 +4318,7 @@ const LEGACY_CHANNEL_LABELS: Record<string, string> = {
 const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
   { value: 60, label: "1 min" },
   { value: 120, label: "2 min" },
+  { value: 180, label: "3 min" },
   { value: 300, label: "5 min" },
   { value: 600, label: "10 min" },
   { value: 900, label: "15 min" },
@@ -4331,6 +4333,34 @@ function delayLabel(seconds: number): string {
   return `${seconds / 60} min`;
 }
 
+/** How long a level waits for its people's stages at most (O-02). */
+const LEVEL_WAIT_CEILING_MINUTES: Record<Priority, number> = {
+  P0: 10,
+  P1: 10,
+  P2: 20,
+  P3: 20,
+};
+
+/** The warning when a priority's stages plus answer window take longer than
+ *  that ceiling, or null. */
+export function ceilingWarning(
+  priority: Priority,
+  stages: RoutingStage[],
+): string | null {
+  const minutes = LEVEL_WAIT_CEILING_MINUTES[priority];
+  const waits = stages.map((stage) => stage.delay_seconds);
+  const total = waits.reduce((sum, wait) => sum + wait, 0);
+  if (total <= minutes * 60) return null;
+  const lastStageAt = total - waits[waits.length - 1];
+  return (
+    `Your stages and answer window take longer than the ${minutes} minutes ` +
+    `a level waits for you at ${priority}: ` +
+    (lastStageAt > minutes * 60
+      ? "later stages run after the next person has been paged."
+      : "the next person is paged before your answer window ends.")
+  );
+}
+
 /** Normalize a priority's routing into ordered stages (new + legacy shape). */
 function normalizeRoutingStages(raw: unknown): RoutingStage[] {
   if (!Array.isArray(raw)) return [];
@@ -4343,16 +4373,10 @@ function normalizeRoutingStages(raw: unknown): RoutingStage[] {
         (entry as RoutingStage).channel_id ?? "",
       ).trim();
       if (!channel_id) continue;
-      const delay = Number((entry as RoutingStage).delay_seconds ?? 300);
-      out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 300 });
+      const delay = Number((entry as RoutingStage).delay_seconds ?? 180);
+      out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 180 });
     }
     if (out.length >= 3) break;
-  }
-  // Legacy routing (channel names only) pages every channel at once, and the
-  // next level then waits the default 5-minute answer window for you. Show
-  // that window on the last stage, so saving keeps it.
-  if (out.length > 0 && raw.every((entry) => typeof entry === "string")) {
-    out[out.length - 1] = { ...out[out.length - 1], delay_seconds: 300 };
   }
   return out;
 }
@@ -4556,7 +4580,7 @@ export function NotificationPreferencesPanel({
     updateStages(priority, (stages) => {
       if (stages.length >= 3) return stages;
       const channel_id = availableChannelOptions[0]?.value ?? "";
-      return [...stages, { channel_id, delay_seconds: 300 }];
+      return [...stages, { channel_id, delay_seconds: 180 }];
     });
   };
 
@@ -4709,6 +4733,7 @@ export function NotificationPreferencesPanel({
         {ALL_PRIORITIES.map((p) => {
           const meta = PRIORITY_META[p];
           const stages = routing[p] ?? [];
+          const warning = ceilingWarning(p, stages);
           return (
             <div
               key={p}
@@ -4896,6 +4921,16 @@ export function NotificationPreferencesPanel({
               >
                 <PlusCircle className="h-4 w-4" /> Add stage
               </Button>
+              {warning && (
+                <p
+                  role="status"
+                  className="mt-2 flex items-center gap-1.5 text-xs text-status-high"
+                  data-testid={`routing-ceiling-${p}`}
+                >
+                  <AlertTriangle size={12} className="shrink-0" />
+                  {warning}
+                </p>
+              )}
             </div>
           );
         })}

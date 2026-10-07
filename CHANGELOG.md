@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Deleting an incident also deletes the incidents combined into it, including
+  ones combined into those, and Activity records each with the incident it
+  was combined into. The delete confirmation lists them first, on the incident
+  list, in bulk and on the incident page. Before, they stayed behind with no
+  incident to point to, and their alert was swallowed when it fired again: it
+  now opens a new incident and pages, as do SLO violations, for incidents left
+  behind by earlier deletes.
 - Saving a postmortem's memory candidates follows the memory rules: operators
   save them only for incidents on their teams' services, and an incident with
   no service (Global memories) needs an admin. The postmortem editor and guide

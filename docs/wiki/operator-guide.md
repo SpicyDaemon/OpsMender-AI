@@ -26,6 +26,12 @@ deletion writes one entry per incident. A repeated deletion reports the incident
 as not found and does not add another entry. This action cannot be undone. Operators
 and viewers never see or receive access to this action.
 
+Deleting an incident also deletes every incident combined into it, including
+incidents combined into those. The confirmation names them before you
+confirm, and Activity writes an entry for each that also names the incident it
+was combined into. If one of their alerts fires again later, it opens a new
+incident and pages as usual.
+
 ## 2. Interacting with Session Chat
 
 The Session Chat is your primary interface with the AI agent.

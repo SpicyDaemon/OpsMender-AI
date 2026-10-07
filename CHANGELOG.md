@@ -36,9 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Memory feedback: the thumbs on the Memories page and in a session's
-  Memories used panel, and `POST /memories/{id}/feedback`. Recall ranking and
-  eviction no longer weigh old feedback; pinned memories are still never
-  evicted.
+  Memories used panel, `POST /memories/{id}/feedback`, and the
+  `helpful_count` and `unhelpful_count` fields of memory responses. Recall
+  ranking and eviction no longer weigh old feedback; pinned memories are
+  still never evicted.
 
 ### Fixed
 

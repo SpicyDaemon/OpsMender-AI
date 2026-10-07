@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Updated the locked langgraph to 1.2.14, which brings langgraph-sdk 0.4.6
+  with the upstream fix for an authorization bypass in its resource handler
+  registration (CVE-2026-104873), along with langchain-core 1.6.7. OpsMender
+  uses only langgraph's graph runtime, not the SDK's handlers.
 - Operators, including an owner from another team, add responders only from
   the team handling the incident (anyone when it has no team); admins still
   add anyone. A refusal names the person and adds nobody, and the Add

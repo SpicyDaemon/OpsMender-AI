@@ -29,6 +29,7 @@ from backend.api.deps import get_current_session_factory
 from backend.api.schemas import WSMessage
 from backend.auth.api_tokens import API_TOKEN_PREFIX
 from backend.db.models import User
+from backend.db.repos import SessionRepo
 
 router = APIRouter(tags=["websocket"])
 
@@ -101,11 +102,51 @@ async def publish_user(user_id: uuid.UUID, message: WSMessage) -> None:
 # ---------------------------------------------------------------------------
 
 
+# An open stream rechecks its account at least this often, and before it
+# sends anything after that long, so it closes soon after the account is
+# deactivated or its password changes (R-27).
+RECHECK_SECONDS = 15.0
+# Close code for a stream whose account no longer signs in.
+ACCOUNT_ENDED = 4401
+
+
 async def _session_user(token: str) -> User | None:
     """The active user a stream's token speaks for. Checked in a short
     database session so a long-lived stream doesn't hold a connection."""
     async with get_current_session_factory()() as db:
         return await user_for_session_token(db, token)
+
+
+async def _in_workspace(user: User, session_id: uuid.UUID) -> bool:
+    """Whether the AI session belongs to the caller's workspace."""
+    if user.primary_org_id is None:
+        return False
+    async with get_current_session_factory()() as db:
+        session = await SessionRepo.get_by_id(db, user.primary_org_id, session_id)
+    return session is not None
+
+
+async def _relay(
+    websocket: WebSocket, queue: asyncio.Queue, token: str, *, stop_on=None
+):
+    """Send the queue's events (and keep-alive pings) until the client
+    leaves, ``stop_on`` sees an ending event, or the account stops signing
+    in: deactivated, deleted or its password changed."""
+    loop = asyncio.get_running_loop()
+    checked = loop.time()
+    while True:
+        try:
+            msg = await asyncio.wait_for(queue.get(), timeout=RECHECK_SECONDS)
+        except asyncio.TimeoutError:
+            msg = {"type": "ping", "data": {}}
+        if loop.time() - checked >= RECHECK_SECONDS:
+            if await _session_user(token) is None:
+                await websocket.close(code=ACCOUNT_ENDED)
+                return
+            checked = loop.time()
+        await websocket.send_json(msg)
+        if stop_on is not None and stop_on(msg):
+            return
 
 
 @router.websocket("/sessions/{session_id}/stream")
@@ -118,26 +159,26 @@ async def session_stream(
     if token.startswith(API_TOKEN_PREFIX):
         await websocket.close(code=4401)
         return
-    if await _session_user(token) is None:
+    user = await _session_user(token)
+    if user is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    # Only sessions in the caller's workspace; viewers may follow them (O-07).
+    if not await _in_workspace(user, session_id):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     await websocket.accept()
 
-    # Subscribe to session events
+    # Subscribe to session events; close cleanly when the session ends.
     queue = get_channel(session_id)
     try:
-        while True:
-            # Wait for the next event
-            try:
-                msg = await asyncio.wait_for(queue.get(), timeout=30.0)
-                await websocket.send_json(msg)
-                # If session ended, close cleanly
-                if msg.get("type") == "session_end":
-                    break
-            except asyncio.TimeoutError:
-                # Send a ping to keep the connection alive
-                await websocket.send_json({"type": "ping", "data": {}})
+        await _relay(
+            websocket,
+            queue,
+            token,
+            stop_on=lambda msg: msg.get("type") == "session_end",
+        )
     except WebSocketDisconnect:
         pass
     finally:
@@ -168,12 +209,7 @@ async def notifications_stream(
 
     queue = get_user_channel(user_id)
     try:
-        while True:
-            try:
-                msg = await asyncio.wait_for(queue.get(), timeout=30.0)
-                await websocket.send_json(msg)
-            except asyncio.TimeoutError:
-                await websocket.send_json({"type": "ping", "data": {}})
+        await _relay(websocket, queue, token)
     except WebSocketDisconnect:
         pass
     finally:

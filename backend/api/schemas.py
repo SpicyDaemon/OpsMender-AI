@@ -514,6 +514,9 @@ class IncidentPostmortemResponse(BaseModel):
     postmortem_md: Optional[str]
     postmortem_updated_at: Optional[datetime]
     template: str = DEFAULT_POSTMORTEM_TEMPLATE
+    # Admins and the handling team's operators write the postmortem, the same
+    # rule as resolving; everyone else reads it.
+    can_edit: bool = False
 
 
 class IncidentPostmortemUpdate(BaseModel):

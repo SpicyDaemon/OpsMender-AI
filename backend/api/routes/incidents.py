@@ -1096,6 +1096,7 @@ async def get_incident_postmortem(
         postmortem_md=incident.postmortem_md,
         postmortem_updated_at=_aware(incident.postmortem_updated_at),
         template=DEFAULT_POSTMORTEM_TEMPLATE,
+        can_edit=await _reassign.can_resolve(db, org_id, incident, user),
     )
 
 
@@ -1141,14 +1142,23 @@ async def put_incident_postmortem(
 ):
     """Sprint 61 Step 4 - write the postmortem markdown.
 
-    Passing an empty or whitespace-only string clears the postmortem.
-    Operator role required; viewers can read but not edit.
+    Passing an empty or whitespace-only string clears the postmortem. Admins
+    and operators on the team handling the incident write it (the Resolve
+    rule); everyone else reads it.
     """
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
+        )
+    if not await _reassign.can_resolve(db, org_id, incident, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Only an admin or a member of this incident's team can write its "
+                "postmortem. Ask one of them."
+            ),
         )
     await IncidentRepo.set_postmortem(db, org_id, incident_id, body.postmortem_md)
     await db.commit()
@@ -1159,6 +1169,7 @@ async def put_incident_postmortem(
         postmortem_md=refreshed.postmortem_md,
         postmortem_updated_at=_aware(refreshed.postmortem_updated_at),
         template=DEFAULT_POSTMORTEM_TEMPLATE,
+        can_edit=True,
     )
 
 

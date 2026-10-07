@@ -15,6 +15,7 @@ from backend.db.repos import IncidentRepo, ServiceRepo, TeamRepo
 from tests.test_ownership_lifecycle import (
     TEST_ORG_ID,
     _headers,
+    _user,
     app as _app_fixture,
     client as _client_fixture,
     world as _world_fixture,
@@ -103,3 +104,61 @@ async def test_an_operator_cannot_save_global_candidates(world, services):
     assert refused.status_code == 403, refused.text
     assert refused.json()["detail"] == "Global memories require an Admin."
     assert await _memories(world) == 0
+
+
+WRITE_REFUSED = (
+    "Only an admin or a member of this incident's team can write its postmortem. "
+    "Ask one of them."
+)
+
+
+REWRITTEN = "## Summary\nRewritten.\n"
+
+
+async def _write(w, incident_id, headers):
+    return await w.client.put(
+        f"/incidents/{incident_id}/postmortem",
+        json={"postmortem_md": REWRITTEN},
+        headers=headers,
+    )
+
+
+async def _read(w, incident_id, headers):
+    resp = await w.client.get(f"/incidents/{incident_id}/postmortem", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def test_only_admins_and_the_handling_team_write_the_postmortem(world, services):
+    checkout, warehouse = services
+    operator = await _headers(world.client, "lc-l3")
+    theirs = await _incident(world, warehouse)
+    before = await _read(world, theirs, operator)
+    refused = await _write(world, theirs, operator)
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["detail"] == WRITE_REFUSED
+    seen = await _read(world, theirs, operator)
+    assert (
+        seen["postmortem_md"] == before["postmortem_md"] and seen["can_edit"] is False
+    )
+    # An admin writes any incident's postmortem.
+    assert (await _write(world, theirs, world.admin)).status_code == 200
+    assert (await _read(world, theirs, world.admin))["can_edit"] is True
+    # The handling team's operator writes their own incident's postmortem.
+    own = await _incident(world, checkout)
+    assert (await _read(world, own, operator))["can_edit"] is True
+    written = await _write(world, own, operator)
+    assert written.status_code == 200, written.text
+    assert written.json()["can_edit"] is True
+    # With no team on the incident, any operator writes, as with resolving.
+    unowned = await _incident(world, None)
+    assert (await _write(world, unowned, operator)).status_code == 200
+
+
+async def test_a_viewer_reads_the_postmortem_without_editing(world, services):
+    checkout, _warehouse = services
+    await _user(world.app, "pm-viewer", role="viewer")
+    viewer = await _headers(world.client, "pm-viewer")
+    incident_id = await _incident(world, checkout)
+    assert (await _read(world, incident_id, viewer))["can_edit"] is False
+    assert (await _write(world, incident_id, viewer)).status_code == 403

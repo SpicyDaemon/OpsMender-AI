@@ -51,19 +51,14 @@ from typing import Any, Callable
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx
-from jose import JWTError, jwt
 
 # Snapshot of the MCP authorization spec consulted in Session 093.
 # Bump this when the spec advances to a numbered version (likely
 # 2025-11 or similar) and re-validate.
 SPEC_VERSION = "draft/2026-05-19"
 
-# State JWT carries the per-request record described in spec §5.1:
-# server_id (the OpsMender mcp_servers row we're authorizing), the
-# authz server issuer recorded at authorize time (for RFC 9207), the
-# code_verifier (for the eventual token exchange), and the original
-# resource indicator (for RFC 8707 consistency).
-STATE_AUDIENCE = "opsmender-mcp-oauth"
+# How long an authorization request waits for its callback; the state is a
+# random reference to the request, kept on the server (spec section 5.1).
 STATE_TTL_SECONDS = 600  # 10 min - covers slow operator-side consent flows
 
 # PKCE code verifier length: spec says 43-128 URL-safe chars (RFC 7636).
@@ -204,24 +199,15 @@ def generate_pkce_pair() -> PKCEPair:
 
 
 # ---------------------------------------------------------------------------
-# State JWT
+# Authorization state
 # ---------------------------------------------------------------------------
 
 
-def _jwt_secret() -> str:
-    """Read the project JWT secret without forcing a circular import."""
-
-    # Late-import so this module stays importable in scripts that haven't
-    # bootstrapped the full app config (e.g. one-shot CLIs).
-    from backend.config_loader import AppConfig
-
-    return AppConfig.load().auth.jwt_secret
-
-
-def _jwt_algorithm() -> str:
-    from backend.config_loader import AppConfig
-
-    return AppConfig.load().auth.jwt_algorithm
+# Authorization requests in flight, by the random reference their state
+# carries. The PKCE verifier and any client secret never leave the server
+# (R-21). One process serves an instance (O-16), so memory is enough: a
+# restart during consent only means starting the authorization again.
+_PENDING: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def sign_state(
@@ -234,50 +220,43 @@ def sign_state(
     client_id: str | None = None,
     client_secret: str | None = None,
 ) -> str:
-    """Sign a short-lived state JWT carrying the per-request record.
+    """Remember an authorization request and return its state: a random
+    reference and nothing else.
 
-    Stored fields:
-      - ``server_id`` - the OpsMender mcp_servers row.
-      - ``issuer`` - recorded authz-server issuer for RFC 9207 validation.
-      - ``cv`` - the PKCE code_verifier (the redirect handler needs it
-        to complete the code exchange).
-      - ``res`` - the RFC 8707 resource indicator (must match on token req).
-      - ``org`` - for the tenant boundary check on the callback.
-      - ``cid`` / ``csec`` - short-lived client registration needed for
-        the callback's token exchange when DCR is used.
+    The callback gets back the record: ``sub`` (the mcp_servers row),
+    ``asiss`` (the issuer, for RFC 9207), ``cv`` (the PKCE code_verifier),
+    ``res`` (the RFC 8707 resource), ``org`` (the workspace) and, for a
+    registered client, ``cid`` / ``csec``.
     """
 
-    now = int(time.time())
-    payload = {
-        "iss": "opsmender",
-        "aud": STATE_AUDIENCE,
+    now = time.time()
+    for reference, (expires, _) in list(_PENDING.items()):
+        if expires <= now:
+            _PENDING.pop(reference, None)
+    record: dict[str, Any] = {
         "sub": server_id,
         "asiss": issuer,
         "cv": code_verifier,
         "res": resource,
         "org": org_id,
-        "iat": now,
-        "exp": now + STATE_TTL_SECONDS,
     }
     if client_id:
-        payload["cid"] = client_id
+        record["cid"] = client_id
     if client_secret:
-        payload["csec"] = client_secret
-    return jwt.encode(payload, _jwt_secret(), algorithm=_jwt_algorithm())
+        record["csec"] = client_secret
+    reference = secrets.token_urlsafe(32)
+    _PENDING[reference] = (now + STATE_TTL_SECONDS, record)
+    return reference
 
 
 def verify_state(token: str) -> dict[str, Any]:
-    """Decode + validate a state JWT. Raises ``ValueError`` on failure."""
+    """The request a state refers to, once. An unknown, used or expired
+    state raises ``ValueError``."""
 
-    try:
-        return jwt.decode(
-            token,
-            _jwt_secret(),
-            algorithms=[_jwt_algorithm()],
-            audience=STATE_AUDIENCE,
-        )
-    except JWTError as exc:
-        raise ValueError(f"Invalid MCP OAuth state: {exc}") from exc
+    entry = _PENDING.pop(token, None)
+    if entry is None or entry[0] <= time.time():
+        raise ValueError("Invalid MCP OAuth state: unknown, used or expired")
+    return dict(entry[1])
 
 
 # ---------------------------------------------------------------------------

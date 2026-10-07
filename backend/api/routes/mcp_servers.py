@@ -258,7 +258,8 @@ async def mcp_oauth_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public callback. The signed state JWT is the authentication boundary."""
+    """Public callback. The state, a single-use random reference to the
+    request kept on the server, is the authentication boundary."""
 
     error = request.query_params.get("error")
     code = request.query_params.get("code")

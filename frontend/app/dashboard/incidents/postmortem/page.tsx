@@ -355,10 +355,12 @@ function IncidentPostmortemContent() {
       if (result.created === 0 && result.skipped === 0) {
         toast.info("No memory candidates found in the postmortem.");
       } else {
-        const parts = [`${result.created} memory candidate(s) sent for review`];
+        const parts = [
+          `Saved ${result.created} ${result.created === 1 ? "memory" : "memories"}`,
+        ];
         if (result.skipped > 0) parts.push(`${result.skipped} already existed`);
         toast.success(parts.join(" · "), {
-          label: "Review",
+          label: "View",
           href: "/dashboard/memories",
         });
       }
@@ -578,7 +580,7 @@ function IncidentPostmortemContent() {
                 variant="secondary"
                 onClick={handleSaveCandidates}
                 loading={savingCandidates}
-                title="Save the Memory candidates bullets as pending memories for review. Approved memories are recalled by the AI in future incidents."
+                title="Save each Memory candidates bullet as a memory for this incident's service, which the AI recalls in later incidents. Operators save only for their teams' services."
               >
                 <Brain size={14} /> Save {candidateCount} to memory
               </Button>
@@ -705,7 +707,9 @@ function IncidentPostmortemContent() {
               Add one bullet per durable lesson under{" "}
               <span className="font-medium">## Memory candidates</span>, then click{" "}
               <span className="font-medium">Save to memory</span>. Each becomes a
-              pending memory an admin/operator approves before the AI recalls it.
+              memory for the incident&apos;s service that the AI can recall at once.
+              Operators save only for their teams&apos; services; an incident with
+              no service needs an admin.
             </p>
           </div>
         </aside>

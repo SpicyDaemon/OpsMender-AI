@@ -2,7 +2,7 @@
  * Postmortem page - v1.2 Phase 2 polish.
  *
  * Section-completeness checklist + "Save candidates to memory" handoff that
- * turns the Memory-candidates bullets into pending memories for review.
+ * turns the Memory-candidates bullets into memories.
  */
 
 import React from "react";
@@ -16,8 +16,14 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({ user: { id: "u", username: "admin", role: "admin" } }),
 }));
+const toastMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  useToast: () => toastMocks,
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -151,6 +157,26 @@ describe("Postmortem page Phase 2 polish", () => {
         "inc-1",
       ),
     );
+    await waitFor(() =>
+      expect(toastMocks.success).toHaveBeenCalledWith("Saved 2 memories", {
+        label: "View",
+        href: "/dashboard/memories",
+      }),
+    );
+  });
+
+  it("shows why saving candidates was refused", async () => {
+    apiMocks.extractPostmortemMemoryCandidates.mockRejectedValue(
+      new Error("Operators can assign memories only to services owned by their teams."),
+    );
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Save 2 to memory/i }));
+    expect(
+      await screen.findByText(
+        "Operators can assign memories only to services owned by their teams.",
+      ),
+    ).toBeTruthy();
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 
   it("shows 0/7 for an unedited default template", async () => {

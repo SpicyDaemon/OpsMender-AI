@@ -67,7 +67,7 @@ The default template, returned by `GET /incidents/{id}/postmortem`, ships these 
 
 The **Memory candidates** section is the bridge between a postmortem and OpsMender's AI incident memory (see [memory-guide.md](memory-guide.md)). Bullets in that section are intended as *durable lessons* you want the agent to recall the next time a similar incident fires.
 
-**Save candidates to memory (v1.2).** Once the postmortem is saved, click **Save N to memory** in the editor toolbar. OpsMender parses each bullet under `## Memory candidates` (skipping template scaffolding) and creates one memory per bullet, tied to the incident's service. These land as **pending** in `/dashboard/memories` and are recalled by the agent only after an admin/operator **approves** them (the same review gate AI-written memories pass, see [memory-guide.md](memory-guide.md)). Re-running is safe: candidates that already exist as memories for the service are skipped, not duplicated. Backend: `POST /incidents/{id}/postmortem/memory-candidates`.
+**Save candidates to memory (v1.2).** Once the postmortem is saved, click **Save N to memory** in the editor toolbar. OpsMender parses each bullet under `## Memory candidates` (skipping template scaffolding) and creates one memory per bullet, tied to the incident's service (Global when the incident has none). They show in `/dashboard/memories` and are recallable at once; there is no review queue (see [memory-guide.md](memory-guide.md)). The memory rules apply: operators save candidates only for incidents on their teams' services, and Global memories need an admin. Re-running is safe: candidates that already exist as memories for the service are skipped, not duplicated. Backend: `POST /incidents/{id}/postmortem/memory-candidates`.
 
 The editor's right rail also shows a **section-completeness checklist** so you can see at a glance which of the recommended sections still need content before you publish.
 
@@ -93,9 +93,9 @@ If you'd rather author postmortems outside the UI (a CI script that generates a 
 
 - `GET /incidents/{id}/postmortem`: returns the stored markdown, last-edit timestamp, and the canonical section template.
 - `PUT /incidents/{id}/postmortem`: body `{"postmortem_md": "..."}`. Pass an empty or whitespace-only string to clear.
-- `POST /incidents/{id}/postmortem/memory-candidates`: turns the saved postmortem's Memory-candidates bullets into pending memories (deduped). Returns `{created, skipped, items}`.
+- `POST /incidents/{id}/postmortem/memory-candidates`: turns the saved postmortem's Memory-candidates bullets into memories (deduped). Returns `{created, skipped, items}`.
 
-All routes require the same authentication as the rest of the API. PUT and the memory-candidates POST require the `admin` or `operator` role.
+All routes require the same authentication as the rest of the API. PUT and the memory-candidates POST require the `admin` or `operator` role; an operator's POST also needs the incident's service to belong to one of their teams (403 otherwise, and for an incident with no service).
 
 ---
 

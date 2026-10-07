@@ -2,7 +2,7 @@
  * Postmortem page - v1.2 Phase 2 polish.
  *
  * Section-completeness checklist + "Save candidates to memory" handoff that
- * turns the Memory-candidates bullets into pending memories for review.
+ * turns the Memory-candidates bullets into memories.
  */
 
 import React from "react";
@@ -16,8 +16,14 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/context/auth", () => ({
   useAuth: () => ({ user: { id: "u", username: "admin", role: "admin" } }),
 }));
+const toastMocks = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }),
+  useToast: () => toastMocks,
 }));
 
 const apiMocks = vi.hoisted(() => ({
@@ -57,6 +63,7 @@ beforeEach(() => {
     postmortem_md: POSTMORTEM_MD,
     postmortem_updated_at: "2026-06-14T02:00:00Z",
     template: "## Summary\n",
+    can_edit: true,
   });
   apiMocks.extractPostmortemMemoryCandidates.mockResolvedValue({
     created: 2,
@@ -96,6 +103,7 @@ describe("Postmortem page Phase 2 polish", () => {
       ].join("\n"),
       postmortem_updated_at: "2026-06-14T02:00:00Z",
       template: "## Summary\n",
+      can_edit: true,
     });
     await renderPage();
     await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());
@@ -116,6 +124,7 @@ describe("Postmortem page Phase 2 polish", () => {
       ].join("\n"),
       postmortem_updated_at: "2026-06-14T02:00:00Z",
       template: "## Summary\n",
+      can_edit: true,
     });
     await renderPage();
     // Only the real bullet counts; the commented-out one is dropped.
@@ -151,6 +160,41 @@ describe("Postmortem page Phase 2 polish", () => {
         "inc-1",
       ),
     );
+    await waitFor(() =>
+      expect(toastMocks.success).toHaveBeenCalledWith("Saved 2 memories", {
+        label: "View",
+        href: "/dashboard/memories",
+      }),
+    );
+  });
+
+  it("shows the postmortem read-only to someone off the handling team", async () => {
+    apiMocks.getIncidentPostmortem.mockResolvedValue({
+      incident_id: "inc-1",
+      postmortem_md: POSTMORTEM_MD,
+      postmortem_updated_at: "2026-06-14T02:00:00Z",
+      template: "## Summary\n",
+      can_edit: false,
+    });
+    await renderPage();
+    await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /^Save$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /to memory/i })).toBeNull();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  it("shows why saving candidates was refused", async () => {
+    apiMocks.extractPostmortemMemoryCandidates.mockRejectedValue(
+      new Error("Operators can assign memories only to services owned by their teams."),
+    );
+    await renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Save 2 to memory/i }));
+    expect(
+      await screen.findByText(
+        "Operators can assign memories only to services owned by their teams.",
+      ),
+    ).toBeTruthy();
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 
   it("shows 0/7 for an unedited default template", async () => {
@@ -195,6 +239,7 @@ describe("Postmortem page Phase 2 polish", () => {
       postmortem_md: "## Summary\nNo candidates here.",
       postmortem_updated_at: "2026-06-14T02:00:00Z",
       template: "## Summary\n",
+      can_edit: true,
     });
     await renderPage();
     await waitFor(() => expect(screen.getByText(/Recommended sections/)).toBeTruthy());

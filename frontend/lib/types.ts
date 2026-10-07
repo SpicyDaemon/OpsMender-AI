@@ -221,6 +221,8 @@ export interface IncidentPostmortemResponse {
   postmortem_md: string | null;
   postmortem_updated_at: string | null;
   template: string;
+  /** Admins and the handling team's operators write it; others read. */
+  can_edit?: boolean;
 }
 
 export interface IncidentPostmortemUpdate {

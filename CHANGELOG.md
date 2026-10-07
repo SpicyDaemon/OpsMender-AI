@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Saving a postmortem's memory candidates follows the memory rules: operators
+  save them only for incidents on their teams' services, and an incident with
+  no service (Global memories) needs an admin. The postmortem editor and guide
+  no longer say saved candidates wait for review; like every memory, they are
+  recallable at once. Writing the postmortem follows the Resolve rule: admins
+  and operators on the team handling the incident write it, everyone else
+  reads it.
 - An operator's Maintenance Window on services their teams own, or on their
   own teams, now takes effect at once instead of waiting for an admin. Other
   operator windows still wait for approval, and a window naming a service,

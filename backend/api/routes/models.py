@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
+from backend.auth.redaction import url_without_secrets
+from backend.auth.roles import request_role
 from backend.api.schemas import (
     ModelBootstrapStatusResponse,
     ModelConfigListResponse,
@@ -42,6 +44,17 @@ def _save_response(config, warnings) -> ModelConfigSaveResponse:
             for warning in warnings
         ],
     )
+
+
+def _model_config_for(user: User, config) -> ModelConfigResponse:
+    """A saved model configuration as ``user`` may see it: Viewers get the
+    base URL without user info, query string or fragment (O-07)."""
+    response = ModelConfigResponse.model_validate(config)
+    if request_role(user) == "viewer":
+        response = response.model_copy(
+            update={"base_url": url_without_secrets(response.base_url)}
+        )
+    return response
 
 
 @router.get(
@@ -95,7 +108,9 @@ async def list_model_configs(
     user: User = Depends(get_current_user),
 ):
     items = await ModelConfigRepo.list_all(db, org_id)
-    return ModelConfigListResponse(items=list(items), total=len(items))
+    return ModelConfigListResponse(
+        items=[_model_config_for(user, item) for item in items], total=len(items)
+    )
 
 
 @router.get(
@@ -115,9 +130,7 @@ async def get_model_bootstrap_status(
         has_configs=bool(items),
         has_default=default_cfg is not None,
         default_config=(
-            None
-            if default_cfg is None
-            else ModelConfigResponse.model_validate(default_cfg)
+            None if default_cfg is None else _model_config_for(user, default_cfg)
         ),
     )
 

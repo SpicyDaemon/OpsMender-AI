@@ -22,6 +22,11 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => apiMocks);
 
+const role = { current: "admin" };
+vi.mock("@/context/auth", () => ({
+  useAuth: () => ({ user: { id: "u", username: "u", role: role.current } }),
+}));
+
 import ActivityPage, {
   groupAuditEntriesBySession,
 } from "@/app/dashboard/activity/page";
@@ -48,8 +53,35 @@ function auditEntry(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  role.current = "admin";
   apiMocks.downloadAuditCsv.mockResolvedValue(undefined);
   apiMocks.listAudit.mockResolvedValue({ items: [], total: 0 });
+});
+
+describe("Activity export", () => {
+  it("offers Download CSV to admins and operators but not viewers", async () => {
+    apiMocks.listAudit.mockResolvedValue({
+      items: [auditEntry({ id: "e1", timestamp: "2026-10-07T10:00:00Z" })],
+      total: 1,
+    });
+    for (const [who, shown] of [
+      ["admin", true],
+      ["operator", true],
+      ["viewer", false],
+    ] as const) {
+      role.current = who;
+      const { unmount } = render(<ActivityPage />);
+      await waitFor(() => expect(apiMocks.listAudit).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: /refresh/i })).not.toBeNull(),
+      );
+      expect(
+        screen.queryByRole("button", { name: /download csv/i }) !== null,
+      ).toBe(shown);
+      unmount();
+      apiMocks.listAudit.mockClear();
+    }
+  });
 });
 
 describe("Activity session grouping", () => {

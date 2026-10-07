@@ -15,6 +15,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { useAuth } from "@/context/auth";
 import { downloadAuditCsv, listAudit } from "@/lib/api";
 import type { AuditEntryResponse, AuditListResponse } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
@@ -265,6 +266,9 @@ export default function ActivityPage() {
   const [groupStatusFilters, setGroupStatusFilters] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const toast = useToast();
+  const { user } = useAuth();
+  // Viewers read Activity but don't export it (O-07).
+  const canExport = user?.role === "admin" || user?.role === "operator";
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -460,15 +464,20 @@ export default function ActivityPage() {
                   Group by session
                 </span>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleExport}
-                disabled={exporting || entries.length === 0}
-              >
-                <Download size={14} className={exporting ? "animate-pulse" : ""} />
-                {exporting ? "Exporting…" : "Download CSV"}
-              </Button>
+              {canExport && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleExport}
+                  disabled={exporting || entries.length === 0}
+                >
+                  <Download
+                    size={14}
+                    className={exporting ? "animate-pulse" : ""}
+                  />
+                  {exporting ? "Exporting…" : "Download CSV"}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

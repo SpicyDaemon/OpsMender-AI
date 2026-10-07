@@ -218,9 +218,26 @@ async def list_memories(
     visible = await _visible_memory_ids(db, org_id, user, list(items))
     items = [item for item in items if item.id in visible]
     manageable = await _manageable_memory_ids(db, org_id, user, items)
+    role = request_role(user)
+    writable: list[uuid.UUID] | None = None
+    if role != "admin":
+        team_ids = (
+            await TeamRepo.team_ids_for_user(db, org_id, user.id)
+            if role == "operator"
+            else set()
+        )
+        writable = sorted(
+            (
+                s.id
+                for s in await ServiceRepo.list_all(db, org_id)
+                if s.team_id in team_ids
+            ),
+            key=str,
+        )
     return IncidentMemoryListResponse(
         items=[_to_response(item, can_manage=item.id in manageable) for item in items],
         total=len(items),
+        writable_service_ids=writable,
     )
 
 

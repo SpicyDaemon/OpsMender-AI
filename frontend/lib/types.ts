@@ -2313,6 +2313,8 @@ export interface IncidentMemoryResponse {
 export interface IncidentMemoryListResponse {
   items: IncidentMemoryResponse[];
   total: number;
+  /** Services this person may file memories under; null means any and Global. */
+  writable_service_ids?: string[] | null;
 }
 
 export interface OrgEmailSettingsResponse {

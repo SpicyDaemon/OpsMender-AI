@@ -18,12 +18,14 @@ import {
   deleteMemory,
   listMemories,
   listServices,
+  listTeams,
   recordMemoryFeedback,
   updateMemory,
 } from "@/lib/api";
 import type {
   IncidentMemoryResponse,
   ServiceResponse,
+  TeamResponse,
 } from "@/lib/types";
 import { useAuth } from "@/context/auth";
 import { Button } from "@/components/ui/Button";
@@ -40,6 +42,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/formatDate";
 
 const GLOBAL_SERVICE = "__global";
+const GLOBAL_TEAM = "__global_team";
 
 function fmtDate(iso: string | null) {
   if (!iso) return "Never";
@@ -84,6 +87,10 @@ export default function MemoriesPage() {
 
   const [memories, setMemories] = useState<IncidentMemoryResponse[]>([]);
   const [services, setServices] = useState<ServiceResponse[]>([]);
+  const [teams, setTeams] = useState<TeamResponse[]>([]);
+  // null: any service and Global (admins); otherwise the services this person
+  // may file memories under (operators: their teams' services).
+  const [writableServiceIds, setWritableServiceIds] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -96,16 +103,19 @@ export default function MemoriesPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [memResp, svcResp] = await Promise.all([
+      const [memResp, svcResp, teamResp] = await Promise.all([
         listMemories(),
         listServices(),
+        listTeams().catch(() => ({ items: [] as TeamResponse[], total: 0 })),
       ]);
       setMemories(memResp.items);
+      setWritableServiceIds(memResp.writable_service_ids ?? null);
       setSelectedKeys((current) => {
         const valid = new Set(memResp.items.map((memory) => memory.id));
         return new Set([...current].filter((id) => valid.has(id)));
       });
       setServices(svcResp.items);
+      setTeams(teamResp.items);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -122,6 +132,49 @@ export default function MemoriesPage() {
     for (const s of services) map.set(s.id, s.name);
     return map;
   }, [services]);
+
+  // A memory's team is its service's team; global memories have none. The
+  // filter keys on team ids, since team names need not be unique.
+  const teamNames = useMemo(() => new Map(teams.map((team) => [team.id, team.name])), [teams]);
+  const teamIdByServiceId = useMemo(
+    () => new Map(services.map((s) => [s.id, s.team_id])),
+    [services],
+  );
+
+  const teamKeyOf = useCallback(
+    (memory: IncidentMemoryResponse) =>
+      memory.service_id ? teamIdByServiceId.get(memory.service_id) ?? "" : GLOBAL_TEAM,
+    [teamIdByServiceId],
+  );
+
+  const teamOf = useCallback(
+    (memory: IncidentMemoryResponse) => {
+      const key = teamKeyOf(memory);
+      return key === GLOBAL_TEAM ? "Global" : teamNames.get(key) ?? "Unknown team";
+    },
+    [teamKeyOf, teamNames],
+  );
+
+  const teamFilterOptions = useMemo(
+    () => [
+      { value: GLOBAL_TEAM, label: "Global" },
+      ...Array.from(new Set(teamIdByServiceId.values()))
+        .map((id) => ({ value: id, label: teamNames.get(id) ?? "Unknown team" }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ],
+    [teamIdByServiceId, teamNames],
+  );
+
+  // Operators file memories only under their teams' services, never Global.
+  const editorServices = useMemo(
+    () =>
+      writableServiceIds === null
+        ? services
+        : services.filter((s) => writableServiceIds.includes(s.id)),
+    [services, writableServiceIds],
+  );
+  const canCreate = canEdit && (writableServiceIds === null || writableServiceIds.length > 0);
+  const createTitle = canCreate ? undefined : "Join a team to add memories for its services.";
 
   const serviceFilterOptions = useMemo(
     () => [
@@ -189,6 +242,21 @@ export default function MemoriesPage() {
         filterChips: {
           options: serviceFilterOptions,
           valueOf: (memory) => memory.service_id ?? GLOBAL_SERVICE,
+        },
+      },
+      {
+        id: "team",
+        label: "Team",
+        accessor: (memory) => teamOf(memory),
+        cell: (memory) => (
+          <span className="text-sm text-fg-secondary" data-testid="memory-team">
+            {teamOf(memory)}
+          </span>
+        ),
+        sortable: true,
+        filterChips: {
+          options: teamFilterOptions,
+          valueOf: (memory) => teamKeyOf(memory),
         },
       },
       {
@@ -266,6 +334,9 @@ export default function MemoriesPage() {
       handleFeedback,
       serviceFilterOptions,
       serviceNameById,
+      teamFilterOptions,
+      teamKeyOf,
+      teamOf,
     ],
   );
 
@@ -332,7 +403,11 @@ export default function MemoriesPage() {
           learnMoreLabel="Memory Guide"
           action={
             canEdit ? (
-              <Button onClick={() => setCreateOpen(true)}>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                disabled={!canCreate}
+                title={createTitle}
+              >
                 <Plus size={14} /> New memory
               </Button>
             ) : undefined
@@ -355,6 +430,8 @@ export default function MemoriesPage() {
                 <Button
                   className="h-11"
                   onClick={() => setCreateOpen(true)}
+                  disabled={!canCreate}
+                  title={createTitle}
                 >
                   <Plus size={14} /> New memory
                 </Button>
@@ -464,7 +541,8 @@ export default function MemoriesPage() {
       {createOpen && (
         <MemoryEditor
           mode="create"
-          services={services}
+          services={editorServices}
+          allowGlobal={writableServiceIds === null}
           onClose={() => setCreateOpen(false)}
           onSubmit={async (payload) => {
             try {
@@ -482,7 +560,8 @@ export default function MemoriesPage() {
         <MemoryEditor
           mode="edit"
           memory={editing}
-          services={services}
+          services={editorServices}
+          allowGlobal={writableServiceIds === null}
           onClose={() => setEditing(null)}
           onSubmit={async (payload) => {
             try {
@@ -545,12 +624,15 @@ function MemoryEditor({
   mode,
   memory,
   services,
+  allowGlobal = true,
   onClose,
   onSubmit,
 }: {
   mode: "create" | "edit";
   memory?: IncidentMemoryResponse;
   services: ServiceResponse[];
+  /** Admins may file Global memories; operators only under their teams' services. */
+  allowGlobal?: boolean;
   onClose: () => void;
   onSubmit: (payload: {
     title: string;
@@ -562,7 +644,9 @@ function MemoryEditor({
   const [title, setTitle] = useState(memory?.title ?? "");
   const [summary, setSummary] = useState(memory?.summary_md ?? "");
   const [tagsText, setTagsText] = useState((memory?.tags ?? []).join(", "));
-  const [serviceId, setServiceId] = useState(memory?.service_id ?? "");
+  const [serviceId, setServiceId] = useState(
+    memory?.service_id ?? (allowGlobal ? "" : services[0]?.id ?? ""),
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -638,7 +722,7 @@ function MemoryEditor({
             value={serviceId}
             onChange={(e) => setServiceId(e.target.value)}
           >
-            <option value="">Global (applies to any service)</option>
+            {allowGlobal && <option value="">Global (applies to any service)</option>}
             {services.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

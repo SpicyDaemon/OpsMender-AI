@@ -52,7 +52,6 @@ describe("Sidebar nav model", () => {
       "/dashboard/skills",
       "/dashboard/models",
       "/dashboard/mcp-servers",
-      "/dashboard/memories",
       "/dashboard/integrations",
     ]) {
       expect(hrefs).not.toContain(adminOnly);
@@ -61,6 +60,8 @@ describe("Sidebar nav model", () => {
     expect(hrefs).toContain("/dashboard/paging");
     expect(hrefs).not.toContain("/dashboard/paging/services");
     expect(hrefs).not.toContain("/dashboard/paging/teams");
+    // Memories: their teams' and global ones (M1-19).
+    expect(hrefs).toContain("/dashboard/memories");
     // Keeps incident-response surfaces.
     expect(hrefs).toContain("/dashboard/incidents");
     expect(hrefs).toContain("/dashboard/approvals");
@@ -100,6 +101,10 @@ describe("requiredRolesForPath (route guard)", () => {
     expect(requiredRolesForPath("/dashboard/people/detail")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/models")).toEqual(["admin"]);
     expect(requiredRolesForPath("/dashboard/integrations")).toEqual(["admin"]);
+  });
+
+  it("admits operators to Memories", () => {
+    expect(requiredRolesForPath("/dashboard/memories")).toEqual(["admin", "operator"]);
   });
 
   it("paging setup is read-only for operators (admin+operator)", () => {

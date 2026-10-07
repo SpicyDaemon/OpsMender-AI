@@ -119,7 +119,8 @@ export function buildNavGroups(): NavGroup[] {
         { href: "/dashboard/models", label: "Models", icon: Cpu, roles: ["admin"] },
         { href: "/dashboard/mcp-servers", label: "MCP Servers", icon: Network, roles: ["admin"] },
         { href: "/dashboard/skills", label: "MCP Skills", icon: FileText, roles: ["admin"] },
-        { href: "/dashboard/memories", label: "Memories", icon: Brain, roles: ["admin"] },
+        // Operators see global memories and their teams' (the API scopes them).
+        { href: "/dashboard/memories", label: "Memories", icon: Brain, roles: ["admin", "operator"] },
         { href: "/dashboard/orchestration", label: "Orchestration", icon: Gauge, roles: ["admin", "operator"] },
       ],
     },

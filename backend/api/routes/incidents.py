@@ -1178,12 +1178,18 @@ async def create_postmortem_memory_candidates(
     Re-running is safe: a candidate whose text already matches an existing
     memory for the service is skipped. Requires a saved postmortem.
     """
+    from backend.api.routes.memories import _require_operator_service_access
+
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     if incident is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
+    # The memories go under the incident's service (Global when it has none),
+    # so the memory rules apply: operators file only under their teams'
+    # services, and Global memories need an admin.
+    await _require_operator_service_access(db, org_id, user, incident.service_id)
     if not (incident.postmortem_md or "").strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

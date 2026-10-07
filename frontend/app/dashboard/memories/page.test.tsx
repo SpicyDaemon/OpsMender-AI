@@ -199,6 +199,58 @@ describe("Memories selection and actions", () => {
     expect(teams).toEqual(["Payments", "Global"]);
   });
 
+  it("narrows the rows with the Team filter", async () => {
+    apiMocks.listMemories.mockResolvedValue({
+      items: [memory("m1", "Team lesson"), { ...memory("m3", "Shared lesson"), service_id: null }],
+      total: 2,
+    });
+    await renderPage();
+    await waitFor(() => expect(screen.getAllByText("Team lesson").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: /All Team/i }));
+    expect(screen.getByLabelText("Payments")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Global"));
+    await waitFor(() => expect(screen.queryAllByText("Team lesson")).toHaveLength(0));
+    expect(screen.getAllByText("Shared lesson").length).toBeGreaterThan(0);
+  });
+
+  it("lets an operator edit and delete only their teams' memories", async () => {
+    authState.role = "operator";
+    apiMocks.listServices.mockResolvedValue({
+      items: [service("svc1", "team1", "Checkout"), service("svc2", "team2", "Billing")],
+      total: 2,
+    });
+    apiMocks.listTeams.mockResolvedValue({
+      items: [
+        { id: "team1", name: "Payments", slug: "payments" },
+        { id: "team2", name: "Data", slug: "data" },
+      ],
+      total: 2,
+    });
+    apiMocks.listMemories.mockResolvedValue({
+      items: [
+        memory("m1", "Own lesson"),
+        { ...memory("m2", "Other team lesson", false), service_id: "svc2" },
+        { ...memory("m3", "Shared lesson", false), service_id: null },
+      ],
+      total: 3,
+      writable_service_ids: ["svc1"],
+    });
+    await renderPage();
+    await waitFor(() => expect(screen.getAllByText("Own lesson").length).toBeGreaterThan(0));
+    const table = screen.getByRole("table");
+    const rowOf = (title: string) => within(table).getByText(title).closest("tr") as HTMLElement;
+    expect(within(rowOf("Own lesson")).getByTitle("Edit")).toBeTruthy();
+    expect(within(rowOf("Own lesson")).getByTitle("Delete")).toBeTruthy();
+    for (const title of ["Other team lesson", "Shared lesson"]) {
+      expect(within(rowOf(title)).queryByTitle("Edit")).toBeNull();
+      expect(within(rowOf(title)).queryByTitle("Delete")).toBeNull();
+    }
+    fireEvent.click(within(rowOf("Shared lesson")).getByRole("checkbox", { name: "Select row" }));
+    fireEvent.click(screen.getByTestId("memory-actions-trigger"));
+    expect(screen.getByTestId("memory-action-edit").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTestId("memory-action-delete").hasAttribute("disabled")).toBe(true);
+  });
+
   it("offers an operator only their teams' services, never Global", async () => {
     authState.role = "operator";
     apiMocks.listServices.mockResolvedValue({

@@ -409,6 +409,12 @@ their teams, or every team it covers is one of theirs; any other operator
 window (global, Roster, another team's service, or a mix) waits for an admin
 to approve it. Every service, team or Roster a window names must exist.
 
+An operator's window lasts at most 24 hours; ask an admin for a longer one.
+When it becomes active (at once, at its start, or when an admin approves it),
+the admins and the members of the teams it covers get one Inbox notice. The
+operator who created it can edit it, end it early with **End now**, or delete
+it; other operators can't, and only an admin can change what it covers.
+
 When an incoming alert matches an active window, OpsMender drops it at intake.
 It does not create a visible incident and does not show a suppressed incident in
 the main incident list. A page that a window suppresses later is recorded on the

@@ -1500,6 +1500,8 @@ export interface VoiceSettingsTestResponse {
 }
 
 export interface MaintenanceWindowResponse {
+  /** When the covered teams and admins were told an operator's window started. */
+  start_announced_at?: string | null;
   id: string;
   name: string;
   reason: string | null;

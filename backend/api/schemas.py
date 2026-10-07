@@ -1792,6 +1792,8 @@ class MaintenanceWindowResponse(BaseModel):
     approved: bool = True
     approved_by: Optional[uuid.UUID] = None
     approved_at: Optional[datetime] = None
+    # When the covered teams and admins were told it started (operator windows).
+    start_announced_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

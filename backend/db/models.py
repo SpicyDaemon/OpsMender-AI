@@ -36,6 +36,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -1518,6 +1519,14 @@ class MaintenanceWindow(Base):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # An operator's window tells the covered teams and admins once, when it
+    # becomes active (O-05).
+    announce_on_start: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    start_announced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

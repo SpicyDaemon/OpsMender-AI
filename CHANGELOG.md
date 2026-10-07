@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Authorizing an HTTP MCP server no longer puts the PKCE verifier or the
+  client secret in the authorization link: its state is now a random,
+  single-use reference to the request, which stays on the server and
+  expires after 10 minutes. A restart during consent means starting the
+  authorization again.
 - When several globs in an MCP Skill match a tool, the strictest one now sets
   its policy whatever order they are written in; before, the first listed
   won, so a broad allow written first let a narrower blocked tool run. The

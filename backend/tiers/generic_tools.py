@@ -21,6 +21,8 @@ or ``scale_deployment``.
 
 from __future__ import annotations
 
+import re
+
 # Exact tool names (case-insensitive) that execute arbitrary commands.
 _GENERIC_EXACT: frozenset[str] = frozenset(
     {
@@ -85,6 +87,10 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "php",
         "groovy",
         "jshell",
+        "repl",
+        "python_repl",
+        "code_interpreter",
+        "interpreter",
         # network / transfer (can exfiltrate or fetch+run)
         "curl",
         "wget",
@@ -117,7 +123,17 @@ _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_query",
     "_run",
     "_script",
+    "_repl",
+    "_interpreter",
 )
+
+
+def _normalized(tool_name: str) -> str:
+    """``ExecuteCommand``, ``run-command`` and ``Run Command`` all become
+    ``execute_command`` or ``run_command``: camel case is split, then case
+    and separators are folded (R-12)."""
+    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", tool_name.strip())
+    return re.sub(r"[\s.\-/:]+", "_", name).strip("_").lower()
 
 
 def is_generic_execution_tool(tool_name: str) -> bool:
@@ -129,7 +145,7 @@ def is_generic_execution_tool(tool_name: str) -> bool:
     """
     if not tool_name:
         return False
-    name = tool_name.strip().lower()
+    name = _normalized(tool_name)
     if name in _GENERIC_EXACT:
         return True
     if any(name.startswith(p) for p in _GENERIC_PREFIXES):

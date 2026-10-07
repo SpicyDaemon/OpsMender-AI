@@ -187,15 +187,23 @@ class SkillDefinition:
         )
 
     def _match(self, tool_name: str) -> Optional[OperationClassification]:
-        """Return the first matching OperationClassification or None."""
+        """Return the entry that sets *tool_name*'s policy, or None.
+
+        An exact-name entry is authoritative for its tool. Otherwise, when
+        several globs match, the strictest one wins whatever order they are
+        written in (R-12): a broad allow listed first must not let a narrower,
+        stricter rule's tool through.
+        """
         for op in self.operations:
             if op.tool == tool_name:
                 return op
-        for op in self.operations:
-            if "*" in op.tool or "?" in op.tool:
-                if fnmatch.fnmatch(tool_name, op.tool):
-                    return op
-        return None
+        globs = [
+            op
+            for op in self.operations
+            if ("*" in op.tool or "?" in op.tool)
+            and fnmatch.fnmatch(tool_name, op.tool)
+        ]
+        return max(globs, key=_strictness) if globs else None
 
     def operation_for(self, tool_name: str) -> Optional[OperationClassification]:
         """Return the effective exact/glob policy entry for a tool."""
@@ -273,6 +281,27 @@ class SkillDefinition:
     def is_tier0_safe(self, tool_name: str) -> bool:
         """Return True if *tool_name* clears the Tier 0 safety floor."""
         return self.tier0_violation_reason(tool_name) is None
+
+
+_CLASSIFICATION_RANK = {"safe": 0, "caution": 1, "destructive": 2}
+# How much a tier mode holds a tool back: blocked never runs it, advisory only
+# suggests it, approval waits for a person, autonomous runs it.
+_MODE_RANK = {"autonomous": 0, "approval": 1, "advisory": 2, "blocked": 3}
+
+
+def _strictness(op: OperationClassification) -> tuple[int, int, int, int]:
+    """Order matching entries from most to least permissive: deny, then
+    classification, then the strictest tier mode, then irreversibility."""
+    modes = [
+        3 if not policy.enabled else _MODE_RANK[policy.mode]
+        for policy in (op.tiers or {}).values()
+    ]
+    return (
+        int(op.deny),
+        _CLASSIFICATION_RANK[op.classification],
+        max(modes, default=0),
+        int(not op.effective_reversible),
+    )
 
 
 def _extract_yaml_front_matter(text: str) -> str:

@@ -1,9 +1,10 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const authState = vi.hoisted(() => ({ role: "admin" }));
 vi.mock("@/context/auth", () => ({
-  useAuth: () => ({ user: { id: "u", username: "admin", role: "admin" } }),
+  useAuth: () => ({ user: { id: "u", username: authState.role, role: authState.role } }),
 }));
 
 const toastSpies = vi.hoisted(() => ({
@@ -50,8 +51,27 @@ function memory(id: string, title: string, canManage = true) {
   };
 }
 
+function service(id: string, teamId: string, name: string) {
+  return {
+    id,
+    team_id: teamId,
+    name,
+    slug: name.toLowerCase(),
+    description: null,
+    priority: "P2",
+    mcp_server_ids: [],
+    model_config_ids: [],
+    ai_default_tier: null,
+    intake_url: null,
+    external_refs: null,
+    is_active: true,
+    created_at: "2026-06-14T00:00:00Z",
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  authState.role = "admin";
   apiMocks.listServices.mockResolvedValue({
     items: [
       {
@@ -173,7 +193,57 @@ describe("Memories selection and actions", () => {
     render(<MemoriesPage />);
     await waitFor(() => expect(screen.getAllByText("Team lesson").length).toBeGreaterThan(0));
     expect(screen.getByRole("columnheader", { name: /Team/ })).toBeTruthy();
-    expect(screen.getAllByText("Payments").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Global").length).toBeGreaterThan(0);
+    const teams = within(screen.getByRole("table"))
+      .getAllByTestId("memory-team")
+      .map((cell) => cell.textContent);
+    expect(teams).toEqual(["Payments", "Global"]);
+  });
+
+  it("offers an operator only their teams' services, never Global", async () => {
+    authState.role = "operator";
+    apiMocks.listServices.mockResolvedValue({
+      items: [service("svc1", "team1", "Checkout"), service("svc2", "team2", "Billing")],
+      total: 2,
+    });
+    apiMocks.listMemories.mockResolvedValue({
+      items: [memory("m1", "First lesson")],
+      total: 1,
+      writable_service_ids: ["svc1"],
+    });
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: /new memory/i }))[0]);
+    await waitFor(() => expect(document.getElementById("mem-service")).toBeTruthy());
+    const select = document.getElementById("mem-service") as HTMLSelectElement;
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Checkout"]);
+    expect(select.value).toBe("svc1");
+  });
+
+  it("keeps New memory disabled for an operator on no team", async () => {
+    authState.role = "operator";
+    apiMocks.listMemories.mockResolvedValue({
+      items: [memory("m1", "First lesson", false)],
+      total: 1,
+      writable_service_ids: [],
+    });
+    await renderPage();
+    const buttons = await screen.findAllByRole("button", { name: /new memory/i });
+    expect(buttons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(buttons[0].getAttribute("title")).toBe("Join a team to add memories for its services.");
+  });
+
+  it("offers an admin Global and every service", async () => {
+    apiMocks.listMemories.mockResolvedValue({
+      items: [memory("m1", "First lesson")],
+      total: 1,
+      writable_service_ids: null,
+    });
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: /new memory/i }))[0]);
+    await waitFor(() => expect(document.getElementById("mem-service")).toBeTruthy());
+    const select = document.getElementById("mem-service") as HTMLSelectElement;
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Global (applies to any service)",
+      "Checkout",
+    ]);
   });
 });

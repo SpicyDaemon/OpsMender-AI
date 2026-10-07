@@ -9,10 +9,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import AlertFingerprintState, Incident, Service
-from backend.db.repos import IncidentCommentRepo, OrganizationRepo
+from backend.db.repos import IncidentCommentRepo, OrganizationRepo, take_turns
 from backend.ingest.adapters.base import ParsedIncident
 from backend.notifications import (
     CATEGORY_INCIDENT,
@@ -142,6 +143,7 @@ async def _get_or_create_state(
     fingerprint: str,
     now: datetime,
 ) -> AlertFingerprintState:
+    await take_turns(db, f"noise:{org_id}:{service_id}:{fingerprint}")
     state = await _get_state(db, org_id, service_id, fingerprint)
     if state is not None:
         return state
@@ -153,8 +155,17 @@ async def _get_or_create_state(
         last_seen_at=now,
         transitions=[],
     )
-    db.add(state)
-    await db.flush()
+    # Identical first alerts can race to create the row (R-03): the loser's
+    # insert fails inside a savepoint and it reads the winner's row instead.
+    try:
+        async with db.begin_nested():
+            db.add(state)
+            await db.flush()
+    except IntegrityError:
+        existing = await _get_state(db, org_id, service_id, fingerprint)
+        if existing is None:
+            raise
+        return existing
     return state
 
 

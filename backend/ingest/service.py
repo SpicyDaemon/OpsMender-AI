@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config_loader import AppConfig
 from backend.db.models import Incident, IngestToken
 from backend.db.repos import (
+    take_turns,
     IncidentRepo,
     IngestLogRepo,
     IngestTokenRepo,
@@ -223,6 +224,14 @@ async def ingest_incident(
                     error=f"Suppressed by maintenance window: {window.name}",
                 )
                 return IngestResult(success=True, dedup_action="skipped")
+
+    # Identical alerts arriving together take turns, so the second sees the
+    # first's incident instead of racing it (R-03).
+    if parsed.external_id and parsed.external_source:
+        await take_turns(
+            db,
+            f"intake:{org_id}:{parsed.external_source}:{parsed.external_id}",
+        )
 
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"

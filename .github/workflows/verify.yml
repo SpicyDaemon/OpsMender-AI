@@ -106,6 +106,7 @@ jobs:
           tests/test_admin_audit_postgres.py
           tests/test_notification_stage_claims_postgres.py
           tests/test_responder_slots_postgres.py
+          tests/test_race_answers_postgres.py
           tests/test_sla_api.py
           tests/test_voice_settings.py
           -q --timeout=180 --timeout-method=thread

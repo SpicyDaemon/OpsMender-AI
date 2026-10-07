@@ -17,7 +17,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
-from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import (
@@ -640,6 +640,17 @@ class OrgInviteRepo:
         )
         await db.execute(stmt)
         await db.flush()
+
+
+async def take_turns(db: AsyncSession, key: str) -> None:
+    """On PostgreSQL, wait for any other transaction holding ``key`` and hold
+    it until this one ends, so work on the same thing runs one at a time.
+    SQLite already runs one writer at a time."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key}
+    )
 
 
 class IncidentRepo:

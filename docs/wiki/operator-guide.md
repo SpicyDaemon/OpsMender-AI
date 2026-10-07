@@ -63,7 +63,9 @@ better model that became available while it waited. Human paging is independent
 and continues normally. You can cancel a queued session from its session page.
 The Start Session modal also offers **Force start** as an explicit soft
 override; confirm the warning before using it. The override is audited and the
-session still counts toward model occupancy.
+session still counts toward model occupancy. Like starting the session, it is
+for the incident's owner and admins. An AI session with no incident, started
+through the API, is for admins only.
 
 Acknowledgment means the incident is already human-owned, so OpsMender cancels
 any session that was queued before the acknowledgment. Because Tier 1/2 starts

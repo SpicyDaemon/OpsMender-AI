@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Starting an AI session with no incident is now for admins only, including
+  through API tokens; operators got it before. Forcing a session past its
+  model's limit stays with the incident's owner and admins.
 - Viewers and viewer API tokens no longer receive credential values from SLA
   probe targets or model configurations: probe URLs and model base URLs show
   without user names, passwords, query strings or fragments, and probe

@@ -788,10 +788,38 @@ async def _answer_window(db: AsyncSession, org_id: uuid.UUID, row) -> timedelta:
     return timedelta(seconds=stages[last].delay_seconds)
 
 
+async def _current_level(
+    db: AsyncSession, org_id: uuid.UUID, state
+) -> tuple[int, int] | None:
+    """The round and level index the current level's pages were recorded
+    under: the chain's latest. Deleting a level renumbers the run's own
+    counters, so those may no longer match the level in flight."""
+    latest = (
+        await db.execute(
+            select(IncidentPage.round, IncidentPage.step_index)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == state.incident_id,
+                IncidentPage.chain_id == state.chain_id,
+                IncidentPage.channel == "recorded",
+                IncidentPage.step_index.is_not(None),
+            )
+            .order_by(IncidentPage.round.desc(), IncidentPage.step_index.desc())
+            .limit(1)
+        )
+    ).first()
+    return None if latest is None else (latest[0], latest[1])
+
+
 async def _reached_at_level(
-    db: AsyncSession, org_id: uuid.UUID, state, user_id: uuid.UUID
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    state,
+    user_id: uuid.UUID,
+    level: tuple[int, int],
 ) -> bool:
     """Whether an immediate page of the current level was sent to them."""
+    level_round, level_index = level
     sent = (
         await db.execute(
             select(IncidentPage.id)
@@ -800,8 +828,8 @@ async def _reached_at_level(
                 IncidentPage.incident_id == state.incident_id,
                 IncidentPage.user_id == user_id,
                 IncidentPage.chain_id == state.chain_id,
-                IncidentPage.round == state.round,
-                IncidentPage.step_index == state.current_step_index,
+                IncidentPage.round == level_round,
+                IncidentPage.step_index == level_index,
                 IncidentPage.channel != "recorded",
                 IncidentPage.delivery_status == "sent",
             )
@@ -829,6 +857,9 @@ async def _level_wait(
     if cap is None or now >= cap:
         return None
     level_start = cap - LEVEL_WAIT_CAP
+    level = await _current_level(db, org_id, state)
+    if level is None:
+        return None
     user_ids = (
         (
             await db.execute(
@@ -837,8 +868,8 @@ async def _level_wait(
                     IncidentPage.org_id == org_id,
                     IncidentPage.incident_id == state.incident_id,
                     IncidentPage.chain_id == state.chain_id,
-                    IncidentPage.round == state.round,
-                    IncidentPage.step_index == state.current_step_index,
+                    IncidentPage.round == level[0],
+                    IncidentPage.step_index == level[1],
                     IncidentPage.channel == "recorded",
                 )
                 .distinct()
@@ -853,7 +884,7 @@ async def _level_wait(
             db, org_id, incident_id=state.incident_id, user_id=user_id
         )
         if row is None:
-            if not await _reached_at_level(db, org_id, state, user_id):
+            if not await _reached_at_level(db, org_id, state, user_id, level):
                 continue
             until = level_start + DEFAULT_ANSWER_WINDOW
         elif row.status == "running":

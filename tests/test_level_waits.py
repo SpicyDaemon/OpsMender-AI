@@ -146,15 +146,22 @@ async def _start(
 
 
 async def _level_minutes(
-    w: World, incident_id, base: datetime, until: int, factory=NO_CHANNELS
+    w: World,
+    incident_id,
+    base: datetime,
+    until: int,
+    factory=NO_CHANNELS,
+    *,
+    start: int = 1,
 ) -> list[int]:
-    """Tick minute by minute; return the minute each level fired."""
-    fired = [0]
+    """Tick minute by minute from ``start``; return the minute each level
+    fired (with 0 for the first level when starting at minute 1)."""
+    fired = [0] if start == 1 else []
     async with w.app.state.session_factory() as db:
         last = (
             await IncidentChainStateRepo.get_for_incident(db, TEST_ORG_ID, incident_id)
         ).current_step_index
-    for minute in range(1, until + 1):
+    for minute in range(start, until + 1):
         at = base + timedelta(minutes=minute)
         async with w.app.state.session_factory() as db:
             await _ne.tick_all_due(
@@ -297,3 +304,40 @@ async def test_immediate_routing_that_reached_nobody_keeps_the_timeout(world, fa
     base = datetime.now(timezone.utc)
     incident_id = await _start(world, [first, second], timeout=60, at=base)
     assert await _level_minutes(world, incident_id, base, 3) == [0, 1]
+
+
+async def _delete_last_level(w: World, incident_id) -> None:
+    async with w.app.state.session_factory() as db:
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, TEST_ORG_ID, incident_id
+        )
+        steps = await EscalationStepRepo.list_for_chain(db, TEST_ORG_ID, state.chain_id)
+        chain_id, last = state.chain_id, steps[-1].id
+    deleted = await w.client.delete(
+        f"/escalation-chains/{chain_id}/steps/{last}", headers=w.admin
+    )
+    assert deleted.status_code == 204, deleted.text
+
+
+async def test_deleting_a_later_level_keeps_the_current_wait(world, failing):
+    people = await _people(world, 3)
+    for person in people:
+        await _steps(world, person, DEFAULT_STEPS)
+    base = datetime.now(timezone.utc)
+    incident_id = await _start(world, people, timeout=300, at=base)
+    assert await _level_minutes(world, incident_id, base, 7) == [0]
+    # Deleting a level renumbers the run; the first person's call at 10 and
+    # answer window still hold the next level until 15.
+    await _delete_last_level(world, incident_id)
+    assert await _level_minutes(world, incident_id, base, 16, start=8) == [15]
+
+
+async def test_deleting_a_level_keeps_the_immediate_page_window(world, failing):
+    people = await _people(world, 3)
+    base = datetime.now(timezone.utc)
+    incident_id = await _start(world, people, timeout=60, at=base, factory=EMAIL_SENT)
+    await _delete_last_level(world, incident_id)
+    assert await _level_minutes(world, incident_id, base, 7, factory=EMAIL_SENT) == [
+        0,
+        5,
+    ]

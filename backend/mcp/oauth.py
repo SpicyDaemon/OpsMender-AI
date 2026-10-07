@@ -205,8 +205,9 @@ def generate_pkce_pair() -> PKCEPair:
 
 # Authorization requests in flight, by the random reference their state
 # carries. The PKCE verifier and any client secret never leave the server
-# (R-21). One process serves an instance (O-16), so memory is enough: a
-# restart during consent only means starting the authorization again.
+# (R-21). The start and the callback are both API routes, served by the one
+# API process in monolith and distributed deployments alike, so memory is
+# enough: a restart during consent only means starting it again.
 _PENDING: dict[str, tuple[float, dict[str, Any]]] = {}
 
 

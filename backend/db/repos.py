@@ -413,6 +413,25 @@ class ApiTokenRepo:
         await db.flush()
         return token
 
+    @staticmethod
+    async def revoke_for_creator(
+        db: AsyncSession, user_id: uuid.UUID, *, at: datetime | None = None
+    ) -> list[ApiToken]:
+        """Revoke every live token ``user_id`` created and return them: a
+        password change or reset ends them (O-09)."""
+        stmt = (
+            select(ApiToken)
+            .where(ApiToken.created_by == user_id, ApiToken.revoked_at.is_(None))
+            .order_by(ApiToken.created_at)
+            .with_for_update()
+        )
+        tokens = list((await db.execute(stmt)).scalars().all())
+        revoked_at = at or datetime.now(timezone.utc)
+        for token in tokens:
+            token.revoked_at = revoked_at
+        await db.flush()
+        return tokens
+
 
 class UserMFARepo:
     @staticmethod

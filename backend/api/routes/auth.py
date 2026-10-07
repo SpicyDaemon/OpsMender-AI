@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import (
+    actor_label,
     create_access_token,
     create_mfa_token,
     get_current_user,
@@ -37,6 +38,7 @@ from backend.api.auth import (
     verify_password,
 )
 from backend.api.deps import get_db
+from backend.api.routes.api_tokens import _audit_token_change
 from backend.auth.avatar import process_avatar, to_data_url
 from backend.auth.signin_throttle import sign_in_attempt
 from backend.api.schemas import (
@@ -60,6 +62,7 @@ from backend.api.schemas import (
 from backend.config_loader import AppConfig, is_development_environment
 from backend.db.models import OrgSAMLConfig, OrgSSOConfig, User
 from backend.db.repos import (
+    ApiTokenRepo,
     OrganizationDomainRepo,
     OrganizationRepo,
     OrgSAMLConfigRepo,
@@ -73,6 +76,40 @@ from backend.reports.email import build_email_channel, resolve_email_settings
 from backend.people import tokens as people_tokens
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def _set_password(
+    db: AsyncSession,
+    target: User,
+    password: str,
+    *,
+    must_change: bool,
+    actor: str,
+    reason: str,
+) -> None:
+    """Set ``target``'s password, the one way all three paths do it: their
+    own change, an admin's temporary password and the reset link.
+
+    Sign-ins from before stop working (S-109), and so does every API token
+    the person created (O-09), each revoked with its own Activity entry.
+    """
+    now = datetime.now(timezone.utc)
+    target.password_hash = hash_password(password)
+    target.must_change_password = must_change
+    target.password_changed_at = now
+    for token in await ApiTokenRepo.revoke_for_creator(db, target.id, at=now):
+        await _audit_token_change(
+            db,
+            token.org_id,
+            tool_name="api_token_revoke",
+            actor=actor,
+            token_name=token.name,
+            token_role=token.role,
+            token_id=token.id,
+            extra={"reason": reason},
+        )
+
+
 _USERNAME_RE = re.compile(r"[^a-z0-9_-]+")
 
 
@@ -496,7 +533,8 @@ async def change_my_password(
 
     Every token issued before the change stops working (S-109), including the
     one making this request, so the response carries a fresh token and the
-    person who changed their password stays signed in.
+    person who changed their password stays signed in. API tokens they
+    created are revoked (O-09).
     """
     if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(
@@ -508,9 +546,14 @@ async def change_my_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    target.password_hash = hash_password(body.new_password)
-    target.must_change_password = False
-    target.password_changed_at = datetime.now(timezone.utc)
+    await _set_password(
+        db,
+        target,
+        body.new_password,
+        must_change=False,
+        actor=actor_label(user),
+        reason="password_changed",
+    )
     await db.commit()
     return TokenResponse(access_token=create_access_token(target.id, target.role))
 
@@ -822,15 +865,16 @@ async def mint_password_reset(
 @router.post(
     "/users/{user_id}/set-temporary-password",
     response_model=TemporaryPasswordResponse,
-    dependencies=[Depends(require_role("admin"))],
     summary="Set a one-time temporary password (admin only; option B reset)",
 )
 async def set_temporary_password(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_role("admin")),
 ):
     """Manual (no-email) password reset: generate a temporary password, force a
-    change on next login, and return the password once for the admin to relay."""
+    change on next login, and return the password once for the admin to relay.
+    The person's API tokens are revoked (O-09)."""
     import secrets
 
     target = await UserRepo.get_by_id(db, user_id)
@@ -839,9 +883,14 @@ async def set_temporary_password(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     temp = secrets.token_urlsafe(9)
-    target.password_hash = hash_password(temp)
-    target.must_change_password = True
-    target.password_changed_at = datetime.now(timezone.utc)
+    await _set_password(
+        db,
+        target,
+        temp,
+        must_change=True,
+        actor=actor_label(admin),
+        reason="temporary_password",
+    )
     await db.commit()
     return TemporaryPasswordResponse(
         user_id=user_id, temporary_password=temp, must_change_password=True
@@ -888,9 +937,14 @@ async def consume_password_reset(
             detail="Account is unavailable.",
         )
 
-    user.password_hash = hash_password(body.password)
-    user.must_change_password = False
-    user.password_changed_at = datetime.now(timezone.utc)
+    await _set_password(
+        db,
+        user,
+        body.password,
+        must_change=False,
+        actor=str(user.id),
+        reason="password_reset",
+    )
     await PasswordResetTokenRepo.mark_used(db, row.id)
     await db.commit()
 

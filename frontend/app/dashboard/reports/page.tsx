@@ -60,6 +60,14 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   }
 
+  function browserTimeZone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  }
+
   async function saveSchedule() {
     const emails = recipients.split(",").map((item) => item.trim()).filter(Boolean);
     if (!emails.length) return;
@@ -69,6 +77,8 @@ export default function ReportsPage() {
       recipients: emails,
       format,
       next_run_at: new Date(to).toISOString(),
+      // The schedule keeps this day and local time in your zone (R-18).
+      time_zone: browserTimeZone(),
       filters: {},
       enabled: true,
     } as const;
@@ -153,7 +163,7 @@ export default function ReportsPage() {
             <div className="divide-y divide-border-subtle">
               {schedules.map((schedule) => (
                 <div key={schedule.id} className="flex items-center justify-between gap-4 py-3">
-                  <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
+                  <div><p className="font-medium text-fg-primary">{schedule.name}</p><p className="text-xs text-fg-muted">{schedule.cadence} · {schedule.format.toUpperCase()} · next {formatDateTime(schedule.next_run_at)}{schedule.time_zone && schedule.time_zone !== "UTC" ? ` (${schedule.time_zone})` : ""}</p>{schedule.last_error && <p className="text-xs text-status-critical">{schedule.last_error}</p>}</div>
                   <div className="flex flex-nowrap gap-2">
                     <Button variant="secondary" size="sm" onClick={() => {
                       setEditingId(schedule.id);
@@ -171,6 +181,7 @@ export default function ReportsPage() {
                         filters: schedule.filters,
                         format: schedule.format,
                         next_run_at: schedule.next_run_at,
+                        time_zone: schedule.time_zone ?? "UTC",
                         enabled: !schedule.enabled,
                       });
                       await reload();

@@ -1338,7 +1338,21 @@ class ReportScheduleUpsert(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     format: str = Field(default="pdf", pattern="^(csv|pdf)$")
     next_run_at: datetime
+    # Where the day and time of the schedule are read (IANA, e.g.
+    # "America/New_York"); the first run sets the day and local time kept.
+    time_zone: str = Field(default="UTC", max_length=64)
     enabled: bool = True
+
+    @field_validator("time_zone")
+    @classmethod
+    def known_time_zone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"Unknown time zone: {value}") from exc
+        return value
 
 
 class ReportScheduleResponse(BaseModel):
@@ -1350,6 +1364,9 @@ class ReportScheduleResponse(BaseModel):
     filters: dict[str, Any]
     format: str
     next_run_at: datetime
+    time_zone: str = "UTC"
+    run_day: Optional[int] = None
+    run_time: Optional[str] = None
     enabled: bool
     last_run_at: Optional[datetime]
     last_error: Optional[str]

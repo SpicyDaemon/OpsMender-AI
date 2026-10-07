@@ -119,6 +119,11 @@ Important boundaries:
 
 OpsMender separates "do not let this user log in" from "remove this account from active use."
 
+Nobody changes their own role, deactivates their own account or deletes it,
+including through their API tokens; ask another admin. Since only an active
+admin can make these changes, at least one active admin always remains. You
+can still edit your own name.
+
 ### Deactivate
 
 Use **Deactivate** when you want to block future login but preserve the account.

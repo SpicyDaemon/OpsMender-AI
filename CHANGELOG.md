@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Nobody can change their own role or deactivate their own account, including
+  through their API tokens; another admin can. Before, the only admin could
+  demote or deactivate themselves and leave nobody able to sign in as admin.
 - A password change now revokes every API token the person created: their own
   change, an admin's temporary password and a reset link. The tokens return
   401 at once and show as revoked, each with an Activity entry. Before, a

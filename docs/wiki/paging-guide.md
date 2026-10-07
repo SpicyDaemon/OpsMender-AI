@@ -180,9 +180,11 @@ also until everyone it paged has had all their own notification stages (My
 Routing) plus an answer window after the last one: that stage's wait, 5
 minutes by default. A last stage that couldn't be sent gets no answer window;
 someone without stages gets one answer window after a page that reached them,
-and none when nothing did. A level
-never waits more than 30 minutes, and an acknowledgement stops it at once.
-With the default stages (5-minute waits) levels fire 15 minutes apart. The
+and none when nothing did. The wait for people's stages ends at most 30
+minutes after the level paged, though a longer level timeout still applies,
+and an acknowledgement stops it at once. With three stages at the default
+5-minute wait, levels fire 15 minutes apart. The chain editor's Preview
+timeline shows each level's earliest time, from the timeouts alone. The
 final level waits too, then the chain ends with one exhaustion notice in the
 team's Notification Channels and responders' Inbox. An empty level (no active
 admin or operator to page) is skipped immediately and explained on the timeline; a level

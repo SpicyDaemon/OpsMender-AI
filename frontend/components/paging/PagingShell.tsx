@@ -3269,7 +3269,7 @@ function StepsEditor({
               Preview timeline
             </p>
             <span className="text-[10px] text-fg-muted">
-              Cumulative time from incident open
+              Earliest time from incident open
             </span>
           </div>
           <ol className="space-y-1">
@@ -3277,9 +3277,9 @@ function StepsEditor({
               .slice()
               .sort((a, b) => a.step_index - b.step_index)
               .map((s, idx, sorted) => {
-                // Cumulative time: step 0 fires at T+0; each subsequent
-                // step fires after the prior step's timeout. The doc's
-                // model is "additive - once paged, stay paged."
+                // Earliest time: step 0 fires at T+0; each subsequent
+                // step fires no sooner than the prior step's timeout. The
+                // doc's model is "additive - once paged, stay paged."
                 const cumulativeSec = sorted
                   .slice(0, idx)
                   .reduce((sum, prev) => sum + prev.timeout_seconds, 0);
@@ -3319,6 +3319,11 @@ function StepsEditor({
               </span>
             </li>
           </ol>
+          <p className="mt-2 text-[11px] text-fg-muted">
+            Each level also waits for the people it paged to get their own
+            notification stages and answer window, up to 30 minutes after it
+            pages, so later levels can come later than shown.
+          </p>
         </div>
       )}
 
@@ -4318,6 +4323,14 @@ const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
   { value: 1800, label: "30 min" },
 ];
 
+/** A stored wait that isn't one of the options (legacy routing, or set
+ *  through the API), labelled so the select shows what is saved. */
+function delayLabel(seconds: number): string {
+  if (seconds <= 0) return "None";
+  if (seconds % 60 !== 0) return `${seconds} s`;
+  return `${seconds / 60} min`;
+}
+
 /** Normalize a priority's routing into ordered stages (new + legacy shape). */
 function normalizeRoutingStages(raw: unknown): RoutingStage[] {
   if (!Array.isArray(raw)) return [];
@@ -4334,6 +4347,12 @@ function normalizeRoutingStages(raw: unknown): RoutingStage[] {
       out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 300 });
     }
     if (out.length >= 3) break;
+  }
+  // Legacy routing (channel names only) pages every channel at once, and the
+  // next level then waits the default 5-minute answer window for you. Show
+  // that window on the last stage, so saving keeps it.
+  if (out.length > 0 && raw.every((entry) => typeof entry === "string")) {
+    out[out.length - 1] = { ...out[out.length - 1], delay_seconds: 300 };
   }
   return out;
 }
@@ -4785,6 +4804,13 @@ export function NotificationPreferencesPanel({
                             }
                             className="h-9"
                           >
+                            {!STAGE_DELAY_OPTIONS.some(
+                              (d) => d.value === stage.delay_seconds,
+                            ) && (
+                              <option value={stage.delay_seconds}>
+                                {delayLabel(stage.delay_seconds)}
+                              </option>
+                            )}
                             {STAGE_DELAY_OPTIONS.map((d) => (
                               <option key={d.value} value={d.value}>
                                 {d.label}

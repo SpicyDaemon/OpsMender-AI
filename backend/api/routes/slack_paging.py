@@ -531,7 +531,7 @@ async def _handle_slash(
         )
         return _ephemeral(
             f"*{incident.title}*: chain `{state.status}`, "
-            f"step {state.current_step_index}, next due {due}. "
+            f"step {state.current_step_index}, next check {due}. "
             f"Owner: {owner}."
         )
 

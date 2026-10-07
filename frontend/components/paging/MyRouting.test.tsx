@@ -179,6 +179,42 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
     ]);
   });
 
+  it("shows a stored wait that isn't one of the options", async () => {
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: {
+        P0: [{ channel_id: "voice", delay_seconds: 0 }],
+        P2: [
+          { channel_id: "email", delay_seconds: 45 },
+          { channel_id: "email", delay_seconds: 3600 },
+        ],
+      },
+    });
+    render(<NotificationPreferencesPanel />);
+    const shown = (label: string) => {
+      const select = screen.getByLabelText(label) as HTMLSelectElement;
+      return select.options[select.selectedIndex].textContent;
+    };
+    await screen.findByLabelText("P0 answer window");
+    expect((screen.getByLabelText("P0 answer window") as HTMLSelectElement).value).toBe("0");
+    expect(shown("P0 answer window")).toBe("None");
+    expect(shown("P2 stage 1 delay")).toBe("45 s");
+    expect(shown("P2 answer window")).toBe("60 min");
+  });
+
+  it("keeps legacy routing's 5 minute answer window", async () => {
+    render(<NotificationPreferencesPanel />);
+    const answerWindow = (await screen.findByLabelText("P1 answer window")) as HTMLSelectElement;
+    expect(answerWindow.value).toBe("300");
+    fireEvent.click(screen.getByRole("button", { name: /save routing/i }));
+    await waitFor(() => expect(updateMyNotificationPreferences).toHaveBeenCalled());
+    const body = updateMyNotificationPreferences.mock.calls[0][0];
+    expect(body.routing.P1).toEqual([{ channel_id: "email", delay_seconds: 300 }]);
+    expect(body.routing.P0.map((stage: { delay_seconds: number }) => stage.delay_seconds)).toEqual([
+      0, 300,
+    ]);
+  });
+
   it("saves routing as ordered stages and quiet hours with P0 bypass", async () => {
     getMyNotificationPreferences.mockResolvedValue({
       ...basePref,

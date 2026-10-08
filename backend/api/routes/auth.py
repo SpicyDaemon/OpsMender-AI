@@ -671,18 +671,30 @@ async def get_user(
 @router.patch(
     "/users/{user_id}",
     response_model=UserResponse,
-    dependencies=[Depends(require_role("admin"))],
     summary="Update a user's role or active state (admin only)",
 )
 async def update_user(
     user_id: uuid.UUID,
     body: UserUpdateRequest,
     db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("admin")),
 ):
     target = await UserRepo.get_by_id(db, user_id)
     if target is None or target.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    # Only an active admin gets here, so refusing these to yourself (and to
+    # your API tokens, which act as you) always leaves one active admin.
+    if target.id == actor.id and (
+        (body.role is not None and body.role != target.role) or body.is_active is False
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "You can't change your own role or deactivate your own account. "
+                "Ask another admin."
+            ),
         )
     if (
         body.role is None

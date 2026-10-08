@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A recovery that arrives during a Maintenance Window now closes the incident
+  it clears, stopping its Escalation Chain and AI session without paging
+  anyone. Before, the window dropped it with every other alert, so an incident
+  opened before the window stayed open. New alerts in the window are still
+  dropped.
 - Deleting an incident also deletes the incidents combined into it, including
   ones combined into those, and Activity records each with the incident it
   was combined into. The delete confirmation lists them first, on the incident

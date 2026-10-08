@@ -21,7 +21,7 @@ Every paged incident walks the same simple loop:
 
 1. Alert fires and POSTs to a service endpoint: `POST /api/v1/intake/{service_token}`.
 2. The service sets the priority: `P0 Critical`, `P1 High`, `P2 Medium`, or `P3 Low`. P0 and P1 page; P2 and P3 notify and don't page. An alert whose severity is `low` (or `info`) notifies even on a P0 or P1 service, and the incident's timeline says so.
-3. If an active maintenance window matches the service or team scope, the alert is dropped and no visible incident is created.
+3. If an active maintenance window matches the service or team scope, the alert is dropped and no visible incident is created. A recovery is never dropped: it still closes the incident it clears.
 4. OpsMender creates the incident and starts the AI session.
 5. If the incident pages, the team's escalation chain pages the roster or user levels for that service.
 
@@ -390,6 +390,10 @@ When an incoming alert matches an active window, OpsMender drops it at intake.
 It does not create a visible incident and does not show a suppressed incident in
 the main incident list. A page that a window suppresses later is recorded on the
 incident as not delivered, with the reason.
+
+A recovery is never dropped. When the alert behind an incident opened before
+the window clears during it, the incident resolves as usual: its Escalation
+Chain and staged notifications stop, its AI session stops, and nobody is paged.
 
 Active, approved global, service and team windows also cover matching uptime
 samples and prevent new SLO burn incidents. Covered samples count as up, while

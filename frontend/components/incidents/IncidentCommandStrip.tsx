@@ -54,9 +54,11 @@ import {
   assignIncident,
   bulkIncidentAction,
   deleteIncident,
+  listIncidentsMergedInto,
   releaseIncident,
   takeIncident,
 } from "@/lib/api";
+import { mergedDeleteNote } from "@/lib/mergedDelete";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 import type {
   IncidentAssignmentResponse,
@@ -247,9 +249,17 @@ export function IncidentCommandStrip({
     navigateDashboard(`/dashboard/incidents/postmortem?id=${incident.id}`);
   };
   const handleDelete = async () => {
+    let note = "";
+    try {
+      const merged = await listIncidentsMergedInto([incident.id]);
+      note = mergedDeleteNote(merged.items.map((item) => item.title));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      return;
+    }
     if (
       !window.confirm(
-        `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.`,
+        `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.${note}`,
       )
     ) {
       return;

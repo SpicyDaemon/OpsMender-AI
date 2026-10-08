@@ -22,6 +22,7 @@ import {
   deleteIncident,
   fireTestIncident,
   listIncidents,
+  listIncidentsMergedInto,
   listServices,
   listTeams,
   updateIncident,
@@ -29,6 +30,7 @@ import {
 import { useAuth } from "@/context/auth";
 import { useLiveEvents } from "@/context/liveEvents";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
+import { mergedDeleteNote } from "@/lib/mergedDelete";
 import { responderDisplay } from "@/lib/responder";
 import type {
   FireTestIncidentResponse,
@@ -419,6 +421,8 @@ export default function IncidentsPage() {
   const [headerActionsOpen, setHeaderActionsOpen] = useState(false);
   const [confirmingAction, setConfirmingAction] =
     useState<ConfirmedBulkAction | null>(null);
+  // Titles of incidents combined into the selection, deleted with it.
+  const [mergedForDelete, setMergedForDelete] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [severityFilter, setSeverityFilter] = useState<string[]>([]);
@@ -650,9 +654,17 @@ export default function IncidentsPage() {
 
   const removeIncident = useCallback(
     async (incident: IncidentResponse) => {
+      let note = "";
+      try {
+        const merged = await listIncidentsMergedInto([incident.id]);
+        note = mergedDeleteNote(merged.items.map((item) => item.title));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err));
+        return;
+      }
       if (
         !window.confirm(
-          `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.`,
+          `Permanently delete incident "${incident.title}"? This removes it with its timeline and AI sessions. Activity keeps a record of the deletion and of the earlier session entries. This action cannot be undone.${note}`,
         )
       ) {
         return;
@@ -812,9 +824,16 @@ export default function IncidentsPage() {
                 type="button"
                 data-testid="incident-action-delete"
                 disabled={bulkBusy || selectedIds.size === 0}
-                onClick={() => {
-                  setConfirmingAction("delete");
+                onClick={async () => {
                   setActionsOpen(false);
+                  try {
+                    const merged = await listIncidentsMergedInto([...selectedIds]);
+                    setMergedForDelete(merged.items.map((item) => item.title));
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : String(err));
+                    return;
+                  }
+                  setConfirmingAction("delete");
                 }}
                 className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-status-critical hover:bg-status-critical-bg disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1103,7 +1122,10 @@ export default function IncidentsPage() {
           {confirmingAction === "delete"
             ? `Are you sure you want to permanently delete ${selectedIds.size} ${
                 selectedIds.size === 1 ? "incident" : "incidents"
-              }? This removes them with their timelines and AI sessions. Activity keeps a record of each deletion and of the earlier session entries. This action cannot be undone.`
+              }? This removes them with their timelines and AI sessions. Activity keeps a record of each deletion and of the earlier session entries. This action cannot be undone.${mergedDeleteNote(
+                mergedForDelete,
+                selectedIds.size,
+              )}`
             : confirmingAction === "reopen"
               ? `Are you sure you want to reopen ${selectedIds.size} ${
                   selectedIds.size === 1 ? "incident" : "incidents"

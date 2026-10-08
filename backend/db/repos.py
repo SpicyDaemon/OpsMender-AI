@@ -1003,6 +1003,34 @@ class IncidentRepo:
         return incident
 
     @staticmethod
+    async def list_merged_tree(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        primary_ids: Sequence[uuid.UUID],
+        *,
+        for_update: bool = False,
+    ) -> list[Incident]:
+        """Incidents combined into any of ``primary_ids``, directly or through
+        another merged incident, excluding the primaries themselves."""
+        found: dict[uuid.UUID, Incident] = {}
+        frontier = set(primary_ids)
+        seen = set(primary_ids)
+        while frontier:
+            stmt = select(Incident).where(
+                Incident.org_id == org_id,
+                Incident.merged_into_incident_id.in_(frontier),
+            )
+            if for_update:
+                stmt = stmt.with_for_update()
+            rows = (await db.execute(stmt)).scalars().all()
+            frontier = {row.id for row in rows} - seen
+            seen |= frontier
+            for row in rows:
+                if row.id in frontier:
+                    found[row.id] = row
+        return sorted(found.values(), key=lambda row: (row.created_at, str(row.id)))
+
+    @staticmethod
     async def list_by_target(
         db: AsyncSession,
         org_id: uuid.UUID,

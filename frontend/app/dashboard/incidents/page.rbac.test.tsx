@@ -54,6 +54,7 @@ const apiMocks = vi.hoisted(() => ({
       "Test incident created. AI session auto-start was skipped because the resolved autonomy tier is T2; only T0 may auto-start.",
   }),
   listIncidents: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  listIncidentsMergedInto: vi.fn().mockResolvedValue({ items: [] }),
   listServices: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   listTeams: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   updateIncident: vi.fn(),
@@ -82,6 +83,7 @@ beforeEach(() => {
   search.current = "";
   vi.clearAllMocks();
   apiMocks.listIncidents.mockResolvedValue({ items: [], total: 0 });
+  apiMocks.listIncidentsMergedInto.mockResolvedValue({ items: [] });
   apiMocks.bulkIncidentAction.mockResolvedValue({
     action: "resolve",
     succeeded: 2,
@@ -527,8 +529,8 @@ describe("Incidents page RBAC", () => {
     );
     fireEvent.click(screen.getByTestId("incident-action-delete"));
     expect(
-      screen.getByText(/permanently delete 2 incidents/i),
-    ).toBeTruthy();
+      (await screen.findByText(/permanently delete 2 incidents/i)).textContent,
+    ).toMatch(/This action cannot be undone\.$/);
     fireEvent.click(screen.getByTestId("confirm-incident-bulk-action"));
     await waitFor(() =>
       expect(apiMocks.bulkIncidentAction).toHaveBeenCalledWith(
@@ -537,5 +539,89 @@ describe("Incidents page RBAC", () => {
         undefined,
       ),
     );
+  });
+
+  it("names the incidents combined into a bulk selection before deleting", async () => {
+    role.current = "admin";
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [
+        incident("inc-1", "resolved", "svc-1"),
+        incident("inc-2", "resolved", "svc-2"),
+      ],
+      total: 2,
+    });
+    apiMocks.listIncidentsMergedInto.mockResolvedValue({
+      items: [
+        { id: "m-1", title: "Disk alert", merged_into_incident_id: "inc-2" },
+      ],
+    });
+    await renderAndSettle();
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
+    );
+    fireEvent.click(screen.getByTestId("incident-actions-trigger"));
+    fireEvent.click(screen.getByTestId("incident-action-delete"));
+
+    expect(
+      (await screen.findByText(/permanently delete 2 incidents/i)).textContent,
+    ).toContain(
+      'This also deletes the 1 incident combined into them: "Disk alert".',
+    );
+    expect(apiMocks.listIncidentsMergedInto).toHaveBeenCalledWith([
+      "inc-1",
+      "inc-2",
+    ]);
+  });
+
+  it("keeps the bulk delete closed when it cannot list what it would take", async () => {
+    role.current = "admin";
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [incident("inc-1", "resolved", "svc-1")],
+      total: 1,
+    });
+    apiMocks.listIncidentsMergedInto.mockRejectedValue(new Error("Network down"));
+    await renderAndSettle();
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "Select all rows on this page",
+      })[0],
+    );
+    fireEvent.click(screen.getByTestId("incident-actions-trigger"));
+    fireEvent.click(screen.getByTestId("incident-action-delete"));
+
+    await waitFor(() =>
+      expect(toastSpies.error).toHaveBeenCalledWith("Network down"),
+    );
+    expect(screen.queryByTestId("confirm-incident-bulk-action")).toBeNull();
+    expect(apiMocks.bulkIncidentAction).not.toHaveBeenCalled();
+  });
+
+  it("names the incidents combined into a row before deleting it", async () => {
+    role.current = "admin";
+    apiMocks.listIncidents.mockResolvedValue({
+      items: [incident("inc-1", "resolved", "svc-1")],
+      total: 1,
+    });
+    apiMocks.listIncidentsMergedInto.mockResolvedValue({
+      items: [
+        { id: "m-1", title: "Disk alert", merged_into_incident_id: "inc-1" },
+      ],
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await renderAndSettle();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Delete incident Incident inc-1" })[0],
+    );
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
+    expect(confirmSpy.mock.calls[0][0]).toContain(
+      'This also deletes the 1 incident combined into it: "Disk alert".',
+    );
+    expect(apiMocks.listIncidentsMergedInto).toHaveBeenCalledWith(["inc-1"]);
+    expect(apiMocks.deleteIncident).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

@@ -271,7 +271,8 @@ class SLAPoller:
                         external_id=external_id,
                     )
 
-                    if existing and existing.status != "resolved":
+                    # A merged result means its primary is gone: closed.
+                    if existing and existing.status not in ("resolved", "merged"):
                         continue
 
                     # A violation after the last one resolved opens a new

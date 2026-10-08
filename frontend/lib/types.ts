@@ -153,6 +153,17 @@ export interface IncidentCombineResponse {
   stopped_sessions: number;
 }
 
+export interface MergedIncidentRef {
+  id: string;
+  title: string;
+  merged_into_incident_id: string | null;
+}
+
+/** Incidents combined into the given ones: a permanent delete takes them too. */
+export interface MergedIncidentListResponse {
+  items: MergedIncidentRef[];
+}
+
 export interface IncidentCreate {
   title: string;
   description: string;

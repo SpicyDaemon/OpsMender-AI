@@ -39,6 +39,7 @@ from sqlalchemy import (
     false,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -48,6 +49,11 @@ def _utcnow() -> datetime:
 
 def _uuid() -> uuid.UUID:
     return uuid.uuid4()
+
+
+# Columns the migrations create as JSONB on PostgreSQL; JSON elsewhere, such
+# as SQLite in tests (M1-47).
+JSONB_ON_POSTGRES = JSON().with_variant(JSONB(), "postgresql")
 
 
 # ---------------------------------------------------------------------------
@@ -652,8 +658,10 @@ class AuditEntry(Base):
         String(30), nullable=False
     )  # tool_call_start | tool_call_end | tool_call_blocked | session_start | session_end
     tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    tool_parameters: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    tool_parameters: Mapped[dict | None] = mapped_column(
+        JSONB_ON_POSTGRES, nullable=True
+    )
+    result: Mapped[dict | None] = mapped_column(JSONB_ON_POSTGRES, nullable=True)
     permitted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -677,7 +685,7 @@ class ApprovalRequest(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("sessions.id"), nullable=False
     )
-    action: Mapped[dict] = mapped_column(JSON, nullable=False)
+    action: Mapped[dict] = mapped_column(JSONB_ON_POSTGRES, nullable=False)
     justification: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
@@ -1170,7 +1178,7 @@ class WorkflowProfile(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    node_order: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    node_order: Mapped[list[str]] = mapped_column(JSONB_ON_POSTGRES, nullable=False)
     workflow_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
@@ -1219,7 +1227,7 @@ class IngestToken(Base):
     )  # auto | cloudwatch | azure_monitor | gcp_monitoring | oci_monitoring | generic
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    shape_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    shape_cache: Mapped[dict | None] = mapped_column(JSONB_ON_POSTGRES, nullable=True)
     # When set, every incident created through this token gets ``service_id``
     # pre-filled so the paging engine routes to the owning team automatically
     # (Simplification pass 1, post-Sprint 34).
@@ -1255,7 +1263,7 @@ class IngestLog(Base):
         Uuid, ForeignKey("ingest_tokens.id"), nullable=False
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
-    raw_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    raw_payload: Mapped[dict] = mapped_column(JSONB_ON_POSTGRES, nullable=False)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("incidents.id"), nullable=True
     )
@@ -1331,7 +1339,7 @@ class SLATarget(Base):
         String(50), nullable=False
     )  # http | tcp | external
     config: Mapped[dict | None] = mapped_column(
-        JSON, nullable=True
+        JSONB_ON_POSTGRES, nullable=True
     )  # url, method, expected_status, etc.
     owner_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Optional link to the owning Service so SLO-breach recommendations can
@@ -1506,7 +1514,7 @@ class MaintenanceWindow(Base):
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_ids: Mapped[list[str]] = mapped_column(
-        JSON, default=list, nullable=False
+        JSONB_ON_POSTGRES, default=list, nullable=False
     )  # UUIDs as strings
     scope_type: Mapped[str] = mapped_column(
         String(20), default="global", nullable=False
@@ -1569,9 +1577,13 @@ class UserNotificationPref(Base):
     org_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
-    channels: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    routing: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    quiet_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    channels: Mapped[dict] = mapped_column(
+        JSONB_ON_POSTGRES, default=dict, nullable=False
+    )
+    routing: Mapped[dict] = mapped_column(
+        JSONB_ON_POSTGRES, default=dict, nullable=False
+    )
+    quiet_hours: Mapped[dict | None] = mapped_column(JSONB_ON_POSTGRES, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
@@ -2122,9 +2134,7 @@ class Service(Base):
     # Only a hash of the intake URL's secret is kept (S-108); the full URL is
     # shown once, on create and on rotate. The hint is the token's first
     # characters, so an admin can tell which URL a monitor uses.
-    intake_token_hash: Mapped[str | None] = mapped_column(
-        String(64), unique=True, nullable=True
-    )
+    intake_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     intake_token_hint: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Strict allowlist of MCP server ids this service's sessions may use. Empty
     # means no MCP tools are available for sessions attached to the service.
@@ -2834,3 +2844,32 @@ class RetentionConfig(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "category", name="uq_retention_org_category"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Indexes the migrations create, declared so the models describe the same
+# schema (M1-47).
+# ---------------------------------------------------------------------------
+
+Index("ix_audit_entries_session_id", AuditEntry.session_id)
+Index("ix_audit_schedules_due", AuditSchedule.is_active, AuditSchedule.next_run_at)
+Index(
+    "ix_incidents_external_fingerprint", Incident.external_source, Incident.external_id
+)
+Index("ix_ingest_log_token_id", IngestLog.ingest_token_id)
+Index("ix_ingest_log_created_at", IngestLog.created_at)
+Index("ix_org_invites_org_id", OrgInvite.org_id)
+Index("ix_org_invites_email", OrgInvite.email)
+Index("ix_password_reset_tokens_user_id", PasswordResetToken.user_id)
+Index("ix_saml_assertion_replays_expires_at", SAMLAssertionReplay.expires_at)
+Index("ix_services_intake_token_hash", Service.intake_token_hash, unique=True)
+Index("ix_session_messages_session_id", SessionMessage.session_id)
+Index(
+    "ix_sessions_org_model_config_status",
+    Session.org_id,
+    Session.model_config_id,
+    Session.status,
+)
+Index(
+    "ix_sessions_org_status_queued", Session.org_id, Session.status, Session.queued_at
+)

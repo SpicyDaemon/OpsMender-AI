@@ -80,28 +80,44 @@ export default {
     });
 
     await h.step("incident visibly progresses through the remaining level and exhausts", async () => {
-      state.incident = await api(h, "post", "/incidents", {
-        title: qaName("progress-incident"), description: "Part 4 browser proof",
-        severity: "high", service_id: state.service.id,
+      // My Routing stages saved for P1 would hold each level for them (up to
+      // 10 minutes). With P1 set to Do not notify, the levels move on their
+      // 20 second timeouts; the user's preferences are restored after.
+      const prefs = await api(h, "get", "/users/me/notification-preferences");
+      const restore = {
+        channels: prefs.channels ?? {},
+        routing: prefs.routing ?? {},
+        quiet_hours: prefs.quiet_hours ?? null,
+      };
+      await api(h, "put", "/users/me/notification-preferences", {
+        ...restore, routing: { ...restore.routing, P1: [] },
       });
-      await h.goto(`/dashboard/incidents/detail?id=${state.incident.id}`);
-      await h.expectText(state.incident.title);
-      assert.deepEqual((await chainState(h, state.incident.id)).pages
-        .filter((page) => page.channel === "recorded").map((page) => page.step_index), [0]);
-      const deadline = Date.now() + 70000;
-      let panel;
-      while (Date.now() < deadline) {
-        panel = await chainState(h, state.incident.id);
-        if (panel.state?.status === "exhausted") break;
-        await h.page.waitForTimeout(2000);
+      try {
+        state.incident = await api(h, "post", "/incidents", {
+          title: qaName("progress-incident"), description: "Part 4 browser proof",
+          severity: "high", service_id: state.service.id,
+        });
+        await h.goto(`/dashboard/incidents/detail?id=${state.incident.id}`);
+        await h.expectText(state.incident.title);
+        assert.deepEqual((await chainState(h, state.incident.id)).pages
+          .filter((page) => page.channel === "recorded").map((page) => page.step_index), [0]);
+        const deadline = Date.now() + 70000;
+        let panel;
+        while (Date.now() < deadline) {
+          panel = await chainState(h, state.incident.id);
+          if (panel.state?.status === "exhausted") break;
+          await h.page.waitForTimeout(2000);
+        }
+        assert.equal(panel?.state?.status, "exhausted");
+        assert.deepEqual(panel.pages.filter((page) => page.channel === "recorded")
+          .map((page) => page.step_index).sort(), [0, 1]);
+        await h.page.reload();
+        await h.expectText(/Escalation exhausted/i);
+        const inbox = await api(h, "get", "/notifications");
+        assert.ok(JSON.stringify(inbox).includes("incident.escalation_exhausted"));
+      } finally {
+        await api(h, "put", "/users/me/notification-preferences", restore);
       }
-      assert.equal(panel?.state?.status, "exhausted");
-      assert.deepEqual(panel.pages.filter((page) => page.channel === "recorded")
-        .map((page) => page.step_index).sort(), [0, 1]);
-      await h.page.reload();
-      await h.expectText(/Escalation exhausted/i);
-      const inbox = await api(h, "get", "/notifications");
-      assert.ok(JSON.stringify(inbox).includes("incident.escalation_exhausted"));
     });
 
     await h.step("service form warns when no chain matches P1", async () => {

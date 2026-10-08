@@ -2493,7 +2493,8 @@ class EscalationStep(Base):
         String(20), nullable=False
     )  # roster | user | team
     target_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    timeout_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
+    # O-01: a new level waits 3 minutes before the next one pages.
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=180, nullable=False)
     notify_channels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (

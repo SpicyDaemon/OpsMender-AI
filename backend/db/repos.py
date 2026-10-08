@@ -7080,7 +7080,7 @@ class EscalationStepRepo:
         step_index: int,
         target_type: str,
         target_id: uuid.UUID,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 180,
         notify_channels: dict | None = None,
     ) -> EscalationStep:
         step = EscalationStep(

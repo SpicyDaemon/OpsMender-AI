@@ -5,7 +5,8 @@ markers the earliest sent_at/id stays `recorded`; later markers become
 `recorded_legacy`. Physical channel attempts and acknowledgement data are not
 changed. A pre-upgrade chain with recorded history starts at round 1, so its
 next claim cannot collide with a marker from any earlier handoff at round 0.
-The obsolete hard_deadline_at column remains nullable and unused.
+The hard_deadline_at column remains nullable; since M1-22 it holds the latest
+time a level waits for the people it paged (the O-02 ceiling).
 
 Revision ID: r5s6t7u8v9w0
 Revises: q4r5s6t7u8v9

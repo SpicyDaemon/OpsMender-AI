@@ -3084,7 +3084,7 @@ function StepsEditor({
   const [stepForm, setStepForm] = useState({
     target_type: "roster" as EscalationTargetType,
     target_id: "",
-    timeout_seconds: 300,
+    timeout_seconds: 180,
   });
   // v1 escalation targets a roster or a user. Team-level targets are
   // deferred to v1.1, so the picker only offers roster + user here even
@@ -3269,7 +3269,7 @@ function StepsEditor({
               Preview timeline
             </p>
             <span className="text-[10px] text-fg-muted">
-              Cumulative time from incident open
+              Earliest time from incident open
             </span>
           </div>
           <ol className="space-y-1">
@@ -3277,9 +3277,9 @@ function StepsEditor({
               .slice()
               .sort((a, b) => a.step_index - b.step_index)
               .map((s, idx, sorted) => {
-                // Cumulative time: step 0 fires at T+0; each subsequent
-                // step fires after the prior step's timeout. The doc's
-                // model is "additive - once paged, stay paged."
+                // Earliest time: step 0 fires at T+0; each subsequent
+                // step fires no sooner than the prior step's timeout. The
+                // doc's model is "additive - once paged, stay paged."
                 const cumulativeSec = sorted
                   .slice(0, idx)
                   .reduce((sum, prev) => sum + prev.timeout_seconds, 0);
@@ -3319,6 +3319,12 @@ function StepsEditor({
               </span>
             </li>
           </ol>
+          <p className="mt-2 text-[11px] text-fg-muted">
+            Each level also waits for the people it paged to get their own
+            notification stages and answer window: up to 10 minutes after it
+            pages for P0 and P1 incidents, and 20 for P2 and P3. Later levels
+            can come later than shown.
+          </p>
         </div>
       )}
 
@@ -3390,7 +3396,7 @@ function StepsEditor({
                       max={86400}
                       defaultValue={s.timeout_seconds}
                       onBlur={(e) =>
-                        patchTimeout(s.id, Number(e.target.value) || 300)
+                        patchTimeout(s.id, Number(e.target.value) || 180)
                       }
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -3456,7 +3462,7 @@ function StepsEditor({
             onChange={(e) =>
               setStepForm({
                 ...stepForm,
-                timeout_seconds: Number(e.target.value) || 300,
+                timeout_seconds: Number(e.target.value) || 180,
               })
             }
           />
@@ -4312,11 +4318,48 @@ const LEGACY_CHANNEL_LABELS: Record<string, string> = {
 const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
   { value: 60, label: "1 min" },
   { value: 120, label: "2 min" },
+  { value: 180, label: "3 min" },
   { value: 300, label: "5 min" },
   { value: 600, label: "10 min" },
   { value: 900, label: "15 min" },
   { value: 1800, label: "30 min" },
 ];
+
+/** A stored wait that isn't one of the options (legacy routing, or set
+ *  through the API), labelled so the select shows what is saved. */
+function delayLabel(seconds: number): string {
+  if (seconds <= 0) return "None";
+  if (seconds % 60 !== 0) return `${seconds} s`;
+  return `${seconds / 60} min`;
+}
+
+/** How long a level waits for its people's stages at most (O-02). */
+const LEVEL_WAIT_CEILING_MINUTES: Record<Priority, number> = {
+  P0: 10,
+  P1: 10,
+  P2: 20,
+  P3: 20,
+};
+
+/** The warning when a priority's stages plus answer window take longer than
+ *  that ceiling, or null. */
+export function ceilingWarning(
+  priority: Priority,
+  stages: RoutingStage[],
+): string | null {
+  const minutes = LEVEL_WAIT_CEILING_MINUTES[priority];
+  const waits = stages.map((stage) => stage.delay_seconds);
+  const total = waits.reduce((sum, wait) => sum + wait, 0);
+  if (total <= minutes * 60) return null;
+  const lastStageAt = total - waits[waits.length - 1];
+  return (
+    `Your stages and answer window take longer than the ${minutes} minutes ` +
+    `a level waits for you at ${priority}: ` +
+    (lastStageAt > minutes * 60
+      ? "later stages run after the next person has been paged."
+      : "the next person is paged before your answer window ends.")
+  );
+}
 
 /** Normalize a priority's routing into ordered stages (new + legacy shape). */
 function normalizeRoutingStages(raw: unknown): RoutingStage[] {
@@ -4330,8 +4373,8 @@ function normalizeRoutingStages(raw: unknown): RoutingStage[] {
         (entry as RoutingStage).channel_id ?? "",
       ).trim();
       if (!channel_id) continue;
-      const delay = Number((entry as RoutingStage).delay_seconds ?? 300);
-      out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 300 });
+      const delay = Number((entry as RoutingStage).delay_seconds ?? 180);
+      out.push({ channel_id, delay_seconds: Number.isFinite(delay) ? delay : 180 });
     }
     if (out.length >= 3) break;
   }
@@ -4537,7 +4580,7 @@ export function NotificationPreferencesPanel({
     updateStages(priority, (stages) => {
       if (stages.length >= 3) return stages;
       const channel_id = availableChannelOptions[0]?.value ?? "";
-      return [...stages, { channel_id, delay_seconds: 300 }];
+      return [...stages, { channel_id, delay_seconds: 180 }];
     });
   };
 
@@ -4690,6 +4733,7 @@ export function NotificationPreferencesPanel({
         {ALL_PRIORITIES.map((p) => {
           const meta = PRIORITY_META[p];
           const stages = routing[p] ?? [];
+          const warning = ceilingWarning(p, stages);
           return (
             <div
               key={p}
@@ -4762,25 +4806,43 @@ export function NotificationPreferencesPanel({
                             Configure in Settings → Voice &amp; SMS calling.
                           </span>
                         ) : null}
-                        {idx < stages.length - 1 && (
-                          <label className="inline-flex items-center gap-1 text-xs text-fg-muted">
-                            Wait
-                            <Select
-                              aria-label={`${p} stage ${idx + 1} delay`}
-                              value={String(stage.delay_seconds)}
-                              onChange={(e) =>
-                                setStageDelay(p, idx, Number(e.target.value))
-                              }
-                              className="h-9"
-                            >
-                              {STAGE_DELAY_OPTIONS.map((d) => (
-                                <option key={d.value} value={d.value}>
-                                  {d.label}
-                                </option>
-                              ))}
-                            </Select>
-                          </label>
-                        )}
+                        {/* The last stage's wait is the answer window: how long the
+                            next escalation level waits for you after it (M1-22). */}
+                        <label
+                          className="inline-flex items-center gap-1 text-xs text-fg-muted"
+                          title={
+                            idx < stages.length - 1
+                              ? undefined
+                              : "After your last stage, the next escalation level waits this long for your answer."
+                          }
+                        >
+                          {idx < stages.length - 1 ? "Wait" : "Answer window"}
+                          <Select
+                            aria-label={
+                              idx < stages.length - 1
+                                ? `${p} stage ${idx + 1} delay`
+                                : `${p} answer window`
+                            }
+                            value={String(stage.delay_seconds)}
+                            onChange={(e) =>
+                              setStageDelay(p, idx, Number(e.target.value))
+                            }
+                            className="h-9"
+                          >
+                            {!STAGE_DELAY_OPTIONS.some(
+                              (d) => d.value === stage.delay_seconds,
+                            ) && (
+                              <option value={stage.delay_seconds}>
+                                {delayLabel(stage.delay_seconds)}
+                              </option>
+                            )}
+                            {STAGE_DELAY_OPTIONS.map((d) => (
+                              <option key={d.value} value={d.value}>
+                                {d.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
                         <div className="ml-auto flex items-center gap-0.5">
                           <button
                             type="button"
@@ -4859,6 +4921,16 @@ export function NotificationPreferencesPanel({
               >
                 <PlusCircle className="h-4 w-4" /> Add stage
               </Button>
+              {warning && (
+                <p
+                  role="status"
+                  className="mt-2 flex items-center gap-1.5 text-xs text-status-high"
+                  data-testid={`routing-ceiling-${p}`}
+                >
+                  <AlertTriangle size={12} className="shrink-0" />
+                  {warning}
+                </p>
+              )}
             </div>
           );
         })}

@@ -2960,7 +2960,7 @@ class EscalationStepCreate(BaseModel):
     step_index: int = Field(..., ge=0)
     target_type: str = Field(..., pattern="^(roster|user|team)$")
     target_id: uuid.UUID
-    timeout_seconds: int = Field(default=300, ge=10, le=86400)
+    timeout_seconds: int = Field(default=180, ge=10, le=86400)
     notify_channels: Optional[dict[str, Any]] = None
 
 
@@ -3116,7 +3116,11 @@ class IncidentChainStateResponse(BaseModel):
     status: str
     current_step_index: int
     round: int
+    # When the level is next checked: its timeout, then, while it waits for
+    # the people it paged, when their next step is due or their answer window
+    # ends (M1-22).
     next_step_due_at: Optional[datetime]
+    # The latest the current level waits for its people (O-02).
     hard_deadline_at: Optional[datetime]
     pending_takeover_user_id: Optional[uuid.UUID]
     pending_takeover_expires_at: Optional[datetime]

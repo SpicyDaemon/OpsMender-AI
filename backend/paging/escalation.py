@@ -46,10 +46,11 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Incident, IncidentAssignment
+from backend.db.models import Incident, IncidentAssignment, IncidentPage
 from backend.db.repos import (
     BotConnectorRepo,
     chain_is_live,
@@ -59,6 +60,7 @@ from backend.db.repos import (
     IncidentPageRepo,
     IncidentRepo,
     EscalationChainRepo,
+    NotificationEscalationRepo,
     RosterRepo,
     ServiceEscalationChainRepo,
     TeamRepo,
@@ -79,6 +81,20 @@ HARD_INACTIVITY_TIMEOUT_SECONDS = 15 * 60
 # D-021: an acknowledgement lock lapses 15 min after the assignee's last write.
 ACK_LOCK_INACTIVITY_SECONDS = 15 * 60
 CLOSED_INCIDENT_STATUSES = ("resolved", "merged")
+# M1-22: a level waits for the people it paged to have had all their own
+# steps, plus an answer window after the last one (that step's stored wait),
+# but no longer than this after the level paged (O-02).
+LEVEL_WAIT_CEILING = {
+    "P0": timedelta(minutes=10),
+    "P1": timedelta(minutes=10),
+    "P2": timedelta(minutes=20),
+    "P3": timedelta(minutes=20),
+}
+
+
+def level_wait_ceiling(priority: str | None) -> timedelta:
+    """How long a level waits for its people's steps at most (O-02)."""
+    return LEVEL_WAIT_CEILING.get(priority or "P1", LEVEL_WAIT_CEILING["P1"])
 
 
 @dataclasses.dataclass(slots=True)
@@ -593,6 +609,11 @@ async def _fire_next_level(
             continue
         state.status = "running"
         state.next_step_due_at = now + timedelta(seconds=step.timeout_seconds)
+        # The latest this level waits for its people (M1-22, O-02).
+        incident = await IncidentRepo.get_by_id(db, org_id, state.incident_id)
+        state.hard_deadline_at = now + level_wait_ceiling(
+            None if incident is None else incident.priority
+        )
         await db.flush()
         if result.users_paged and not result.delivery_recorded:
             await record_lifecycle_comment(
@@ -678,6 +699,13 @@ async def _tick_state(
             if changed:
                 await db.flush()
             return None, changed
+        # The level's timeout has passed; it still waits for the people it
+        # paged to have had all their own steps (M1-22).
+        hold = await _level_wait(db, org_id, state, now=now)
+        if hold is not None:
+            state.next_step_due_at = hold
+            await db.flush()
+            return None, True
         return (
             await _fire_next_level(
                 db, org_id, state, now=now, channel_factory=channel_factory
@@ -741,6 +769,121 @@ async def _tick_state(
         ),
         True,
     )
+
+
+async def _answer_window(db: AsyncSession, org_id: uuid.UUID, row) -> timedelta:
+    """The answer window after a person's last step: that step's stored wait,
+    or none when it could not be sent."""
+    from backend.paging.routing import parse_stages
+
+    stages = parse_stages(row.stages)
+    if not stages:
+        return timedelta(0)
+    last = len(stages) - 1
+    page = (
+        await db.execute(
+            select(IncidentPage)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == row.incident_id,
+                IncidentPage.user_id == row.user_id,
+                IncidentPage.chain_id.is_(None),
+                IncidentPage.step_index == last,
+                IncidentPage.channel == stages[last].channel_id,
+            )
+            .order_by(IncidentPage.sent_at.desc(), IncidentPage.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if page is None or page.delivery_status != "sent":
+        return timedelta(0)
+    return timedelta(seconds=stages[last].delay_seconds)
+
+
+async def _current_level(
+    db: AsyncSession, org_id: uuid.UUID, state
+) -> tuple[int, int] | None:
+    """The round and level index the current level's pages were recorded
+    under: the chain's latest. Deleting a level renumbers the run's own
+    counters, so those may no longer match the level in flight."""
+    latest = (
+        await db.execute(
+            select(IncidentPage.round, IncidentPage.step_index)
+            .where(
+                IncidentPage.org_id == org_id,
+                IncidentPage.incident_id == state.incident_id,
+                IncidentPage.chain_id == state.chain_id,
+                IncidentPage.channel == "recorded",
+                IncidentPage.step_index.is_not(None),
+            )
+            .order_by(IncidentPage.round.desc(), IncidentPage.step_index.desc())
+            .limit(1)
+        )
+    ).first()
+    return None if latest is None else (latest[0], latest[1])
+
+
+async def _level_wait(
+    db: AsyncSession, org_id: uuid.UUID, state, *, now: datetime
+) -> datetime | None:
+    """When to look at a due level again, or None when it may escalate now.
+
+    A level escalates once its timeout has passed (the caller checks that) and
+    everyone it paged has had all their own steps plus the answer window after
+    the last one, unless someone acknowledges. Someone with no steps saved
+    holds nothing: the level timeout alone decides for them (O-01). Someone
+    still running through their steps is checked again when their next step
+    is due. Someone deactivated, deleted or no longer an admin or operator
+    holds nothing (O-14). The wait never runs past the ceiling set when the
+    level paged: 10 minutes for P0 and P1, 20 for P2 and P3 (O-02).
+    """
+    cap = _aware(state.hard_deadline_at)
+    if cap is None or now >= cap:
+        return None
+    level = await _current_level(db, org_id, state)
+    if level is None:
+        return None
+    user_ids = (
+        (
+            await db.execute(
+                select(IncidentPage.user_id)
+                .where(
+                    IncidentPage.org_id == org_id,
+                    IncidentPage.incident_id == state.incident_id,
+                    IncidentPage.chain_id == state.chain_id,
+                    IncidentPage.round == level[0],
+                    IncidentPage.step_index == level[1],
+                    IncidentPage.channel == "recorded",
+                )
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    wait_until: datetime | None = None
+    for user_id in user_ids:
+        if not _active_responder(await UserRepo.get_by_id(db, user_id)):
+            continue
+        row = await NotificationEscalationRepo.get(
+            db, org_id, incident_id=state.incident_id, user_id=user_id
+        )
+        if row is None:
+            continue
+        if row.status == "running":
+            # Not used up yet: look again when their next step is due.
+            next_due = _aware(row.next_stage_due_at) or now
+            until = max(next_due, now + timedelta(seconds=1))
+        elif row.status == "exhausted":
+            finished = _aware(row.finished_at) or now
+            until = finished + await _answer_window(db, org_id, row)
+        else:
+            until = _aware(row.finished_at) or now
+        if until > now and (wait_until is None or until > wait_until):
+            wait_until = until
+    if wait_until is None:
+        return None
+    return min(wait_until, cap)
 
 
 async def tick(

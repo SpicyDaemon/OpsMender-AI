@@ -45,14 +45,20 @@ function tokenStatus(row: ApiTokenResponse) {
   return row.revoked_at ? "Revoked" : "Active";
 }
 
-export function ApiTokensSection() {
+/**
+ * Admins (Settings) see and mint every role. With ``fixedRole`` (Profile, for
+ * operators) the section lists only the person's own tokens, as the API does,
+ * and mints that role only.
+ */
+export function ApiTokensSection({ fixedRole }: { fixedRole?: ApiTokenRole } = {}) {
   const [tokens, setTokens] = useState<ApiTokenResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [role, setRole] = useState<ApiTokenRole>("operator");
+  const [role, setRole] = useState<ApiTokenRole>(fixedRole ?? "operator");
   const [created, setCreated] = useState<ApiTokenCreateResponse | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiTokenResponse | null>(null);
   const [revoking, setRevoking] = useState(false);
@@ -77,25 +83,26 @@ export function ApiTokensSection() {
 
   const resetCreate = () => {
     setName("");
-    setRole("operator");
+    setRole(fixedRole ?? "operator");
     setCreated(null);
+    setCreateError(null);
     setCreateOpen(false);
   };
 
   const submitCreate = async () => {
     if (!name.trim()) {
-      setError("Token name is required");
+      setCreateError("Token name is required");
       return;
     }
     setCreating(true);
-    setError(null);
+    setCreateError(null);
     try {
       const token = await createApiToken({ name: name.trim(), role });
       setCreated(token);
       setName("");
       await loadTokens();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "API token could not be created");
+      setCreateError(err instanceof Error ? err.message : "API token could not be created");
     } finally {
       setCreating(false);
     }
@@ -187,7 +194,9 @@ export function ApiTokensSection() {
             API Tokens
           </h2>
           <p className="mt-1 text-sm text-fg-secondary">
-            Named bearer tokens for scripts and automation.
+            {fixedRole
+              ? "Your bearer tokens for scripts and automation. They act as you, with the Operator role at most."
+              : "Named bearer tokens for scripts and automation."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -278,30 +287,38 @@ export function ApiTokensSection() {
                 placeholder="deploy-script"
               />
             </div>
-            <div>
-              <Label htmlFor="api-token-role">Role</Label>
-              <Select
-                id="api-token-role"
-                value={role}
-                onChange={(event) => setRole(event.target.value as ApiTokenRole)}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {roleLabel(option.value)}
-                  </option>
-                ))}
-              </Select>
-              <div className="mt-2 space-y-1 text-xs text-fg-muted">
-                {ROLE_OPTIONS.map((option) => (
-                  <p key={option.value}>
-                    <span className="font-medium text-fg-secondary">
-                      {roleLabel(option.value)}:
-                    </span>{" "}
-                    {option.description}
-                  </p>
-                ))}
+            {fixedRole ? (
+              <p className="text-xs text-fg-muted" data-testid="api-token-fixed-role">
+                The token uses the {roleLabel(fixedRole)} role. It acts with the lower of
+                that role and yours, and stops working if your account is deactivated.
+              </p>
+            ) : (
+              <div>
+                <Label htmlFor="api-token-role">Role</Label>
+                <Select
+                  id="api-token-role"
+                  value={role}
+                  onChange={(event) => setRole(event.target.value as ApiTokenRole)}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {roleLabel(option.value)}
+                    </option>
+                  ))}
+                </Select>
+                <div className="mt-2 space-y-1 text-xs text-fg-muted">
+                  {ROLE_OPTIONS.map((option) => (
+                    <p key={option.value}>
+                      <span className="font-medium text-fg-secondary">
+                        {roleLabel(option.value)}:
+                      </span>{" "}
+                      {option.description}
+                    </p>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+            {createError ? <FormAlert message={createError} /> : null}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={resetCreate}>
                 Cancel

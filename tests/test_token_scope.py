@@ -261,17 +261,15 @@ async def test_token_role_follows_its_creators_demotion(world):
     token = await _token(
         world, "admin", headers=await _headers(world.client, "ts-creator")
     )
-    assert (
-        await world.client.get("/api/v1/api-tokens", headers=token)
-    ).status_code == 200
+    # An admin-only read (operators may list their own API tokens, M1-03).
+    admin_only = f"/auth/users/{creator}/delete-preconditions"
+    assert (await world.client.get(admin_only, headers=token)).status_code == 200
 
     demoted = await world.client.patch(
         f"/auth/users/{creator}", json={"role": "operator"}, headers=world.admin
     )
     assert demoted.status_code == 200, demoted.text
-    assert (
-        await world.client.get("/api/v1/api-tokens", headers=token)
-    ).status_code == 403
+    assert (await world.client.get(admin_only, headers=token)).status_code == 403
     assert (await world.client.get("/incidents", headers=token)).status_code == 200
 
     demoted = await world.client.patch(

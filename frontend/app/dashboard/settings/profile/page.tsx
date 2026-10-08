@@ -22,6 +22,7 @@ import { PasswordField } from "@/components/ui/PasswordField";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useToast } from "@/components/ui/Toast";
 import { MFASettings } from "@/components/MFASettings";
+import { ApiTokensSection } from "@/components/config/ApiTokensSection";
 
 export default function ProfileSettingsPage() {
   const { user, refresh } = useAuth();
@@ -348,6 +349,16 @@ export default function ProfileSettingsPage() {
       </section>
 
       <MFASettings />
+
+      {/* Operators manage their own Operator tokens here; admins use Settings. */}
+      {user.role === "operator" && (
+        <div
+          className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6"
+          data-testid="profile-api-tokens"
+        >
+          <ApiTokensSection fixedRole="operator" />
+        </div>
+      )}
 
       {/* Notifications link */}
       <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">

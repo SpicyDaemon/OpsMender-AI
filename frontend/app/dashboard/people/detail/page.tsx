@@ -503,6 +503,8 @@ function ActionsCard({
           <strong>Email reset:</strong> mint a one-time URL the user pastes into their browser to set a new password (expires in 24 hours).
           {" "}
           <strong>Manual reset:</strong> set a temporary password (shown once). The user logs in with it and must change it.
+          {" "}
+          Either way, setting the new password signs them out and revokes the API tokens they created.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={mint} disabled={resetting} variant="secondary">

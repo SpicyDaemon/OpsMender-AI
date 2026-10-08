@@ -643,7 +643,8 @@ async def _workspace_user(
     *,
     include_deleted: bool = False,
 ) -> User:
-    """``user_id`` when they belong to the caller's workspace ``org_id``.
+    """``user_id`` when they belong to the caller's workspace ``org_id``: it
+    is their primary workspace, or they are its member.
 
     Anyone else is "not found" (O-11), so an admin never reads or changes a
     person from another workspace, even if a second Organization row exists.
@@ -652,7 +653,10 @@ async def _workspace_user(
     if (
         target is None
         or (target.deleted_at is not None and not include_deleted)
-        or not await UserRepo.is_member(db, user_id, org_id)
+        or (
+            target.primary_org_id != org_id
+            and not await UserRepo.is_member(db, user_id, org_id)
+        )
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"

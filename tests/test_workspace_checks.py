@@ -241,6 +241,34 @@ async def test_the_people_list_shows_only_your_workspace(
     assert {row["username"] for row in resp.json()["items"]} == {"api-admin"}
 
 
+async def test_someone_whose_primary_workspace_is_yours_is_found(
+    app, client: AsyncClient, admin_headers
+):
+    # Their primary workspace makes them yours, as it does at sign-in, even
+    # without a separate membership row.
+    async with app.state.session_factory() as db:
+        person = await UserRepo.create(
+            db,
+            username="primary-only",
+            email="primary-only@test.com",
+            password_hash=hash_password("primary-only-pass"),
+            role="viewer",
+            primary_org_id=TEST_ORG_ID,
+        )
+        await db.commit()
+        person_id = str(person.id)
+
+    found = await client.get(f"/auth/users/{person_id}", headers=admin_headers)
+    changed = await client.patch(
+        f"/auth/users/{person_id}", json={"role": "operator"}, headers=admin_headers
+    )
+    listed = await client.get("/auth/users", headers=admin_headers)
+
+    assert (found.status_code, changed.status_code) == (200, 200), changed.text
+    assert changed.json()["role"] == "operator"
+    assert person_id in {row["id"] for row in listed.json()["items"]}
+
+
 async def test_your_own_workspace_still_works(app, client: AsyncClient, admin_headers):
     me = (await client.get("/auth/me", headers=admin_headers)).json()
     org_id = TEST_ORG_ID

@@ -245,16 +245,20 @@ class UserRepo:
         include_deleted: bool = False,
         org_id: uuid.UUID | None = None,
     ) -> Sequence[User]:
-        """Users, oldest first; only ``org_id``'s members when it is given."""
+        """Users, oldest first; only ``org_id``'s people when it is given: those
+        whose primary workspace it is, or who are its members."""
         stmt = select(User).order_by(User.created_at).limit(limit).offset(offset)
         if not include_deleted:
             stmt = stmt.where(User.deleted_at.is_(None))
         if org_id is not None:
             stmt = stmt.where(
-                User.id.in_(
-                    select(UserOrganization.user_id).where(
-                        UserOrganization.org_id == org_id
-                    )
+                or_(
+                    User.primary_org_id == org_id,
+                    User.id.in_(
+                        select(UserOrganization.user_id).where(
+                            UserOrganization.org_id == org_id
+                        )
+                    ),
                 )
             )
         result = await db.execute(stmt)

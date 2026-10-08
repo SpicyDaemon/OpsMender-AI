@@ -78,16 +78,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the answer window and warns when a priority's stages and answer window
   take longer than that priority's limit; the chain editor's Preview timeline
   shows each level's earliest time.
-  an answer window (the last stage's wait, 5 minutes by default; none if that
-  stage couldn't be sent; for someone without stages, 5 minutes after a page
-  that reached them). The wait for people's stages ends at most 30 minutes
-  after the level paged; a longer level timeout still applies. With three
-  stages at the default 5-minute wait, levels fire 15 minutes apart. My
-  Routing shows the last stage's wait as the answer window, and the chain
-  editor's Preview timeline shows each level's earliest time.
-  that reached them), at most 30 minutes after it fired. With default
-  stages, levels fire 15 minutes apart. My Routing shows the last stage's wait
-  as the answer window.
 - A recovery that arrives during a Maintenance Window now closes the incident
   it clears, stopping its Escalation Chain and AI session without paging
   anyone. Before, the window dropped it with every other alert, so an incident

@@ -80,6 +80,12 @@ POST /api/v1/intake/{service_token}
 
 The token is an embedded unguessable secret in the URL. External monitors can POST alerts directly without managing separate API-key headers.
 
+An alert body can be up to 1 MiB; set `OPSMENDER_INGEST_MAX_BODY_BYTES` to
+change the limit. A larger body gets `413` before OpsMender reads it in full,
+whether or not it declares its length, and opens no incident. The token's
+delivery log keeps a short row with the body's size and the limit, never the
+body. The same limit applies to `POST /incidents/ingest`.
+
 Each service has:
 
 - Name and slug.

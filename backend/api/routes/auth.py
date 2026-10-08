@@ -31,6 +31,7 @@ from backend.api.auth import (
     actor_label,
     create_access_token,
     create_mfa_token,
+    get_current_org,
     get_current_user,
     hash_password,
     reject_api_tokens,
@@ -566,10 +567,11 @@ async def change_my_password(
 )
 async def list_users(
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    users = await UserRepo.list_all(db, limit=limit, offset=offset)
+    users = await UserRepo.list_all(db, limit=limit, offset=offset, org_id=org_id)
     return UserListResponse(items=list(users), total=len(users))
 
 
@@ -634,6 +636,34 @@ async def create_user(
 PASSWORD_RESET_TTL = timedelta(hours=24)
 
 
+async def _workspace_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    org_id: uuid.UUID,
+    *,
+    include_deleted: bool = False,
+) -> User:
+    """``user_id`` when they belong to the caller's workspace ``org_id``: it
+    is their primary workspace, or they are its member.
+
+    Anyone else is "not found" (O-11), so an admin never reads or changes a
+    person from another workspace, even if a second Organization row exists.
+    """
+    target = await UserRepo.get_by_id(db, user_id)
+    if (
+        target is None
+        or (target.deleted_at is not None and not include_deleted)
+        or (
+            target.primary_org_id != org_id
+            and not await UserRepo.is_member(db, user_id, org_id)
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    return target
+
+
 def _resolve_public_base_url(request: Request) -> str:
     """Prefer the explicit `OPSMENDER_PUBLIC_BASE_URL` env when set so
     invite + reset links are correct under any proxy chain. Falls back
@@ -659,13 +689,9 @@ def _resolve_public_base_url(request: Request) -> str:
 async def get_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
 ):
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-    return target
+    return await _workspace_user(db, user_id, org_id, include_deleted=True)
 
 
 @router.patch(
@@ -678,12 +704,9 @@ async def update_user(
     body: UserUpdateRequest,
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_role("admin")),
+    org_id: uuid.UUID = Depends(get_current_org),
 ):
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    target = await _workspace_user(db, user_id, org_id)
     # Only an active admin gets here, so refusing these to yourself (and to
     # your API tokens, which act as you) always leaves one active admin.
     if target.id == actor.id and (
@@ -750,12 +773,9 @@ async def update_user(
 async def get_delete_preconditions(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
 ):
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    target = await _workspace_user(db, user_id, org_id)
     rosters = await UserRepo.count_roster_memberships(db, user_id)
     return SoftDeletePreconditions(
         is_active=target.is_active,
@@ -774,12 +794,9 @@ async def soft_delete_user(
     user_id: uuid.UUID,
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
 ):
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    target = await _workspace_user(db, user_id, org_id)
     if target.id == actor.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -815,12 +832,9 @@ async def mint_password_reset(
     request: Request,
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
 ):
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    target = await _workspace_user(db, user_id, org_id)
 
     raw, token_hash = people_tokens.mint()
     expires_at = datetime.now(timezone.utc) + PASSWORD_RESET_TTL
@@ -882,6 +896,7 @@ async def mint_password_reset(
 async def set_temporary_password(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
     admin: User = Depends(require_role("admin")),
 ):
     """Manual (no-email) password reset: generate a temporary password, force a
@@ -889,11 +904,7 @@ async def set_temporary_password(
     The person's API tokens are revoked (O-09)."""
     import secrets
 
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    target = await _workspace_user(db, user_id, org_id)
     temp = secrets.token_urlsafe(9)
     await _set_password(
         db,

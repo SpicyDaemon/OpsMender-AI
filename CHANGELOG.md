@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Workspace settings, invite and People routes now check that the workspace
+  and person named in the request are your own workspace and its members
+  (404 otherwise), and OpsMender never creates a second workspace. Before,
+  an admin could read and change any workspace or person by id, including
+  reset links and temporary passwords; one instance runs one workspace, so
+  this only mattered if a second workspace row existed.
 - Nobody can change their own role or deactivate their own account, including
   through their API tokens; another admin can. Before, the only admin could
   demote or deactivate themselves and leave nobody able to sign in as admin.

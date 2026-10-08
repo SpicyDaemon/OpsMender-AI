@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_org, require_role
+from backend.api.auth import current_workspace, get_current_org, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
     NotificationSettingsResponse,
@@ -35,7 +35,12 @@ from backend.db.repos import (
 )
 from backend.reports.email import build_email_channel, resolve_email_settings
 
-router = APIRouter(prefix="/organizations", tags=["organizations"])
+# Every route here names a workspace in its path: only the caller's own.
+router = APIRouter(
+    prefix="/organizations",
+    tags=["organizations"],
+    dependencies=[Depends(current_workspace)],
+)
 
 # Separate router for public tenant resolution (no auth, no /organizations prefix).
 tenant_router = APIRouter(prefix="/tenant", tags=["tenant"])

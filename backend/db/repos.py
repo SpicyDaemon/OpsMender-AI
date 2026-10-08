@@ -7681,6 +7681,19 @@ class NotificationEscalationRepo:
         )
         return (await db.execute(stmt)).scalars().all()
 
+    @staticmethod
+    async def list_running_for_user(
+        db: AsyncSession, user_id: uuid.UUID
+    ) -> Sequence[NotificationEscalation]:
+        """One person's running escalations on every incident, unlocked like
+        ``list_running_for_incident``."""
+        stmt = (
+            select(NotificationEscalation)
+            .where(NotificationEscalation.user_id == user_id)
+            .where(NotificationEscalation.status == "running")
+        )
+        return (await db.execute(stmt)).scalars().all()
+
 
 class IncidentMemoryRepo:
     """Sprint 45 - AI incident memory.

@@ -24,6 +24,7 @@ from backend.db.models import (
 from backend.db.repos import (
     EscalationChainRepo,
     EscalationStepRepo,
+    IncidentAssignmentRepo,
     IncidentRepo,
     MaintenanceWindowRepo,
     NotificationEscalationRepo,
@@ -643,9 +644,9 @@ async def test_removing_responder_keeps_their_live_chain_notifications(world):
         assert (await db.get(NotificationEscalation, stage_id)).status == "running"
 
 
-async def test_a_responder_on_an_owned_incident_gets_every_step(world):
-    """Ownership alone never ends steps. An ACK ends the steps running then;
-    someone asked to help afterwards gets their whole routing."""
+async def test_a_responder_on_an_owned_incident_gets_only_the_first_step(world):
+    """Someone asked to help after the incident has an owner gets only the
+    first step of their plan (O-04); the owner keeps the incident."""
     a1 = await _user(world.app, "rs-a1")
     helper = await _user(world.app, "rs-helper")
     _, service_a, chain_a = await _team(world, "Platform", members=[a1], levels=[a1])
@@ -676,8 +677,10 @@ async def test_a_responder_on_an_owned_incident_gets_every_step(world):
         state = await NotificationEscalationRepo.get(
             db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
         )
-        assert (state.status, state.current_stage) == ("running", 0)
-        due = state.next_stage_due_at.replace(tzinfo=timezone.utc)
+        assert (state.status, state.current_stage) == ("exhausted", 0)
+        assert [stage["channel_id"] for stage in state.stages] == [first]
+        owner = await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, incident_id)
+        assert owner.assigned_to == a1
 
     sent = []
 
@@ -685,15 +688,11 @@ async def test_a_responder_on_an_owned_incident_gets_every_step(world):
         sent.append((channel_id, user.id))
         return "sent", None
 
+    later = datetime.now(timezone.utc) + timedelta(minutes=5)
     async with world.app.state.session_factory() as db:
-        assert await _ne.tick_all_due(db, sender=sender, at=due) == 1
+        assert await _ne.tick_all_due(db, sender=sender, at=later) == 0
         await db.commit()
-    assert sent == [(second, helper)]
-    async with world.app.state.session_factory() as db:
-        state = await NotificationEscalationRepo.get(
-            db, TEST_ORG_ID, incident_id=incident_id, user_id=helper
-        )
-        assert (state.status, state.current_stage) == ("exhausted", 1)
+    assert sent == []
     assert await _owner(world.app, incident_id) == a1
 
 

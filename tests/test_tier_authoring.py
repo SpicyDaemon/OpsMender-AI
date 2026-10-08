@@ -76,6 +76,7 @@ def test_ties_keep_the_stricter_classification_then_reversibility():
         "Run Command",
         "shell.exec",
         "PYTHON",
+        "KubeCtl",
     ],
 )
 def test_runner_names_are_caught_whatever_their_case_or_separators(name):

@@ -3,7 +3,8 @@
 Admins mint Admin, Operator or Viewer tokens and see and revoke all of them.
 An operator, signed in, mints Operator tokens only; lists and revokes only
 their own (others' look absent). Their tokens stop working when the operator
-is deactivated and drop to Viewer when they are demoted.
+is deactivated or changes their password (O-09) and drop to Viewer when they
+are demoted.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import pytest
 
 from backend.db.models import ApiToken
 from tests.test_ownership_lifecycle import (
+    PASSWORD,
     World,
     _headers,
     app as _app_fixture,
@@ -132,6 +134,27 @@ async def test_deactivating_an_operator_stops_their_token(world):
     )
     assert deactivated.status_code == 200, deactivated.text
     assert (await world.client.get("/incidents", headers=token)).status_code == 401
+
+
+async def test_an_operators_password_change_stops_their_token(world):
+    operator = await _headers(world.client, "lc-l3")
+    created = (await _create(world, operator)).json()
+    token = _bearer(created["token"])
+    assert (await world.client.get("/incidents", headers=token)).status_code == 200
+
+    changed = await world.client.post(
+        "/auth/me/password",
+        json={"current_password": PASSWORD, "new_password": "a-new-operator-pass"},
+        headers=operator,
+    )
+    assert changed.status_code == 200, changed.text
+    assert (await world.client.get("/incidents", headers=token)).status_code == 401
+    listed = await world.client.get(
+        "/api/v1/api-tokens",
+        headers={"Authorization": f"Bearer {changed.json()['access_token']}"},
+    )
+    row = next(item for item in listed.json()["items"] if item["id"] == created["id"])
+    assert row["revoked_at"] is not None
 
 
 async def test_an_admin_revokes_an_operators_token(world):

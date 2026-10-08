@@ -89,6 +89,10 @@ jobs:
       - name: Upgrade an empty database
         run: uv run alembic upgrade head
 
+      # The models and the migrations must describe the same schema (M1-47).
+      - name: Check the models match the migrations
+        run: uv run alembic check
+
       - name: Install test dependencies
         run: uv sync --frozen --group dev
 

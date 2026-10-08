@@ -9590,7 +9590,8 @@ class TestAdminChangeAudit:
             "/rosters/{roster_id}/overrides/{override_id}": [
                 ("roster_overrides", "deleted")
             ],
-            "/rosters/{roster_id}/members/{user_id}": [("roster_members", "deleted")],
+            # Removal keeps the member's place in the rotation (O-03).
+            "/rosters/{roster_id}/members/{user_id}": [("roster_members", "updated")],
             "/priority-rules/{rule_id}": [("priority_rules", "updated")],
             "/reports/schedules/{schedule_id}": [("report_schedules", "updated")],
             "/models/configs/{config_id}/toggle-active": [("model_configs", "updated")],

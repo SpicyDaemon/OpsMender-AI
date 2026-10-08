@@ -57,13 +57,15 @@ async def _on_a_roster(app, user_id: uuid.UUID) -> None:
 
 
 async def _state(app, user_id: uuid.UUID) -> tuple[str, bool, int, int]:
-    """(role, active, Roster memberships, notices) for ``user_id``."""
+    """(role, active, Roster memberships, notices) for ``user_id``. A place
+    taken off a Roster stays in its rotation, marked removed (O-03), so only
+    current memberships count."""
     async with app.state.session_factory() as db:
         user = await db.get(User, user_id, populate_existing=True)
         memberships = await db.scalar(
             select(func.count())
             .select_from(RosterMember)
-            .where(RosterMember.user_id == user_id)
+            .where(RosterMember.user_id == user_id, RosterMember.removed_at.is_(None))
         )
         notices = await db.scalar(
             select(func.count())

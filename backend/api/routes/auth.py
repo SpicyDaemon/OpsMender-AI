@@ -760,16 +760,13 @@ async def update_user(
     # Deactivation and demotion to Viewer take the user off every Roster:
     # they stop paging and don't block deletion. Their places stay in the
     # rotation, so the others keep their shifts (Part 5, O-03). Promotion
-    # later doesn't restore membership.
+    # later doesn't restore membership. Their running notification steps stop
+    # at once (O-14).
     if body.is_active is False or (body.role == "viewer" and prev_role != "viewer"):
         from backend.db.repos import RosterRepo
-
-        await RosterRepo.remove_user_everywhere(db, user_id)
-    # Deactivation or demotion to Viewer stops their running notification
-    # steps at once (O-14).
-    if body.is_active is False or (body.role == "viewer" and prev_role != "viewer"):
         from backend.paging import notification_escalation
 
+        await RosterRepo.remove_user_everywhere(db, user_id)
         await notification_escalation.stop_for_user(db, user_id)
     await db.commit()
     return updated

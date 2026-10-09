@@ -124,11 +124,11 @@ class TestPKCE:
 
 
 # ---------------------------------------------------------------------------
-# State JWT
+# Authorization state (M1-45, R-21)
 # ---------------------------------------------------------------------------
 
 
-class TestStateJWT:
+class TestState:
     def test_round_trip_recovers_all_fields(self):
         token = sign_state(
             server_id="00000000-0000-0000-0000-000000000111",
@@ -136,17 +136,42 @@ class TestStateJWT:
             code_verifier="verifier-value",
             resource="https://mcp.example.com/mcp",
             org_id="00000000-0000-0000-0000-0000000000aa",
+            client_id="client-1",
+            client_secret="client-secret-1",
         )
         decoded = verify_state(token)
 
-        assert decoded["sub"] == "00000000-0000-0000-0000-000000000111"
-        assert decoded["asiss"] == "https://auth.example.com"
-        assert decoded["cv"] == "verifier-value"
-        assert decoded["res"] == "https://mcp.example.com/mcp"
-        assert decoded["org"] == "00000000-0000-0000-0000-0000000000aa"
-        assert decoded["aud"] == "opsmender-mcp-oauth"
+        assert decoded == {
+            "sub": "00000000-0000-0000-0000-000000000111",
+            "asiss": "https://auth.example.com",
+            "cv": "verifier-value",
+            "res": "https://mcp.example.com/mcp",
+            "org": "00000000-0000-0000-0000-0000000000aa",
+            "cid": "client-1",
+            "csec": "client-secret-1",
+        }
 
-    def test_tampered_token_is_rejected(self):
+    def test_the_state_carries_no_verifier_or_secret(self):
+        verifier = "pkce-verifier-" + "v" * 50
+        token = sign_state(
+            server_id="s",
+            issuer="https://i",
+            code_verifier=verifier,
+            resource="https://r",
+            org_id="o",
+            client_id="cid",
+            client_secret="csec-value",
+        )
+
+        assert verifier not in token and "csec-value" not in token
+        assert "." not in token  # not a JWT: nothing to decode
+        assert len(token) >= 40
+
+    def test_an_unknown_state_is_rejected(self):
+        with pytest.raises(ValueError, match="Invalid MCP OAuth state"):
+            verify_state("made-up-reference")
+
+    def test_a_state_works_once(self):
         token = sign_state(
             server_id="s",
             issuer="https://i",
@@ -154,15 +179,13 @@ class TestStateJWT:
             resource="https://r",
             org_id="o",
         )
-        # Flip a character in the signature segment.
-        head, payload, sig = token.split(".")
-        tampered = f"{head}.{payload}.{sig[:-2]}AA"
+        verify_state(token)
 
         with pytest.raises(ValueError, match="Invalid MCP OAuth state"):
-            verify_state(tampered)
+            verify_state(token)
 
     def test_expired_token_is_rejected(self, monkeypatch):
-        # Force the JWT to have already expired by patching time.time().
+        # Record the request far in the past so it has already expired.
         real_time = time.time
         monkeypatch.setattr("backend.mcp.oauth.time.time", lambda: real_time() - 99999)
         token = sign_state(

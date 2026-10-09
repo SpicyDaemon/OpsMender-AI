@@ -21,6 +21,8 @@ or ``scale_deployment``.
 
 from __future__ import annotations
 
+import re
+
 # Exact tool names (case-insensitive) that execute arbitrary commands.
 _GENERIC_EXACT: frozenset[str] = frozenset(
     {
@@ -85,6 +87,10 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "php",
         "groovy",
         "jshell",
+        "repl",
+        "python_repl",
+        "code_interpreter",
+        "interpreter",
         # network / transfer (can exfiltrate or fetch+run)
         "curl",
         "wget",
@@ -117,7 +123,21 @@ _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_query",
     "_run",
     "_script",
+    "_repl",
+    "_interpreter",
 )
+
+
+def _fold(name: str) -> str:
+    return re.sub(r"[\s.\-/:]+", "_", name.strip()).strip("_").lower()
+
+
+def _spellings(tool_name: str) -> set[str]:
+    """The name with case and separators folded, as written and with camel case
+    split: ``KubeCtl`` stays ``kubectl``, ``ExecuteCommand`` also reads
+    ``execute_command``, and ``Run Command`` and ``run-command`` read
+    ``run_command`` (R-12)."""
+    return {_fold(tool_name), _fold(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", tool_name))}
 
 
 def is_generic_execution_tool(tool_name: str) -> bool:
@@ -129,11 +149,11 @@ def is_generic_execution_tool(tool_name: str) -> bool:
     """
     if not tool_name:
         return False
-    name = tool_name.strip().lower()
-    if name in _GENERIC_EXACT:
-        return True
-    if any(name.startswith(p) for p in _GENERIC_PREFIXES):
-        return True
-    if any(name.endswith(s) for s in _GENERIC_SUFFIXES):
-        return True
+    for name in _spellings(tool_name):
+        if name in _GENERIC_EXACT:
+            return True
+        if any(name.startswith(p) for p in _GENERIC_PREFIXES):
+            return True
+        if any(name.endswith(s) for s in _GENERIC_SUFFIXES):
+            return True
     return False

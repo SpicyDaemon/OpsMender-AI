@@ -222,6 +222,20 @@ class TemporaryPasswordResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class RosterImpactItem(BaseModel):
+    roster_id: uuid.UUID
+    roster_name: str
+    on_current_shift: bool
+    # Who takes the current shift once this person leaves, when they hold it.
+    current_shift_taken_by: Optional[str] = None
+
+
+class RosterImpactResponse(BaseModel):
+    """The Rosters a person leaves on demotion to Viewer or deactivation."""
+
+    items: list[RosterImpactItem]
+
+
 class UserUpdateRequest(BaseModel):
     """Admin-only patch of a user's role, active state, and profile fields."""
 

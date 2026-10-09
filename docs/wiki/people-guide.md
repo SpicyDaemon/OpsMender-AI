@@ -131,10 +131,18 @@ Use **Deactivate** when you want to block future login but preserve the account.
 Effects:
 
 - The user cannot sign in.
+- They leave every on-call Roster. The others keep their shifts, and the
+  shifts that would have been theirs go to the next member.
 - Their remaining notification stages on open incidents stop at once, as they
   do when someone is made a Viewer.
 - Historical references remain intact.
-- The account can be reactivated later.
+- The account can be reactivated later. Reactivation doesn't put them back on
+  the Rosters.
+
+Changing someone to **Viewer** takes them off every Roster the same way,
+because Viewers can't be paged, and making them an operator again doesn't put
+them back. Both confirmations list the Rosters they leave and, where they hold
+the current shift, who takes it.
 
 This is the normal first step for offboarding or temporary suspension.
 

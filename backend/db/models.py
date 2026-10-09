@@ -2203,6 +2203,12 @@ class RosterMember(Base):
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+    # Set when the member is taken off the Roster (removed, deactivated or
+    # demoted to Viewer). The row keeps its place in the rotation, so the
+    # others keep their shifts and this one's pass to the next (O-03).
+    removed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         UniqueConstraint("roster_id", "user_id", name="uq_roster_member_user"),

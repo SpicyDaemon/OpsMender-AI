@@ -108,6 +108,11 @@ export async function deleteMaintenanceWindow(id: string): Promise<void> {
   return api.del(`/maintenance-windows/${id}`);
 }
 
+/** End a window now, repeats included: its creator or an admin. */
+export async function endMaintenanceWindow(id: string): Promise<MaintenanceWindowResponse> {
+  return api.post(`/maintenance-windows/${id}/end`, {});
+}
+
 export async function approveMaintenanceWindow(id: string): Promise<MaintenanceWindowResponse> {
   return api.post(`/maintenance-windows/${id}/approve`, {});
 }

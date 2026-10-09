@@ -46,6 +46,7 @@ from backend.db.repos import (
     UptimeSampleRepo,
 )
 from backend.paging.maintenance import parse_rrule
+from backend.paging.window_notice import announce
 from backend.sla import metrics
 from backend.sla import response_time
 from backend.sla.poller import validate_expected_status_config
@@ -911,6 +912,33 @@ async def get_slo_recommendations(
 
 _mw_prefix = "/maintenance-windows"
 
+# An operator's window lasts at most a day; admins may set longer (O-05).
+OPERATOR_WINDOW_LIMIT = timedelta(hours=24)
+_TOO_LONG = (
+    "An operator's maintenance window can last up to 24 hours. "
+    "Ask an admin for a longer one."
+)
+_NOT_YOURS = (
+    "Only the operator who created this maintenance window, or an admin, can change it."
+)
+_SCOPE_IS_ADMINS = "Only an admin can change what a maintenance window covers."
+
+
+def _aware(value: datetime) -> datetime:
+    # SQLite returns naive datetimes; they were stored as UTC.
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+async def _owned_window(db, org_id, mw_id, user):
+    """The window, when the caller may change it: admins any, an operator
+    only their own (O-05)."""
+    window = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
+    if window is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    if request_role(user) != "admin" and window.created_by != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_YOURS)
+    return window
+
 
 @router.get(
     _mw_prefix,
@@ -1033,6 +1061,9 @@ async def create_maintenance_window(
             status.HTTP_400_BAD_REQUEST,
             "ends_at must be after starts_at",
         )
+    operator = request_role(user) != "admin"
+    if operator and body.ends_at - body.starts_at > OPERATOR_WINDOW_LIMIT:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _TOO_LONG)
     _check_rrule(body.rrule, body.starts_at)
 
     scope_ids = list(body.scope_ids or [])
@@ -1070,6 +1101,9 @@ async def create_maintenance_window(
         approved_by=user.id if approved_now else None,
         approved_at=now if approved_now else None,
     )
+    mw.announce_on_start = operator
+    # Active already: the covered teams and admins hear now (O-05).
+    await announce(db, mw, at=now)
     await db.commit()
     await db.refresh(mw)
     return MaintenanceWindowResponse.model_validate(mw)
@@ -1085,11 +1119,30 @@ async def update_maintenance_window(
     body: MaintenanceWindowUpdate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
-    existing = await MaintenanceWindowRepo.get_by_id(db, org_id, mw_id)
-    if existing is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
+    existing = await _owned_window(db, org_id, mw_id, user)
+    if request_role(user) != "admin":
+        # The editor sends the scope back unchanged; only a change is refused.
+        asked_type = body.scope_type or existing.scope_type
+        asked_ids = set(existing.scope_ids)
+        if body.scope_ids is not None or body.scope_id is not None:
+            asked_ids = set(body.scope_ids or [])
+            if body.scope_id is not None:
+                asked_ids.add(body.scope_id)
+        changed_targets = body.target_ids is not None and set(body.target_ids) != set(
+            existing.target_ids or []
+        )
+        if (
+            asked_type != existing.scope_type
+            or asked_ids != set(existing.scope_ids)
+            or changed_targets
+        ):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _SCOPE_IS_ADMINS)
+        starts = _aware(body.starts_at or existing.starts_at)
+        ends = _aware(body.ends_at or existing.ends_at)
+        if ends - starts > OPERATOR_WINDOW_LIMIT:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _TOO_LONG)
     if "rrule" in body.model_fields_set:
         _check_rrule(body.rrule, body.starts_at or existing.starts_at)
 
@@ -1150,13 +1203,40 @@ async def delete_maintenance_window(
     mw_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(require_role("admin")),
+    user: User = Depends(require_role("admin", "operator")),
 ):
+    await _owned_window(db, org_id, mw_id, user)
     deleted = await MaintenanceWindowRepo.delete(db, org_id, mw_id)
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Maintenance window not found")
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    _mw_prefix + "/{mw_id}/end",
+    response_model=MaintenanceWindowResponse,
+    summary="End a maintenance window now",
+)
+async def end_maintenance_window(
+    mw_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org),
+    user: User = Depends(require_role("admin", "operator")),
+):
+    """End the window now, repeats included: its creator or an admin."""
+    window = await _owned_window(db, org_id, mw_id, user)
+    now = datetime.now(timezone.utc)
+    if _aware(window.starts_at) >= now:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This window hasn't started yet. Delete it instead.",
+        )
+    window.ends_at = now
+    window.rrule = None
+    await db.commit()
+    await db.refresh(window)
+    return MaintenanceWindowResponse.model_validate(window)
 
 
 @router.post(
@@ -1181,6 +1261,8 @@ async def approve_maintenance_window(
     mw.approved = True
     mw.approved_by = user.id
     mw.approved_at = now
+    # Active once approved: the covered teams and admins hear now (O-05).
+    await announce(db, mw, at=now)
     await db.commit()
     await db.refresh(mw)
     return MaintenanceWindowResponse.model_validate(mw)

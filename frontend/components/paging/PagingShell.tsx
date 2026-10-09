@@ -44,6 +44,7 @@ import {
   approveMaintenanceWindow,
   createMaintenanceWindow,
   deleteMaintenanceWindow,
+  endMaintenanceWindow,
   listMaintenanceWindows,
   rejectMaintenanceWindow,
   updateMaintenanceWindow,
@@ -349,6 +350,7 @@ export function PagingShell({ initialTab }: { initialTab: Tab }) {
           teams={teams}
           onChange={refresh}
           canEdit={canEdit}
+          currentUserId={user?.id ?? null}
         />
       )}
       {tab === "notifications" && (
@@ -3612,13 +3614,14 @@ function toLocalInput(iso: string): string {
 
 type MaintenanceStatus = "active" | "scheduled" | "past";
 
-function MaintenanceWindowsPanel({
+export function MaintenanceWindowsPanel({
   windows,
   services,
   rosters,
   teams,
   onChange,
   canEdit,
+  currentUserId = null,
 }: {
   windows: MaintenanceWindowResponse[];
   services: ServiceResponse[];
@@ -3626,10 +3629,14 @@ function MaintenanceWindowsPanel({
   teams: TeamResponse[];
   onChange: () => void;
   canEdit?: boolean;
+  currentUserId?: string | null;
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MaintenanceWindowResponse | null>(null);
+  // Admins change any window; an operator changes the ones they created (O-05).
+  const ownsWindow = (w: MaintenanceWindowResponse) =>
+    Boolean(canEdit) || (currentUserId !== null && w.created_by === currentUserId);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [scopeFilter, setScopeFilter] = useState<string[]>([]);
@@ -3741,6 +3748,17 @@ function MaintenanceWindowsPanel({
       setForm(blankForm());
       onChange();
       toast.success(editing ? "Maintenance window updated" : "Maintenance window scheduled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const endNow = async (w: MaintenanceWindowResponse) => {
+    if (!confirm(`End "${w.name}" now? Alerts and pages it holds back resume.`)) return;
+    try {
+      await endMaintenanceWindow(w.id);
+      toast.success("Maintenance window ended");
+      onChange();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -3964,7 +3982,7 @@ function MaintenanceWindowsPanel({
                     Reject
                   </Button>
                 )}
-                {canEdit && w.approved && (
+                {ownsWindow(w) && w.approved && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -3974,7 +3992,17 @@ function MaintenanceWindowsPanel({
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 )}
-                {canEdit && (
+                {ownsWindow(w) && statusOf(w) === "active" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => endNow(w)}
+                    title="End this window now"
+                  >
+                    End now
+                  </Button>
+                )}
+                {ownsWindow(w) && (
                   <Button variant="ghost" size="sm" onClick={() => remove(w.id)} title="Delete">
                     <Trash2 className="h-4 w-4" />
                   </Button>

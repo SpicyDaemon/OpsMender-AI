@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An operator's Maintenance Window now lasts at most 24 hours, tells the
+  admins and the covered teams in their Inbox when it becomes active, and can
+  be edited, ended early (**End now**) or deleted by the operator who created
+  it; other operators can't, and only an admin changes what it covers. Before,
+  it could last years, told nobody, and its creator couldn't end it.
 - Taking someone off a Roster no longer moves everyone else's shifts. Removing,
   deactivating or demoting a member to Viewer now keeps their place in the
   rotation, and its shifts go to the next member. Before, the rotation was

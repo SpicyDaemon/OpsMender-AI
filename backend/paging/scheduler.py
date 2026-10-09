@@ -73,7 +73,11 @@ class EscalationScheduler:
                 from backend.paging import responders as _responders
 
                 expired = await _responders.expire_due_requests(db, at=now)
-                if advanced or staged or expired:
+                # An operator's Maintenance Window announces its start once.
+                from backend.paging.window_notice import announce_started
+
+                announced = await announce_started(db, at=now)
+                if advanced or staged or expired or announced:
                     await db.commit()
             except Exception:
                 await db.rollback()

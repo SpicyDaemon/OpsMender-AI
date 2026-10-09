@@ -991,6 +991,13 @@ class ReportSchedule(Base):
     next_run_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    # The schedule's day and time are read in this zone; run_day and run_time
+    # keep the configured day of the month and local time (R-18).
+    time_zone: Mapped[str] = mapped_column(
+        String(64), default="UTC", server_default="UTC", nullable=False
+    )
+    run_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    run_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

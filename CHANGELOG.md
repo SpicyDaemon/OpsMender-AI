@@ -99,6 +99,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Scheduled reports keep their day and local time. A monthly report set
+  for the 31st runs on the last day of shorter months and returns to the 31st
+  (before, it moved to the 28th for good after February), and a weekly 09:00
+  report stays at 09:00 in its time zone when the clocks change (before, it
+  ran at a fixed UTC time and moved an hour). Existing schedules keep their
+  next run's day and time, in UTC.
 - Identical alerts that arrive at the same moment now all get a normal
   answer and open one incident; before, all but one could fail with a server
   error on PostgreSQL. Two Takes at the same moment on an incident without

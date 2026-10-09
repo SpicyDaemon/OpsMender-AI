@@ -158,7 +158,10 @@ Supported Telegram commands:
 Configure **Config → Email / SMTP** first. The same organization SMTP server
 powers invitations, password resets, test messages, and scheduled reports.
 Then open **Reports** to download CSV/PDF incident metrics or create weekly,
-monthly, and quarterly recipient schedules.
+monthly, and quarterly recipient schedules. A schedule keeps its day and local
+time in the time zone of the browser that saved it: a monthly report for the
+31st runs on the last day of shorter months and returns to the 31st, and a
+09:00 report stays at 09:00 when the clocks change.
 
 ## 8. Audit retention and archive
 

@@ -18,6 +18,7 @@ from backend.api.schemas import (
 )
 from backend.db.models import User
 from backend.db.repos import ReportScheduleRepo
+from backend.reports.scheduler import local_anchor
 from backend.reports.service import build_incident_report, render_report
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -93,6 +94,8 @@ async def create_report_schedule(
     org_id: uuid.UUID = Depends(get_current_org),
     user: User = Depends(require_role("admin")),
 ):
+    next_run_at = _aware(body.next_run_at, fallback=datetime.now(timezone.utc))
+    run_day, run_time = local_anchor(next_run_at, body.time_zone)
     try:
         row = await ReportScheduleRepo.create(
             db,
@@ -102,9 +105,10 @@ async def create_report_schedule(
             recipients=sorted(set(body.recipients)),
             filters=body.filters,
             format=body.format,
-            next_run_at=_aware(body.next_run_at, fallback=datetime.now(timezone.utc)),
+            next_run_at=next_run_at,
             enabled=body.enabled,
         )
+        row.time_zone, row.run_day, row.run_time = body.time_zone, run_day, run_time
         await db.commit()
         await db.refresh(row)
         return row
@@ -129,6 +133,8 @@ async def update_report_schedule(
     row = await ReportScheduleRepo.get_by_id(db, org_id, schedule_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Report schedule not found")
+    next_run_at = _aware(body.next_run_at, fallback=datetime.now(timezone.utc))
+    run_day, run_time = local_anchor(next_run_at, body.time_zone)
     await ReportScheduleRepo.update(
         db,
         row,
@@ -137,8 +143,11 @@ async def update_report_schedule(
         recipients=sorted(set(body.recipients)),
         filters=body.filters,
         format=body.format,
-        next_run_at=_aware(body.next_run_at, fallback=datetime.now(timezone.utc)),
+        next_run_at=next_run_at,
         enabled=body.enabled,
+        time_zone=body.time_zone,
+        run_day=run_day,
+        run_time=run_time,
     )
     await db.commit()
     await db.refresh(row)

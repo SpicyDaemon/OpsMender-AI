@@ -2377,6 +2377,10 @@ export interface ReportScheduleResponse {
   filters: Record<string, unknown>;
   format: "csv" | "pdf";
   next_run_at: string;
+  /** Where the schedule's day and time are read (IANA). */
+  time_zone?: string;
+  run_day?: number | null;
+  run_time?: string | null;
   enabled: boolean;
   last_run_at: string | null;
   last_error: string | null;
@@ -2391,6 +2395,8 @@ export interface ReportScheduleUpsert {
   filters?: Record<string, unknown>;
   format: "csv" | "pdf";
   next_run_at: string;
+  /** Defaults to UTC; the first run sets the day and local time kept. */
+  time_zone?: string;
   enabled?: boolean;
 }
 

@@ -701,7 +701,13 @@ class IncidentRepo:
             .where(Incident.id == incident_id, Incident.org_id == org_id)
         )
         if for_update:
-            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+            # FOR NO KEY UPDATE on PostgreSQL: serializes every path that
+            # changes the incident (two Takes wait on each other) without
+            # blocking a step's page record, whose foreign key holds the row
+            # in KEY SHARE while it is sent.
+            stmt = stmt.with_for_update(key_share=True).execution_options(
+                populate_existing=True
+            )
         return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod

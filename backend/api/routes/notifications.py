@@ -12,7 +12,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_org, get_current_user
+from backend.api.auth import get_current_org, reject_api_tokens
 from backend.api.deps import get_db
 from backend.api.schemas import (
     InAppNotificationListResponse,
@@ -25,6 +25,8 @@ from backend.db.models import User
 from backend.db.repos import InAppNotificationRepo, UserNotificationPrefRepo
 from backend.notifications import ALL_CATEGORIES
 
+# The Inbox and its settings are personal: people sign in for them, and API
+# tokens are refused like every other self-service route.
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
@@ -58,7 +60,7 @@ async def list_notifications(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> InAppNotificationListResponse:
     items = await InAppNotificationRepo.list_for_user(
         db, org_id, user.id, unread_only=unread_only, limit=limit, offset=offset
@@ -78,7 +80,7 @@ async def list_notifications(
 async def unread_count(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> UnreadCountResponse:
     unread = await InAppNotificationRepo.count_for_user(
         db, org_id, user.id, unread_only=True
@@ -94,7 +96,7 @@ async def unread_count(
 async def get_preferences(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> NotificationPreferencesResponse:
     pref = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
     muted: list[str] = []
@@ -119,7 +121,7 @@ async def update_preferences(
     body: NotificationPreferencesUpdate,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> NotificationPreferencesResponse:
     existing = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
     routing = dict(existing.routing) if existing and existing.routing else {}
@@ -164,7 +166,7 @@ async def update_preferences(
 async def mark_all_read(
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> MarkReadResponse:
     updated = await InAppNotificationRepo.mark_all_read(db, org_id, user.id)
     await db.commit()
@@ -177,7 +179,7 @@ async def mark_read(
     read: bool = True,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> Response:
     ok = await InAppNotificationRepo.mark_read(
         db, org_id, user.id, notification_id, read=read
@@ -195,7 +197,7 @@ async def delete_notification(
     notification_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(reject_api_tokens),
 ) -> Response:
     ok = await InAppNotificationRepo.delete(db, org_id, user.id, notification_id)
     if not ok:

@@ -525,18 +525,10 @@ async def wecom_webhook(
     if not isinstance(adapter, WeComAdapter):
         raise HTTPException(status_code=400, detail="Invalid adapter")
 
-    raw_body = await request.body()
-    # WeCom sends XML with an 'Encrypt' field
-    import defusedxml.ElementTree as ET
-
-    root = ET.fromstring(raw_body)
-    encrypt = root.findtext("Encrypt")
-
-    credentials = connector.credentials or {}
-    aes_key = credentials.get("encoding_aes_key")
-    decrypted_xml = adapter._decrypt(str(aes_key), str(encrypt))
-
-    # Process the decrypted XML
+    # Verified before anything is decrypted (R-20).
+    decrypted_xml = adapter.open_update(
+        connector, request.query_params, await request.body()
+    )
     return await _process_webhook(
         connector_id=connector_id,
         platform="wecom",
@@ -570,13 +562,23 @@ async def weixin_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    raw_body = await request.body()
-    # Weixin sends raw XML in the body
+    connector = await db.get(BotConnector, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    adapter = get_adapter("weixin")
+    from backend.bots.connectors.weixin import WeixinAdapter
+
+    if not isinstance(adapter, WeixinAdapter):
+        raise HTTPException(status_code=400, detail="Invalid adapter")
+
+    # Weixin sends raw XML in the body, signed in the query (R-20).
+    xml = adapter.open_update(connector, request.query_params, await request.body())
     return await _process_webhook(
         connector_id=connector_id,
         platform="weixin",
         request=request,
-        payload={"_xml_content": raw_body.decode("utf-8")},
+        payload={"_xml_content": xml},
         db=db,
     )
 

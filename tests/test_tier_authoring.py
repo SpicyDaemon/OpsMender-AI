@@ -17,7 +17,9 @@ from backend.skills.parser import (
 from backend.tiers import enforcement
 from backend.tiers.generic_tools import is_generic_execution_tool
 
-FROZEN = "bfe03d3f3a62dfbf1f8ea85f6ba4471f2252ad68b7cb904a695a4986bf7afd65"
+# The module with its line endings normalized to LF: the repository blob is
+# the identity, and a Windows checkout may carry CRLF.
+FROZEN = "0aad2e9b526f1ff9f92c3d13a2601c834d48ee6b234e7792ea4d810f99d3ebe0"
 
 
 def _op(tool: str, classification: str, mode: str, **kwargs) -> OperationClassification:
@@ -92,4 +94,5 @@ def test_ordinary_tools_are_not_runners(name):
 
 def test_the_frozen_enforcement_module_is_unchanged():
     path = Path(enforcement.__file__)
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == FROZEN
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(data).hexdigest() == FROZEN

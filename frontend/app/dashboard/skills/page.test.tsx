@@ -119,11 +119,20 @@ describe("MCP Skills page", () => {
     });
     await renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /^new skill$/i }));
-    fireEvent.change(await screen.findByLabelText("Name"), {
+    // The editor opens after the template request resolves and then resets
+    // its form from the template in an effect. Type only once that reset has
+    // landed (the template body is shown), or it can clear the name.
+    expect(await screen.findByDisplayValue(/# template/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "converted-skill" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: /create skill/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create skill/i }));
 
+    await waitFor(() =>
+      expect(apiMocks.createSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "converted-skill" }),
+      ),
+    );
     await waitFor(() =>
       expect(toastSpies.info).toHaveBeenCalledWith(
         "Converted to explicit tier policies. Review before use.",

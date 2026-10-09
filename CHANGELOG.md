@@ -99,6 +99,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The models and the database migrations now describe the same schema. On
+  PostgreSQL, the names of ingest tokens, MCP servers, model configurations,
+  skills, SLA targets and workflow profiles are unique per workspace, as the
+  models already said, and the models declare the JSONB columns and indexes
+  the migrations create. Saved data doesn't change. CI now fails a change
+  whose models and migrations disagree.
 - Scheduled reports keep their day and local time. A monthly report set
   for the 31st runs on the last day of shorter months and returns to the 31st
   (before, it moved to the 28th for good after February), and a weekly 09:00

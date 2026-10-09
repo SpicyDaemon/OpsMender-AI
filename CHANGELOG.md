@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Open live streams of an AI session or the Inbox now close within about 15
+  seconds after their account is deactivated or its password changes, and a
+  session stream serves only sessions in your own workspace. Before, a
+  stream checked the account only when it opened.
 - Starting an AI session with no incident is now for admins only, including
   through API tokens; operators got it before. Forcing a session past its
   model's limit stays with the incident's owner and admins.

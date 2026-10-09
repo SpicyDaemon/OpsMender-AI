@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Deactivating someone or making them a Viewer now stops their remaining
+  notification stages at once; before, their My Routing stages kept arriving
+  on incidents they could no longer act on. No stage is sent to anyone who
+  isn't an active admin or operator. Someone paged after an incident has an
+  owner (a responder added later, or Escalate now while the owner keeps it)
+  now gets only the first stage of their plan instead of every stage.
 - The next Escalation Chain level no longer pages before the people the
   current level paged have had all their own notification stages. A level
   escalates at the later of its timeout and the end of everyone's stages plus

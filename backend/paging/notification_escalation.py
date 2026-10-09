@@ -227,10 +227,19 @@ async def start_escalation(
     has finished (acknowledged, exhausted or cancelled), paging that person
     again starts it over: a new round, a reopened incident, or a responder
     request.
+
+    Steps go only to active admins and operators (O-14). Someone paged after
+    the incident has an owner (a responder added later, or Escalate now while
+    the owner keeps it) gets only the first step of their plan (O-04).
     """
 
-    if not stages:
+    from backend.db.repos import IncidentAssignmentRepo
+    from backend.paging.responders import can_respond
+
+    if not stages or not await can_respond(db, org_id, user):
         return
+    if await IncidentAssignmentRepo.get_active(db, org_id, incident.id) is not None:
+        stages = stages[:1]
     now = at or _utcnow()
     stage_rows = [
         {"channel_id": s.channel_id, "delay_seconds": s.delay_seconds} for s in stages
@@ -340,18 +349,24 @@ async def _advance(
         return True
 
     from backend.db.repos import UserRepo
+    from backend.paging.responders import can_respond
 
     user = await UserRepo.get_by_id(db, state.user_id)
-    if user is not None:
-        await _fire_stage(
-            db,
-            org_id,
-            incident=incident,
-            user=user,
-            stage=stages[next_idx],
-            stage_index=next_idx,
-            sender=sender,
-        )
+    if not await can_respond(db, org_id, user):
+        # Deactivated, deleted or no longer an admin or operator: no further
+        # steps (O-14).
+        _finish(state, "cancelled", at)
+        await db.flush()
+        return True
+    await _fire_stage(
+        db,
+        org_id,
+        incident=incident,
+        user=user,
+        stage=stages[next_idx],
+        stage_index=next_idx,
+        sender=sender,
+    )
     state.current_stage = next_idx
     if next_idx + 1 < len(stages):
         state.next_stage_due_at = at + timedelta(seconds=stages[next_idx].delay_seconds)
@@ -413,3 +428,18 @@ async def stop_escalation(
     if stopped:
         await db.flush()
     return stopped
+
+
+async def stop_for_user(
+    db: AsyncSession, user_id: uuid.UUID, *, at: datetime | None = None
+) -> int:
+    """Stop every running escalation of someone who can no longer act:
+    deactivated, or no longer an admin or operator (O-14). Returns how many
+    stopped."""
+    now = at or _utcnow()
+    running = await NotificationEscalationRepo.list_running_for_user(db, user_id)
+    for state in running:
+        _finish(state, "cancelled", now)
+    if running:
+        await db.flush()
+    return len(running)

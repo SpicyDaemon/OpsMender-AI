@@ -131,6 +131,8 @@ Use **Deactivate** when you want to block future login but preserve the account.
 Effects:
 
 - The user cannot sign in.
+- Their remaining notification stages on open incidents stop at once, as they
+  do when someone is made a Viewer.
 - Historical references remain intact.
 - The account can be reactivated later.
 

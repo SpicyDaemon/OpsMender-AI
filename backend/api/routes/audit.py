@@ -14,7 +14,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.auth import get_current_org, get_current_user
+from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
 from backend.api.schemas import AuditListResponse
 from backend.db.models import User
@@ -97,9 +97,11 @@ async def export_audit_csv(
     end: datetime | None = Query(None, description="ISO-8601 end time"),
     db: AsyncSession = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "operator")),
 ) -> Response:
     """Flatten the AI action-history audit to CSV for spreadsheets.
+
+    Admins and operators only (O-07); Viewers still read the Activity page.
 
     The on-disk audit stays JSONL (nested ``tool_parameters`` / ``result``
     objects survive intact there); this export serializes those nested

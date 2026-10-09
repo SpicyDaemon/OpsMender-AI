@@ -79,6 +79,8 @@ describe("Sidebar nav model", () => {
     expect(hrefs).not.toContain("/dashboard/people");
     expect(hrefs).not.toContain("/dashboard/paging");
     expect(hrefs).not.toContain("/dashboard/analytics");
+    // Viewers read Activity; the export control is role-gated on the page (O-07).
+    expect(hrefs).toContain("/dashboard/activity");
   });
 
   it("adds and caps the pending approvals badge", () => {
@@ -125,6 +127,7 @@ describe("requiredRolesForPath (route guard)", () => {
     expect(requiredRolesForPath("/dashboard/incidents")).toBeNull();
     expect(requiredRolesForPath("/dashboard/incidents/detail")).toBeNull();
     expect(requiredRolesForPath("/dashboard/settings/profile")).toBeNull();
+    expect(requiredRolesForPath("/dashboard/activity")).toBeNull();
   });
 
   it("scopes operator-and-admin routes", () => {

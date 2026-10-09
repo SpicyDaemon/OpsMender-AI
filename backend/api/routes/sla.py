@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
+from backend.auth.redaction import probe_config_for_viewer, url_without_secrets
 from backend.auth.roles import request_role
 from backend.api.deps import get_db
 from backend.api.schemas import (
@@ -90,9 +91,18 @@ async def _enrich_target(
     *,
     now: datetime,
     slo_count: int,
+    reveal: bool = True,
 ) -> SLATargetResponse:
-    """Build an SLATargetResponse with current status + 30-day uptime."""
+    """Build an SLATargetResponse with current status + 30-day uptime.
+
+    Without ``reveal`` (Viewers, O-07) the probe URL and configuration lose
+    anything that can carry a credential.
+    """
     url, monitor_type = _derive_url_and_type(target)
+    config = target.config
+    if not reveal:
+        url = url_without_secrets(url)
+        config = probe_config_for_viewer(target.kind, target.config)
     latest = await UptimeSampleRepo.latest_sample(db, org_id, target.id)
     if latest is None:
         current_status = "unknown"
@@ -111,6 +121,7 @@ async def _enrich_target(
 
     return SLATargetResponse.model_validate(target).model_copy(
         update={
+            "config": config,
             "url": url,
             "monitor_type": monitor_type,
             "current_status": current_status,
@@ -197,8 +208,11 @@ async def list_sla_targets(
         if slo.is_active:
             slo_counts[slo.target_id] = slo_counts.get(slo.target_id, 0) + 1
 
+    reveal = request_role(user) != "viewer"
     enriched = [
-        await _enrich_target(db, org_id, t, now=now, slo_count=slo_counts.get(t.id, 0))
+        await _enrich_target(
+            db, org_id, t, now=now, slo_count=slo_counts.get(t.id, 0), reveal=reveal
+        )
         for t in items
     ]
     return SLATargetListResponse(items=enriched, total=len(enriched))
@@ -221,7 +235,12 @@ async def get_sla_target(
     slos = await SLORepo.list_by_target(db, org_id, target_id, active_only=True)
     slo_count = len(slos)
     return await _enrich_target(
-        db, org_id, target, now=datetime.now(timezone.utc), slo_count=slo_count
+        db,
+        org_id,
+        target,
+        now=datetime.now(timezone.utc),
+        slo_count=slo_count,
+        reveal=request_role(user) != "viewer",
     )
 
 

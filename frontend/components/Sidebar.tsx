@@ -131,7 +131,8 @@ export function buildNavGroups(): NavGroup[] {
         { href: "/dashboard/reliability", label: "Reliability", icon: Activity, roles: ["admin", "operator"] },
         { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, roles: ["admin", "operator"] },
         { href: "/dashboard/reports", label: "Reports", icon: FileBarChart, roles: ["admin", "operator"] },
-        { href: "/dashboard/activity", label: "Activity", icon: BookOpen, roles: ["admin", "operator"] },
+        // Viewers read Activity; only admins and operators export it (O-07).
+        { href: "/dashboard/activity", label: "Activity", icon: BookOpen },
       ],
     },
     {

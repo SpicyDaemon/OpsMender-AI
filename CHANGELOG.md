@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Identical alerts that arrive at the same moment now all get a normal
+  answer and open one incident; before, all but one could fail with a server
+  error on PostgreSQL. Two Takes at the same moment on an incident without
+  an Escalation Chain now leave one owner and give the other the usual 409
+  instead of a server error.
 - An operator's Maintenance Window now lasts at most 24 hours, tells the
   admins and the covered teams in their Inbox when it becomes active, and can
   be edited, ended early (**End now**) or deleted by the operator who created

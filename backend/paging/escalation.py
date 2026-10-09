@@ -982,10 +982,14 @@ async def acknowledge(
 
     now = at or _utcnow()
     actor_id = actor_id or assignee_id
+    # Lock order: the chain row (when there is one), then the incident row,
+    # as every close path does. Locking the incident too serializes two Takes
+    # on an incident with no chain, so the second sees the first as owner
+    # instead of failing on the duplicate assignment (R-04).
     state = await IncidentChainStateRepo.get_for_incident(
         db, org_id, incident_id, for_update=True
     )
-    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id, for_update=True)
     if _closed(incident):
         return AckOutcome("closed")
 
@@ -1207,10 +1211,12 @@ async def handle_takeover_request(
     """
 
     now = at or _utcnow()
+    # The same lock order as acknowledge: two Takes on an incident with no
+    # chain wait on its row, and the second sees the first as owner (R-04).
     state = await IncidentChainStateRepo.get_for_incident(
         db, org_id, incident_id, for_update=True
     )
-    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id, for_update=True)
     if _closed(incident):
         return "closed"
     active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)

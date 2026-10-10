@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import importlib.metadata
 import json
 import logging
 import os
@@ -339,12 +340,21 @@ class Tier0Config:
     max_node_seconds: int = 120
 
 
+def _package_version() -> str:
+    """The installed package's version, which the CLI's --version also reports;
+    the API shows it in its OpenAPI document."""
+    try:
+        return importlib.metadata.version("opsmender")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
 @dataclasses.dataclass
 class AppSettings:
     """General app runtime settings."""
 
     name: str = "OpsMender AI"
-    version: str = "0.2.0"
+    version: str = dataclasses.field(default_factory=_package_version)
     tier: int = 2
     log_level: str = "INFO"
     skill_definition_path: str = "./examples/SKILL.md"

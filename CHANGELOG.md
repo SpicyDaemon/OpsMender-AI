@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.1] - 2026-10-10
+
 ### Security
 
 - Authorizing an HTTP MCP server no longer puts the PKCE verifier or the
@@ -99,6 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The API's OpenAPI document now reports the installed version (`1.1.1`), the
+  same one `opsmender --version` prints; it said `0.2.0` whatever the release.
 - The models and the database migrations now describe the same schema. On
   PostgreSQL, the names of ingest tokens, MCP servers, model configurations,
   skills, SLA targets and workflow profiles are unique per workspace, as the
@@ -2661,6 +2667,7 @@ Archived draft release notes from the earlier Sprints 1-23 milestone planning. K
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
 - Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
-[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/SpicyDaemon/OpsMender-AI/releases/tag/v1.0.0

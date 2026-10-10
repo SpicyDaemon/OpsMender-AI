@@ -94,10 +94,12 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # Python venv
 COPY --from=backend-builder /app/.venv /app/.venv
 
-# Backend source + CLI + alembic
+# Backend source + CLI + alembic. pyproject.toml carries the release version
+# the API reports, since the project itself is not installed in the image.
 COPY backend/ ./backend/
 COPY cli/ ./cli/
 COPY alembic.ini ./alembic.ini
+COPY pyproject.toml ./pyproject.toml
 COPY skills/ ./skills/
 COPY examples/ ./examples/
 

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import pathlib
+import tomllib
 from collections.abc import Mapping
 from typing import Any
 
@@ -341,11 +342,18 @@ class Tier0Config:
 
 
 def _package_version() -> str:
-    """The installed package's version, which the CLI's --version also reports;
-    the API shows it in its OpenAPI document."""
+    """The release version: the installed package's, which the CLI's --version
+    also reports, or the one in pyproject.toml when the code runs from source
+    (the container image does). The API shows it in its OpenAPI document."""
     try:
         return importlib.metadata.version("opsmender")
     except importlib.metadata.PackageNotFoundError:
+        pass
+    pyproject = pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        with pyproject.open("rb") as handle:
+            return str(tomllib.load(handle)["project"]["version"])
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
         return "0.0.0+unknown"
 
 

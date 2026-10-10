@@ -1,9 +1,19 @@
-"""The version the API reports is the installed package's version, the same one
-the CLI's --version prints, so a release bump reaches every surface."""
+"""The version the API reports is the release version: the installed package's,
+the same one the CLI's --version prints, or pyproject.toml's when the code runs
+from source as the container image does. A release bump reaches every surface."""
 
 import importlib.metadata
+import pathlib
+import tomllib
 
+from backend import config_loader
 from backend.config_loader import AppConfig, AppSettings, _package_version
+
+PYPROJECT_VERSION = tomllib.loads(
+    (pathlib.Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
+)["project"]["version"]
 
 
 def test_the_app_settings_default_to_the_package_version():
@@ -13,5 +23,13 @@ def test_the_app_settings_default_to_the_package_version():
     assert AppConfig.load().app.version == expected
 
 
+def test_without_installed_metadata_the_pyproject_version_is_used(monkeypatch):
+    def missing(_name):
+        raise importlib.metadata.PackageNotFoundError("opsmender")
+
+    monkeypatch.setattr(config_loader.importlib.metadata, "version", missing)
+    assert _package_version() == PYPROJECT_VERSION
+
+
 def test_the_release_version_is_the_packaged_one():
-    assert importlib.metadata.version("opsmender") == "1.1.1"
+    assert importlib.metadata.version("opsmender") == PYPROJECT_VERSION == "1.1.1"

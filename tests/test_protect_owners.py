@@ -568,3 +568,71 @@ async def test_bulk_refuses_only_the_incident_taken_after_its_check(
         "notices": [],
     }
     assert await _owner(world.app, calm) == world.level2
+
+
+CLOSED_MEANWHILE = (
+    "The incident was resolved or merged while you were assigning it. "
+    "Reload it to see where it stands."
+)
+
+
+async def test_an_assignment_is_refused_when_the_incident_closed_after_the_check(
+    world, monkeypatch
+):
+    incident_id = await _team_incident(world, paging=False)
+    before = await _snapshot(world, incident_id)
+    _after_the_check(
+        monkeypatch,
+        world,
+        incident_id,
+        IncidentRepo.update_status,
+        None,
+        status="resolved",
+    )
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/assign",
+        json={"user_id": str(world.level2)},
+        headers=world.admin,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == CLOSED_MEANWHILE
+    # Only the resolution happened: no owner, no row, no notice.
+    assert await _assignments(world, incident_id) == []
+    assert await _snapshot(world, incident_id) == before
+    async with world.app.state.session_factory() as db:
+        incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        assert incident.status == "resolved"
+
+
+@pytest.mark.parametrize("action", ["acknowledge", "reassign"])
+async def test_bulk_refuses_only_the_incident_closed_after_its_check(
+    world, monkeypatch, action
+):
+    raced = await _team_incident(world, paging=False)
+    calm = await _team_incident(world, paging=False)
+    before = await _snapshot(world, raced)
+    _after_the_check(
+        monkeypatch,
+        world,
+        raced,
+        IncidentRepo.update_status,
+        None,
+        status="resolved",
+    )
+    resp = await world.client.post(
+        "/incidents/bulk",
+        json={
+            "action": action,
+            "incident_ids": [str(raced), str(calm)],
+            "user_id": str(world.level2),
+        },
+        headers=world.admin,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["items"] == [
+        {"incident_id": str(raced), "ok": False, "error": CLOSED_MEANWHILE},
+        {"incident_id": str(calm), "ok": True, "error": None},
+    ]
+    assert await _assignments(world, raced) == []
+    assert await _snapshot(world, raced) == before
+    assert await _owner(world.app, calm) == world.level2

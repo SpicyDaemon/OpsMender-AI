@@ -1900,6 +1900,11 @@ async def _owner_changed_detail(
 
 _CLOSED_STATUSES = ("resolved", "merged")
 
+_CLOSED_MEANWHILE = (
+    "The incident was resolved or merged while you were assigning it. "
+    "Reload it to see where it stands."
+)
+
 
 def _ensure_open(incident) -> None:
     if incident.status in _CLOSED_STATUSES:
@@ -2235,6 +2240,12 @@ async def assign_incident(
             status_code=status.HTTP_409_CONFLICT,
             detail=await _owner_changed_detail(db, org_id, incident_id),
         )
+    if outcome.status == "closed":
+        # Resolved or merged after the open check above: nothing was written.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_CLOSED_MEANWHILE
+        )
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     assert assignment is not None
     # Notify the assignee when someone else assigns them (self-ack is silent).
@@ -2518,6 +2529,15 @@ async def bulk_incident_action(
                     )
                     failed += 1
                     continue
+                if outcome.status == "closed":
+                    # Resolved or merged after the open check: nothing written.
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
+                        )
+                    )
+                    failed += 1
+                    continue
                 if replacing:
                     await _notify_replaced_owner(
                         db, org_id, incident, active.assigned_to, user, body.note
@@ -2570,6 +2590,15 @@ async def bulk_incident_action(
                             incident_id=incident_id,
                             ok=False,
                             error=await _owner_changed_detail(db, org_id, incident_id),
+                        )
+                    )
+                    failed += 1
+                    continue
+                if outcome.status == "closed":
+                    # Resolved or merged after the open check: nothing written.
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
                         )
                     )
                     failed += 1

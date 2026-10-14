@@ -33,6 +33,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 
 import { RosterCalendarModal } from "@/components/RosterCalendarModal";
 import { NotificationChannelsPage } from "@/components/NotificationChannelsPage";
@@ -4999,12 +5000,20 @@ export function NotificationPreferencesPanel({
         </span>
       </div>
 
-      {/* Quiet hours */}
+      {/* Quiet hours for pages. Inbox notices have their own Inbox quiet hours. */}
       <div className="rounded-lg border border-border-default bg-bg-surface p-4">
         <h2 className="text-base font-semibold text-fg-primary">Quiet Hours</h2>
         <p className="mt-1 text-sm text-fg-secondary">
-          During quiet hours, non-critical notifications are suppressed.
-          Critical (P0) will still page through.
+          During quiet hours, non-critical pages to you are held back.
+          Critical (P0) will still page through. Inbox notices have their own
+          quiet hours on the{" "}
+          <Link
+            href="/dashboard/notifications/preferences"
+            className="text-accent-text underline"
+          >
+            Inbox preferences
+          </Link>{" "}
+          page.
         </p>
         <label className="mt-3 inline-flex items-center gap-2 text-sm">
           <input

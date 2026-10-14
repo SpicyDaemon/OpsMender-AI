@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   deleteMaintenanceWindow: vi.fn(),
@@ -93,5 +94,55 @@ describe("Reliability page", () => {
     expect(link.getAttribute("href")).toBe("/dashboard/paging/maintenance-windows");
     expect(screen.getByText(/also suppresses paging/i)).toBeTruthy();
     expect(screen.getByText("All Targets")).toBeTruthy();
+  });
+});
+
+describe("Reliability page load failures", () => {
+  let consoleError: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  it("logs nothing for an aborted load and still logs a real failure", async () => {
+    // The browser aborts the request when the person navigates away.
+    apiMocks.listSLATargets.mockRejectedValueOnce(
+      new DOMException("The operation was aborted.", "AbortError"),
+    );
+    const { unmount } = render(<ReliabilityPage />);
+    expect(await screen.findByText("No targets configured")).toBeTruthy();
+    expect(consoleError).not.toHaveBeenCalled();
+    unmount();
+
+    const failure = new Error("HTTP 500");
+    apiMocks.listSLATargets.mockRejectedValueOnce(failure);
+    render(<ReliabilityPage />);
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        "Failed to load reliability data:",
+        failure,
+      ),
+    );
+  });
+
+  it("logs nothing when a load fails after the person leaves the page", async () => {
+    let failLoad: (reason: unknown) => void = () => {};
+    apiMocks.listSLATargets.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failLoad = reject;
+      }),
+    );
+    const { unmount } = render(<ReliabilityPage />);
+    await waitFor(() => expect(apiMocks.listSLATargets).toHaveBeenCalledTimes(1));
+    unmount();
+
+    failLoad(new TypeError("Failed to fetch"));
+    // Let the rejected load settle before reading the console.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(consoleError).not.toHaveBeenCalled();
   });
 });

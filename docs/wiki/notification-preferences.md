@@ -2,7 +2,9 @@
 
 When an incident reaches OpsMender's paging engine, it has to know **how** to reach operators and **when**. The Notifications surface lives under **Paging & On-call** at `/dashboard/paging/notifications` and has three tabs:
 
-- **My Routing**: your personal priority-based routing and quiet hours.
+- **My Routing**: your personal priority-based routing and the quiet hours
+  that hold pages. The Inbox has its own quiet hours; see
+  [Quiet hours](#2-quiet-hours).
 - **Routing Summary**: a read-only view of how incidents are routed (derived
   from services → escalation chains → rosters → channels). Editable team-level
   routing defaults remain a future candidate.
@@ -95,11 +97,22 @@ Click **Test notification** (top-right) to send a one-off test to your routed ch
 
 ## 2. Quiet hours
 
-Quiet hours hold back P1 pages to you during a configured window. (P2 and P3
-don't page at all, and P0 always gets through.) They are saved separately
-from the quiet hours on the Inbox's notification preferences page, which only
-hold back the Inbox's live pop, so saving one page never changes the other.
-Enable the panel and fill in:
+There are two quiet-hours settings, and they do different things:
+
+| Setting | Where | What it holds back |
+|---------|-------|--------------------|
+| **Quiet Hours** in My Routing | **Paging → Notifications → My Routing** | Pages to you. P0 always gets through. |
+| **Inbox quiet hours** | **Inbox → Preferences** (`/dashboard/notifications/preferences`) | Live bell updates for new Inbox notices. Never a page. |
+
+My Routing's Quiet Hours section links to the Inbox preferences page, and the
+Inbox preferences page links admins and operators to My Routing. The two are
+saved separately, so saving one page never changes the other.
+
+### Quiet hours in My Routing
+
+These quiet hours hold back P1 pages to you during a configured window. (P2
+and P3 don't page at all, and P0 always gets through.) Enable the panel and
+fill in:
 
 - **Time zone**: any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
 - **Start / End**: local times. Windows wrap midnight correctly (`22:00 → 07:00`).
@@ -122,6 +135,19 @@ Saving malformed quiet hours or routing is rejected: times must be 00:00-23:59,
 the time zone a valid IANA name, days 0 (Mon) to 6 (Sun), and each priority up
 to three stages. The form keeps the break-through priority at P0; through the
 API, `min_priority_to_break: "P1"` also lets P1 pages through.
+
+### Inbox quiet hours
+
+Everyone has Inbox quiet hours, Viewers included: open the Inbox and choose
+**Preferences**. Turn them on and set a start, an end and a time zone; the
+window can wrap midnight (`22:00 → 07:00`). While they are on, new Inbox
+notices still land in your Inbox, but the bell doesn't show them live or bump
+its badge as they arrive; the badge count catches up within about a minute.
+Inbox quiet hours never hold back a page: use the quiet hours in My Routing for
+that.
+
+Muting a category on the same page is different: notices in a muted category
+are not created at all.
 
 ---
 
@@ -167,7 +193,7 @@ After saving:
 
 1. Click **Test notification** and confirm the per-channel results match what you'd expect (delivered / skipped / failed).
 2. Trigger a test alert on a P1 service whose chain pages you directly. Confirm only the channels you selected for P1 fire.
-3. Toggle quiet hours on, set start/end to **right now** with today's weekday selected, and fire that P1 again. Confirm it's held back and the incident says why. Then fire a P0 and confirm it pages through anyway.
+3. Turn on the quiet hours in My Routing, set start/end to **right now** with today's weekday selected, and fire that P1 again. Confirm it's held back and the incident says why. Then fire a P0 and confirm it pages through anyway.
 4. As an admin, schedule a global maintenance window covering the next 5 minutes and fire the P1 again. Confirm no page lands.
 
 ---
@@ -179,6 +205,7 @@ After saving:
 | `GET /users/me/notification-preferences` | Any user | Returns the caller's pref row; creates an empty one on first call. |
 | `PUT /users/me/notification-preferences` | Any user | Partial update: pass only the keys you want to change. `routing` is `{priority: [{channel_id, delay_seconds}, ...]}` (ordered stages, max 3); legacy `{priority: ["channel_key", ...]}` is still accepted and read as stages. Quiet hours use `weekday_start`/`weekday_end`, optional `days` (Mon=0..Sun=6), `time_zone`; `min_priority_to_break: "P0"` keeps P0 always paging. |
 | `POST /users/me/notification-preferences/test` | Any user | Sends a one-off test notification to the caller's routed channels; returns per-channel `{channel, status, detail}`. Never fails on per-channel delivery errors. |
+| `GET /notifications/preferences`, `PUT /notifications/preferences` | Any user | The Inbox preferences page: muted Inbox categories and Inbox quiet hours (`enabled`, `start`, `end`, `tz`), which never hold back a page. |
 | `GET /organizations/{id}/notification-settings` | Admin | Returns `notification_dedup_window_minutes`. |
 | `PUT /organizations/{id}/notification-settings` | Admin | Updates `notification_dedup_window_minutes` (0-1440). |
 | `POST /maintenance-windows` | Admin or operator (an operator's window waits for approval) | Accepts `description`, `scope_type` (`global`/`service`/`roster`/`team`), `scope_id`/`scope_ids`, and an optional `rrule` (rejected with 422 if it can't be read or repeats more often than hourly). |

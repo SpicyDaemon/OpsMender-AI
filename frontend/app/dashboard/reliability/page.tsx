@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -36,6 +36,12 @@ function fmtLastCheck(iso: string | null): string {
   return formatDate(iso);
 }
 
+/** The browser aborts a request when the person leaves the page. That is not
+ *  a load failure, so it is not logged. */
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
 function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
@@ -55,6 +61,9 @@ export default function ReliabilityPage() {
   const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [editingTarget, setEditingTarget] = useState<SLATargetResponse | null>(null);
+  // Cleared when the page unmounts, so a load that settles after the person
+  // has left neither updates the page nor logs.
+  const mountedRef = useRef(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -65,14 +74,16 @@ export default function ReliabilityPage() {
         listMaintenanceWindows(),
         getSLORecommendations().catch(() => null),
       ]);
+      if (!mountedRef.current) return;
       setTargets(targetsData.items);
       setSummary(summaryData);
       setMaintenanceWindows(mwData.items);
       setRecommendations(recsData?.items ?? []);
     } catch (err) {
+      if (!mountedRef.current || isAbortError(err)) return;
       console.error("Failed to load reliability data:", err);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
@@ -97,7 +108,11 @@ export default function ReliabilityPage() {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   return (

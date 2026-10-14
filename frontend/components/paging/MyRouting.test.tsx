@@ -371,4 +371,18 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("says its quiet hours hold pages and links to the Inbox quiet hours", async () => {
+    render(<NotificationPreferencesPanel />);
+    expect(await screen.findByText("Quiet Hours")).toBeTruthy();
+    expect(
+      screen.getByText(/Inbox notices have their own quiet hours/).textContent,
+    ).toBe(
+      "During quiet hours, non-critical pages to you are held back. " +
+        "Critical (P0) will still page through. Inbox notices have their own " +
+        "quiet hours on the Inbox preferences page.",
+    );
+    const link = screen.getByRole("link", { name: "Inbox preferences" });
+    expect(link.getAttribute("href")).toBe("/dashboard/notifications/preferences");
+  });
 });

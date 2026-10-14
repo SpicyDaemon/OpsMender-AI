@@ -119,6 +119,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Viewers could read sessions and the People guide didn't say what a Viewer
   could open.
 
+### Changed
+
+- The two quiet-hours settings now say which is which. The Inbox preferences
+  page (Inbox, then Preferences; it was called Notification preferences) calls
+  its setting Inbox quiet hours, says it only affects Inbox notices, and links
+  admins and operators to My Routing. The quiet hours in My Routing say they
+  hold pages and link back to the Inbox preferences page. Before, both pages
+  just said "quiet hours", so setting one looked like setting the other. The
+  Reliability page also stops logging an error when its data request is
+  aborted because you left the page, and stops updating once you have left;
+  other load failures are still logged.
+
 ## [1.1.1] - 2026-10-10
 
 ### Security

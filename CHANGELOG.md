@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   open dashboard tab goes to the password change page. Before, only the web
   app asked for the change, and the API served that session in full,
   including creating API tokens.
+- Listing the Rosters a person leaves on demotion or deactivation now checks
+  that the person belongs to your workspace, like the other People routes
+  (404 otherwise). Before, it answered for a person of another workspace;
+  one instance runs one workspace, so this only mattered if a second
+  workspace row existed.
 
 ### Fixed
 

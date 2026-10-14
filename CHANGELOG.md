@@ -86,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other routes, such as saving My Routing settings, failed with a server
   error, sometimes after the value was saved.
 
+### Changed
+
+- The People guide now says what a Viewer sees: in the web app the Dashboard,
+  the incident list and each incident's summary, the On Call Schedule,
+  Activity and their Inbox; through the API also the lists of Escalation
+  Chains, Rosters, teams, services, memories and more, but not incident
+  timelines or comments, reports, analytics or AI sessions. What a Viewer can
+  open is unchanged; tests now hold the sidebar, the page guard and these API
+  answers to it. Before, the guide didn't say what a Viewer could open.
+
 ## [1.1.1] - 2026-10-10
 
 ### Security

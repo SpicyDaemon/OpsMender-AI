@@ -20,6 +20,24 @@ This page is for admins managing human access to OpsMender.
 
 If you are wiring identity providers, also read the [Administrator Guide](admin-guide.md). If you are configuring paging destinations for an existing user, see [Notification Preferences](notification-preferences.md).
 
+### What a Viewer sees
+
+In the web app a Viewer sees the Dashboard, the incident list and each
+incident's summary (title, status, severity, description, current owner,
+source and times), the On Call Schedule, Activity and their Inbox (the bell in
+the top bar). The Paging pages, Memories, Reports, Analytics, Reliability,
+Orchestration, Approvals and the admin pages show Access denied. Through the
+API a Viewer also reads an incident's paging panel, chain, postmortem and
+merged incidents, and the lists of Escalation Chains, Rosters, teams,
+services, priority rules, memories, SLA targets and SLOs, Maintenance Windows,
+audits, approvals, skills, MCP servers and model configs. Incident timelines
+and comments, reports, analytics, AI sessions, orchestration, settings,
+integrations, connectors, intake tokens, API tokens and retention stay with
+admins and operators; a Viewer can't read them. A Viewer never receives
+credential values, environment variable values, arguments or the query part
+of URLs (MCP servers, model configs, connectors, SLA probes). Only admins and
+operators can export Activity.
+
 ---
 
 ## 2. Where the People surface lives

@@ -248,3 +248,95 @@ async def test_incident_create_and_actions_rbac(client):
     assert (
         await client.get(f"/incidents/{incident_id}/sessions", headers=h["viewer"])
     ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_api_reads_match_o07(client):
+    """M1-55: the reads O-07 (narrowed by O-17) gives a Viewer, with real rows.
+
+    Each refused read answers 200 for an operator, so the 403 comes from the
+    role and not from a missing row or a wrong path.
+    """
+    h = await _headers(client)
+    suffix = uuid.uuid4().hex[:8]
+
+    async def admin_creates(path: str, body: dict) -> str:
+        response = await client.post(path, headers=h["admin"], json=body)
+        assert response.status_code == 201, (path, response.text)
+        return response.json()["id"]
+
+    team_id = await admin_creates(
+        "/teams", {"name": "Scope Team", "slug": f"scope-team-{suffix}"}
+    )
+    service_id = await admin_creates(
+        "/services",
+        {"team_id": team_id, "name": "Scope Service", "slug": f"scope-svc-{suffix}"},
+    )
+    chain_id = await admin_creates(
+        "/escalation-chains", {"team_id": team_id, "name": "Scope Chain"}
+    )
+    roster_id = await admin_creates(
+        "/rosters",
+        {"team_id": team_id, "name": "Scope Roster", "anchor_date": "2026-10-12"},
+    )
+    memory_id = await admin_creates(
+        "/memories",
+        {
+            "title": "Scope memory",
+            "summary_md": "Restart the pool.",
+            "service_id": service_id,
+        },
+    )
+    incident_id = await admin_creates(
+        "/incidents",
+        {
+            "title": "Scope outage",
+            "description": "Checkout down",
+            "severity": "high",
+            "service_id": service_id,
+        },
+    )
+
+    # Lists a Viewer reads: 200, with the row made above in the answer.
+    for path, row_id in (
+        ("/incidents", incident_id),
+        ("/escalation-chains", chain_id),
+        ("/rosters", roster_id),
+        ("/teams", team_id),
+        ("/services", service_id),
+        ("/memories", memory_id),
+    ):
+        response = await client.get(path, headers=h["viewer"])
+        assert response.status_code == 200, (path, response.text)
+        assert row_id in {item["id"] for item in response.json()["items"]}, path
+
+    incident = await client.get(f"/incidents/{incident_id}", headers=h["viewer"])
+    assert incident.status_code == 200, incident.text
+    assert incident.json()["id"] == incident_id
+
+    # Activity carries the admin's changes, such as the team made above.
+    activity = await client.get(
+        "/audit", headers=h["viewer"], params={"entry_type": "admin_change"}
+    )
+    assert activity.status_code == 200, activity.text
+    assert team_id in {
+        item["tool_parameters"]["entity_id"] for item in activity.json()["items"]
+    }
+
+    inbox = await client.get("/notifications", headers=h["viewer"])
+    assert inbox.status_code == 200, inbox.text
+    assert isinstance(inbox.json()["items"], list)
+
+    # Reads O-07 keeps for admins and operators.
+    for path in (
+        f"/incidents/{incident_id}/timeline",
+        f"/incidents/{incident_id}/comments",
+        "/reports/incidents",
+        "/api/v1/analytics/response",
+        "/sessions",
+        f"/escalation-chains/{chain_id}/calendar",
+    ):
+        refused = await client.get(path, headers=h["viewer"])
+        assert refused.status_code == 403, (path, refused.text)
+        allowed = await client.get(path, headers=h["operator"])
+        assert allowed.status_code == 200, (path, allowed.text)

@@ -37,7 +37,9 @@ operator-accessible read and action endpoints but never administrator-only
 ones, even when an Admin created it. Team-scoped actions, such as reassigning
 an incident or force-taking it, check the creator's team memberships. If the
 creator is demoted, their tokens drop to the new role; if the creator is
-deactivated or deleted, their tokens stop working.
+deactivated or deleted, their tokens stop working. While the creator still has
+to change a temporary password, their tokens answer `403` with
+`password_change_required`, and they can't create new ones until they change it.
 
 API tokens are not accepted for sign-in, self-service profile routes,
 multi-factor enrollment, the Inbox and notification settings, or live

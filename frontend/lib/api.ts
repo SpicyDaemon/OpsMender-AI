@@ -56,11 +56,24 @@ async function request<T>(
 
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
+    let code: unknown;
     try {
       const body = await res.json();
       detail = body.detail ?? JSON.stringify(body);
+      code = body.code;
     } catch {
       // non-JSON response
+    }
+    // A temporary password must change first (O-18). Like AuthGuard, only a
+    // dashboard tab goes to the change page, so sign-in, reset links and the
+    // change page itself keep working.
+    if (
+      res.status === 403 &&
+      code === "password_change_required" &&
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/dashboard")
+    ) {
+      window.location.href = "/password-change-required";
     }
     throw Object.assign(new Error(detail), { status: res.status });
   }

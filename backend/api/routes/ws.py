@@ -111,10 +111,14 @@ ACCOUNT_ENDED = 4401
 
 
 async def _session_user(token: str) -> User | None:
-    """The active user a stream's token speaks for. Checked in a short
-    database session so a long-lived stream doesn't hold a connection."""
+    """The active user a stream's token speaks for, unless their temporary
+    password must still change (O-18). Checked in a short database session
+    so a long-lived stream doesn't hold a connection."""
     async with get_current_session_factory()() as db:
-        return await user_for_session_token(db, token)
+        user = await user_for_session_token(db, token)
+    if user is None or user.must_change_password:
+        return None
+    return user
 
 
 async def _in_workspace(user: User, session_id: uuid.UUID) -> bool:
@@ -131,7 +135,8 @@ async def _relay(
 ):
     """Send the queue's events (and keep-alive pings) until the client
     leaves, ``stop_on`` sees an ending event, or the account stops signing
-    in: deactivated, deleted or its password changed."""
+    in: deactivated, deleted, its password changed or it must change a
+    temporary password."""
     loop = asyncio.get_running_loop()
     checked = loop.time()
     while True:

@@ -50,6 +50,7 @@ from backend.ingest.service import (
     generate_token,
     hash_token,
     ingest_incident,
+    sqlite_intake_turn,
 )
 from backend.services.incident_events import dispatch_incident_created
 
@@ -313,15 +314,19 @@ async def service_intake_webhook(
     if isinstance(payload, JSONResponse):
         return payload
 
-    result = await ingest_incident(
-        db,
-        token=token,
-        payload=payload,
-        config=request.app.state.config,
-    )
+    # Commit inside the turn (O-20): a parse failure keeps its log row, and the
+    # incident exists before background AI provisioning reads it. Intake does
+    # not wait for session creation or workflow/model execution.
+    async with sqlite_intake_turn(db, request.app.state.sqlite_intake_lock):
+        result = await ingest_incident(
+            db,
+            token=token,
+            payload=payload,
+            config=request.app.state.config,
+        )
+        await db.commit()
 
     if not result.success:
-        await db.commit()
         return JSONResponse(
             status_code=422,
             content=IngestResponse(
@@ -332,9 +337,6 @@ async def service_intake_webhook(
             ).model_dump(mode="json"),
         )
 
-    # Persist the incident before background AI provisioning reads it. Intake
-    # does not wait for session creation or workflow/model execution.
-    await db.commit()
     await _stop_sessions_on_resolve(
         request.app, db, org_id=service.org_id, result=result
     )
@@ -410,18 +412,18 @@ async def ingest_webhook(
     if isinstance(payload, JSONResponse):
         return payload
 
-    # Run ingest
-    result = await ingest_incident(
-        db,
-        token=token,
-        payload=payload,
-        config=request.app.state.config,
-    )
+    # Run ingest and commit inside the turn (O-20), so a parse failure keeps
+    # its audit log entry and is answered as a normal response.
+    async with sqlite_intake_turn(db, request.app.state.sqlite_intake_lock):
+        result = await ingest_incident(
+            db,
+            token=token,
+            payload=payload,
+            config=request.app.state.config,
+        )
+        await db.commit()
 
     if not result.success:
-        # Commit the session so the audit log entry is preserved,
-        # then return the error as a normal response.
-        await db.commit()
         return JSONResponse(
             status_code=422,
             content=IngestResponse(
@@ -432,7 +434,6 @@ async def ingest_webhook(
             ).model_dump(mode="json"),
         )
 
-    await db.commit()
     await _stop_sessions_on_resolve(request.app, db, org_id=token.org_id, result=result)
     await _dispatch_created(request.app, org_id=token.org_id, result=result)
     await _dispatch_collision(request.app, org_id=token.org_id, result=result)

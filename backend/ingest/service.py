@@ -4,11 +4,14 @@ and audit logging for ``POST /incidents/ingest``.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import hashlib
 import logging
 import secrets
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -91,6 +94,30 @@ async def authenticate_token(
             await IngestTokenRepo.touch(db, tok.org_id, tok.id)
             return tok
     return None
+
+
+@asynccontextmanager
+async def sqlite_intake_turn(
+    db: AsyncSession, lock: asyncio.Lock
+) -> AsyncIterator[None]:
+    """On SQLite, let one alert at a time through ``ingest_incident`` and the
+    commit after it, so identical alerts that arrive together open one
+    incident (O-20). ``lock`` is the app's ``sqlite_intake_lock``: one per
+    process, so several processes on one SQLite file still need PostgreSQL.
+
+    SQLite takes no lock for the dedup lookup, so without a turn a second
+    request reads before the first commits and opens its own incident.
+    PostgreSQL needs no turn here: ``take_turns`` in ``ingest_incident`` waits
+    in the database.
+    """
+    if db.get_bind().dialect.name != "sqlite":
+        yield
+        return
+    # Commit what the request already wrote (the token's last use) so it never
+    # holds SQLite's write lock while it waits for its turn.
+    await db.commit()
+    async with lock:
+        yield
 
 
 async def ingest_incident(
@@ -226,7 +253,8 @@ async def ingest_incident(
                 return IngestResult(success=True, dedup_action="skipped")
 
     # Identical alerts arriving together take turns, so the second sees the
-    # first's incident instead of racing it (R-03).
+    # first's incident instead of racing it (R-03). On SQLite the caller's
+    # ``sqlite_intake_turn`` does this (O-20).
     if parsed.external_id and parsed.external_source:
         await take_turns(
             db,

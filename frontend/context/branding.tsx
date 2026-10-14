@@ -29,7 +29,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const organizationId = user?.primary_org_id;
-    if (!organizationId) {
+    // While a temporary password must still change, the API refuses every
+    // read but the person's own profile (O-18); fetch the branding once the
+    // change clears the flag.
+    const mustChangePassword = Boolean(user?.must_change_password);
+    if (!organizationId || mustChangePassword) {
       clearBrandingDocument();
       queueMicrotask(() => {
         if (!cancelled) {
@@ -67,7 +71,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.primary_org_id]);
+  }, [user?.primary_org_id, user?.must_change_password]);
 
   return (
     <BrandingContext.Provider value={{ branding, loading }}>

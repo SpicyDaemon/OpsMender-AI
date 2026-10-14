@@ -12,11 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - While a person's temporary password must still change (a new account an
   admin created, or a temporary password an admin set), their session can
   only read their own profile, change the password and use MFA. Every other
-  API call from that session or from an API token they created, creating a
-  token included, answers 403 with `password_change_required`, their live
-  streams are refused, and an open dashboard tab goes to the password change
-  page. Before, only the web app asked for the change, and the API served
-  that session in full, including creating API tokens.
+  API call from that session, creating an API token included, answers 403
+  with `password_change_required`, their live streams are refused, and an
+  open dashboard tab goes to the password change page. Before, only the web
+  app asked for the change, and the API served that session in full,
+  including creating API tokens.
 
 ## [1.1.1] - 2026-10-10
 

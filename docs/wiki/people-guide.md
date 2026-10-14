@@ -107,7 +107,7 @@ For an existing local user:
 
 Password-reset links are best-effort email plus guaranteed copy-paste output, same as invites.
 
-A user with a temporary password (a new user you created, or one you gave **Set temporary password**) must choose a new password first: until then, their session reaches only their own profile, the password change and MFA, and every other API call, from that session or from their API tokens, answers `403` with `password_change_required`.
+A user with a temporary password (a new user you created, or one you gave **Set temporary password**) must choose a new password first: until then, their session reaches only their own profile, the password change and MFA, and every other API call answers `403` with `password_change_required`.
 
 Important boundaries:
 

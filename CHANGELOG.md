@@ -35,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before reading or storing it, without repeating it. Settings saved before
   this change are not rewritten. An unknown provider in discovery answers
   `400` instead of a server error.
+- The generic command guard now also catches common runner names: `terminal`,
+  `console`, `tty`, `pty`, `shellexec`, `bash_tool`, `shell_tool`,
+  `subprocess`, `popen`, `os_system`, `sudo`, `su`, `docker`, `podman`,
+  `nerdctl`, `crictl` and `systemctl`, names that start with `bash_`, `sh_`,
+  `terminal_`, `console_`, `sudo_`, `docker_` or `subprocess_`, and names that
+  end with `_terminal`, `_console`, `_bash` or `_subprocess`, in any case or
+  separator style (`Terminal`, `BashTool`, `bash-tool`). Before, `terminal`,
+  `shellexec`, `bash_tool` and the like were ordinary tools, so a Skill entry
+  or glob that allowed one let it run at Tier 0, without approval at Tier 1,
+  and in environment scans. A narrowly scoped tool that the new prefixes
+  catch, such as `docker_logs` or `console_url`, now needs an entry with its
+  exact name and `allow_generic: true` to run under its own policy again.
 
 ### Fixed
 

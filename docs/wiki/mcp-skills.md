@@ -163,28 +163,45 @@ hardcodes prod/staging/dev.
 ## Generic command tools (high-risk)
 
 Generic execution tools run **arbitrary** commands, so the tool name alone does
-not bound what they can do. OpsMender detects them automatically (e.g. `shell`,
-`bash`, `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
-`python`, `node`, `python_repl`, `code_interpreter`, and `*_exec` / `run_*` /
-`*_cli` patterns) and guards them conservatively. Names are compared without
-case and with camel case, hyphens, dots and spaces folded to underscores, so
-`ExecuteCommand`, `run-command` and `kubectl-exec` count too:
+not bound what they can do. OpsMender detects them automatically by the names
+below and guards them conservatively. Names are compared without case and with
+camel case, hyphens, dots and spaces folded to underscores, so
+`ExecuteCommand`, `run-command`, `kubectl-exec`, `Terminal`, `ShellExec` and
+`bash-tool` count too:
 
 - **Tier 2**: blocked.
 - **Tier 1**: **requires operator approval** before execution.
 - **Tier 0**: blocked (there is no command-pattern allowlisting yet, so a
   generic tool cannot run autonomously).
 
+| Kind | Detected names |
+| --- | --- |
+| Shells and runners | `shell`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, `cmd`, `shellexec`, `bash_tool`, `shell_tool`, `run`, `run_command`, `runcommand`, `run_cmd`, `exec`, `execute`, `command`, `eval`, `evaluate`, `spawn`, `system` |
+| Terminals, processes and privilege | `terminal`, `console`, `tty`, `pty`, `subprocess`, `popen`, `os_system`, `sudo`, `su` |
+| Containers and host services | `docker`, `podman`, `nerdctl`, `crictl`, `systemctl` |
+| Cloud and infrastructure CLIs | `kubectl`, `oc`, `helm`, `aws`, `aws_cli`, `awscli`, `gcloud`, `az`, `azure_cli`, `azurecli`, `terraform`, `tf`, `pulumi`, `ansible`, `ansible_playbook`, `salt`, `chef`, `puppet` |
+| Database and query runners | `sql`, `psql`, `mysql`, `sqlcmd`, `mongo`, `redis_cli`, `query`, `run_query`, `execute_sql`, `exec_sql`, `raw_query` |
+| Language runtimes | `python`, `python3`, `node`, `nodejs`, `ruby`, `perl`, `php`, `groovy`, `jshell`, `repl`, `python_repl`, `code_interpreter`, `interpreter` |
+| Network and transfer | `curl`, `wget`, `ssh`, `scp`, `sftp`, `telnet`, `nc`, `netcat` |
+| Build and package | `make`, `npm`, `npx`, `pip`, `apt`, `yum`, `apk` |
+| Names starting with | `exec_`, `run_`, `shell_`, `cmd_`, `eval_`, `bash_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`, `subprocess_` |
+| Names ending with | `_exec`, `_shell`, `_command`, `_cmd`, `_cli`, `_eval`, `_query`, `_run`, `_script`, `_repl`, `_interpreter`, `_terminal`, `_console`, `_bash`, `_subprocess` |
+
+A name counts as a whole or by its start or end, never by a word in the
+middle: `refresh`, `dashboard` and `get_console_output` are ordinary tools.
+
 To opt a **narrowly-scoped** wrapper out of the guardrail, list it **by its
 exact name** in the skill with `allow_generic: true` (normal tier/classification
 rules then apply). A glob such as `run_*` can't opt tools out. Prefer explicit
-`deny: true` entries for anything dangerous.
+`deny: true` entries for anything dangerous. A few prefixes also catch bounded
+tools: `docker_logs` and `console_url` start with `docker_` and `console_`, so
+they stay guarded until their exact entry sets `allow_generic: true`.
 
 ```yaml
 operations:
   - tool: shell
     deny: true              # blocked at every tier (deny always wins)
-  - tool: kubectl_get_only  # a scoped read-only wrapper you trust
+  - tool: docker_logs       # only reads container logs; docker_ flags it
     classification: safe
     allow_generic: true
     tiers:

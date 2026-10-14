@@ -1,6 +1,11 @@
 """M1-44 (R-12): when several globs in a skill match a tool, the strictest
 wins whatever order they are written in, and the generic-runner guard folds
-case and separators. The frozen enforcement module is unchanged."""
+case and separators. The frozen enforcement module is unchanged.
+
+M1-52 (N-06): common runner names (terminals, process spawners, sudo and the
+container tools) are generic runners in every spelling, and a bounded tool that
+one of the new prefixes catches still runs once its exact entry sets
+allow_generic."""
 
 from __future__ import annotations
 
@@ -85,11 +90,90 @@ def test_runner_names_are_caught_whatever_their_case_or_separators(name):
     assert is_generic_execution_tool(name) is True
 
 
+# Each runner word or affix (M1-52) with other spellings a tool source may use.
+RUNNER_SPELLINGS = {
+    # exact names
+    "terminal": ("Terminal", "TERMINAL"),
+    "console": ("Console",),
+    "tty": ("TTY",),
+    "pty": ("Pty",),
+    "shellexec": ("ShellExec", "SHELLEXEC"),
+    "bash_tool": ("BashTool", "bash-tool", "bash.tool", "Bash Tool"),
+    "shell_tool": ("ShellTool", "shell-tool", "shell.tool"),
+    "subprocess": ("Subprocess", "SubProcess"),
+    "popen": ("Popen",),
+    "os_system": ("OsSystem", "os-system", "os.system"),
+    "sudo": ("Sudo",),
+    "su": ("SU",),
+    "docker": ("Docker",),
+    "podman": ("Podman",),
+    "nerdctl": ("NerdCtl",),
+    "crictl": ("CriCtl",),
+    "systemctl": ("SystemCtl",),
+    # prefixes
+    "bash_session": ("BashSession", "bash-session", "bash.session"),
+    "sh_session": ("ShSession", "sh-session", "sh.session"),
+    "terminal_session": ("TerminalSession", "terminal-session", "terminal.session"),
+    "console_session": ("ConsoleSession", "console-session", "console.session"),
+    "sudo_edit": ("SudoEdit", "sudo-edit", "sudo.edit"),
+    "docker_compose": ("DockerCompose", "docker-compose", "docker.compose"),
+    "subprocess_check_output": (
+        "SubprocessCheckOutput",
+        "subprocess-check-output",
+        "subprocess.check_output",
+    ),
+    # suffixes
+    "open_terminal": ("OpenTerminal", "open-terminal", "open.terminal"),
+    "web_console": ("WebConsole", "web-console", "web.console"),
+    "invoke_bash": ("InvokeBash", "invoke-bash", "invoke.bash"),
+    "spawn_subprocess": ("SpawnSubprocess", "spawn-subprocess", "spawn.subprocess"),
+}
+
+
 @pytest.mark.parametrize(
-    "name", ["get_pods", "getPods", "scale_deployment", "list-nodes", "describe_node"]
+    "name",
+    [
+        spelling
+        for word, others in RUNNER_SPELLINGS.items()
+        for spelling in (word, *others)
+    ],
+)
+def test_common_runner_names_are_caught_in_every_spelling(name):
+    assert is_generic_execution_tool(name) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "get_pods",
+        "getPods",
+        "scale_deployment",
+        "list-nodes",
+        "describe_node",
+        "refresh",
+        "dashboard",
+        "describe_pod",
+        "list_containers",
+        "get_console_output",
+    ],
 )
 def test_ordinary_tools_are_not_runners(name):
     assert is_generic_execution_tool(name) is False
+
+
+@pytest.mark.parametrize("tool", ["docker_logs", "console_url"])
+def test_a_bounded_tool_caught_by_a_new_prefix_runs_with_allow_generic(tool):
+    guarded = _skill(_op(tool, "safe", "autonomous"))
+    trusted = _skill(_op(tool, "safe", "autonomous", allow_generic=True))
+
+    assert is_generic_execution_tool(tool) is True
+    blocked = enforcement.check(tool, 0, guarded)
+    assert blocked.permitted is False
+    assert blocked.classification == "generic_execution"
+    assert enforcement.check(tool, 1, guarded).requires_approval is True
+    allowed = enforcement.check(tool, 0, trusted)
+    assert allowed.permitted is True
+    assert allowed.classification == "safe"
 
 
 def test_the_frozen_enforcement_module_is_unchanged():

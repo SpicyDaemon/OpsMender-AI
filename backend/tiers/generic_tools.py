@@ -14,9 +14,13 @@ of this guardrail by listing it in the MCP Skill with ``allow_generic: true``;
 normal tier/classification rules then apply. This is the documented escape
 hatch - use it only for narrowly-scoped tools.
 
-Detection is intentionally conservative (a curated set + a few unambiguous
-prefixes/suffixes) to avoid false positives on normal tools like ``get_pods``
-or ``scale_deployment``.
+Detection is intentionally conservative (a curated set + a few prefixes and
+suffixes) to avoid false positives on normal tools like ``get_pods`` or
+``scale_deployment``. A name matches as a whole or by a prefix or suffix, never
+by a word in the middle, so ``refresh`` and ``dashboard`` are not shells. A few
+affixes also catch bounded tools: ``docker_logs`` and ``console_url`` match the
+``docker_`` and ``console_`` prefixes, so a Skill that trusts such a tool lists
+it by its exact name with ``allow_generic: true``.
 """
 
 from __future__ import annotations
@@ -35,6 +39,9 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "powershell",
         "pwsh",
         "cmd",
+        "shellexec",
+        "bash_tool",
+        "shell_tool",
         "run",
         "run_command",
         "runcommand",
@@ -46,6 +53,22 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "evaluate",
         "spawn",
         "system",
+        # terminals, process spawning and privilege escalation
+        "terminal",
+        "console",
+        "tty",
+        "pty",
+        "subprocess",
+        "popen",
+        "os_system",
+        "sudo",
+        "su",
+        # container runtimes / host services
+        "docker",
+        "podman",
+        "nerdctl",
+        "crictl",
+        "systemctl",
         # cloud / infra CLIs
         "kubectl",
         "oc",
@@ -111,8 +134,22 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
     }
 )
 
-# Unambiguous affixes that signal an arbitrary-command tool.
-_GENERIC_PREFIXES: tuple[str, ...] = ("exec_", "run_", "shell_", "cmd_", "eval_")
+# Affixes that signal an arbitrary-command tool. ``docker_`` and ``console_``
+# also catch bounded tools such as ``docker_logs`` (see the module docstring).
+_GENERIC_PREFIXES: tuple[str, ...] = (
+    "exec_",
+    "run_",
+    "shell_",
+    "cmd_",
+    "eval_",
+    "bash_",
+    "sh_",
+    "terminal_",
+    "console_",
+    "sudo_",
+    "docker_",
+    "subprocess_",
+)
 _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_exec",
     "_shell",
@@ -125,6 +162,10 @@ _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_script",
     "_repl",
     "_interpreter",
+    "_terminal",
+    "_console",
+    "_bash",
+    "_subprocess",
 )
 
 
@@ -144,8 +185,8 @@ def is_generic_execution_tool(tool_name: str) -> bool:
     """Return True when *tool_name* looks like an arbitrary-command runner.
 
     Conservative: matches a curated exact-name set plus a small set of
-    unambiguous prefixes/suffixes. Normal infra tools (``get_pods``,
-    ``scale_deployment``, ``describe_node``) are not flagged.
+    prefixes/suffixes. Normal infra tools (``get_pods``, ``scale_deployment``,
+    ``describe_node``) are not flagged.
     """
     if not tool_name:
         return False

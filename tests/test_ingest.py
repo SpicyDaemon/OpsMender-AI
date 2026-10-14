@@ -952,6 +952,63 @@ class TestSqliteIntakeTakesTurns:
             [service_alert["id"], token_alert["id"]]
         )
 
+    @pytest.mark.parametrize("route", ["service", "token"])
+    async def test_learning_an_alert_shape_does_not_hold_up_other_alerts(
+        self, client: AsyncClient, app, admin_headers, monkeypatch, route
+    ):
+        """Shape learning runs before the SQLite turn on both intake routes,
+        so another service's alert need not wait for the model (O-20)."""
+        from backend.ingest import service as ingest_service
+
+        shapeless = await _create_paged_service(
+            client, app, admin_headers, name="Shapeless", priority="P1"
+        )
+        quick = await _create_paged_service(
+            client, app, admin_headers, name="Quick", priority="P1"
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def learning_slowly(db, org_id, **kwargs):
+            entered.set()
+            await asyncio.wait_for(release.wait(), timeout=20)
+            return None, False
+
+        monkeypatch.setattr(ingest_service, "apply_shape_cache", learning_slowly)
+        url, headers = shapeless["intake_url"], {}
+        if route == "token":
+            raw, _ = await _create_token(app, provider="auto", name="shape-learning")
+            url, headers = "/incidents/ingest", {"X-OpsMender-Token": raw}
+        # No title anywhere, so the auto adapter asks the model for the shape.
+        waiting = asyncio.create_task(
+            client.post(url, headers=headers, json={"m": {"cpu": 99}, "n": [1, 2, 3]})
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=20)
+            answer = await asyncio.wait_for(
+                client.post(
+                    quick["intake_url"],
+                    json={
+                        "title": "Checkout 503",
+                        "description": "while another alert's shape is learned",
+                        "severity": "critical",
+                        "id": f"quick-{uuid.uuid4()}",
+                    },
+                ),
+                timeout=15,
+            )
+            assert answer.status_code == 200, answer.text
+            assert answer.json()["dedup_action"] == "created"
+            assert not waiting.done()
+            incidents, pages = await _service_incidents_and_pages(app, quick["id"])
+            assert [str(incident.id) for incident in incidents] == [
+                answer.json()["incident_id"]
+            ]
+            assert pages == 2
+        finally:
+            release.set()
+            late = await asyncio.wait_for(waiting, timeout=20)
+        assert late.status_code in (200, 422), late.text
+
 
 class TestAlertNoiseIntelligence:
     async def test_grouping_default_off_keeps_pipeline_behavior(

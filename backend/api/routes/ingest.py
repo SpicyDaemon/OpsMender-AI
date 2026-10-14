@@ -50,7 +50,7 @@ from backend.ingest.service import (
     generate_token,
     hash_token,
     ingest_incident,
-    sqlite_intake_turn,
+    SqliteIntakeTurn,
 )
 from backend.services.incident_events import dispatch_incident_created
 
@@ -314,15 +314,17 @@ async def service_intake_webhook(
     if isinstance(payload, JSONResponse):
         return payload
 
-    # Commit inside the turn (O-20): a parse failure keeps its log row, and the
-    # incident exists before background AI provisioning reads it. Intake does
-    # not wait for session creation or workflow/model execution.
-    async with sqlite_intake_turn(db, request.app.state.sqlite_intake_lock):
+    # Commit before giving back the SQLite turn ingest_incident takes at its
+    # dedup lookup (O-20): a parse failure keeps its log row, and the incident
+    # exists before background AI provisioning reads it. Intake does not wait
+    # for session creation or workflow/model execution.
+    async with SqliteIntakeTurn(db, request.app.state.sqlite_intake_lock) as turn:
         result = await ingest_incident(
             db,
             token=token,
             payload=payload,
             config=request.app.state.config,
+            turn=turn,
         )
         await db.commit()
 
@@ -412,14 +414,15 @@ async def ingest_webhook(
     if isinstance(payload, JSONResponse):
         return payload
 
-    # Run ingest and commit inside the turn (O-20), so a parse failure keeps
-    # its audit log entry and is answered as a normal response.
-    async with sqlite_intake_turn(db, request.app.state.sqlite_intake_lock):
+    # Run ingest and commit before giving back the SQLite turn (O-20), so a
+    # parse failure keeps its audit log entry and is answered normally.
+    async with SqliteIntakeTurn(db, request.app.state.sqlite_intake_lock) as turn:
         result = await ingest_incident(
             db,
             token=token,
             payload=payload,
             config=request.app.state.config,
+            turn=turn,
         )
         await db.commit()
 

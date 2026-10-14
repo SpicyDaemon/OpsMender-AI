@@ -645,7 +645,9 @@ class OrgInviteRepo:
 async def take_turns(db: AsyncSession, key: str) -> None:
     """On PostgreSQL, wait for any other transaction holding ``key`` and hold
     it until this one ends, so work on the same thing runs one at a time.
-    SQLite already runs one writer at a time."""
+    On SQLite this does nothing: a single writer still lets two requests read
+    before either writes, so alert intake takes its own turn in the process
+    instead (``SqliteIntakeTurn``, O-20)."""
     if db.get_bind().dialect.name != "postgresql":
         return
     await db.execute(

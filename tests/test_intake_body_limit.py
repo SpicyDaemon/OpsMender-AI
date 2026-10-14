@@ -265,3 +265,46 @@ async def test_other_routes_answer_400_for_a_body_nested_too_deeply(
         [pref] = (await db.execute(select(UserNotificationPref))).scalars().all()
     assert pref.routing == {"P0": ["email"]}
     assert pref.quiet_hours is None
+
+
+async def test_other_routes_take_64_levels_and_store_nothing_deeper(
+    app, client: AsyncClient, admin_headers
+):
+    """The body check runs before any route: a free-form field one level past
+    the limit is refused and never stored, one at the limit is saved."""
+    url = "/users/me/notification-preferences"
+    headers = {**admin_headers, "Content-Type": "application/json"}
+
+    def channels(levels: int) -> bytes:
+        # The body, "channels" and "x" are three levels; the rest nests inside.
+        return b'{"channels": {"x": ' + _nested(levels - 2) + b"}}"
+
+    at_limit = await client.put(url, content=channels(64), headers=headers)
+    assert at_limit.status_code == 200, at_limit.text
+    over = await client.put(url, content=channels(65), headers=headers)
+    assert over.status_code == 400, over.text
+    assert over.json() == {"detail": "Request body nests too deeply"}
+    # The security headers still go out with the refusal.
+    assert over.headers["x-content-type-options"] == "nosniff"
+    deep = await client.put(url, content=channels(1000), headers=headers)
+    assert deep.status_code == 400, deep.text
+
+    async with app.state.session_factory() as db:
+        [pref] = (await db.execute(select(UserNotificationPref))).scalars().all()
+    saved = pref.channels["x"]
+    levels = 2
+    while isinstance(saved, dict):
+        saved, levels = saved.get("a"), levels + 1
+    assert levels == 64 and saved == 1
+    assert (await client.get(url, headers=admin_headers)).status_code == 200
+
+
+async def test_a_token_nested_too_deeply_is_no_token(client: AsyncClient):
+    """A bearer token whose header nests too deeply to decode is refused like
+    any other bad token (401), never a server error."""
+    import base64
+
+    header = base64.urlsafe_b64encode(_nested(5000, "list")).rstrip(b"=").decode()
+    token = f"{header}.e30.c2ln"
+    resp = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401, resp.text

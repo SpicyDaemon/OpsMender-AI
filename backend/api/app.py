@@ -15,7 +15,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -348,6 +348,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         window_seconds=config.auth.signin_window_seconds,
     )
 
+    # -- Deeply nested request bodies (N-03) --------------------------------
+    # Innermost, so its 400 still gets the CORS and security headers below.
+    # The alert intake routes check their own bodies (size, then depth).
+    from backend.api.json_depth import JsonDepthLimit
+
+    app.add_middleware(JsonDepthLimit)
+
     # -- CORS ---------------------------------------------------------------
     allowed_origins = config.cors.origins
     # allow_credentials=True is incompatible with wildcard origins per CORS spec
@@ -384,17 +391,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     async def _password_change_required(request, exc):  # type: ignore[no-untyped-def]
         return JSONResponse(
             {"detail": exc.detail, "code": exc.code}, status_code=exc.status_code
-        )
-
-    # -- Deeply nested request bodies (N-03) --------------------------------
-    # FastAPI answers 400 when its JSON parser gives up. A body that parses but
-    # nests deeper than Python's recursion limit raises RecursionError later,
-    # while its 422 errors are encoded or while route code walks or saves it.
-    # Answer 400 for that too instead of a server error.
-    @app.exception_handler(RecursionError)
-    async def _nests_too_deeply(request: Request, exc: RecursionError) -> JSONResponse:
-        return JSONResponse(
-            status_code=400, content={"detail": "Request body nests too deeply"}
         )
 
     # -- Routes -------------------------------------------------------------

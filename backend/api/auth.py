@@ -218,7 +218,8 @@ async def user_for_session_token(db: AsyncSession, token: str) -> User | None:
         if payload.get("token_type") not in (None, "access"):
             return None
         user_id = uuid.UUID(str(payload.get("sub")))
-    except (JWTError, ValueError):
+    except (JWTError, ValueError, RecursionError):
+        # A token whose header or claims nest too deeply to decode is no token.
         return None
     user = await UserRepo.get_by_id(db, user_id)
     if user is None or not user.is_active or user.deleted_at is not None:

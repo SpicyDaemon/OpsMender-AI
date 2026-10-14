@@ -30,11 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same way; before, it answered a server error or reported success.
 - Alert intake refuses a body whose objects and arrays nest more than 64
   levels deep with `400` and opens no incident; the token's delivery log keeps
-  a short row naming the limit, never the body. Any other request whose body
-  nests too deeply to read gets `400` too. Before, intake accepted and stored
-  deeply nested bodies and failed with a server error on the deepest, and a
-  deeply nested body sent to other routes, such as saving My Routing
-  settings, also failed with a server error.
+  a short row naming the limit, never the body. Every other route refuses a
+  JSON body nested more than 64 levels with `400` before reading it, and a
+  sign-in token nested too deeply to read is refused like any bad token
+  (`401`). Before, intake accepted and stored deeply nested bodies and failed
+  with a server error on the deepest, and a deeply nested body sent to other
+  routes, such as saving My Routing settings, failed with a server error,
+  sometimes after the value was saved.
 
 ## [1.1.1] - 2026-10-10
 

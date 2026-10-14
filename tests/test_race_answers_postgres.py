@@ -1,8 +1,9 @@
 """M1-41 (R-03, R-04) on real PostgreSQL connections: identical alerts that
 arrive together all get a normal answer and open one incident, and two Takes
 together on an incident without a chain leave one owner and give the other
-the usual 409. Run with PART4_PG_URL pointed at a disposable database. The
-URL is not logged.
+the usual 409. M1-50 (N-01): an assignment checked before a Take committed is
+refused and leaves the taker as owner. Run with PART4_PG_URL pointed at a
+disposable database. The URL is not logged.
 """
 
 from __future__ import annotations
@@ -23,8 +24,10 @@ from backend.config_loader import set_env_path
 from backend.db.models import (
     AlertFingerprintState,
     Base,
+    InAppNotification,
     Incident,
     IncidentAssignment,
+    IncidentComment,
     Organization,
 )
 from backend.db.repos import IncidentRepo, ServiceRepo, TeamRepo, UserRepo
@@ -115,6 +118,7 @@ async def pg_app(tmp_path):
                 "service_id": service.id,
                 "team_id": team.id,
                 "headers": headers,
+                "users": names,
             },
         )
     set_env_path(None)
@@ -226,3 +230,91 @@ async def test_two_takes_together_leave_one_owner(pg_app):
             )
             == 1
         )
+
+
+async def test_an_assignment_checked_before_a_take_is_refused(pg_app, monkeypatch):
+    """An admin assigns an incident with no Escalation Chain to one operator
+    while another presses Take. The Take commits after the assignment was
+    authorized and before it locked the incident: the assignment answers 409
+    naming the taker and writes nothing, so the taker keeps the incident."""
+    from backend.api.routes import incidents as incident_routes
+
+    async with pg_app.factory() as db:
+        incident = await IncidentRepo.create(
+            db,
+            pg_app.org_id,
+            title="assign versus take",
+            description="M1-50 check",
+            priority="P2",
+            response_mode="notify",
+            service_id=pg_app.service_id,
+        )
+        await db.commit()
+    first, second = pg_app.users["first"], pg_app.users["second"]
+    checked = asyncio.Event()
+    taken = asyncio.Event()
+    authorize = incident_routes._authorize_assignment
+
+    async def authorize_then_wait(*args, **kwargs):
+        result = await authorize(*args, **kwargs)
+        checked.set()
+        # The assignment waits between its check and its write until the
+        # Take has committed on its own connection.
+        await taken.wait()
+        return result
+
+    monkeypatch.setattr(incident_routes, "_authorize_assignment", authorize_then_wait)
+    assign = asyncio.create_task(
+        pg_app.client.post(
+            f"/incidents/{incident.id}/assign",
+            json={"user_id": str(first.id)},
+            headers=pg_app.headers["admin"],
+        )
+    )
+    try:
+        await asyncio.wait_for(checked.wait(), timeout=10)
+        take = await asyncio.wait_for(
+            pg_app.client.post(
+                f"/incidents/{incident.id}/take",
+                json={},
+                headers=pg_app.headers["second"],
+            ),
+            timeout=10,
+        )
+    finally:
+        taken.set()
+        assigned = await asyncio.wait_for(assign, timeout=10)
+
+    assert take.status_code == 200, take.text
+    assert assigned.status_code == 409, assigned.text
+    assert assigned.json()["detail"] == (
+        f"{second.username} owns this incident. Ask them to release it, or use "
+        "Force take with a reason."
+    )
+    async with pg_app.factory() as db:
+        owners = (
+            await db.execute(
+                select(
+                    IncidentAssignment.assigned_to, IncidentAssignment.released_at
+                ).where(IncidentAssignment.incident_id == incident.id)
+            )
+        ).all()
+        notes = (
+            await db.scalars(
+                select(IncidentComment.body).where(
+                    IncidentComment.incident_id == incident.id
+                )
+            )
+        ).all()
+        notices = (
+            await db.execute(
+                select(InAppNotification.user_id, InAppNotification.event_type).where(
+                    InAppNotification.incident_id == incident.id
+                )
+            )
+        ).all()
+    # One assignment row, the taker's, never released; only the Take's own
+    # timeline note; and no Inbox notice of an assignment to anyone.
+    assert [tuple(row) for row in owners] == [(second.id, None)]
+    assert notes == ["Acknowledged the incident (via take)."]
+    assert notices == []

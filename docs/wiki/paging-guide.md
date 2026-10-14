@@ -85,6 +85,9 @@ change the limit. A larger body gets `413` before OpsMender reads it in full,
 whether or not it declares its length, and opens no incident. The token's
 delivery log keeps a short row with the body's size and the limit, never the
 body. The same limit applies to `POST /incidents/ingest`.
+Objects and arrays in a body may nest up to 64 levels deep on both endpoints;
+a deeper body gets `400`, opens no incident and leaves a short row naming the
+depth limit.
 
 Each service has:
 

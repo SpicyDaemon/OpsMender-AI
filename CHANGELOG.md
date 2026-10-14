@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the incident replaced them without a note or an Inbox notice. An
   assignment that arrives as the incident is resolved or merged is refused
   the same way; before, it answered a server error or reported success.
+- Alert intake refuses a body whose objects and arrays nest more than 64
+  levels deep with `400` and opens no incident; the token's delivery log keeps
+  a short row naming the limit, never the body. Any other request whose body
+  nests too deeply to read gets `400` too. Before, intake accepted and stored
+  deeply nested bodies and failed with a server error on the deepest, and a
+  deeply nested body sent to other routes, such as saving My Routing
+  settings, also failed with a server error.
 
 ## [1.1.1] - 2026-10-10
 

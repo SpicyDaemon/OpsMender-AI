@@ -1,7 +1,11 @@
 """M1-32 (R-07, O-12): intake refuses alert bodies over the limit (1 MiB by
 default) with 413 before reading them in full, declared or streamed, and the
 token's delivery log keeps a short row naming the size and the limit, never
-the body. A body at the limit is accepted."""
+the body. A body at the limit is accepted.
+
+M1-51 (N-03): intake refuses a body whose objects and arrays nest more than 64
+levels with 400 and the same kind of short row, and other routes answer a body
+nested too deeply to read with 400 instead of a server error."""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 
 from backend.config_loader import AppConfig, IngestConfig
-from backend.db.models import Incident, IngestLog
+from backend.db.models import Incident, IngestLog, UserNotificationPref
 from tests.test_ingest import (
     _create_paged_service,
     _create_token,
@@ -69,6 +73,22 @@ async def _incidents(app) -> int:
 async def _logs(app) -> list[IngestLog]:
     async with app.state.session_factory() as db:
         return list((await db.execute(select(IngestLog))).scalars())
+
+
+def _nested(depth: int, shape: str = "object") -> bytes:
+    """JSON whose objects (or arrays) nest exactly ``depth`` levels."""
+    if shape == "list":
+        return b"[" * depth + b"]" * depth
+    return b'{"a":' * depth + b"1" + b"}" * depth
+
+
+def _deep_alert(depth: int, alert_id: str) -> bytes:
+    """An alert whose objects nest exactly ``depth`` levels, itself included."""
+    details = _nested(depth - 1).decode()
+    return (
+        f'{{"title": "disk full {alert_id}", "severity": "high", '
+        f'"id": "{alert_id}", "details": {details}}}'
+    ).encode()
 
 
 def test_the_limit_defaults_to_one_mib_and_is_configurable(tmp_path):
@@ -161,3 +181,87 @@ async def test_a_lower_limit_from_config_applies(
 
     assert (small.status_code, big.status_code) == (200, 413)
     assert big.json()["detail"] == "Alert body is over the 4,096-byte intake limit"
+
+
+@pytest.mark.parametrize("shape", ["object", "list"])
+@pytest.mark.parametrize("kind", ["service", "webhook"])
+async def test_a_body_nested_3000_levels_deep_gets_400(
+    app, client: AsyncClient, admin_headers, kind, shape
+):
+    url, headers = await _route(app, client, admin_headers, kind)
+
+    # The JSON parser gives up on this on Windows; elsewhere it parses and the
+    # 64-level check refuses it. Both are the same refusal.
+    resp = await client.post(
+        url,
+        content=_nested(3000, shape),
+        headers={**headers, "Content-Type": "application/json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+    assert resp.json() == {"detail": "Alert body nests too deeply"}
+    assert await _incidents(app) == 0
+    [log] = await _logs(app)
+    assert log.raw_payload == {"depth_limit": 64}
+    assert log.error == "Body nesting deeper than the 64-level intake limit; not stored"
+    assert log.dedup_action == "skipped" and log.incident_id is None
+
+
+@pytest.mark.parametrize("kind", ["service", "webhook"])
+async def test_a_body_nested_64_levels_is_accepted_and_65_refused(
+    app, client: AsyncClient, admin_headers, kind
+):
+    url, headers = await _route(app, client, admin_headers, kind)
+    headers = {**headers, "Content-Type": "application/json"}
+
+    at_limit = await client.post(
+        url, content=_deep_alert(64, "deep-64"), headers=headers
+    )
+    over = await client.post(url, content=_deep_alert(65, "deep-65"), headers=headers)
+
+    assert at_limit.status_code == 200, at_limit.text
+    assert at_limit.json()["dedup_action"] == "created"
+    assert over.status_code == 400, over.text
+    assert over.json() == {"detail": "Alert body nests too deeply"}
+    async with app.state.session_factory() as db:
+        titles = list((await db.execute(select(Incident.title))).scalars())
+    assert titles == ["disk full deep-64"]
+    logs = await _logs(app)
+    assert sorted(log.dedup_action for log in logs) == ["created", "skipped"]
+    assert [log.raw_payload for log in logs if log.dedup_action == "skipped"] == [
+        {"depth_limit": 64}
+    ]
+
+
+async def test_other_routes_answer_400_for_a_body_nested_too_deeply(
+    app, client: AsyncClient, admin_headers
+):
+    url = "/users/me/notification-preferences"
+    saved = await client.put(
+        url, json={"routing": {"P0": ["email"]}}, headers=admin_headers
+    )
+    assert saved.status_code == 200, saved.text
+    headers = {**admin_headers, "Content-Type": "application/json"}
+
+    # 2,000 levels parse on every platform, then fail validation with errors
+    # too deep to encode for a 422. At 3,000 the JSON parser itself may give
+    # up first (Python's C recursion limit is 3,000 on Windows), which FastAPI
+    # answers with its own 400.
+    as_list = await client.put(url, content=_nested(2000, "list"), headers=headers)
+    in_field = await client.put(
+        url, content=b'{"quiet_hours": ' + _nested(2000) + b"}", headers=headers
+    )
+    deeper = await client.put(url, content=_nested(3000, "list"), headers=headers)
+    usual = await client.put(url, json={"routing": {"P7": []}}, headers=admin_headers)
+
+    assert (as_list.status_code, in_field.status_code) == (400, 400)
+    assert (
+        as_list.json() == in_field.json() == {"detail": "Request body nests too deeply"}
+    )
+    assert deeper.status_code == 400, deeper.text
+    assert usual.status_code == 422, usual.text
+    assert "must be P0 to P3 or in_app" in usual.json()["detail"][0]["msg"]
+    async with app.state.session_factory() as db:
+        [pref] = (await db.execute(select(UserNotificationPref))).scalars().all()
+    assert pref.routing == {"P0": ["email"]}
+    assert pref.quiet_hours is None

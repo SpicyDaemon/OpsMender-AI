@@ -188,7 +188,7 @@ deny-listed.
 
 | Kind | Detected names |
 | --- | --- |
-| Shells and runners | `shell`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, `cmd`, `shellexec`, `bash_tool`, `shell_tool`, `run`, `run_command`, `runcommand`, `run_cmd`, `exec`, `execute`, `command`, `eval`, `evaluate`, `spawn`, `system` |
+| Shells and runners | `shell`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, `cmd`, `shellexec`, `bash_tool`, `shell_tool`, `invoke_expression`, `run`, `run_command`, `runcommand`, `run_cmd`, `exec`, `execute`, `command`, `eval`, `evaluate`, `spawn`, `system` |
 | Terminals, processes and privilege | `terminal`, `console`, `tty`, `pty`, `subprocess`, `popen`, `os_system`, `sudo`, `su` |
 | Containers and host services | `docker`, `podman`, `nerdctl`, `crictl`, `systemctl` |
 | Cloud and infrastructure CLIs | `kubectl`, `oc`, `helm`, `aws`, `aws_cli`, `awscli`, `gcloud`, `az`, `azure_cli`, `azurecli`, `terraform`, `tf`, `pulumi`, `ansible`, `ansible_playbook`, `salt`, `chef`, `puppet` |
@@ -196,9 +196,9 @@ deny-listed.
 | Language runtimes | `python`, `python3`, `node`, `nodejs`, `ruby`, `perl`, `php`, `groovy`, `jshell`, `repl`, `python_repl`, `code_interpreter`, `interpreter` |
 | Network and transfer | `curl`, `wget`, `ssh`, `scp`, `sftp`, `telnet`, `nc`, `netcat` |
 | Build and package | `make`, `npm`, `npx`, `pip`, `apt`, `yum`, `apk` |
-| Runner tools of common MCP servers | `kubectl_generic`, `call_kubectl`, `call_az`, `call_aws`, `call_helm`, `call_cilium`, `call_hubble`, `execute_kubectl`, `execute_helm`, `execute_istioctl`, `execute_argocd`, `aws_cli_pipeline`, `kubernetes_proxy`, `ssh_execute`, `ssh_execute_sudo`, `ssh_execute_group`, `ssh_session_send`, `start_process`, `interact_with_process`, `powershell_tool`, `execute_code`, `execute_code_file`, `execute_python`, `execute_cell`, `insert_execute_code_cell`, `execute_ipython`, `execute_tool`, `use_tool`, `browser_run_code`, `browser_run_code_unsafe`, `deploy_one_off_dyno`, `ansible_task`, `transact`, `pg_psql`, `apply_migration`, `execute_sql_readonly`, `generic_open_search_api_tool` |
-| Names starting with | `exec_`, `run_`, `shell_`, `cmd_`, `eval_`, `bash_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`, `subprocess_` |
-| Names ending with | `_exec`, `_shell`, `_command`, `_cmd`, `_cli`, `_eval`, `_query`, `_run`, `_script`, `_repl`, `_interpreter`, `_terminal`, `_console`, `_bash`, `_subprocess`, `_cypher` |
+| Runner tools of common MCP servers | `kubectl_generic`, `call_kubectl`, `call_az`, `call_aws`, `call_helm`, `call_cilium`, `call_hubble`, `execute_kubectl`, `execute_helm`, `execute_istioctl`, `execute_argocd`, `aws_cli_pipeline`, `kubernetes_proxy`, `ssh_execute`, `ssh_execute_sudo`, `ssh_execute_group`, `ssh_session_send`, `start_process`, `interact_with_process`, `powershell_tool`, `execute_code`, `execute_code_file`, `execute_python`, `execute_cell`, `insert_execute_code_cell`, `execute_ipython`, `execute_tool`, `use_tool`, `browser_run_code`, `browser_run_code_unsafe`, `deploy_one_off_dyno`, `ansible_task`, `transact`, `pg_psql`, `apply_migration`, `execute_sql_readonly`, `explain_sql_statement`, `generic_open_search_api_tool` |
+| Names starting with | `exec_`, `run_`, `shell_`, `cmd_`, `eval_`, `bash_`, `powershell_`, `power_shell_`, `pwsh_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`, `subprocess_` |
+| Names ending with | `_exec`, `_shell`, `_command`, `_cmd`, `_cli`, `_eval`, `_query`, `_run`, `_script`, `_repl`, `_interpreter`, `_terminal`, `_console`, `_bash`, `_powershell`, `_pwsh`, `_subprocess`, `_cypher` |
 
 A name counts as a whole or by its start or end, never by a word in the
 middle: `refresh`, `dashboard` and `get_console_output` are ordinary tools.
@@ -206,8 +206,9 @@ middle: `refresh`, `dashboard` and `get_console_output` are ordinary tools.
 Some tools are bounded by design but still powerful, so no name rule catches
 them: manifest and chart appliers (`apply_yaml`, `resources_create_or_update`,
 `kubectl_apply`, `install_helm_chart`), multi-operation job tools
-(`manage_aws_emr_ec2_steps`, `create_pyspark_batch`), single router tools
-that reach a whole service (`azure`, `postgres`, `kusto`), page scripting
+(`manage_aws_emr_ec2_steps`, `create_pyspark_batch`,
+`prepare_database_migration`), single router tools that reach a whole
+service (`azure`, `postgres`, `kusto`), page scripting
 (`browser_evaluate`) and tool names with a server prefix (`aws___call_aws`).
 Classify these in the Skill: deny them, or give them a destructive class and
 the tier policies you want.

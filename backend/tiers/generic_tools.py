@@ -50,6 +50,7 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "shellexec",
         "bash_tool",
         "shell_tool",
+        "invoke_expression",
         "run",
         "run_command",
         "runcommand",
@@ -177,6 +178,7 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "pg_psql",
         "apply_migration",
         "execute_sql_readonly",
+        "explain_sql_statement",
         "generic_open_search_api_tool",
     }
 )
@@ -191,6 +193,9 @@ _GENERIC_PREFIXES: tuple[str, ...] = (
     "cmd_",
     "eval_",
     "bash_",
+    "powershell_",
+    "power_shell_",
+    "pwsh_",
     "sh_",
     "terminal_",
     "console_",
@@ -213,6 +218,8 @@ _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_terminal",
     "_console",
     "_bash",
+    "_powershell",
+    "_pwsh",
     "_subprocess",
     "_cypher",
 )

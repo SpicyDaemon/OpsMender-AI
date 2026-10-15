@@ -107,6 +107,7 @@ RUNNER_SPELLINGS = {
     "shellexec": ("ShellExec", "SHELLEXEC"),
     "bash_tool": ("BashTool", "bash-tool", "bash.tool", "Bash Tool"),
     "shell_tool": ("ShellTool", "shell-tool", "shell.tool"),
+    "invoke_expression": ("InvokeExpression", "invoke-expression", "Invoke-Expression"),
     "subprocess": ("Subprocess", "SubProcess"),
     "popen": ("Popen",),
     "os_system": ("OsSystem", "os-system", "os.system"),
@@ -119,6 +120,8 @@ RUNNER_SPELLINGS = {
     "systemctl": ("SystemCtl",),
     # prefixes
     "bash_session": ("BashSession", "bash-session", "bash.session"),
+    "powershell_execute": ("PowerShellExecute", "powershell-execute", "powershell.exe"),
+    "pwsh_execute": ("PwshExecute", "pwsh-execute", "pwsh.exe"),
     "sh_session": ("ShSession", "sh-session", "sh.session"),
     "terminal_session": ("TerminalSession", "terminal-session", "terminal.session"),
     "console_session": ("ConsoleSession", "console-session", "console.session"),
@@ -133,6 +136,12 @@ RUNNER_SPELLINGS = {
     "open_terminal": ("OpenTerminal", "open-terminal", "open.terminal"),
     "web_console": ("WebConsole", "web-console", "web.console"),
     "invoke_bash": ("InvokeBash", "invoke-bash", "invoke.bash"),
+    "execute_powershell": (
+        "ExecutePowerShell",
+        "execute-powershell",
+        "invoke_powershell",
+    ),
+    "execute_pwsh": ("ExecutePwsh", "execute-pwsh", "invoke.pwsh"),
     "spawn_subprocess": ("SpawnSubprocess", "spawn-subprocess", "spawn.subprocess"),
 }
 
@@ -190,6 +199,7 @@ MCP_SERVER_RUNNERS = [
     "pg_psql",
     "apply_migration",
     "execute_sql_readonly",
+    "explain_sql_statement",
     "GenericOpenSearchApiTool",
     "execute_cypher",
     "read_neo4j_cypher",

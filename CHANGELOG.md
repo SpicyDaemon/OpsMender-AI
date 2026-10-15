@@ -36,17 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   this change are not rewritten. An unknown provider in discovery answers
   `400` instead of a server error.
 - The generic command guard now also catches common runner names: `terminal`,
-  `console`, `tty`, `pty`, `shellexec`, `bash_tool`,
+  `console`, `tty`, `pty`, `shellexec`, `bash_tool`, `invoke_expression`,
   `subprocess`, `popen`, `os_system`, `sudo`, `su`, `docker`, `podman`,
-  `nerdctl`, `crictl` and `systemctl`, names that start with `bash_`, `sh_`,
-  `terminal_`, `console_`, `sudo_`, `docker_` or `subprocess_`, and names that
-  end with `_terminal`, `_console`, `_bash`, `_subprocess` or `_cypher`, in any
-  case or separator style (`Terminal`, `BashTool`, `bash-tool`). It also
+  `nerdctl`, `crictl` and `systemctl`, names that start with `bash_`,
+  `powershell_`, `pwsh_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`
+  or `subprocess_`, and names that end with `_terminal`, `_console`, `_bash`,
+  `_powershell`, `_pwsh`, `_subprocess` or `_cypher`, in any case or separator
+  style (`Terminal`, `BashTool`, `bash-tool`, `PowerShellExecute`). It also
   catches the runner tools of common MCP servers, such as `kubectl_generic`,
   `call_kubectl`, `call_aws`, `execute_kubectl`, `ssh_execute`,
-  `start_process`, `execute_code` and `browser_run_code_unsafe`; the MCP
-  Skills page lists all of them and the bounded tools to classify in a Skill
-  instead. Before, `terminal`,
+  `start_process`, `execute_code`, `browser_run_code_unsafe` and
+  `explain_sql_statement` (which runs the statement when it analyzes it); the
+  MCP Skills page lists all of them and the bounded tools to classify in a
+  Skill instead. Before, `terminal`,
   `shellexec`, `bash_tool` and the like were ordinary tools, so a Skill entry
   or glob that allowed one let it run at Tier 0, without approval at Tier 1,
   and in environment scans. Now they are blocked at Tier 0 and Tier 2 and in

@@ -8,6 +8,7 @@ import {
   updateNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/api";
+import { requiredRolesForPath } from "@/components/Sidebar";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -26,6 +27,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   account: "Account",
 };
 
+// My Routing, where the quiet hours that hold pages are set.
+const MY_ROUTING_HREF = "/dashboard/paging/notifications";
+
 function categoryLabel(category: string) {
   return CATEGORY_LABELS[category] ?? category;
 }
@@ -41,9 +45,11 @@ function browserTz() {
 export default function NotificationPreferencesPage() {
   const toast = useToast();
   const { user } = useAuth();
-  // Quiet hours for pages live in My Routing, which only admins and operators
-  // can open (Viewers are never paged).
-  const canOpenMyRouting = user?.role === "admin" || user?.role === "operator";
+  // Link to My Routing only for the roles its page lets in, by the rule the
+  // route guard applies; anyone else would land on Access denied.
+  const myRoutingRoles = requiredRolesForPath(MY_ROUTING_HREF);
+  const canOpenMyRouting =
+    myRoutingRoles === null || Boolean(user && myRoutingRoles.includes(user.role));
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -138,7 +144,7 @@ export default function NotificationPreferencesPage() {
             href="/dashboard/notifications"
             className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-surface px-3 py-2 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
           >
-            <ArrowLeft size={14} /> Back to inbox
+            <ArrowLeft size={14} /> Back to Inbox
           </Link>
         }
       />
@@ -155,8 +161,8 @@ export default function NotificationPreferencesPage() {
           <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
             <h2 className="text-sm font-semibold text-fg-primary">Categories</h2>
             <p className="mt-0.5 text-sm text-fg-secondary">
-              Turn a category off to mute its notifications. Muted categories no
-              longer appear in your Inbox or pop live.
+              Turn a category off to mute its notices. Notices in a muted
+              category no longer reach your Inbox or pop live.
             </p>
             <ul className="mt-4 divide-y divide-border-subtle">
               {categories.map((category) => {
@@ -198,7 +204,7 @@ export default function NotificationPreferencesPage() {
                     <>
                       {" "}Pages have their own quiet hours in{" "}
                       <Link
-                        href="/dashboard/paging/notifications"
+                        href={MY_ROUTING_HREF}
                         className="font-medium text-accent-text underline underline-offset-2"
                       >
                         My Routing

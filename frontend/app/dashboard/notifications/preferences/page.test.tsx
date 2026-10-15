@@ -147,4 +147,19 @@ describe("Inbox preferences", () => {
     );
     expect(screen.queryByRole("link", { name: "My Routing" })).toBeNull();
   });
+
+  it("calls them Inbox notices throughout", async () => {
+    const { container } = render(<NotificationPreferencesPage />);
+    await screen.findByRole("heading", { name: "Inbox quiet hours" });
+    expect(
+      screen.getByRole("link", { name: "Back to Inbox" }).getAttribute("href"),
+    ).toBe("/dashboard/notifications");
+    expect(screen.getByText(/mute its notices/).textContent).toBe(
+      "Turn a category off to mute its notices. Notices in a muted " +
+        "category no longer reach your Inbox or pop live.",
+    );
+    // One word for what lands in the Inbox, and the Inbox always named so.
+    expect(container.textContent).not.toMatch(/notification/i);
+    expect(container.textContent).not.toMatch(/\binbox\b/);
+  });
 });

@@ -109,7 +109,7 @@ reproduce all 13 images, including the Tier 1 approval view.
 - **Kubernetes context and remediation**: encrypted API access for pods,
   events, logs, and deployments; rollout restarts and pod deletion remain
   approval-gated.
-- **Inbox**: per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and quiet hours.
+- **Inbox**: per-user 🔔 bell notification feed with live updates, deep links, per-category mute, and Inbox quiet hours.
 - **Universal alert ingest**: native Sentry, New Relic, Splunk, Rollbar,
   BugSnag, Elastic/OpenSearch, Honeycomb, Dynatrace, AppDynamics, Loki, and
   cloud-monitor parsing plus auto-learned JSON webhooks. SNS-wrapped CloudWatch

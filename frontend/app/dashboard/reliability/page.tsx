@@ -36,8 +36,8 @@ function fmtLastCheck(iso: string | null): string {
   return formatDate(iso);
 }
 
-/** The browser aborts a request when the person leaves the page. That is not
- *  a load failure, so it is not logged. */
+/** An aborted request is not a load failure, so it is not logged. Some
+ *  browsers abort a page's requests this way when the person leaves it. */
 function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
@@ -61,9 +61,13 @@ export default function ReliabilityPage() {
   const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [editingTarget, setEditingTarget] = useState<SLATargetResponse | null>(null);
-  // Cleared when the page unmounts, so a load that settles after the person
-  // has left neither updates the page nor logs.
-  const mountedRef = useRef(false);
+  // Set once the person is leaving the page, so a load that leaving cuts
+  // short neither updates the page nor logs. Moving to another page of the
+  // app unmounts this one. A full page load (a reload, a typed address, a
+  // link out of the app) never does: the browser fires pagehide and then
+  // cancels the requests, which Chromium reports as a plain TypeError
+  // ("Failed to fetch") rather than an AbortError.
+  const leavingRef = useRef(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -74,16 +78,16 @@ export default function ReliabilityPage() {
         listMaintenanceWindows(),
         getSLORecommendations().catch(() => null),
       ]);
-      if (!mountedRef.current) return;
+      if (leavingRef.current) return;
       setTargets(targetsData.items);
       setSummary(summaryData);
       setMaintenanceWindows(mwData.items);
       setRecommendations(recsData?.items ?? []);
     } catch (err) {
-      if (!mountedRef.current || isAbortError(err)) return;
+      if (leavingRef.current || isAbortError(err)) return;
       console.error("Failed to load reliability data:", err);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (!leavingRef.current) setLoading(false);
     }
   };
 
@@ -108,10 +112,22 @@ export default function ReliabilityPage() {
   };
 
   useEffect(() => {
-    mountedRef.current = true;
+    leavingRef.current = false;
+    const onPageHide = () => {
+      leavingRef.current = true;
+    };
+    // The back/forward cache can show this same page again without mounting
+    // it, and then it is in use again.
+    const onPageShow = () => {
+      leavingRef.current = false;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
     loadData();
     return () => {
-      mountedRef.current = false;
+      leavingRef.current = true;
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, []);
 

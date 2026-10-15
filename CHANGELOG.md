@@ -126,10 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its setting Inbox quiet hours, says it only affects Inbox notices, and links
   admins and operators to My Routing. The quiet hours in My Routing say they
   hold pages and link back to the Inbox preferences page. Before, both pages
-  just said "quiet hours", so setting one looked like setting the other. The
-  Reliability page also stops logging an error when its data request is
-  aborted because you left the page, and stops updating once you have left;
-  other load failures are still logged.
+  just said "quiet hours", so setting one looked like setting the other.
+- Leaving the Reliability page while it is still loading no longer logs
+  "Failed to load reliability data" in the browser console, whether you move
+  to another page of the app, reload, or follow a link out of it, and the page
+  stops updating once you have left. Other load failures are still logged.
+  Before, a request cancelled by leaving the page was logged as a failure.
 
 ## [1.1.1] - 2026-10-10
 

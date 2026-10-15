@@ -30,6 +30,8 @@ from backend.db.repos import (
     OrgInviteRepo,
     OrgSAMLConfigRepo,
     OrgSSOConfigRepo,
+    RosterRepo,
+    TeamRepo,
     UserRepo,
 )
 from tests.test_api_tokens import (
@@ -94,6 +96,7 @@ ORG_ROUTES = [
 USER_ROUTES = [
     ("GET", "/auth/users/{user}", None),
     ("PATCH", "/auth/users/{user}", {"role": "admin", "is_active": True}),
+    ("GET", "/auth/users/{user}/roster-impact", None),
     ("GET", "/auth/users/{user}/delete-preconditions", None),
     ("POST", "/auth/users/{user}/soft-delete", None),
     ("POST", "/auth/users/{user}/reset-password", None),
@@ -280,6 +283,76 @@ async def test_your_own_workspace_still_works(app, client: AsyncClient, admin_he
     person = await client.get(f"/auth/users/{me['id']}", headers=admin_headers)
 
     assert (org.status_code, invites.status_code, person.status_code) == (200, 200, 200)
+
+
+async def test_roster_impact_answers_only_for_your_workspace(
+    app, client: AsyncClient, admin_headers
+):
+    # M1-53 (N-05): the Rosters a person leaves on demotion or deactivation.
+    ids = await _other_workspace(app)
+    async with app.state.session_factory() as db:
+        people = []
+        for name in ("own-first", "own-second"):
+            person = await UserRepo.create(
+                db,
+                username=name,
+                email=f"{name}@test.com",
+                password_hash=hash_password(f"{name}-pass"),
+                role="operator",
+                primary_org_id=TEST_ORG_ID,
+            )
+            await UserRepo.add_to_organization(
+                db, user_id=person.id, org_id=TEST_ORG_ID, role="operator"
+            )
+            people.append(person.id)
+        team = await TeamRepo.create(db, TEST_ORG_ID, name="Own", slug="own")
+        # Around the clock from today, so the first member holds this shift.
+        roster = await RosterRepo.create(
+            db,
+            TEST_ORG_ID,
+            team_id=team.id,
+            name="Primary",
+            anchor_date=datetime.now(timezone.utc).date(),
+            coverage_start_time="00:00",
+            coverage_end_time="00:00",
+            handoff_time="00:00",
+        )
+        for index, person_id in enumerate(people):
+            await RosterRepo.add_member(
+                db,
+                TEST_ORG_ID,
+                roster_id=roster.id,
+                user_id=person_id,
+                position_index=index,
+            )
+        await db.commit()
+        roster_id = roster.id
+
+    stranger = await client.get(
+        f"/auth/users/{ids['user']}/roster-impact", headers=admin_headers
+    )
+    nobody = await client.get(
+        f"/auth/users/{uuid.uuid4()}/roster-impact", headers=admin_headers
+    )
+    own = await client.get(
+        f"/auth/users/{people[0]}/roster-impact", headers=admin_headers
+    )
+
+    # The other workspace's person gets the answer an unknown id gets.
+    assert stranger.status_code == 404, stranger.text
+    assert stranger.json() == {"detail": "User not found"}
+    assert (nobody.status_code, nobody.json()) == (404, stranger.json())
+    assert own.status_code == 200, own.text
+    assert own.json() == {
+        "items": [
+            {
+                "roster_id": str(roster_id),
+                "roster_name": "Primary",
+                "on_current_shift": True,
+                "current_shift_taken_by": "own-second",
+            }
+        ]
+    }
 
 
 async def test_a_second_workspace_is_never_created(app):

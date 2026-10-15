@@ -790,11 +790,7 @@ async def get_roster_impact(
     from backend.paging.on_call import on_call_at
     from backend.paging.on_call_context import load_on_call_context
 
-    target = await UserRepo.get_by_id(db, user_id)
-    if target is None or target.deleted_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    await _workspace_user(db, user_id, org_id)
     now = datetime.now(timezone.utc)
     items = []
     for roster_id, name in await RosterRepo.roster_names_for_user(db, org_id, user_id):

@@ -93,7 +93,7 @@ async def teams_activity(
     raw_body = await request.body()
     try:
         payload: dict[str, Any] = json.loads(raw_body)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         return JSONResponse(
             {"error": "invalid_json"},
             status_code=status.HTTP_400_BAD_REQUEST,

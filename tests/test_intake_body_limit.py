@@ -302,9 +302,119 @@ async def test_other_routes_take_64_levels_and_store_nothing_deeper(
 async def test_a_token_nested_too_deeply_is_no_token(client: AsyncClient):
     """A bearer token whose header nests too deeply to decode is refused like
     any other bad token (401), never a server error."""
+    resp = await client.get(
+        "/auth/me", headers={"Authorization": f"Bearer {_deep_token()}"}
+    )
+    assert resp.status_code == 401, resp.text
+
+
+def _deep_token(depth: int = 12000) -> str:
+    """A JWT-shaped token whose header nests ``depth`` levels deep, past what
+    the JSON parser reads on Windows and on Linux."""
     import base64
 
-    header = base64.urlsafe_b64encode(_nested(5000, "list")).rstrip(b"=").decode()
-    token = f"{header}.e30.c2ln"
-    resp = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    header = base64.urlsafe_b64encode(_nested(depth, "list")).rstrip(b"=").decode()
+    return f"{header}.e30.c2ln"
+
+
+async def test_another_method_on_the_intake_path_is_checked(
+    client: AsyncClient, admin_headers
+):
+    """Only POST is intake. PATCH /incidents/ingest is the incident update
+    route, so its body is checked like any other route's."""
+    resp = await client.patch(
+        "/incidents/ingest",
+        content=_nested(2000, "list"),
+        headers={**admin_headers, "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json() == {"detail": "Request body nests too deeply"}
+
+
+async def test_a_client_that_leaves_mid_body_reaches_the_route_as_sent():
+    """The route gets what arrived and then the disconnect, as it would without
+    the check, and answers it as it always has; the check sends nothing."""
+    from backend.api.json_depth import JsonDepthLimit
+
+    arrived = [
+        {"type": "http.request", "body": b'{"a": [', "more_body": True},
+        {"type": "http.disconnect"},
+    ]
+    incoming, seen, sent = iter(arrived), [], []
+
+    async def route(scope, receive, send):
+        while True:
+            message = await receive()
+            seen.append(message)
+            if message["type"] == "http.disconnect":
+                return
+
+    async def receive():
+        return next(incoming)
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "PUT",
+        "path": "/users/me/notification-preferences",
+        "headers": [(b"content-type", b"application/json")],
+    }
+    await JsonDepthLimit(route)(scope, receive, send)
+    assert seen == arrived
+    assert sent == []
+
+
+def test_a_token_nested_too_deeply_to_read_is_a_bad_token():
+    from jose.exceptions import JWTError
+
+    from backend.auth.jwt_decode import decode
+
+    with pytest.raises(JWTError, match="Token nests too deeply to read"):
+        decode(_deep_token(), "secret", algorithms=["HS256"])
+
+
+def test_every_token_decode_goes_through_the_one_that_refuses_deep_tokens():
+    """A new place that decodes a token must call backend.auth.jwt_decode, or a
+    token nested too deeply to read would be a server error there."""
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parents[1] / "backend"
+    direct = sorted(
+        str(path.relative_to(backend))
+        for path in backend.rglob("*.py")
+        if path.name != "jwt_decode.py"
+        and "jwt.decode(" in path.read_text(encoding="utf-8")
+    )
+    assert direct == []
+
+
+async def test_an_mfa_challenge_nested_too_deeply_is_refused(client: AsyncClient):
+    resp = await client.post(
+        "/auth/mfa/verify", json={"mfa_token": _deep_token(), "totp_code": "000000"}
+    )
     assert resp.status_code == 401, resp.text
+    assert resp.json() == {"detail": "Invalid or expired MFA challenge."}
+
+
+async def test_a_voice_link_nested_too_deeply_is_refused(client: AsyncClient):
+    resp = await client.post(f"/paging/voice/ack/{_deep_token()}", data={"Digits": "1"})
+    assert resp.status_code == 200, resp.text
+    assert "This acknowledgement link is invalid or has expired." in resp.text
+
+
+async def test_sign_in_states_nested_too_deeply_are_refused(app):
+    """The SSO and bot sign-in callbacks read a signed state from the query
+    before anything else; one nested too deeply is an invalid state."""
+    from fastapi import HTTPException
+
+    from backend.api.routes.sso import _decode_state
+    from backend.auth.bot_oauth import verify_state
+
+    with pytest.raises(HTTPException) as refused:
+        _decode_state(_deep_token())
+    assert refused.value.status_code == 400
+    assert refused.value.detail == "Invalid state: Token nests too deeply to read"
+    with pytest.raises(ValueError, match="Invalid OAuth state: Token nests too deeply"):
+        verify_state(_deep_token())

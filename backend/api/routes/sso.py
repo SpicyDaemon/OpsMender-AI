@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config, create_access_token, hash_password
 from backend.api.deps import get_db
+from backend.auth.jwt_decode import decode as decode_jwt
 from backend.auth.signin_throttle import sign_in_attempt
 from backend.auth.oidc import (
     OIDCClientConfig,
@@ -74,7 +75,7 @@ def _encode_state(org_id: uuid.UUID, nonce: str) -> str:
 def _decode_state(state: str) -> dict[str, Any]:
     settings = _auth_config()
     try:
-        payload = jwt.decode(
+        payload = decode_jwt(
             state, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
     except JWTError as exc:

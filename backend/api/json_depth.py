@@ -6,8 +6,10 @@ while a route saves it, or while a response that echoes it is serialised, so
 it ends as a server error, sometimes after the value was stored. This ASGI
 middleware reads JSON bodies first and answers 400 for one that nests more
 than the limit, the same 64 levels the alert intake allows. The intake routes
-are left alone: they cap the body size while reading it (O-12) and check the
-depth themselves, with a row in the token's delivery log.
+are left alone (POST only, their one method): they cap the body size while
+reading it (O-12) and check the depth themselves, with a row in the token's
+delivery log. A client that leaves mid-body is passed on exactly as it was
+received, so the route answers it as it always has.
 """
 
 from __future__ import annotations
@@ -52,37 +54,39 @@ class JsonDepthLimit:
         self.limit = limit
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        intake = scope.get("method") == "POST" and (
+            scope["path"] == INTAKE_ROUTE or scope["path"].startswith(INTAKE_URL_PREFIX)
+        )
         if (
             scope["type"] != "http"
             or scope["method"] not in _METHODS
-            or scope["path"] == INTAKE_ROUTE
-            or scope["path"].startswith(INTAKE_URL_PREFIX)
+            or intake
             or not _json_body(scope)
         ):
             await self.app(scope, receive, send)
             return
-        chunks: list[bytes] = []
+        messages: list[Message] = []
         while True:
             message = await receive()
-            if message["type"] != "http.request":
-                return  # the client left before sending the whole body
-            chunks.append(message.get("body", b""))
-            if not message.get("more_body", False):
+            messages.append(message)
+            if message["type"] != "http.request" or not message.get("more_body", False):
                 break
-        body = b"".join(chunks)
-        if body and nests_too_deeply(body, self.limit):
-            response = JSONResponse(
-                status_code=400, content={"detail": "Request body nests too deeply"}
-            )
-            await response(scope, receive, send)
-            return
-        replayed = False
+        if messages[-1]["type"] == "http.request":
+            body = b"".join(m.get("body", b"") for m in messages)
+            if body and nests_too_deeply(body, self.limit):
+                response = JSONResponse(
+                    status_code=400, content={"detail": "Request body nests too deeply"}
+                )
+                await response(scope, receive, send)
+                return
+            messages = [{"type": "http.request", "body": body, "more_body": False}]
+        # Otherwise the client left mid-body: the route gets what arrived and
+        # then the disconnect, as it would have without this check.
+        pending = iter(messages)
 
         async def replay() -> Message:
-            nonlocal replayed
-            if not replayed:
-                replayed = True
-                return {"type": "http.request", "body": body, "more_body": False}
+            for message in pending:
+                return message
             return await receive()
 
         await self.app(scope, replay, send)

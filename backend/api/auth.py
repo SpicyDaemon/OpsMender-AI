@@ -25,6 +25,7 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.api_tokens import API_TOKEN_PREFIX, hash_api_token
+from backend.auth.jwt_decode import decode as decode_jwt
 from backend.auth.roles import lower_role, request_role
 from backend.config_loader import AppConfig
 from backend.api.deps import get_db
@@ -103,9 +104,10 @@ def create_mfa_token(
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    """Decode and validate a JWT.  Raises ``JWTError`` on failure."""
+    """Decode and validate a JWT.  Raises ``JWTError`` on failure, a token
+    nested too deeply to read included."""
     settings = _auth_config()
-    return jwt.decode(
+    return decode_jwt(
         token,
         settings.jwt_secret,
         algorithms=[settings.jwt_algorithm],
@@ -218,8 +220,7 @@ async def user_for_session_token(db: AsyncSession, token: str) -> User | None:
         if payload.get("token_type") not in (None, "access"):
             return None
         user_id = uuid.UUID(str(payload.get("sub")))
-    except (JWTError, ValueError, RecursionError):
-        # A token whose header or claims nest too deeply to decode is no token.
+    except (JWTError, ValueError):
         return None
     user = await UserRepo.get_by_id(db, user_id)
     if user is None or not user.is_active or user.deleted_at is not None:

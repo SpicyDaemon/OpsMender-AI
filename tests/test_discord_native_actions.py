@@ -279,6 +279,32 @@ async def test_discord_component_rejects_bad_signature(
     assert followups == []
 
 
+async def test_discord_body_nested_too_deeply_is_refused(
+    client,
+    app,
+    signing_key,
+    followups,
+):
+    """M1-51 (N-03): the webhook parses its own body after the signature check,
+    so a signed body nested too deeply to parse gets 400, never a server error."""
+    connector = await _seed_connector(app, signing_key)
+    body = b"[" * 12000 + b"]" * 12000
+    timestamp = "1720000000"
+    response = await client.post(
+        f"/bot-connectors/{connector.id}/discord/webhook",
+        content=body,
+        headers={
+            "X-Signature-Ed25519": signing_key.sign(timestamp.encode() + body).hex(),
+            "X-Signature-Timestamp": timestamp,
+            "Content-Type": "text/plain",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid JSON payload"}
+    assert followups == []
+
+
 async def test_discord_component_refuses_unlinked_actor(
     client,
     app,

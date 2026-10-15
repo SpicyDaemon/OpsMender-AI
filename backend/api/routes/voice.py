@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import _auth_config
 from backend.api.deps import get_db
+from backend.auth.jwt_decode import decode as decode_jwt
 from backend.db.repos import IncidentRepo
 
 router = APIRouter(prefix="/paging/voice", tags=["voice"])
@@ -61,7 +62,7 @@ def encode_voice_ack_token(
 
 def _decode_voice_ack_token(token: str) -> dict:
     cfg = _auth_config()
-    payload = jwt.decode(token, cfg.jwt_secret, algorithms=[cfg.jwt_algorithm])
+    payload = decode_jwt(token, cfg.jwt_secret, algorithms=[cfg.jwt_algorithm])
     if payload.get("purpose") != "voice_ack":
         raise JWTError("not a voice_ack token")
     return payload

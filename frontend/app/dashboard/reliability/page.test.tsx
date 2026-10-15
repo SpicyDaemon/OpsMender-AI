@@ -159,15 +159,18 @@ describe("Reliability page load failures", () => {
     expect(consoleError).not.toHaveBeenCalled();
   });
 
-  it("logs nothing when a load fails after moving to another page of the app", async () => {
+  it("still logs a load that fails after moving to another page of the app", async () => {
     const failRequest = holdTargetsRequest();
     const { unmount } = render(<ReliabilityPage />);
     await waitFor(() => expect(apiMocks.listSLATargets).toHaveBeenCalledTimes(1));
+    // Moving to another page of the app unmounts this one without cancelling
+    // its requests, so a failure that arrives afterwards is a real one.
     unmount();
 
-    failRequest(new TypeError("Failed to fetch"));
+    const failure = new Error("Server error");
+    failRequest(failure);
     await settle();
-    expect(consoleError).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith("Failed to load reliability data:", failure);
   });
 
   it("refreshes again after coming back from the back/forward cache", async () => {

@@ -130,11 +130,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Leaving the Reliability page while it is still loading no longer logs
-  "Failed to load reliability data" in the browser console, whether you move
-  to another page of the app, reload, or follow a link out of it, and the page
-  stops updating once you have left. Other load failures are still logged.
-  Before, a request cancelled by leaving the page was logged as a failure.
+- Reloading the Reliability page, or following a link out of the app, while
+  it is still loading no longer logs "Failed to load reliability data" in the
+  browser console: the browser cancels the page's requests then, and a
+  cancelled or aborted request is not a failure. A load that really fails is
+  still logged, also after you move to another page of the app.
 
 ## [1.1.1] - 2026-10-10
 

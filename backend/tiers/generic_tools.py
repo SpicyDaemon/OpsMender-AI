@@ -9,6 +9,13 @@ conservatively at the tier gate:
   - Tier 1 (Approval Req.)   → requires operator approval
   - Tier 0 (Autonomous)      → blocked (no command-pattern allowlisting yet)
 
+The gate checks this guard after the deny-list and before the tool's own tier
+policy, so at Tier 1 a caught tool asks for approval even when its Skill entry
+blocks it or makes it advisory, or no entry lists it. A name added here
+therefore moves such a tool from refused to approval-required at Tier 1. A
+``deny: true`` entry still blocks it at every tier, and an exact entry with
+``allow_generic: true`` puts it back under its own policies.
+
 An operator who has genuinely scoped a wrapper tool can opt a specific tool out
 of this guardrail by listing it in the MCP Skill with ``allow_generic: true``;
 normal tier/classification rules then apply. This is the documented escape
@@ -19,8 +26,9 @@ suffixes) to avoid false positives on normal tools like ``get_pods`` or
 ``scale_deployment``. A name matches as a whole or by a prefix or suffix, never
 by a word in the middle, so ``refresh`` and ``dashboard`` are not shells. A few
 affixes also catch bounded tools: ``docker_logs`` and ``console_url`` match the
-``docker_`` and ``console_`` prefixes, so a Skill that trusts such a tool lists
-it by its exact name with ``allow_generic: true``.
+``docker_`` and ``console_`` prefixes and ``get_console`` and ``aws_console``
+the ``_console`` suffix, so a Skill that trusts such a tool lists it by its
+exact name with ``allow_generic: true``.
 """
 
 from __future__ import annotations
@@ -134,8 +142,9 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
     }
 )
 
-# Affixes that signal an arbitrary-command tool. ``docker_`` and ``console_``
-# also catch bounded tools such as ``docker_logs`` (see the module docstring).
+# Affixes that signal an arbitrary-command tool. ``docker_``, ``console_`` and
+# ``_console`` also catch bounded tools such as ``docker_logs`` and
+# ``get_console`` (see the module docstring).
 _GENERIC_PREFIXES: tuple[str, ...] = (
     "exec_",
     "run_",

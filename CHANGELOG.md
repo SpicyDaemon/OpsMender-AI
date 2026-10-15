@@ -44,9 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   separator style (`Terminal`, `BashTool`, `bash-tool`). Before, `terminal`,
   `shellexec`, `bash_tool` and the like were ordinary tools, so a Skill entry
   or glob that allowed one let it run at Tier 0, without approval at Tier 1,
-  and in environment scans. A narrowly scoped tool that the new prefixes
-  catch, such as `docker_logs` or `console_url`, now needs an entry with its
-  exact name and `allow_generic: true` to run under its own policy again.
+  and in environment scans. Now they are blocked at Tier 0 and Tier 2 and in
+  environment scans. **At Tier 1 they ask for operator approval, and run once
+  approved, even where the Skill blocks them**: the guard is checked before a
+  tool's own tier policy, so a T1 policy of `blocked` or `advisory`, or no
+  entry for the tool, no longer refuses it. To block one at every tier, add it
+  to the Skill's deny-list with `deny: true`. A narrowly scoped tool that a
+  new prefix or suffix catches, such as `docker_logs`, `console_url`,
+  `get_console` or `aws_console`, needs an entry with its exact name and
+  `allow_generic: true` to run under its own tier policies again.
 
 ### Fixed
 

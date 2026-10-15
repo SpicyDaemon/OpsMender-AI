@@ -4,8 +4,11 @@ case and separators. The frozen enforcement module is unchanged.
 
 M1-52 (N-06): common runner names (terminals, process spawners, sudo and the
 container tools) are generic runners in every spelling, and a bounded tool that
-one of the new prefixes catches still runs once its exact entry sets
-allow_generic."""
+one of the new prefixes or suffixes catches follows its own policy again once
+its exact entry sets allow_generic. The frozen gate checks the runner guard
+before a tool's own tier policy, so at Tier 1 a newly caught tool asks for
+approval even where its Skill blocks it; a deny-list entry refuses it at every
+tier."""
 
 from __future__ import annotations
 
@@ -90,9 +93,13 @@ def test_runner_names_are_caught_whatever_their_case_or_separators(name):
     assert is_generic_execution_tool(name) is True
 
 
-# Each runner word or affix (M1-52) with other spellings a tool source may use.
+# Each runner word or affix the card names (M1-52) with other spellings a tool
+# source may use.
 RUNNER_SPELLINGS = {
-    # exact names
+    # exact names; powershell, pwsh and cmd were caught before M1-52
+    "powershell": ("PowerShell", "POWERSHELL", "Powershell"),
+    "pwsh": ("Pwsh", "PWSH"),
+    "cmd": ("Cmd", "CMD"),
     "terminal": ("Terminal", "TERMINAL"),
     "console": ("Console",),
     "tty": ("TTY",),
@@ -161,10 +168,13 @@ def test_ordinary_tools_are_not_runners(name):
     assert is_generic_execution_tool(name) is False
 
 
-@pytest.mark.parametrize("tool", ["docker_logs", "console_url"])
-def test_a_bounded_tool_caught_by_a_new_prefix_runs_with_allow_generic(tool):
+@pytest.mark.parametrize(
+    "tool", ["docker_logs", "console_url", "get_console", "aws_console"]
+)
+def test_a_bounded_tool_a_new_affix_catches_runs_with_allow_generic(tool):
     guarded = _skill(_op(tool, "safe", "autonomous"))
     trusted = _skill(_op(tool, "safe", "autonomous", allow_generic=True))
+    held_back = _skill(_op(tool, "safe", "blocked", allow_generic=True))
 
     assert is_generic_execution_tool(tool) is True
     blocked = enforcement.check(tool, 0, guarded)
@@ -174,6 +184,36 @@ def test_a_bounded_tool_caught_by_a_new_prefix_runs_with_allow_generic(tool):
     allowed = enforcement.check(tool, 0, trusted)
     assert allowed.permitted is True
     assert allowed.classification == "safe"
+    # allow_generic puts the tool back under its own policies, a block included.
+    own_block = enforcement.check(tool, 1, held_back)
+    assert own_block.permitted is False
+    assert own_block.reason == "explicit T1 skill policy: blocked"
+
+
+@pytest.mark.parametrize("t1", ["blocked", "advisory", None])
+def test_a_new_runner_name_asks_for_approval_at_tier_1_over_its_own_policy(t1):
+    """The frozen gate checks the runner guard before a tool's own tier
+    policy, so at Tier 1 ``sudo`` asks for approval even where its entry
+    blocks it or makes it advisory, or no entry lists it; each was refused
+    before M1-52. Tier 0 and Tier 2 refuse it, and a deny-list entry refuses
+    it at every tier."""
+    listed = [_op("sudo", "destructive", t1)] if t1 else []
+    skill = _skill(*listed, _op("get_pods", "safe", "autonomous"))
+    denied = _skill(_op("sudo", "destructive", "blocked", deny=True))
+
+    approval = enforcement.check("sudo", 1, skill)
+    assert approval.permitted is True
+    assert approval.requires_approval is True
+    assert approval.classification == "generic_execution"
+    for tier in (0, 2):
+        refused = enforcement.check("sudo", tier, skill)
+        assert refused.permitted is False
+        assert refused.classification == "generic_execution"
+    for tier in (0, 1, 2):
+        refused = enforcement.check("sudo", tier, denied)
+        assert refused.permitted is False
+        assert refused.requires_approval is False
+        assert refused.reason == "deny-list policy match: blocked at every tier"
 
 
 def test_the_frozen_enforcement_module_is_unchanged():

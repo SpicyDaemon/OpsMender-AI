@@ -34,8 +34,9 @@ incident session. It is **separate** from:
 - **Tier 3 is removed.** Any legacy stored value of `3` is automatically
   remapped to `2`.
 - **Unknown actions are never silently allowed**: they are denied at every
-  tier (Tier 2 blocks all remediation; Tier 1 denies unknown; Tier 0 denies
-  unknown unless explicitly allowed by skill policy).
+  tier (Tier 2 blocks all remediation; Tier 1 denies unknown, except that a
+  [generic command tool](#generic-command-tools-high-risk) asks for operator
+  approval; Tier 0 denies unknown unless explicitly allowed by skill policy).
 
 ---
 
@@ -170,9 +171,20 @@ camel case, hyphens, dots and spaces folded to underscores, so
 `bash-tool` count too:
 
 - **Tier 2**: blocked.
-- **Tier 1**: **requires operator approval** before execution.
+- **Tier 1**: **requires operator approval** before execution, and runs once
+  approved.
 - **Tier 0**: blocked (there is no command-pattern allowlisting yet, so a
   generic tool cannot run autonomously).
+
+The guardrail is checked after the deny-list and **before the tool's own tier
+policy**, so at Tier 1 a generic tool asks for operator approval, and runs once
+approved, even when its entry sets T1 to `blocked` or `advisory` or the skill
+does not list it. A `blocked` T1 policy is not enough to stop it: give it a
+`deny: true` entry, which is checked first and blocks it at every tier. This
+also holds for names OpsMender has started detecting, such as `terminal`,
+`sudo` and `docker`: where a skill blocked one at Tier 1 before it was
+detected, Tier 1 sessions now ask for approval to run it until the tool is
+deny-listed.
 
 | Kind | Detected names |
 | --- | --- |
@@ -191,11 +203,13 @@ A name counts as a whole or by its start or end, never by a word in the
 middle: `refresh`, `dashboard` and `get_console_output` are ordinary tools.
 
 To opt a **narrowly-scoped** wrapper out of the guardrail, list it **by its
-exact name** in the skill with `allow_generic: true` (normal tier/classification
-rules then apply). A glob such as `run_*` can't opt tools out. Prefer explicit
-`deny: true` entries for anything dangerous. A few prefixes also catch bounded
-tools: `docker_logs` and `console_url` start with `docker_` and `console_`, so
-they stay guarded until their exact entry sets `allow_generic: true`.
+exact name** in the skill with `allow_generic: true`: its own tier policies
+then apply as written, a T1 `blocked` or `advisory` included. A glob such as
+`run_*` can't opt tools out. Prefer explicit `deny: true` entries for anything
+dangerous. A few prefixes and suffixes also catch bounded tools: `docker_logs`
+and `console_url` start with `docker_` and `console_`, and `get_console` and
+`aws_console` end with `_console`, so they stay guarded until their exact
+entry sets `allow_generic: true`.
 
 ```yaml
 operations:
@@ -353,7 +367,8 @@ Observe, diagnose, and explain what should be done. Do not execute write actions
 
 Enforcement order is fixed: deny entries always win, then the generic-command
 guardrail applies, then the operation's explicit active-tier policy, followed by
-the Tier 0 reversible floor. Unknown or underspecified operations are denied.
+the Tier 0 reversible floor. Unknown or underspecified operations are denied,
+except a generic command tool at Tier 1, which asks for approval.
 
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's
@@ -362,7 +377,9 @@ classification, whether approval is required, and whether the action is denied.
 - **Tier 2**: explicit policies may be advisory or blocked, never autonomous or
   approval-gated; blocked actions are logged.
 - **Tier 1**: each operation explicitly chooses autonomous or approval mode;
-  deny-listed and unknown actions are blocked; decisions are logged.
+  deny-listed and unknown actions are blocked; decisions are logged. A generic
+  command tool without `allow_generic` is the exception: it asks for approval
+  whatever its own policy says, unless it is deny-listed.
 - **Tier 0**: executes only actions explicitly permitted by skill policy and
   not deny-listed. Explicit policy may set `require_reversible: false`; otherwise
   the reversible sandbox floor applies. Unknown actions are blocked and every

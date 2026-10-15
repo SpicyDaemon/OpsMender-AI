@@ -387,6 +387,7 @@ export default function DashboardIndex() {
     [teams],
   );
   const serviceStats = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity -- the 24-hour window is measured at render; the 30-second refresh recomputes it
     const now = Date.now();
     const window24h = now - 86_400_000;
     return services.map((svc) => {
@@ -666,6 +667,7 @@ export default function DashboardIndex() {
             incidents.filter(
               (i) =>
                 i.status === "resolved" &&
+                // eslint-disable-next-line react-hooks/purity -- measured at render; the 30-second refresh recomputes it
                 Date.now() - new Date(i.updated_at).getTime() < 86_400_000,
             ).length
           }

@@ -74,6 +74,23 @@ async def list_models(
     location: str | None = None,
     user: User = Depends(get_current_user),
 ):
+    # Only an admin may tell discovery where and how to connect (M1-60): with a
+    # caller's base URL and key variable the server would read that variable
+    # and send its value to that URL. Plain discovery stays open to every role.
+    connection = (
+        api_key_env_var,
+        base_url,
+        api_version,
+        region,
+        profile,
+        project,
+        location,
+    )
+    if any(connection) and request_role(user) != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin can send connection settings to model discovery",
+        )
     registry = ProviderRegistry()
     provider_meta = {
         key: value
@@ -86,14 +103,18 @@ async def list_models(
         if value
     }
 
-    items = registry.discover_models(
-        provider=provider,
-        model_id=model_id,
-        api_key_env_var=api_key_env_var,
-        base_url=base_url,
-        api_version=api_version,
-        provider_meta=provider_meta or None,
-    )
+    try:
+        items = registry.discover_models(
+            provider=provider,
+            model_id=model_id,
+            api_key_env_var=api_key_env_var,
+            base_url=base_url,
+            api_version=api_version,
+            provider_meta=provider_meta or None,
+        )
+    except ValueError as exc:
+        # An unknown provider or a key setting that is not a variable name.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return ProviderModelsListResponse(items=items, total=len(items))
 
 

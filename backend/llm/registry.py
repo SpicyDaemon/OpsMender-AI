@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 
 from .factory import create_provider
+from .key_names import check_key_env_var_name
 
 
 def _looks_like_placeholder(value: str | None) -> bool:
@@ -269,6 +270,7 @@ class ProviderRegistry:
         provider_meta: dict[str, str] | None = None,
         use_cache: bool = True,
     ) -> list[dict[str, object]]:
+        check_key_env_var_name(api_key_env_var)
         provider_meta = provider_meta or {}
         provider_meta_key = tuple(sorted(provider_meta.items()))
         cache_key = (
@@ -381,6 +383,7 @@ class ProviderRegistry:
         provider_meta: dict[str, str] | None = None,
         allow_unverified: bool = False,
     ) -> ValidationResult:
+        check_key_env_var_name(api_key_env_var)
         spec = self.get_spec(provider)
         provider_meta = provider_meta or {}
 

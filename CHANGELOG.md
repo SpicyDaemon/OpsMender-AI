@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (404 otherwise). Before, it answered for a person of another workspace;
   one instance runs one workspace, so this only mattered if a second
   workspace row existed.
+- Model discovery (`GET /models`) now accepts connection settings (a base
+  URL, a key variable, an API version, a region, a profile, a project or a
+  location) only from admins; every other role, and their API tokens, gets
+  `403` before anything is read or called. Before, any signed-in user, a
+  Viewer included, could name an environment variable and a URL, and
+  OpsMender sent that variable's value to the URL as a bearer key, which
+  could expose the token signing secret, the database URL or a provider key.
+  A model's key setting must now be written like an environment variable
+  name (letters, digits and underscores, not starting with a digit);
+  discovery and the model save routes refuse anything else with `400`
+  before reading or storing it, without repeating it. Settings saved before
+  this change are not rewritten. An unknown provider in discovery answers
+  `400` instead of a server error.
 
 ### Fixed
 

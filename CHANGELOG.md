@@ -29,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Viewer included, could name an environment variable and a URL, and
   OpsMender sent that variable's value to the URL as a bearer key, which
   could expose the token signing secret, the database URL or a provider key.
-  A model's key setting must now be the name of an environment variable; a
-  value shaped like a key is refused with `400` wherever it is taken, never
-  stored or repeated. An unknown provider in discovery answers `400` instead
-  of a server error.
+  A model's key setting must now be written like an environment variable
+  name (letters, digits and underscores, not starting with a digit);
+  discovery and the model save routes refuse anything else with `400`
+  before reading or storing it, without repeating it. Settings saved before
+  this change are not rewritten. An unknown provider in discovery answers
+  `400` instead of a server error.
 
 ### Fixed
 

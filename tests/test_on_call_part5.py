@@ -582,6 +582,106 @@ async def test_r08_saving_paging_routing_keeps_inbox_mutes(client, auth_headers)
     assert prefs.json()["muted_categories"] == ["incident"]
 
 
+# M1-59: Inbox quiet hours and My Routing quiet hours are saved apart.
+INBOX_QUIET = {"enabled": True, "start": "22:00", "end": "07:00", "tz": "Europe/Berlin"}
+PAGE_QUIET = {
+    "weekday_start": "00:00",
+    "weekday_end": "23:59",
+    "min_priority_to_break": "P0",
+    "time_zone": "UTC",
+}
+
+
+async def _admin_prefs(app):
+    async with app.state.session_factory() as db:
+        admin = await UserRepo.get_by_username(db, "esc-admin")
+        pref = await UserNotificationPrefRepo.get_for_user(db, TEST_ORG_ID, admin.id)
+        return admin.id, pref
+
+
+async def test_r08_saving_the_inbox_page_keeps_page_quiet_hours_and_the_p1_hold(
+    app, client, auth_headers
+):
+    saved = await client.put(
+        "/users/me/notification-preferences",
+        json={"routing": {"P1": ["email"]}, "quiet_hours": PAGE_QUIET},
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+    # The Inbox page sends both of its settings on every save: a mute first,
+    # then Inbox quiet hours turned on.
+    for inbox_quiet in ({**INBOX_QUIET, "enabled": False}, INBOX_QUIET):
+        inbox = await client.put(
+            "/notifications/preferences",
+            json={"muted_categories": ["incident"], "quiet_hours": inbox_quiet},
+            headers=auth_headers,
+        )
+        assert inbox.status_code == 200, inbox.text
+        assert inbox.json()["quiet_hours"] == inbox_quiet
+    paging = await client.get(
+        "/users/me/notification-preferences", headers=auth_headers
+    )
+    assert paging.json()["quiet_hours"] == PAGE_QUIET
+    admin_id, pref = await _admin_prefs(app)
+    assert pref.quiet_hours == PAGE_QUIET
+    assert pref.routing == {
+        "P1": ["email"],
+        "in_app": {"muted_categories": ["incident"], "quiet_hours": INBOX_QUIET},
+    }
+
+    # A P1 page to them inside My Routing's quiet hours is still held.
+    team = await _make_team(app, name=f"held-{uuid.uuid4().hex[:6]}")
+    async with app.state.session_factory() as db:
+        chain = await EscalationChainRepo.create(
+            db, TEST_ORG_ID, team_id=team, name="held"
+        )
+        await EscalationStepRepo.create(
+            db,
+            TEST_ORG_ID,
+            chain_id=chain.id,
+            step_index=0,
+            target_type="user",
+            target_id=admin_id,
+            timeout_seconds=300,
+        )
+        await db.commit()
+    channel, rows, _ = await _fire(app, chain.id, _at(21, 12, 0))
+    assert channel.sent == []
+    skipped = [r for r in rows if r.channel == "suppressed"]
+    assert [(r.delivery_status, r.delivery_error) for r in skipped] == [
+        ("skipped", "quiet_hours")
+    ]
+
+
+async def test_r08_saving_my_routing_keeps_inbox_quiet_hours_and_mutes(
+    app, client, auth_headers
+):
+    inbox = await client.put(
+        "/notifications/preferences",
+        json={"muted_categories": ["incident"], "quiet_hours": INBOX_QUIET},
+        headers=auth_headers,
+    )
+    assert inbox.status_code == 200, inbox.text
+    # My Routing sends P0 to P3 and its own quiet hours, on and then off.
+    for page_quiet in (UI_QUIET, None):
+        saved = await client.put(
+            "/users/me/notification-preferences",
+            json={"channels": {}, "routing": UI_ROUTING, "quiet_hours": page_quiet},
+            headers=auth_headers,
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["quiet_hours"] == page_quiet
+        prefs = await client.get("/notifications/preferences", headers=auth_headers)
+        assert prefs.json()["muted_categories"] == ["incident"]
+        assert prefs.json()["quiet_hours"] == INBOX_QUIET
+    _, pref = await _admin_prefs(app)
+    assert pref.quiet_hours is None
+    assert pref.routing == {
+        **UI_ROUTING,
+        "in_app": {"muted_categories": ["incident"], "quiet_hours": INBOX_QUIET},
+    }
+
+
 def test_r04_before_start_date_documented_as_position_zero():
     ctx = _ctx("18:00", "09:00", anchor=date(2026, 12, 1))
     assert on_call_at(ctx, datetime(2026, 9, 22, 3, 0, tzinfo=timezone.utc)) == A

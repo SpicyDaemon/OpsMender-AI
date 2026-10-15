@@ -102,9 +102,11 @@ async def get_preferences(
     muted: list[str] = []
     quiet = None
     if pref is not None:
+        # Both Inbox settings live under routing.in_app. The quiet_hours
+        # column is My Routing's page quiet hours, a separate setting.
         in_app = (pref.routing or {}).get("in_app") or {}
         muted = list(in_app.get("muted_categories") or [])
-        quiet = pref.quiet_hours
+        quiet = in_app.get("quiet_hours")
     return NotificationPreferencesResponse(
         muted_categories=muted,
         quiet_hours=quiet,
@@ -125,6 +127,7 @@ async def update_preferences(
 ) -> NotificationPreferencesResponse:
     existing = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
     routing = dict(existing.routing) if existing and existing.routing else {}
+    in_app = dict(routing.get("in_app") or {})
 
     if body.muted_categories is not None:
         invalid = set(body.muted_categories) - set(ALL_CATEGORIES)
@@ -133,27 +136,19 @@ async def update_preferences(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown categories: {sorted(invalid)}",
             )
-        in_app = dict(routing.get("in_app") or {})
         # de-dupe while preserving the canonical category order
         in_app["muted_categories"] = [
             c for c in ALL_CATEGORIES if c in set(body.muted_categories)
         ]
-        routing["in_app"] = in_app
 
-    quiet_provided = body.quiet_hours is not None
-    if quiet_provided:
+    if body.quiet_hours is not None:
         _validate_quiet_hours(body.quiet_hours)
+        in_app["quiet_hours"] = body.quiet_hours.model_dump()
 
-    await UserNotificationPrefRepo.upsert(
-        db,
-        org_id,
-        user.id,
-        routing=routing if body.muted_categories is not None else None,
-        quiet_hours=(
-            body.quiet_hours.model_dump() if body.quiet_hours is not None else None
-        ),
-        quiet_hours_provided=quiet_provided,
-    )
+    # Inbox quiet hours sit beside the mutes. This page never writes the
+    # quiet_hours column: that is My Routing's, and it holds pages.
+    routing["in_app"] = in_app
+    await UserNotificationPrefRepo.upsert(db, org_id, user.id, routing=routing)
     await db.commit()
     return await get_preferences(db=db, org_id=org_id, user=user)
 

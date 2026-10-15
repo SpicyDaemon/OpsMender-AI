@@ -111,6 +111,15 @@ def _muted_categories(routing: dict | None) -> set[str]:
     return set()
 
 
+def _inbox_quiet_hours(routing: dict | None) -> dict | None:
+    """Inbox quiet hours, read from ``prefs.routing['in_app']`` beside the
+    mutes. The ``quiet_hours`` column is My Routing's page quiet hours and
+    never holds an Inbox notice."""
+    in_app = routing.get("in_app") if isinstance(routing, dict) else None
+    quiet_hours = in_app.get("quiet_hours") if isinstance(in_app, dict) else None
+    return quiet_hours if isinstance(quiet_hours, dict) else None
+
+
 async def _push(user_id: uuid.UUID, notification: InAppNotification) -> None:
     """Best-effort live push of *notification* to the user's open tabs."""
     # Imported lazily to avoid a route<->service import cycle at module load.
@@ -181,7 +190,7 @@ async def emit_notification(
             )
 
         quiet = pref is not None and _in_quiet_hours(
-            pref.quiet_hours, datetime.now(timezone.utc)
+            _inbox_quiet_hours(pref.routing), datetime.now(timezone.utc)
         )
         if not quiet:
             await _push(user_id, notification)

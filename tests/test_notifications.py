@@ -216,7 +216,23 @@ async def test_emit_respects_mute(factory, monkeypatch):
     assert pushed == []
 
 
-async def test_emit_quiet_hours_stores_but_no_push(factory, monkeypatch):
+ALL_DAY = {"enabled": True, "start": "00:00", "end": "23:59", "tz": "UTC"}
+
+
+@pytest.mark.parametrize(
+    ("prefs", "pushed_to"),
+    [
+        # Inbox quiet hours sit beside the mutes: the row is stored and the
+        # live push is held.
+        ({"routing": {"in_app": {"quiet_hours": ALL_DAY}}}, []),
+        # The quiet_hours column is My Routing's page quiet hours: even an
+        # Inbox-shaped value left there never holds an Inbox notice.
+        ({"quiet_hours": ALL_DAY, "quiet_hours_provided": True}, [USER_A]),
+    ],
+)
+async def test_emit_holds_the_push_only_for_inbox_quiet_hours(
+    factory, monkeypatch, prefs, pushed_to
+):
     from datetime import datetime, timezone
     import backend.notifications.service as notifications_service
 
@@ -236,19 +252,8 @@ async def test_emit_quiet_hours_stores_but_no_push(factory, monkeypatch):
     monkeypatch.setattr(ws, "publish_user", fake_push)
 
     async with factory() as db:
-        # Quiet hours covering the whole day → push suppressed, row still stored.
-        await UserNotificationPrefRepo.upsert(
-            db,
-            ORG,
-            USER_A,
-            quiet_hours={
-                "enabled": True,
-                "start": "00:00",
-                "end": "23:59",
-                "tz": "UTC",
-            },
-            quiet_hours_provided=True,
-        )
+        # Quiet hours covering the whole day, saved where the case says.
+        await UserNotificationPrefRepo.upsert(db, ORG, USER_A, **prefs)
         await db.commit()
     async with factory() as db:
         n = await emit_notification(
@@ -262,7 +267,7 @@ async def test_emit_quiet_hours_stores_but_no_push(factory, monkeypatch):
         await db.commit()
         assert n is not None
         assert await InAppNotificationRepo.count_for_user(db, ORG, USER_A) == 1
-    assert pushed == []
+    assert pushed == pushed_to
 
 
 # --- helpers -----------------------------------------------------------------

@@ -375,6 +375,17 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         )
         return response
 
+    # -- Temporary passwords (O-18) -----------------------------------------
+    # The refusal carries a code beside the usual detail, so the web app can
+    # send a stale tab to the password change page.
+    from backend.api.auth import PasswordChangeRequired
+
+    @app.exception_handler(PasswordChangeRequired)
+    async def _password_change_required(request, exc):  # type: ignore[no-untyped-def]
+        return JSONResponse(
+            {"detail": exc.detail, "code": exc.code}, status_code=exc.status_code
+        )
+
     # -- Routes -------------------------------------------------------------
     from backend.api.routes.auth import router as auth_router
     from backend.api.routes.mfa import router as mfa_router

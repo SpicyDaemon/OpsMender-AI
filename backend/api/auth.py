@@ -124,12 +124,50 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # ---------------------------------------------------------------------------
 
 
+class PasswordChangeRequired(HTTPException):
+    """403 for a person whose temporary password must still change (O-18).
+
+    ``create_app`` answers it with a ``code`` beside the usual ``detail``, so
+    the web app can send a stale tab to the password change page.
+    """
+
+    code = "password_change_required"
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Change your temporary password before using OpsMender.",
+        )
+
+
+# What the API serves while a temporary password must still change (O-18):
+# the person's own profile, the change itself and MFA. Sign-out happens in
+# the browser.
+_BEFORE_PASSWORD_CHANGE = frozenset(
+    {("GET", "/auth/me"), ("POST", "/auth/me/password")}
+)
+
+
+def _refuse_until_password_changed(request: Request, user: User) -> None:
+    """Refuse a person who must change their temporary password, whether they
+    call with their session or with an API token they created."""
+    if not user.must_change_password:
+        return
+    path = request.url.path
+    if (request.method, path) in _BEFORE_PASSWORD_CHANGE:
+        return
+    if path == "/auth/mfa" or path.startswith("/auth/mfa/"):
+        return
+    raise PasswordChangeRequired()
+
+
 async def get_current_user(
     request: Request,
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Dependency - returns the authenticated ``User`` or raises 401."""
+    """Dependency - returns the authenticated ``User`` or raises 401, and 403
+    while their temporary password must still change (O-18)."""
     credentials_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
@@ -142,6 +180,7 @@ async def get_current_user(
         user = await UserRepo.get_by_id(db, token_row.created_by)
         if user is None or not user.is_active or user.deleted_at is not None:
             raise credentials_exc
+        _refuse_until_password_changed(request, user)
         now = datetime.now(timezone.utc)
         last_used = token_row.last_used_at
         if last_used is None or now - _aware(last_used) >= timedelta(minutes=1):
@@ -158,6 +197,7 @@ async def get_current_user(
     user = await user_for_session_token(db, token)
     if user is None:
         raise credentials_exc
+    _refuse_until_password_changed(request, user)
     setattr(user, "api_token_name", None)
     setattr(user, "effective_role", user.role)
     from backend.audit.admin_changes import set_audit_actor

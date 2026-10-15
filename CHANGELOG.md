@@ -127,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   admins and operators to My Routing. The quiet hours in My Routing say they
   hold pages and link back to the Inbox preferences page. Before, both pages
   just said "quiet hours", so setting one looked like setting the other.
+
+### Fixed
+
 - Leaving the Reliability page while it is still loading no longer logs
   "Failed to load reliability data" in the browser console, whether you move
   to another page of the app, reload, or follow a link out of it, and the page

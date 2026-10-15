@@ -75,6 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that can verify the token (only those with its key id when any key has
   it), so a key set that lists an EC key before the RSA key, or holds a key
   that cannot be used, no longer refuses a valid token.
+- The web app is now built with Next.js 16.4.1 (from 16.2.3) and tested with
+  Vitest 4.1.11 (from 3.2.4), which carry the fixes for the published
+  advisories against both, including three Next.js advisories from
+  2026-10-14 that 16.4.0 does not fix. None reached a running OpsMender: it
+  serves a static export with no Next.js server or image optimizer. The
+  locked Mako moves to 1.4.3.
+- Every pull request and release now audits dependencies: the web app's
+  runtime npm packages fail the check on a high or critical advisory, and
+  the installed Python packages fail it on any known advisory (checked
+  against OSV). Two advisories with no fixed release are ignored because
+  they do not apply: GHSA-3qf3-8w2g-rqmx in python-jose (every token check
+  names its algorithms) and GHSA-wj6h-64fc-37mp in ecdsa (it affects
+  signing, which OpsMender never does with ecdsa).
 
 ### Fixed
 

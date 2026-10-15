@@ -66,6 +66,8 @@ If you have questions about whether something is in scope, open an issue first. 
 - Sign an immutable image digest with
   `COSIGN_KEY=/path/to/key bash scripts/sign-image.sh <image>@sha256:<digest>`.
 
-The repository also runs CodeQL and Trivy on `main` and uses Dependabot for
-weekly dependency-update proposals. These controls support security review;
-they are not a compliance certification.
+The repository also runs CodeQL and Trivy on `main`, audits the web app's
+runtime npm packages and the installed Python packages for known
+vulnerabilities on every pull request and release, and uses Dependabot for
+security update proposals. These controls support security review; they
+are not a compliance certification.

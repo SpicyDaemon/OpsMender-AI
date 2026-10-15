@@ -612,6 +612,55 @@ class TestIdTokenAlgorithms:
         async with app.state.session_factory() as db:
             assert await UserRepo.get_by_email(db, "pss@acme.com") is None
 
+    async def test_a_published_key_that_does_not_fit_is_refused_cleanly(
+        self, client, app, auth_headers, monkeypatch, idp_keys
+    ):
+        """An RS256 id token from a provider whose key set holds only an EC
+        key: the token library cannot use that key for RS256, which is a
+        clean refusal (400), never an unhandled error."""
+        from backend.db.repos import UserRepo
+
+        saved = await client.put(
+            f"/organizations/{TEST_ORG_ID}/sso",
+            json={
+                "provider": "oidc",
+                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
+                "client_id": "opsmender-app",
+                "client_secret": "x",
+                "default_role": "operator",
+            },
+            headers=auth_headers,
+        )
+        assert saved.status_code == 200, saved.text
+        issued = _serve_idp(monkeypatch, listed=None, published=idp_keys["ES256"][1])
+        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
+        query = parse_qs(urlparse(login.headers["location"]).query)
+        now = int(time.time())
+        issued["id_token"] = jose_jwt.encode(
+            {
+                "iss": IDP_ISSUER,
+                "aud": "opsmender-app",
+                "sub": "mismatch@acme.com",
+                "email": "mismatch@acme.com",
+                "nonce": query["nonce"][0],
+                "iat": now,
+                "exp": now + 300,
+            },
+            idp_keys["RS256"][0],
+            algorithm="RS256",
+        )
+        resp = await client.get(
+            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"].startswith(
+            "SSO failed: id_token validation failed: "
+        )
+        async with app.state.session_factory() as db:
+            assert await UserRepo.get_by_email(db, "mismatch@acme.com") is None
+
 
 # ---------------------------------------------------------------------------
 # Secret-at-rest helper

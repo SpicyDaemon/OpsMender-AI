@@ -375,6 +375,38 @@ class TestTeamsActivityEndpoint:
             stored = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
             assert stored.callback_status == "not_configured"
 
+    async def test_a_published_key_that_does_not_fit_is_refused(
+        self, client, app, signing_key, monkeypatch
+    ):
+        """M1-58: an RS256 token while the key set holds only an EC key; the
+        token library cannot use that key for RS256, which is a refusal, never
+        a server error."""
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from jose import jwk
+
+        ec_public = (
+            jwk.construct(ec.generate_private_key(ec.SECP256R1()), "ES256")
+            .public_key()
+            .to_dict()
+        )
+
+        async def published_keys(**_kwargs):
+            return {"keys": [ec_public]}
+
+        monkeypatch.setattr(bot_framework, "_fetch_jwks", published_keys)
+        connector = await _seed_teams_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id)
+        incident = await _seed_incident(app)
+        body = _activity_payload(action=ACTION_RESOLVE, incident_id=incident.id)
+
+        resp = await client.post(
+            "/bot/teams/activity",
+            json=body,
+            headers={"Authorization": f"Bearer {_sign_jwt(signing_key)}"},
+        )
+
+        assert resp.status_code == 403
+
     async def test_ack_button_routes_through_engine(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)

@@ -85,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server error on the deepest, and a deeply nested body or token sent to
   other routes, such as saving My Routing settings, failed with a server
   error, sometimes after the value was saved.
+- On SQLite, the standalone binary's local database, identical alerts that
+  arrive at the same moment now open one incident and page once: the app takes
+  incoming alerts one at a time inside its process. Before, each alert could
+  open its own incident and page again. Run one app process per SQLite
+  database; several processes need PostgreSQL.
 
 ### Changed
 
@@ -101,14 +106,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the session content a Viewer reads to it. Before, the Auth guide said
   Viewers could read sessions and the People guide didn't say what a Viewer
   could open.
-
-### Fixed
-
-- On SQLite, the standalone binary's local database, identical alerts that
-  arrive at the same moment now open one incident and page once: the app takes
-  incoming alerts one at a time inside its process. Before, each alert could
-  open its own incident and page again. Run one app process per SQLite
-  database; several processes need PostgreSQL.
 
 ## [1.1.1] - 2026-10-10
 

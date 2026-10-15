@@ -90,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incoming alerts one at a time inside its process. Before, each alert could
   open its own incident and page again. Run one app process per SQLite
   database; several processes need PostgreSQL.
+- Inbox quiet hours and My Routing quiet hours are now saved separately, and
+  saving one page never changes the other. Before, both pages wrote one
+  shared setting: saving the Inbox notification preferences, even just a
+  category mute, turned off the quiet hours that hold back P1 pages, saving
+  My Routing turned off Inbox quiet hours, and after any Inbox save, Save
+  routing failed with "[object Object]". A save the server refuses as
+  invalid now shows the reason, in My Routing and the other pages. Through
+  the API, Inbox quiet hours are under `routing.in_app.quiet_hours` of
+  `/users/me/notification-preferences`, and its `quiet_hours` is My
+  Routing's only. Upgrading moves saved Inbox quiet hours to their new
+  place; SQLite evaluation databases are not migrated, so set Inbox quiet
+  hours again there.
 
 ### Changed
 
@@ -106,21 +118,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the session content a Viewer reads to it. Before, the Auth guide said
   Viewers could read sessions and the People guide didn't say what a Viewer
   could open.
-
-### Fixed
-
-- Inbox quiet hours and My Routing quiet hours are now saved separately, and
-  saving one page never changes the other. Before, both pages wrote one
-  shared setting: saving the Inbox notification preferences, even just a
-  category mute, turned off the quiet hours that hold back P1 pages, saving
-  My Routing turned off Inbox quiet hours, and after any Inbox save, Save
-  routing failed with "[object Object]". A save the server refuses as
-  invalid now shows the reason, in My Routing and the other pages. Through
-  the API, Inbox quiet hours are under `routing.in_app.quiet_hours` of
-  `/users/me/notification-preferences`, and its `quiet_hours` is My
-  Routing's only. Upgrading moves saved Inbox quiet hours to their new
-  place; SQLite evaluation databases are not migrated, so set Inbox quiet
-  hours again there.
 
 ## [1.1.1] - 2026-10-10
 

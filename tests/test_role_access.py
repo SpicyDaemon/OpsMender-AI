@@ -248,3 +248,200 @@ async def test_incident_create_and_actions_rbac(client):
     assert (
         await client.get(f"/incidents/{incident_id}/sessions", headers=h["viewer"])
     ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_api_reads_match_o07(client):
+    """M1-55: the reads O-07 (narrowed by O-17) gives a Viewer, with real rows.
+
+    Each refused read answers 200 for an operator, so the 403 comes from the
+    role and not from a missing row or a wrong path.
+    """
+    h = await _headers(client)
+    suffix = uuid.uuid4().hex[:8]
+
+    async def admin_creates(path: str, body: dict) -> str:
+        response = await client.post(path, headers=h["admin"], json=body)
+        assert response.status_code == 201, (path, response.text)
+        return response.json()["id"]
+
+    team_id = await admin_creates(
+        "/teams", {"name": "Scope Team", "slug": f"scope-team-{suffix}"}
+    )
+    service_id = await admin_creates(
+        "/services",
+        {"team_id": team_id, "name": "Scope Service", "slug": f"scope-svc-{suffix}"},
+    )
+    chain_id = await admin_creates(
+        "/escalation-chains", {"team_id": team_id, "name": "Scope Chain"}
+    )
+    roster_id = await admin_creates(
+        "/rosters",
+        {"team_id": team_id, "name": "Scope Roster", "anchor_date": "2026-10-12"},
+    )
+    memory_id = await admin_creates(
+        "/memories",
+        {
+            "title": "Scope memory",
+            "summary_md": "Restart the pool.",
+            "service_id": service_id,
+        },
+    )
+    incident_id = await admin_creates(
+        "/incidents",
+        {
+            "title": "Scope outage",
+            "description": "Checkout down",
+            "severity": "high",
+            "service_id": service_id,
+        },
+    )
+
+    # Lists a Viewer reads: 200, with the row made above in the answer.
+    for path, row_id in (
+        ("/incidents", incident_id),
+        ("/escalation-chains", chain_id),
+        ("/rosters", roster_id),
+        ("/teams", team_id),
+        ("/services", service_id),
+        ("/memories", memory_id),
+    ):
+        response = await client.get(path, headers=h["viewer"])
+        assert response.status_code == 200, (path, response.text)
+        assert row_id in {item["id"] for item in response.json()["items"]}, path
+
+    incident = await client.get(f"/incidents/{incident_id}", headers=h["viewer"])
+    assert incident.status_code == 200, incident.text
+    assert incident.json()["id"] == incident_id
+
+    # Activity carries the admin's changes, such as the team made above.
+    activity = await client.get(
+        "/audit", headers=h["viewer"], params={"entry_type": "admin_change"}
+    )
+    assert activity.status_code == 200, activity.text
+    assert team_id in {
+        item["tool_parameters"]["entity_id"] for item in activity.json()["items"]
+    }
+
+    # The Viewer's own Inbox, with a notice addressed to them.
+    from backend.api.deps import get_current_session_factory
+    from backend.notifications import CATEGORY_INCIDENT, emit_notification
+
+    me = (await client.get("/auth/me", headers=h["viewer"])).json()
+    async with get_current_session_factory()() as db:
+        notice = await emit_notification(
+            db,
+            uuid.UUID(me["primary_org_id"]),
+            uuid.UUID(me["id"]),
+            event_type="incident.assigned",
+            category=CATEGORY_INCIDENT,
+            title="Scope notice",
+            incident_id=uuid.UUID(incident_id),
+        )
+        await db.commit()
+    assert notice is not None
+    inbox = await client.get("/notifications", headers=h["viewer"])
+    assert inbox.status_code == 200, inbox.text
+    assert str(notice.id) in {item["id"] for item in inbox.json()["items"]}
+
+    # Reads O-07 keeps for admins and operators.
+    for path in (
+        f"/incidents/{incident_id}/timeline",
+        f"/incidents/{incident_id}/comments",
+        "/reports/incidents",
+        "/api/v1/analytics/response",
+        "/sessions",
+        f"/escalation-chains/{chain_id}/calendar",
+    ):
+        refused = await client.get(path, headers=h["viewer"])
+        assert refused.status_code == 403, (path, refused.text)
+        allowed = await client.get(path, headers=h["operator"])
+        assert allowed.status_code == 200, (path, allowed.text)
+
+
+@pytest.mark.asyncio
+async def test_viewer_session_content_matches_o07(client):
+    """M1-55: what of an AI session reaches a Viewer (O-07 as worded by M1-55).
+
+    A Viewer can't open a session or the orchestration view (403, each 200
+    for an operator, so the refusal comes from the role), but reads the
+    session's tool calls in Activity (the start row with its parameters, the
+    end row with its result), its proposed actions in the approval
+    list and the memories it used.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from backend.api.deps import get_current_session_factory
+    from backend.audit.logger import AuditEntryType
+    from backend.db.models import ApprovalRequest, AuditEntry, Session
+
+    h = await _headers(client)
+    me = (await client.get("/auth/me", headers=h["viewer"])).json()
+    org_id = uuid.UUID(me["primary_org_id"])
+    now = datetime.now(timezone.utc)
+    async with get_current_session_factory()() as db:
+        session = Session(
+            org_id=org_id,
+            tier=1,
+            model_provider="ollama",
+            model_id="offline-fixture",
+            status="completed",
+            summary="Checked the checkout pods",
+            started_at=now - timedelta(minutes=5),
+            ended_at=now,
+        )
+        db.add(session)
+        await db.flush()
+        started = AuditEntry(
+            org_id=org_id,
+            session_id=session.id,
+            tier=1,
+            entry_type=AuditEntryType.TOOL_CALL_START.value,
+            tool_name="kubectl_get_pods",
+            tool_parameters={"namespace": "checkout"},
+        )
+        ended = AuditEntry(
+            org_id=org_id,
+            session_id=session.id,
+            tier=1,
+            entry_type=AuditEntryType.TOOL_CALL_END.value,
+            tool_name="kubectl_get_pods",
+            result={"pods": 3},
+            duration_ms=120,
+        )
+        approval = ApprovalRequest(
+            org_id=org_id,
+            session_id=session.id,
+            action={"tool": "kubectl_rollout_restart", "args": {"name": "checkout"}},
+            justification="Restart the stuck pods",
+            status="pending",
+            expires_at=now + timedelta(minutes=30),
+        )
+        db.add_all([started, ended, approval])
+        await db.commit()
+        session_id, approval_id = session.id, approval.id
+        started_id, ended_id = started.id, ended.id
+
+    for path in (f"/sessions/{session_id}", "/sessions/orchestration"):
+        refused = await client.get(path, headers=h["viewer"])
+        assert refused.status_code == 403, (path, refused.text)
+        allowed = await client.get(path, headers=h["operator"])
+        assert allowed.status_code == 200, (path, allowed.text)
+
+    activity = await client.get(
+        "/audit", headers=h["viewer"], params={"session_id": str(session_id)}
+    )
+    assert activity.status_code == 200, activity.text
+    rows = {item["id"]: item for item in activity.json()["items"]}
+    assert rows[str(started_id)]["tool_parameters"] == {"namespace": "checkout"}
+    assert rows[str(ended_id)]["result"] == {"pods": 3}
+
+    approvals = await client.get("/approvals", headers=h["viewer"])
+    assert approvals.status_code == 200, approvals.text
+    assert str(approval_id) in {item["id"] for item in approvals.json()["items"]}
+
+    used = await client.get(
+        f"/sessions/{session_id}/memories-used", headers=h["viewer"]
+    )
+    assert used.status_code == 200, used.text
+    assert used.json() == {"items": [], "total": 0}

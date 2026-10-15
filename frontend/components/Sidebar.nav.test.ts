@@ -69,18 +69,17 @@ describe("Sidebar nav model", () => {
   });
 
   it("viewer is limited to read-only surfaces", () => {
-    const hrefs = visibleHrefs("viewer");
-    expect(hrefs).toEqual(
-      expect.arrayContaining(["/dashboard", "/dashboard/incidents"]),
-    );
-    // No approvals (acknowledge/resolve), no admin/config, no paging mgmt.
-    expect(hrefs).not.toContain("/dashboard/approvals");
-    expect(hrefs).not.toContain("/dashboard/config");
-    expect(hrefs).not.toContain("/dashboard/people");
-    expect(hrefs).not.toContain("/dashboard/paging");
-    expect(hrefs).not.toContain("/dashboard/analytics");
-    // Viewers read Activity; the export control is role-gated on the page (O-07).
-    expect(hrefs).toContain("/dashboard/activity");
+    // Exactly the O-07 set (narrowed by O-17), so a new entry fails here. No
+    // Approvals (the Operator Approval queue for Tier 1 actions), admin or
+    // config pages, Paging, Memories, Reports or Analytics. Viewers read
+    // Activity; the export control is role-gated on the page. The Inbox is
+    // the top bar's bell, not an entry.
+    expect(visibleHrefs("viewer").sort()).toEqual([
+      "/dashboard",
+      "/dashboard/activity",
+      "/dashboard/incidents",
+      "/dashboard/on-call-schedule",
+    ]);
   });
 
   it("adds and caps the pending approvals badge", () => {
@@ -134,5 +133,51 @@ describe("requiredRolesForPath (route guard)", () => {
     expect(requiredRolesForPath("/dashboard/approvals")).toEqual(["admin", "operator"]);
     expect(requiredRolesForPath("/dashboard/reliability")).toEqual(["admin", "operator"]);
     expect(requiredRolesForPath("/dashboard/analytics")).toEqual(["admin", "operator"]);
+  });
+
+  it("denies a viewer the pages O-07 keeps for admins and operators", () => {
+    // The check RouteRoleGuard makes: open when no role list or the list
+    // names the role, Access denied otherwise.
+    const viewerCanOpen = (path: string) => {
+      const roles = requiredRolesForPath(path);
+      return roles === null || roles.includes("viewer");
+    };
+    const denied = [
+      "/dashboard/paging",
+      "/dashboard/paging/teams",
+      "/dashboard/paging/services",
+      "/dashboard/paging/escalation-chains",
+      "/dashboard/paging/rosters",
+      "/dashboard/memories",
+      "/dashboard/reports",
+      "/dashboard/analytics",
+      "/dashboard/reliability",
+      "/dashboard/orchestration",
+      "/dashboard/approvals",
+      // Admin pages, Access denied for a Viewer as the People guide says.
+      "/dashboard/models",
+      "/dashboard/mcp-servers",
+      "/dashboard/skills",
+      "/dashboard/people",
+      "/dashboard/integrations",
+      "/dashboard/config",
+    ];
+    // Also open: the Viewer's own profile and Inbox preferences, and the
+    // postmortem page, which the server keeps read-only for them. The AI
+    // session page passes this check too, then says Session not found
+    // because the API refuses the session to a Viewer.
+    const open = [
+      "/dashboard",
+      "/dashboard/incidents",
+      "/dashboard/incidents/detail",
+      "/dashboard/incidents/postmortem",
+      "/dashboard/on-call-schedule",
+      "/dashboard/activity",
+      "/dashboard/notifications",
+      "/dashboard/notifications/preferences",
+      "/dashboard/settings/profile",
+    ];
+    expect(denied.filter(viewerCanOpen)).toEqual([]);
+    expect(open.filter((path) => !viewerCanOpen(path))).toEqual([]);
   });
 });

@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   this change are not rewritten. An unknown provider in discovery answers
   `400` instead of a server error.
 - The generic command guard now also catches common runner names: `terminal`,
-  `console`, `tty`, `pty`, `shellexec`, `bash_tool`, `shell_tool`,
+  `console`, `tty`, `pty`, `shellexec`, `bash_tool`,
   `subprocess`, `popen`, `os_system`, `sudo`, `su`, `docker`, `podman`,
   `nerdctl`, `crictl` and `systemctl`, names that start with `bash_`, `sh_`,
   `terminal_`, `console_`, `sudo_`, `docker_` or `subprocess_`, and names that
@@ -52,7 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the Skill's deny-list with `deny: true`. A narrowly scoped tool that a
   new prefix or suffix catches, such as `docker_logs`, `console_url`,
   `get_console` or `aws_console`, needs an entry with its exact name and
-  `allow_generic: true` to run under its own tier policies again.
+  `allow_generic: true` to run under its own tier policies again. Skill
+  Studio's Generate from tools and AI assist now mark these names as generic
+  and pre-set them to deny, as they already did for the older runner names.
 
 ### Fixed
 

@@ -24,7 +24,7 @@ incident session. It is **separate** from:
 | Tier | Name | Behaviour |
 |------|------|-----------|
 | **0** | **Autonomous** | May execute remediation automatically (incl. rollbacks, restarts, failovers, and destructive ops) **but only within MCP Skill policy, deny lists, MCP permissions, and backend guardrails.** Most autonomous; **not** unlimited. Selecting Tier 0 shows a red warning. |
-| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; deny-listed actions never run. |
+| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; a generic command tool always asks for **operator approval** whatever its T1 policy says, unless `allow_generic: true`; deny-listed actions never run. |
 | **2** | **Advisory Only** *(default)* | Analysis, recommendations, runbooks, read-only observation. **No write/remediation actions execute.** |
 
 - **Default** for new installs and new sessions is **Tier 2: Advisory Only**.
@@ -257,7 +257,9 @@ and T2. The structured policy is the source of truth enforced by
 
 - `mode: autonomous` permits execution without an operator ACK.
 - `mode: approval` routes the action through the approval gate.
-- `mode: blocked` denies execution.
+- `mode: blocked` denies execution. At Tier 1 a generic command tool (see
+  below) asks for approval instead, unless the Skill sets `allow_generic: true`
+  for it or deny-lists it.
 - `mode: advisory` allows guidance but no execution.
 - `require_reversible: true` keeps the Tier 0 reversible floor. Safe reads are
   implicitly reversible; side-effecting operations also need

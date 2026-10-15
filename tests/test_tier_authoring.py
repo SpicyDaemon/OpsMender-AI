@@ -96,7 +96,7 @@ def test_runner_names_are_caught_whatever_their_case_or_separators(name):
 # Each runner word or affix the card names (M1-52) with other spellings a tool
 # source may use.
 RUNNER_SPELLINGS = {
-    # exact names; powershell, pwsh and cmd were caught before M1-52
+    # exact names; powershell, pwsh, cmd and shell_tool were caught before M1-52
     "powershell": ("PowerShell", "POWERSHELL", "Powershell"),
     "pwsh": ("Pwsh", "PWSH"),
     "cmd": ("Cmd", "CMD"),

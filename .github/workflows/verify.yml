@@ -33,6 +33,21 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
+      # Known vulnerabilities in the installed runtime and dev packages,
+      # checked against OSV. pip-audit fails on any finding, so each ignore
+      # below names its reason; drop it when its package ships a fix.
+      # - GHSA-3qf3-8w2g-rqmx, python-jose 3.5.0, critical, no fixed release:
+      #   a forged HS256 token passes only a decode that does not name its
+      #   algorithms, and every decode names them since M1-58.
+      # - GHSA-wj6h-64fc-37mp, ecdsa 0.19.2 (required by python-jose), high,
+      #   no fix planned: a timing leak while signing with P-256. OpsMender
+      #   never signs with ecdsa; python-jose uses its cryptography backend.
+      - name: Audit Python dependencies
+        run: >-
+          uv run pip-audit --skip-editable --vulnerability-service osv
+          --ignore-vuln GHSA-3qf3-8w2g-rqmx
+          --ignore-vuln GHSA-wj6h-64fc-37mp
+
       - name: Lint
         run: uv run ruff check .
 
@@ -137,6 +152,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Known vulnerabilities in the runtime tree (next and what it pulls in);
+      # dev tooling is left out. High or critical fails the job. npm audit has
+      # no ignore list, so a finding is cleared by upgrading.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Lint
         run: npm run lint
 
@@ -221,3 +242,16 @@ jobs:
           curl --fail --silent \
             --header "Authorization: Bearer $token" \
             http://127.0.0.1:8000/incidents
+
+          # The static export as the Next.js router asks for it: the HEAD
+          # probe before a prefetch, a navigation payload served as
+          # text/x-component, a segment prefetch file, and a miss.
+          curl --fail --silent --head http://127.0.0.1:8000/dashboard/incidents >/dev/null
+          payload_type="$(curl --fail --silent --output /dev/null --write-out '%{content_type}' http://127.0.0.1:8000/login.txt)"
+          case "$payload_type" in
+            text/x-component*) ;;
+            *) echo "login.txt served as $payload_type"; exit 1 ;;
+          esac
+          curl --fail --silent --output /dev/null http://127.0.0.1:8000/dashboard/incidents/__next._tree.txt
+          miss="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/dashboard/incidents/__next.nope.txt)"
+          test "$miss" = 404

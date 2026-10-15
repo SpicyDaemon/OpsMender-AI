@@ -10,6 +10,8 @@ verify:
 * API routes (``/health``) still win over the static mount
 * unknown paths fall through to ``404.html`` with a 404 status
 * path-traversal attempts are rejected
+* the router's HEAD probe, segment prefetch files at the URLs the router
+  asks for (flat on Linux, nested on Windows), and a missing one (404)
 
 Skipped when ``frontend/out/`` hasn't been built.
 """
@@ -146,3 +148,34 @@ class TestFrontendMount:
         resp = await client.get(f"/{rel}")
         assert resp.status_code == 200
         assert "text/x-component" in resp.headers["content-type"]
+
+    async def test_route_answers_head(self, client: AsyncClient):
+        """The export-mode router sends HEAD to a page before prefetching it and
+        treats anything but 2xx or 3xx as a miss."""
+        resp = await client.head("/dashboard/incidents")
+        assert resp.status_code == 200
+
+    async def test_segment_prefetch_files_served_at_router_urls(
+        self, client: AsyncClient
+    ):
+        """The router asks for <route>/__next.<segment path, dots for slashes>.txt.
+        A Linux build writes that name flat; a Windows build nests everything
+        after the first segment, and the mount maps the flat name onto it."""
+        found = 0
+        for path in FRONTEND_OUT.rglob("*.txt"):
+            parts = path.relative_to(FRONTEND_OUT).parts
+            starts = [i for i, part in enumerate(parts) if part.startswith("__next.")]
+            if not starts:
+                continue
+            url = "/" + "/".join([*parts[: starts[0]], ".".join(parts[starts[0] :])])
+            resp = await client.get(url)
+            assert resp.status_code == 200, url
+            assert "text/x-component" in resp.headers["content-type"], url
+            found += 1
+        if not found:
+            pytest.skip("no segment prefetch files in build output")
+
+    async def test_missing_segment_file_is_404(self, client: AsyncClient):
+        resp = await client.get("/dashboard/incidents/__next.nope.txt")
+        assert resp.status_code == 404
+        assert "text/html" in resp.headers["content-type"]

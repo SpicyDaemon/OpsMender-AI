@@ -357,3 +357,79 @@ async def test_viewer_api_reads_match_o07(client):
         assert refused.status_code == 403, (path, refused.text)
         allowed = await client.get(path, headers=h["operator"])
         assert allowed.status_code == 200, (path, allowed.text)
+
+
+@pytest.mark.asyncio
+async def test_viewer_session_content_matches_o07(client):
+    """M1-55: what of an AI session reaches a Viewer (O-07 as worded by M1-55).
+
+    A Viewer can't open a session or the orchestration view (403, each 200
+    for an operator, so the refusal comes from the role), but reads the
+    session's tool calls in Activity, its proposed actions in the approval
+    list and the memories it used.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from backend.api.deps import get_current_session_factory
+    from backend.db.models import ApprovalRequest, AuditEntry, Session
+
+    h = await _headers(client)
+    me = (await client.get("/auth/me", headers=h["viewer"])).json()
+    org_id = uuid.UUID(me["primary_org_id"])
+    now = datetime.now(timezone.utc)
+    async with get_current_session_factory()() as db:
+        session = Session(
+            org_id=org_id,
+            tier=1,
+            model_provider="ollama",
+            model_id="offline-fixture",
+            status="completed",
+            summary="Checked the checkout pods",
+            started_at=now - timedelta(minutes=5),
+            ended_at=now,
+        )
+        db.add(session)
+        await db.flush()
+        tool_call = AuditEntry(
+            org_id=org_id,
+            session_id=session.id,
+            tier=1,
+            entry_type="tool_call",
+            tool_name="kubectl_get_pods",
+            tool_parameters={"namespace": "checkout"},
+            result={"pods": 3},
+            permitted=True,
+        )
+        approval = ApprovalRequest(
+            org_id=org_id,
+            session_id=session.id,
+            action={"tool": "kubectl_rollout_restart", "args": {"name": "checkout"}},
+            justification="Restart the stuck pods",
+            status="pending",
+            expires_at=now + timedelta(minutes=30),
+        )
+        db.add_all([tool_call, approval])
+        await db.commit()
+        session_id, tool_call_id, approval_id = session.id, tool_call.id, approval.id
+
+    for path in (f"/sessions/{session_id}", "/sessions/orchestration"):
+        refused = await client.get(path, headers=h["viewer"])
+        assert refused.status_code == 403, (path, refused.text)
+        allowed = await client.get(path, headers=h["operator"])
+        assert allowed.status_code == 200, (path, allowed.text)
+
+    activity = await client.get(
+        "/audit", headers=h["viewer"], params={"entry_type": "tool_call"}
+    )
+    assert activity.status_code == 200, activity.text
+    assert str(tool_call_id) in {item["id"] for item in activity.json()["items"]}
+
+    approvals = await client.get("/approvals", headers=h["viewer"])
+    assert approvals.status_code == 200, approvals.text
+    assert str(approval_id) in {item["id"] for item in approvals.json()["items"]}
+
+    used = await client.get(
+        f"/sessions/{session_id}/memories-used", headers=h["viewer"]
+    )
+    assert used.status_code == 200, used.text
+    assert used.json() == {"items": [], "total": 0}

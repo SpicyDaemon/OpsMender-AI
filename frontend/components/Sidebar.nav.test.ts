@@ -154,6 +154,13 @@ describe("requiredRolesForPath (route guard)", () => {
       "/dashboard/reliability",
       "/dashboard/orchestration",
       "/dashboard/approvals",
+      // Admin pages, Access denied for a Viewer as the People guide says.
+      "/dashboard/models",
+      "/dashboard/mcp-servers",
+      "/dashboard/skills",
+      "/dashboard/people",
+      "/dashboard/integrations",
+      "/dashboard/config",
     ];
     // Also open: the Viewer's own profile and Inbox preferences, and the
     // postmortem page, which the server keeps read-only for them. The AI

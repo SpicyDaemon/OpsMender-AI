@@ -10,8 +10,8 @@ python-jose also builds every key of a key set for the token's algorithm, in
 order, and stops with an error at the first one that does not fit, so an
 identity provider that publishes an EC key before its RSA keys would make a
 valid RS256 id token fail (M1-58). decode tries only the keys that can verify
-the token, those with its key id first, so a key set's order and mix of key
-types no longer matter.
+the token, and only those with its key id when any key has it, so a key set's
+order and mix of key types no longer matter.
 """
 
 from __future__ import annotations

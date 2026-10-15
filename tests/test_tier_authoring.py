@@ -149,6 +149,78 @@ def test_common_runner_names_are_caught_in_every_spelling(name):
     assert is_generic_execution_tool(name) is True
 
 
+# Runner tools of common MCP servers, as each server publishes the name (the
+# owner asked which other tools to add; survey of 2026-10-15). Namespaced
+# names keep their prefix, so only a suffix rule reaches them.
+MCP_SERVER_RUNNERS = [
+    "kubectl_generic",
+    "call_kubectl",
+    "call_az",
+    "call_aws",
+    "call_helm",
+    "call_cilium",
+    "call_hubble",
+    "execute_kubectl",
+    "execute_helm",
+    "execute_istioctl",
+    "execute_argocd",
+    "aws_cli_pipeline",
+    "kubernetes_proxy",
+    "kubernetesProxy",
+    "ssh_execute",
+    "ssh_execute_sudo",
+    "ssh_execute_group",
+    "ssh_session_send",
+    "start_process",
+    "interact_with_process",
+    "Powershell-Tool",
+    "execute_code",
+    "execute_code_file",
+    "execute_python",
+    "execute_cell",
+    "insert_execute_code_cell",
+    "execute_ipython",
+    "execute_tool",
+    "use_tool",
+    "browser_run_code",
+    "browser_run_code_unsafe",
+    "deploy_one_off_dyno",
+    "ansible-task",
+    "transact",
+    "pg_psql",
+    "apply_migration",
+    "execute_sql_readonly",
+    "GenericOpenSearchApiTool",
+    "execute_cypher",
+    "read_neo4j_cypher",
+    "mydb-write_neo4j_cypher",
+]
+
+
+@pytest.mark.parametrize("name", MCP_SERVER_RUNNERS)
+def test_runner_tools_of_common_mcp_servers_are_generic(name):
+    assert is_generic_execution_tool(name) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "kubectl_get",
+        "kubectl_describe",
+        "kubectl_logs",
+        "istioctl_analyze",
+        "ssh_list_servers",
+        "aws_cli_help",
+        "read_process_output",
+        "list_processes",
+        "browser_snapshot",
+        "browser_navigate",
+    ],
+)
+def test_bounded_tools_of_the_same_servers_stay_ordinary(name):
+    assert is_generic_execution_tool(name) is False
+
+
 @pytest.mark.parametrize(
     "name",
     [

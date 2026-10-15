@@ -139,6 +139,45 @@ _GENERIC_EXACT: frozenset[str] = frozenset(
         "apt",
         "yum",
         "apk",
+        # Runner tools of common MCP servers (surveyed 2026-10-15): each runs
+        # any command, code or query its caller writes.
+        "kubectl_generic",
+        "call_kubectl",
+        "call_az",
+        "call_aws",
+        "call_helm",
+        "call_cilium",
+        "call_hubble",
+        "execute_kubectl",
+        "execute_helm",
+        "execute_istioctl",
+        "execute_argocd",
+        "aws_cli_pipeline",
+        "kubernetes_proxy",
+        "ssh_execute",
+        "ssh_execute_sudo",
+        "ssh_execute_group",
+        "ssh_session_send",
+        "start_process",
+        "interact_with_process",
+        "powershell_tool",
+        "execute_code",
+        "execute_code_file",
+        "execute_python",
+        "execute_cell",
+        "insert_execute_code_cell",
+        "execute_ipython",
+        "execute_tool",
+        "use_tool",
+        "browser_run_code",
+        "browser_run_code_unsafe",
+        "deploy_one_off_dyno",
+        "ansible_task",
+        "transact",
+        "pg_psql",
+        "apply_migration",
+        "execute_sql_readonly",
+        "generic_open_search_api_tool",
     }
 )
 
@@ -175,6 +214,7 @@ _GENERIC_SUFFIXES: tuple[str, ...] = (
     "_console",
     "_bash",
     "_subprocess",
+    "_cypher",
 )
 
 

@@ -27,8 +27,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
-from jose import jwt as jose_jwt
 from jose.exceptions import JWTError
+
+from backend.auth.jwt_decode import decode as decode_jwt
 
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ async def verify_bot_framework_token(
         openid_config_url=openid_config_url,
     )
     try:
-        claims = jose_jwt.decode(
+        claims = decode_jwt(
             token,
             jwks,
             audience=expected_audience,

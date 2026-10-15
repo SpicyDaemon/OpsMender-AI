@@ -37,6 +37,7 @@ from backend.api.schemas import (
 )
 from backend.db.models import IngestToken, User
 from backend.db.repos import IngestLogRepo, IngestTokenRepo, ServiceRepo
+from backend.ingest.adapters.universal import _MAX_JSON_DEPTH, _exceeds_depth
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -187,10 +188,11 @@ async def _read_body(request: Request, limit: int) -> bytes:
 async def _intake_payload(
     request: Request, db: AsyncSession, token: IngestToken
 ) -> dict[str, Any] | JSONResponse:
-    """The alert's JSON, or a 413 for a body over the intake limit (O-12).
+    """The alert's JSON, or a 413 for a body over the intake limit (O-12), or
+    a 400 for one whose objects and arrays nest more than 64 levels (N-03).
 
     A refused body leaves a short row in the token's delivery log naming the
-    size and the limit, never the body itself.
+    limit, never the body itself.
     """
     limit = request.app.state.config.ingest.max_body_bytes
     try:
@@ -212,12 +214,34 @@ async def _intake_payload(
             content={"detail": f"Alert body is over the {limit:,}-byte intake limit"},
         )
     try:
-        return json.loads(body)
+        payload = json.loads(body)
+        if not _exceeds_depth(payload, _MAX_JSON_DEPTH):
+            return payload
+    except RecursionError:
+        pass  # nested past the JSON parser's own limit
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Request body must be valid JSON",
         )
+    # Nested too deeply: log the limit, never the body.
+    await IngestLogRepo.create(
+        db,
+        token.org_id,
+        ingest_token_id=token.id,
+        provider=token.provider,
+        raw_payload={"depth_limit": _MAX_JSON_DEPTH},
+        dedup_action="skipped",
+        error=(
+            f"Body nesting deeper than the {_MAX_JSON_DEPTH}-level intake limit; "
+            "not stored"
+        ),
+    )
+    await db.commit()
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "Alert body nests too deeply"},
+    )
 
 
 # ---------------------------------------------------------------------------

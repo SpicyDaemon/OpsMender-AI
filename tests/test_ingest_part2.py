@@ -1179,7 +1179,7 @@ async def test_plain_text_sns_notification_still_opens_incident(
             assert incident.status == "open"
 
 
-async def test_excessive_nesting_is_rejected_with_422_not_500(client: AsyncClient, app):
+async def test_excessive_nesting_is_rejected_not_500(client: AsyncClient, app):
     raw, token = await _create_token(
         app, provider="auto", name=f"deep-{uuid.uuid4().hex[:6]}"
     )
@@ -1210,8 +1210,9 @@ async def test_excessive_nesting_is_rejected_with_422_not_500(client: AsyncClien
     )
     assert in_string.status_code == 422
     assert "nesting" in in_string.json()["error"]
-    assert outer.status_code == 422
-    assert "nesting" in outer.json()["error"]
+    # The body itself nests past the 64-level intake limit (M1-51).
+    assert outer.status_code == 400
+    assert outer.json() == {"detail": "Alert body nests too deeply"}
     assert fine.status_code == 200
     assert fine.json()["dedup_action"] == "created"
     async with app.state.session_factory() as db:

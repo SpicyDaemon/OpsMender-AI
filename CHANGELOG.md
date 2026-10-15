@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the incident replaced them without a note or an Inbox notice. An
   assignment that arrives as the incident is resolved or merged is refused
   the same way; before, it answered a server error or reported success.
+- Alert intake refuses a body whose objects and arrays nest more than 64
+  levels deep with `400` and opens no incident; the token's delivery log keeps
+  a short row naming the limit, never the body. Every other route refuses a
+  JSON body nested more than 64 levels with `400` before the route acts on
+  it, and the Teams, Discord, Slack and ticket webhooks, which read their own
+  bodies, refuse one too deep to read with their usual `400`. A token nested
+  too deeply to read (a session, an MFA challenge, an SSO or bot sign-in
+  state, a voice link or a Teams token) is refused like any bad token.
+  Before, intake accepted and stored deeply nested bodies and failed with a
+  server error on the deepest, and a deeply nested body or token sent to
+  other routes, such as saving My Routing settings, failed with a server
+  error, sometimes after the value was saved.
 
 ## [1.1.1] - 2026-10-10
 

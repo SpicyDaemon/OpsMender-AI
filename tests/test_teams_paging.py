@@ -301,6 +301,36 @@ class TestTeamsActivityEndpoint:
         )
         assert resp.status_code == 403
 
+    async def test_rejects_a_body_nested_too_deeply_before_any_check(self, client, app):
+        """M1-51 (N-03): the route reads its body itself, before the token, so a
+        body nested too deeply to parse gets 400 whatever its content type,
+        never a server error."""
+        await _seed_teams_connector(app)
+        resp = await client.post(
+            "/bot/teams/activity",
+            content=b"[" * 12000 + b"]" * 12000,
+            headers={"Content-Type": "text/plain"},
+        )
+        assert resp.status_code == 400
+        assert resp.json() == {"error": "invalid_json"}
+
+    async def test_rejects_a_token_nested_too_deeply(self, client, app):
+        """M1-51 (N-03): a bearer token whose header nests too deeply to read is
+        refused like any bad token, never a server error."""
+        import base64
+
+        await _seed_teams_connector(app)
+        incident = await _seed_incident(app)
+        body = _activity_payload(action=ACTION_ACK, incident_id=incident.id)
+        header = base64.urlsafe_b64encode(b"[" * 12000 + b"]" * 12000)
+        token = f"{header.rstrip(b'=').decode()}.e30.c2ln"
+        resp = await client.post(
+            "/bot/teams/activity",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403
+
     async def test_ack_button_routes_through_engine(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)

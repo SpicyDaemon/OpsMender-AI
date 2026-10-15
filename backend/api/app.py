@@ -348,6 +348,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         window_seconds=config.auth.signin_window_seconds,
     )
 
+    # -- Deeply nested request bodies (N-03) --------------------------------
+    # Innermost, so its 400 still gets the CORS and security headers below.
+    # The alert intake routes check their own bodies (size, then depth).
+    from backend.api.json_depth import JsonDepthLimit
+
+    app.add_middleware(JsonDepthLimit)
+
     # -- CORS ---------------------------------------------------------------
     allowed_origins = config.cors.origins
     # allow_credentials=True is incompatible with wildcard origins per CORS spec

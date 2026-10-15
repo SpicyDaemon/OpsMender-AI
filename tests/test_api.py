@@ -1026,6 +1026,30 @@ class TestTicketSync:
         )
         assert response.status_code == 401
 
+    async def test_ticket_webhook_nested_too_deeply_is_refused(
+        self,
+        client: AsyncClient,
+        app,
+    ):
+        """M1-51 (N-03): the webhook parses its own body after the signature
+        check, so a signed body nested too deeply to parse gets 400, never a
+        server error."""
+        import hashlib
+        import hmac
+
+        _, connector_id, _ = await self._seed(app)
+        raw = b"[" * 12000 + b"]" * 12000
+        signature = (
+            "sha256=" + hmac.new(b"ticket-secret", raw, hashlib.sha256).hexdigest()
+        )
+        response = await client.post(
+            f"/webhooks/ticket-sync/{connector_id}",
+            content=raw,
+            headers={"Content-Type": "text/plain", "X-Hub-Signature": signature},
+        )
+        assert response.status_code == 400
+        assert response.json() == {"detail": "Invalid JSON payload"}
+
     def test_status_mapping_round_trip(self):
         from backend.services.ticket_sync import normalized_status_map, reverse_status
 

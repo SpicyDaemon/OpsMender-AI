@@ -39,6 +39,7 @@ from urllib.parse import urlencode
 import httpx
 from jose import JWTError, jwt
 
+from backend.auth.jwt_decode import decode as decode_jwt
 from backend.config_loader import AppConfig, BotOAuthConfig
 
 
@@ -123,7 +124,7 @@ def verify_state(token: str) -> dict[str, Any]:
     """Decode + validate a state JWT. Raises ``ValueError`` on failure."""
     cfg = _auth_config()
     try:
-        return jwt.decode(
+        return decode_jwt(
             token,
             cfg.auth.jwt_secret,
             algorithms=[cfg.auth.jwt_algorithm],

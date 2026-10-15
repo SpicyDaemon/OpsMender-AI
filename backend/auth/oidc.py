@@ -21,8 +21,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from jose import jwt as jose_jwt
 from jose.exceptions import JWTError
+
+from backend.auth.jwt_decode import decode as decode_jwt
 
 
 _DISCOVERY_TTL_SECONDS = 600
@@ -125,7 +126,7 @@ async def exchange_code(
     jwks = await _get_jwks(doc["jwks_uri"])
 
     try:
-        claims = jose_jwt.decode(
+        claims = decode_jwt(
             id_token,
             jwks,
             audience=config.client_id,

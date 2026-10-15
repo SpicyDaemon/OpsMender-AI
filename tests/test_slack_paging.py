@@ -285,6 +285,21 @@ class TestPageCardBuilder:
 
 
 class TestSlackInteractionsEndpoint:
+    async def test_a_payload_nested_too_deeply_is_refused(self, client, app):
+        """M1-51 (N-03): the signed payload field is JSON the route parses
+        itself; one nested too deeply gets the usual parse refusal, never a
+        server error."""
+        await _seed_slack_connector(app)
+        body = urllib.parse.urlencode({"payload": "[" * 12000 + "]" * 12000}).encode()
+        resp = await client.post(
+            "/bot/slack/interactions", content=body, headers=_slack_sign(body)
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "response_type": "ephemeral",
+            "text": "Could not parse Slack payload.",
+        }
+
     async def test_rejects_invalid_signature(self, client, app):
         await _seed_slack_connector(app)
         # Send a payload without signing.

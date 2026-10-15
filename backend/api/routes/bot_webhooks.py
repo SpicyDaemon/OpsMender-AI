@@ -322,7 +322,7 @@ async def discord_webhook(
     adapter.verify_webhook(connector, headers=request.headers, raw_body=raw_body)
     try:
         payload = json.loads(raw_body)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid Discord payload")

@@ -154,7 +154,7 @@ async def slack_interactions(
         return _ephemeral("Missing payload.")
     try:
         payload: dict[str, Any] = json.loads(payload_raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return _ephemeral("Could not parse Slack payload.")
 
     if payload.get("type") != "block_actions":

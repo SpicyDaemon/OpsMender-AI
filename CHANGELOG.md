@@ -94,11 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of Escalation Chains, Rosters, teams, services, memories and more, but not
   incident timelines or comments, reports or analytics. A Viewer can't list or
   open AI sessions or read their chat history, but sees each session's tool
-  calls in Activity, can read which memories a session used, and can follow a
-  running session's live stream, chat included, if they know its id. What a
-  Viewer can open is unchanged; tests now hold the sidebar, the page guard and
-  these API answers to it. Before, the Auth guide said Viewers could read
-  sessions and the People guide didn't say what a Viewer could open.
+  calls in Activity and its proposed actions in the approval list, can read
+  which memories a session used, and can follow a running session's live
+  stream, chat included, if they know its id. What a Viewer can open is
+  unchanged; tests now hold the sidebar, the page guard, these API answers and
+  the session content a Viewer reads to it. Before, the Auth guide said
+  Viewers could read sessions and the People guide didn't say what a Viewer
+  could open.
 
 ## [1.1.1] - 2026-10-10
 

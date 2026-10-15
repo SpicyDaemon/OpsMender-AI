@@ -33,13 +33,17 @@ Paging pages, Approvals, Memories, Orchestration, Reliability, Analytics,
 Reports, Models, MCP Servers, MCP Skills, People, Integrations and Settings.
 
 Through the API a Viewer also reads an incident's paging panel, chain,
-postmortem and merged incidents, and the lists of Escalation Chains, Rosters,
+postmortem, merged incidents and integration links (the commits, pull requests
+and merge requests linked to it), and the lists of Escalation Chains, Rosters,
 teams, services, priority rules, memories, SLA targets and SLOs, Maintenance
-Windows, audit runs and findings, approval requests, skills, MCP servers and
-model configs. Incident timelines and comments, reports, analytics, an
-Escalation Chain's calendar, orchestration, the user list, settings,
+Windows, audit runs, findings and schedules, approval requests, skills, MCP
+servers and model configs, the setup checklist, and the provider model list
+(model discovery with the server's own settings; only admins can send
+connection settings). Incident timelines and comments, reports, analytics, an
+Escalation Chain's calendar, orchestration, the user list, other settings,
 integrations, connectors, intake tokens, API tokens and retention answer 403
-to a Viewer.
+to a Viewer. A Viewer doesn't read incident comments, but when someone
+@mentions them in one, their Inbox notice shows its first 200 characters.
 
 AI sessions are only partly closed to a Viewer. They can't list or open a
 session or read its chat history: `GET /sessions`, `GET /sessions/{id}`,

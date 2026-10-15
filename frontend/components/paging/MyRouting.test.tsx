@@ -327,6 +327,19 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
   it("shows the reason a save was refused as text", async () => {
     // The real API client reads the 422 list FastAPI sends for a bad body.
     const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+    // The client reads its token from localStorage; give it a working one, as
+    // lib/api.test.ts does (Node 25's own localStorage global has no methods
+    // without --localstorage-file and hides jsdom's).
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({

@@ -323,9 +323,26 @@ async def test_viewer_api_reads_match_o07(client):
         item["tool_parameters"]["entity_id"] for item in activity.json()["items"]
     }
 
+    # The Viewer's own Inbox, with a notice addressed to them.
+    from backend.api.deps import get_current_session_factory
+    from backend.notifications import CATEGORY_INCIDENT, emit_notification
+
+    me = (await client.get("/auth/me", headers=h["viewer"])).json()
+    async with get_current_session_factory()() as db:
+        notice = await emit_notification(
+            db,
+            uuid.UUID(me["primary_org_id"]),
+            uuid.UUID(me["id"]),
+            event_type="incident.assigned",
+            category=CATEGORY_INCIDENT,
+            title="Scope notice",
+            incident_id=uuid.UUID(incident_id),
+        )
+        await db.commit()
+    assert notice is not None
     inbox = await client.get("/notifications", headers=h["viewer"])
     assert inbox.status_code == 200, inbox.text
-    assert isinstance(inbox.json()["items"], list)
+    assert str(notice.id) in {item["id"] for item in inbox.json()["items"]}
 
     # Reads O-07 keeps for admins and operators.
     for path in (

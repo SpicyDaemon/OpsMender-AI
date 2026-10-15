@@ -365,12 +365,14 @@ async def test_viewer_session_content_matches_o07(client):
 
     A Viewer can't open a session or the orchestration view (403, each 200
     for an operator, so the refusal comes from the role), but reads the
-    session's tool calls in Activity, its proposed actions in the approval
+    session's tool calls in Activity (the start row with its parameters, the
+    end row with its result), its proposed actions in the approval
     list and the memories it used.
     """
     from datetime import datetime, timedelta, timezone
 
     from backend.api.deps import get_current_session_factory
+    from backend.audit.logger import AuditEntryType
     from backend.db.models import ApprovalRequest, AuditEntry, Session
 
     h = await _headers(client)
@@ -390,15 +392,22 @@ async def test_viewer_session_content_matches_o07(client):
         )
         db.add(session)
         await db.flush()
-        tool_call = AuditEntry(
+        started = AuditEntry(
             org_id=org_id,
             session_id=session.id,
             tier=1,
-            entry_type="tool_call",
+            entry_type=AuditEntryType.TOOL_CALL_START.value,
             tool_name="kubectl_get_pods",
             tool_parameters={"namespace": "checkout"},
+        )
+        ended = AuditEntry(
+            org_id=org_id,
+            session_id=session.id,
+            tier=1,
+            entry_type=AuditEntryType.TOOL_CALL_END.value,
+            tool_name="kubectl_get_pods",
             result={"pods": 3},
-            permitted=True,
+            duration_ms=120,
         )
         approval = ApprovalRequest(
             org_id=org_id,
@@ -408,9 +417,10 @@ async def test_viewer_session_content_matches_o07(client):
             status="pending",
             expires_at=now + timedelta(minutes=30),
         )
-        db.add_all([tool_call, approval])
+        db.add_all([started, ended, approval])
         await db.commit()
-        session_id, tool_call_id, approval_id = session.id, tool_call.id, approval.id
+        session_id, approval_id = session.id, approval.id
+        started_id, ended_id = started.id, ended.id
 
     for path in (f"/sessions/{session_id}", "/sessions/orchestration"):
         refused = await client.get(path, headers=h["viewer"])
@@ -419,10 +429,12 @@ async def test_viewer_session_content_matches_o07(client):
         assert allowed.status_code == 200, (path, allowed.text)
 
     activity = await client.get(
-        "/audit", headers=h["viewer"], params={"entry_type": "tool_call"}
+        "/audit", headers=h["viewer"], params={"session_id": str(session_id)}
     )
     assert activity.status_code == 200, activity.text
-    assert str(tool_call_id) in {item["id"] for item in activity.json()["items"]}
+    rows = {item["id"]: item for item in activity.json()["items"]}
+    assert rows[str(started_id)]["tool_parameters"] == {"namespace": "checkout"}
+    assert rows[str(ended_id)]["result"] == {"pods": 3}
 
     approvals = await client.get("/approvals", headers=h["viewer"])
     assert approvals.status_code == 200, approvals.text

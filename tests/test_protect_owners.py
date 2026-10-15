@@ -4,7 +4,8 @@ An active owner (P0 to P3) is replaced only by a confirmed takeover, an
 eligible force take with a reason, or an operator of the handling team
 assigning another member of that team with a note and a notice to the
 previous owner. Admins may assign anyone, with the same note. Only the owner
-or an admin releases.
+or an admin releases. M1-50 (O-19): an assignment whose owner changed after
+it was checked is refused with 409 and writes nothing.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from sqlalchemy import select
 from backend.db.models import IncidentComment, IncidentPage, InAppNotification
 from backend.db.repos import (
     EscalationChainRepo,
+    IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
     ServiceEscalationChainRepo,
@@ -31,6 +33,7 @@ from tests.test_ownership_lifecycle import (
     _chain,
     _headers,
     _owner,
+    _run,
     _slack,
     _user,
     app as _app_fixture,
@@ -372,3 +375,264 @@ async def test_slack_on_an_owned_p2_incident_points_to_force_take(world):
     assert take.startswith("*owner protection* is owned by lc-l2, and without")
     assert take.endswith("use Force take in OpsMender with a reason.")
     assert await _snapshot(world, incident_id) == before
+
+
+# M1-50 (N-01, O-19): the owner changed between an assignment's check and its
+# write.
+
+TAKEN_BY_LEVEL3 = (
+    "lc-l3 owns this incident. Ask them to release it, or use Force take with a reason."
+)
+
+
+async def _assignments(
+    w: World, incident_id: uuid.UUID
+) -> list[tuple[uuid.UUID, bool]]:
+    """Every assignment row of the incident as (owner, still active)."""
+    async with w.app.state.session_factory() as db:
+        rows = await IncidentAssignmentRepo.list_for_incident(
+            db, TEST_ORG_ID, incident_id
+        )
+        return sorted(
+            ((row.assigned_to, row.released_at is None) for row in rows), key=str
+        )
+
+
+def _after_the_check(
+    monkeypatch, w: World, raced: uuid.UUID, change, result, **kwargs
+) -> None:
+    """Run ``change`` on ``raced`` in its own session, and commit it, right
+    after an assignment of ``raced`` is authorized and before that assignment
+    is written, as a request on another connection can."""
+    from backend.api.routes import incidents as incident_routes
+
+    authorize = incident_routes._authorize_assignment
+
+    async def authorize_then_change(db, org_id, incident, *args, **kw):
+        checked = await authorize(db, org_id, incident, *args, **kw)
+        if incident.id == raced:
+            assert await _run(w.app, change, incident_id=raced, **kwargs) == result
+        return checked
+
+    monkeypatch.setattr(incident_routes, "_authorize_assignment", authorize_then_change)
+
+
+async def test_acknowledge_replaces_only_the_owner_the_caller_checked(world):
+    owned = await _team_incident(world, paging=False)
+    await _owned_by_level2(world, owned)
+    unowned = await _team_incident(world, paging=False)
+
+    async def assign_level3(incident_id: uuid.UUID, expected) -> str:
+        async with world.app.state.session_factory() as db:
+            outcome = await _esc.acknowledge(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident_id,
+                assignee_id=world.level3,
+                actor_id=world.admin_id,
+                assigned_by="manual",
+                replace_owner=True,
+                note=NOTE,
+                expected_owner_id=expected,
+            )
+            await db.commit()
+        return outcome.status
+
+    # Someone took it after the check, someone replaced the checked owner, and
+    # the checked owner released it: each is refused and nothing changes.
+    for incident_id, expected in (
+        (owned, None),
+        (owned, world.level1),
+        (unowned, world.level2),
+    ):
+        before = (
+            await _snapshot(world, incident_id),
+            await _assignments(world, incident_id),
+        )
+        assert await assign_level3(incident_id, expected) == "owner_changed"
+        assert (
+            await _snapshot(world, incident_id),
+            await _assignments(world, incident_id),
+        ) == before
+
+    # The owner it was checked against is still replaced.
+    assert await assign_level3(owned, world.level2) == "acknowledged"
+    assert await _assignments(world, owned) == sorted(
+        [(world.level2, False), (world.level3, True)], key=str
+    )
+
+
+async def test_an_assignment_never_replaces_someone_who_took_it_after_the_check(
+    world, monkeypatch
+):
+    incident_id = await _team_incident(world, paging=False)
+    _after_the_check(
+        monkeypatch,
+        world,
+        incident_id,
+        _esc.handle_takeover_request,
+        "assigned",
+        requester_id=world.level3,
+    )
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/assign",
+        json={"user_id": str(world.level2)},
+        headers=world.admin,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == TAKEN_BY_LEVEL3
+    # The taker keeps it: no second row, no note of an assignment, no notice.
+    assert await _assignments(world, incident_id) == [(world.level3, True)]
+    assert await _snapshot(world, incident_id) == {
+        "owner": world.level3,
+        "chain": None,
+        "comments": ["Acknowledged the incident (via take)."],
+        "pages": [],
+        "notices": [],
+    }
+
+
+async def test_an_assignment_is_refused_when_the_checked_owner_released_it(
+    world, monkeypatch
+):
+    incident_id = await _team_incident(world, paging=False)
+    await _owned_by_level2(world, incident_id)
+    _after_the_check(
+        monkeypatch,
+        world,
+        incident_id,
+        _esc.release_ownership,
+        True,
+        actor_id=world.level2,
+    )
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/assign",
+        json={"user_id": str(world.level3), "note": NOTE},
+        headers=world.admin,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == (
+        "The owner changed while you were assigning this incident. Reload it and "
+        "try again."
+    )
+    # Only the release happened: no new owner, no replacement note, no notice.
+    assert await _assignments(world, incident_id) == [(world.level2, False)]
+    assert await _snapshot(world, incident_id) == {
+        "owner": None,
+        "chain": None,
+        "comments": [
+            "Acknowledged the incident (via web_ui).",
+            "Released the incident.",
+        ],
+        "pages": [],
+        "notices": [],
+    }
+
+
+@pytest.mark.parametrize("action", ["acknowledge", "reassign"])
+async def test_bulk_refuses_only_the_incident_taken_after_its_check(
+    world, monkeypatch, action
+):
+    raced = await _team_incident(world, paging=False)
+    calm = await _team_incident(world, paging=False)
+    _after_the_check(
+        monkeypatch,
+        world,
+        raced,
+        _esc.handle_takeover_request,
+        "assigned",
+        requester_id=world.level3,
+    )
+    resp = await world.client.post(
+        "/incidents/bulk",
+        json={
+            "action": action,
+            # The raced incident goes first, so its Take commits before this
+            # request has written anything (SQLite allows one writer).
+            "incident_ids": [str(raced), str(calm)],
+            "user_id": str(world.level2),
+        },
+        headers=world.admin,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["items"] == [
+        {"incident_id": str(raced), "ok": False, "error": TAKEN_BY_LEVEL3},
+        {"incident_id": str(calm), "ok": True, "error": None},
+    ]
+    assert await _assignments(world, raced) == [(world.level3, True)]
+    assert await _snapshot(world, raced) == {
+        "owner": world.level3,
+        "chain": None,
+        "comments": ["Acknowledged the incident (via take)."],
+        "pages": [],
+        "notices": [],
+    }
+    assert await _owner(world.app, calm) == world.level2
+
+
+CLOSED_MEANWHILE = (
+    "The incident was resolved or merged while you were assigning it. "
+    "Reload it to see where it stands."
+)
+
+
+async def test_an_assignment_is_refused_when_the_incident_closed_after_the_check(
+    world, monkeypatch
+):
+    incident_id = await _team_incident(world, paging=False)
+    before = await _snapshot(world, incident_id)
+    _after_the_check(
+        monkeypatch,
+        world,
+        incident_id,
+        IncidentRepo.update_status,
+        None,
+        status="resolved",
+    )
+    resp = await world.client.post(
+        f"/incidents/{incident_id}/assign",
+        json={"user_id": str(world.level2)},
+        headers=world.admin,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == CLOSED_MEANWHILE
+    # Only the resolution happened: no owner, no row, no notice.
+    assert await _assignments(world, incident_id) == []
+    assert await _snapshot(world, incident_id) == before
+    async with world.app.state.session_factory() as db:
+        incident = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident_id)
+        assert incident.status == "resolved"
+
+
+@pytest.mark.parametrize("action", ["acknowledge", "reassign"])
+async def test_bulk_refuses_only_the_incident_closed_after_its_check(
+    world, monkeypatch, action
+):
+    raced = await _team_incident(world, paging=False)
+    calm = await _team_incident(world, paging=False)
+    before = await _snapshot(world, raced)
+    _after_the_check(
+        monkeypatch,
+        world,
+        raced,
+        IncidentRepo.update_status,
+        None,
+        status="resolved",
+    )
+    resp = await world.client.post(
+        "/incidents/bulk",
+        json={
+            "action": action,
+            "incident_ids": [str(raced), str(calm)],
+            "user_id": str(world.level2),
+        },
+        headers=world.admin,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["items"] == [
+        {"incident_id": str(raced), "ok": False, "error": CLOSED_MEANWHILE},
+        {"incident_id": str(calm), "ok": True, "error": None},
+    ]
+    assert await _assignments(world, raced) == []
+    assert await _snapshot(world, raced) == before
+    assert await _owner(world.app, calm) == world.level2

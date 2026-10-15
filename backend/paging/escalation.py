@@ -946,9 +946,14 @@ async def escalate_now(
     return result
 
 
+# Default of ``acknowledge(expected_owner_id=...)``: the caller checked no
+# owner, so ``None`` can mean "nobody owned it when the caller checked".
+_UNSET = object()
+
+
 @dataclasses.dataclass(slots=True)
 class AckOutcome:
-    # acknowledged | refreshed | owned_by_other | closed
+    # acknowledged | refreshed | owned_by_other | owner_changed | closed
     status: str
     # True when a live chain is now held by the assignee's acknowledgement lock.
     chain_locked: bool = False
@@ -966,6 +971,7 @@ async def acknowledge(
     replace_owner: bool = False,
     note: str | None = None,
     at: datetime | None = None,
+    expected_owner_id: uuid.UUID | None | object = _UNSET,
 ) -> AckOutcome:
     """Make ``assignee_id`` the owner and hold the chain under their lock.
 
@@ -977,6 +983,10 @@ async def acknowledge(
 
     Someone holding a live acknowledgement lock keeps it unless
     ``replace_owner`` is set (Take, a confirmed takeover, admin force).
+    ``expected_owner_id`` is the owner the caller authorized the change
+    against (None for nobody). With ``replace_owner``, if the owner found
+    under the lock differs (someone took it, replaced or released them),
+    nothing is written and the outcome is ``owner_changed`` (O-19).
     Resolved and merged incidents are never re-owned.
     """
 
@@ -994,6 +1004,17 @@ async def acknowledge(
         return AckOutcome("closed")
 
     active = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
+    owner_id = active.assigned_to if active is not None else None
+    if (
+        replace_owner
+        and expected_owner_id is not _UNSET
+        and owner_id != expected_owner_id
+    ):
+        # The owner changed after the caller checked it (O-19). Replacing
+        # whoever holds it now would skip the note and notice they are owed,
+        # so write nothing. A plain acknowledgement never replaces anyone
+        # (owned_by_other below), so it needs no such check.
+        return AckOutcome("owner_changed")
     # Any active owner holds the incident (P0 to P3), not only one under a
     # live acknowledged chain. Replacing them takes consent, eligible force or
     # an explicit reassignment with a note.

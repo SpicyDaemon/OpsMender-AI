@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   app asked for the change, and the API served that session in full,
   including creating API tokens.
 
+### Fixed
+
+- Assigning an incident to someone else, and bulk reassign or bulk
+  acknowledge for someone else, now refuse the change when the incident's
+  owner changed after the request was checked, naming the current owner if
+  there is one (409, or that incident's failure in a bulk action); nothing
+  is written. Before, an assignment that arrived a moment after someone took
+  the incident replaced them without a note or an Inbox notice. An
+  assignment that arrives as the incident is resolved or merged is refused
+  the same way; before, it answered a server error or reported success.
+
 ## [1.1.1] - 2026-10-10
 
 ### Security

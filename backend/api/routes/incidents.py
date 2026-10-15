@@ -1885,7 +1885,25 @@ async def _owner_holds_detail(
     )
 
 
+async def _owner_changed_detail(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID
+) -> str:
+    """Why an assignment was refused when the owner changed after its check
+    (O-19): who holds the incident now, or that nobody does."""
+    if await IncidentAssignmentRepo.get_active(db, org_id, incident_id) is None:
+        return (
+            "The owner changed while you were assigning this incident. "
+            "Reload it and try again."
+        )
+    return await _owner_holds_detail(db, org_id, incident_id)
+
+
 _CLOSED_STATUSES = ("resolved", "merged")
+
+_CLOSED_MEANWHILE = (
+    "The incident was resolved or merged while you were assigning it. "
+    "Reload it to see where it stands."
+)
 
 
 def _ensure_open(incident) -> None:
@@ -2196,7 +2214,8 @@ async def assign_incident(
     # Taking or assigning ownership acknowledges the incident: paging stops
     # and the owner holds the D-021 lock (KI-021). Taking it for yourself
     # while someone else holds that lock goes through the takeover request
-    # instead (S-112); assigning someone else is an explicit reassignment.
+    # instead (S-112); assigning someone else is an explicit reassignment,
+    # and it replaces only the owner checked above (O-19).
     outcome = await _esc.acknowledge(
         db,
         org_id,
@@ -2207,12 +2226,25 @@ async def assign_incident(
         assigned_by="self_ack" if target_user_id == user.id else "manual",
         replace_owner=target_user_id != user.id,
         note=note,
+        expected_owner_id=active.assigned_to if active else None,
     )
     if outcome.status == "owned_by_other":
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=await _owner_holds_detail(db, org_id, incident_id),
+        )
+    if outcome.status == "owner_changed":
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=await _owner_changed_detail(db, org_id, incident_id),
+        )
+    if outcome.status == "closed":
+        # Resolved or merged after the open check above: nothing was written.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_CLOSED_MEANWHILE
         )
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     assert assignment is not None
@@ -2475,6 +2507,7 @@ async def bulk_incident_action(
                     assigned_by="self_ack" if target == user.id else "manual",
                     replace_owner=target != user.id,
                     note=note,
+                    expected_owner_id=active.assigned_to if active else None,
                 )
                 if outcome.status == "owned_by_other":
                     items.append(
@@ -2482,6 +2515,25 @@ async def bulk_incident_action(
                             incident_id=incident_id,
                             ok=False,
                             error=await _owner_holds_detail(db, org_id, incident_id),
+                        )
+                    )
+                    failed += 1
+                    continue
+                if outcome.status == "owner_changed":
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id,
+                            ok=False,
+                            error=await _owner_changed_detail(db, org_id, incident_id),
+                        )
+                    )
+                    failed += 1
+                    continue
+                if outcome.status == "closed":
+                    # Resolved or merged after the open check: nothing written.
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
                         )
                     )
                     failed += 1
@@ -2520,7 +2572,7 @@ async def bulk_incident_action(
                     if replacing
                     else None
                 )
-                await _esc.acknowledge(
+                outcome = await _esc.acknowledge(
                     db,
                     org_id,
                     incident_id=incident_id,
@@ -2530,7 +2582,27 @@ async def bulk_incident_action(
                     assigned_by="manual",
                     replace_owner=True,
                     note=note,
+                    expected_owner_id=active.assigned_to if active else None,
                 )
+                if outcome.status == "owner_changed":
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id,
+                            ok=False,
+                            error=await _owner_changed_detail(db, org_id, incident_id),
+                        )
+                    )
+                    failed += 1
+                    continue
+                if outcome.status == "closed":
+                    # Resolved or merged after the open check: nothing written.
+                    items.append(
+                        IncidentBulkActionResult(
+                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
+                        )
+                    )
+                    failed += 1
+                    continue
                 if replacing:
                     await _notify_replaced_owner(
                         db, org_id, incident, active.assigned_to, user, body.note

@@ -63,6 +63,8 @@ Supported providers as of Sprint 62:
 
 Per Sprint 62 design, OpsMender stores only the **environment variable name** for each provider's secret, never the raw value. Set the actual key in `.env` and reference it from the dashboard. Cloud providers use native credential discovery instead of long-lived pasted secrets: AWS Bedrock uses the AWS credential chain and GCP Vertex AI uses ADC.
 
+The key field takes the variable's name: letters, digits and underscores, not starting with a digit. A value shaped like a key is refused and never stored. Only admins can send connection settings (a base URL, a key variable, an API version, a region, a profile, a project or a location) to model discovery (`GET /models`); every other role, and their API tokens, can list models only with the settings the server already has.
+
 To add a model config:
 
 1. Click **New model config**.

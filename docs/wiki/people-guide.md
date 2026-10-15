@@ -24,19 +24,36 @@ If you are wiring identity providers, also read the [Administrator Guide](admin-
 
 In the web app a Viewer sees the Dashboard, the incident list and each
 incident's summary (title, status, severity, description, current owner,
-source and times), the On Call Schedule, Activity and their Inbox (the bell in
-the top bar). The Paging pages, Memories, Reports, Analytics, Reliability,
-Orchestration, Approvals and the admin pages show Access denied. Through the
-API a Viewer also reads an incident's paging panel, chain, postmortem and
-merged incidents, and the lists of Escalation Chains, Rosters, teams,
-services, priority rules, memories, SLA targets and SLOs, Maintenance Windows,
-audits, approvals, skills, MCP servers and model configs. Incident timelines
-and comments, reports, analytics, AI sessions, orchestration, settings,
-integrations, connectors, intake tokens, API tokens and retention stay with
-admins and operators; a Viewer can't read them. A Viewer never receives
-credential values, environment variable values, arguments or the query part
-of URLs (MCP servers, model configs, connectors, SLA probes). Only admins and
-operators can export Activity.
+source and times), the On Call Schedule, Activity, their Inbox (the bell in
+the top bar) and their own **My profile** and Inbox **Preferences** pages. A
+postmortem opens read-only for a Viewer who has its link. An AI session's
+page, which Activity links to, opens but says "Session not found", because the
+API refuses the session to a Viewer. Every other page shows Access denied: the
+Paging pages, Approvals, Memories, Orchestration, Reliability, Analytics,
+Reports, Models, MCP Servers, MCP Skills, People, Integrations and Settings.
+
+Through the API a Viewer also reads an incident's paging panel, chain,
+postmortem and merged incidents, and the lists of Escalation Chains, Rosters,
+teams, services, priority rules, memories, SLA targets and SLOs, Maintenance
+Windows, audit runs and findings, approval requests, skills, MCP servers and
+model configs. Incident timelines and comments, reports, analytics, an
+Escalation Chain's calendar, orchestration, the user list, settings,
+integrations, connectors, intake tokens, API tokens and retention answer 403
+to a Viewer.
+
+AI sessions are only partly closed to a Viewer. They can't list or open a
+session or read its chat history: `GET /sessions`, `GET /sessions/{id}`,
+`GET /sessions/{id}/messages` and an incident's session list answer 403. But
+Activity shows them each session's tool calls with their parameters and
+results, `GET /sessions/{id}/memories-used` shows them the memories a session
+recalled, and with their web sign-in (not an API token) they can connect to a
+running session's live stream, `/sessions/{id}/stream`, if they know its id,
+which Activity shows. The web app doesn't display the stream to them, but it
+carries the session's chat, tool calls and approval requests as they happen.
+
+A Viewer never receives credential values, environment variable values,
+arguments or the query part of URLs (MCP servers, model configs, connectors,
+SLA probes). Only admins and operators can export Activity.
 
 ---
 

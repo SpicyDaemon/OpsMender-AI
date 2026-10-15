@@ -50,7 +50,7 @@ OpsMender ships three roles:
 |------|------------------|
 | **admin** | Everything: manage users + invites, change runtime config, configure MCP servers + skills, manage paging surfaces, view audit log, approve / reject Tier 1 actions, run incident sessions. |
 | **operator** | Run incident sessions, approve / reject Tier 1 actions, change runtime config, manage MCP/skills/paging surfaces. Cannot manage users / invites. |
-| **viewer** | Read-only access to incidents, sessions, audit log, and dashboards. Cannot create incidents, run sessions, or change config. Never sees credential values: probe URLs and model endpoints show without user names, passwords or query strings, and MCP servers show only their name, state and variable names. Can't export the Activity log (admins and operators can). |
+| **viewer** | Reads the Dashboard, the incident list and a summary of each incident (no timeline or comments), the On Call Schedule, Activity and their Inbox. Can't open AI sessions or the Paging, Memories, Reports and Analytics pages, though Activity shows each session's tool calls; [What a Viewer sees](people-guide.md#what-a-viewer-sees) has the full list, including what a Viewer reads through the API. Cannot create incidents, run sessions, or change config. Never sees credential values: probe URLs and model endpoints show without user names, passwords or query strings, and MCP servers show only their name, state and variable names. Can't export the Activity log (admins and operators can). |
 
 Role gating happens both in the UI (button visibility) and in the backend (`require_role()` dependency on every mutating route). The UI side is convenience; the backend side is the actual security boundary.
 

@@ -70,9 +70,10 @@ describe("Sidebar nav model", () => {
 
   it("viewer is limited to read-only surfaces", () => {
     // Exactly the O-07 set (narrowed by O-17), so a new entry fails here. No
-    // Approvals (acknowledge/resolve), admin or config pages, Paging, Memories,
-    // Reports or Analytics. Viewers read Activity; the export control is
-    // role-gated on the page. The Inbox is the top bar's bell, not an entry.
+    // Approvals (the Operator Approval queue for Tier 1 actions), admin or
+    // config pages, Paging, Memories, Reports or Analytics. Viewers read
+    // Activity; the export control is role-gated on the page. The Inbox is
+    // the top bar's bell, not an entry.
     expect(visibleHrefs("viewer").sort()).toEqual([
       "/dashboard",
       "/dashboard/activity",
@@ -154,13 +155,20 @@ describe("requiredRolesForPath (route guard)", () => {
       "/dashboard/orchestration",
       "/dashboard/approvals",
     ];
+    // Also open: the Viewer's own profile and Inbox preferences, and the
+    // postmortem page, which the server keeps read-only for them. The AI
+    // session page passes this check too, then says Session not found
+    // because the API refuses the session to a Viewer.
     const open = [
       "/dashboard",
       "/dashboard/incidents",
       "/dashboard/incidents/detail",
+      "/dashboard/incidents/postmortem",
       "/dashboard/on-call-schedule",
       "/dashboard/activity",
       "/dashboard/notifications",
+      "/dashboard/notifications/preferences",
+      "/dashboard/settings/profile",
     ];
     expect(denied.filter(viewerCanOpen)).toEqual([]);
     expect(open.filter((path) => !viewerCanOpen(path))).toEqual([]);

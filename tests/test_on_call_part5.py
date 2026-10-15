@@ -682,6 +682,44 @@ async def test_r08_saving_my_routing_keeps_inbox_quiet_hours_and_mutes(
     }
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "x",
+        {"enabled": "sometimes"},
+        {"enabled": True, "start": 5, "end": "07:00"},
+        {"enabled": True, "start": "25:00", "end": "07:00"},
+    ],
+    ids=["not-a-mapping", "enabled-not-bool", "start-not-text", "start-out-of-range"],
+)
+async def test_r08_my_routing_refuses_malformed_inbox_quiet_hours(
+    app, client, auth_headers, bad
+):
+    """Inbox quiet hours live in routing.in_app now (M1-59); My Routing's save
+    may carry them, so a malformed value is refused there instead of being
+    stored and failing every later read of the Inbox preferences."""
+    inbox = await client.put(
+        "/notifications/preferences",
+        json={"muted_categories": ["incident"], "quiet_hours": INBOX_QUIET},
+        headers=auth_headers,
+    )
+    assert inbox.status_code == 200, inbox.text
+    refused = await client.put(
+        "/users/me/notification-preferences",
+        json={"routing": {**UI_ROUTING, "in_app": {"quiet_hours": bad}}},
+        headers=auth_headers,
+    )
+    assert refused.status_code == 422, refused.text
+    prefs = await client.get("/notifications/preferences", headers=auth_headers)
+    assert prefs.status_code == 200, prefs.text
+    assert prefs.json()["quiet_hours"] == INBOX_QUIET
+    _, pref = await _admin_prefs(app)
+    assert pref.routing["in_app"] == {
+        "muted_categories": ["incident"],
+        "quiet_hours": INBOX_QUIET,
+    }
+
+
 def test_r04_before_start_date_documented_as_position_zero():
     ctx = _ctx("18:00", "09:00", anchor=date(2026, 12, 1))
     assert on_call_at(ctx, datetime(2026, 9, 22, 3, 0, tzinfo=timezone.utc)) == A

@@ -163,7 +163,8 @@ function PersonDetail() {
 
       <SummaryCard user={target} />
 
-      <RoleEditor user={target} onSaved={reload} disabled={isSelf} />
+      {/* Keyed by the saved role: a saved change starts the editor fresh. */}
+      <RoleEditor key={target.role} user={target} onSaved={reload} disabled={isSelf} />
 
       <ActiveToggle user={target} onSaved={reload} disabled={isSelf} />
 
@@ -311,10 +312,6 @@ function RoleEditor({
   const toast = useToast();
   const [role, setRole] = useState<UserResponse["role"]>(user.role);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setRole(user.role);
-  }, [user.role]);
 
   const save = useCallback(async () => {
     // Viewers can't be paged: say which Rosters they leave first (O-03).

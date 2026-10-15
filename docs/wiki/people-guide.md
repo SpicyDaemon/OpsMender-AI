@@ -45,15 +45,18 @@ AI sessions are only partly closed to a Viewer. They can't list or open a
 session or read its chat history: `GET /sessions`, `GET /sessions/{id}`,
 `GET /sessions/{id}/messages` and an incident's session list answer 403. But
 Activity shows them each session's tool calls with their parameters and
-results, `GET /sessions/{id}/memories-used` shows them the memories a session
-recalled, and with their web sign-in (not an API token) they can connect to a
+results, the approval request list (`GET /approvals`) shows each session's
+proposed actions with the AI's reasons, `GET /sessions/{id}/memories-used`
+shows them the memories a session recalled, and with their web sign-in (not
+an API token) they can connect to a
 running session's live stream, `/sessions/{id}/stream`, if they know its id,
 which Activity shows. The web app doesn't display the stream to them, but it
 carries the session's chat, tool calls and approval requests as they happen.
 
-A Viewer never receives credential values, environment variable values,
-arguments or the query part of URLs (MCP servers, model configs, connectors,
-SLA probes). Only admins and operators can export Activity.
+Configuration reads never give a Viewer credential values, environment
+variable values, arguments or the query part of URLs (MCP servers, model
+configs, connectors, SLA probes). Only admins and operators can export
+Activity.
 
 ---
 

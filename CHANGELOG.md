@@ -71,7 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error instead of a refusal. An identity provider set to sign id tokens with
   HS256 (the client secret), or with an RSASSA-PSS algorithm (PS256 and up)
   that the token library cannot verify, is now refused with a clear message;
-  set it to RS256 or ES256.
+  set it to RS256 or ES256. Both checks also try only the published keys
+  that can verify the token, those with its key id first, so a key set that
+  lists an EC key before the RSA key, or holds a key that cannot be used, no
+  longer refuses a valid token.
 
 ### Fixed
 

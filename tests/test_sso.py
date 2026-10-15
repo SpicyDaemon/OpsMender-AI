@@ -410,7 +410,9 @@ def idp_keys():
     }
 
 
-def _serve_idp(monkeypatch, *, listed: list[str] | None, published: dict) -> dict:
+def _serve_idp(
+    monkeypatch, *, listed: list[str] | None, published: dict | list[dict]
+) -> dict:
     """Serve the provider's discovery document, token endpoint and key set
     from memory. The token endpoint answers with ``issued["id_token"]``."""
     from backend.auth import oidc as oidc_mod
@@ -431,7 +433,8 @@ def _serve_idp(monkeypatch, *, listed: list[str] | None, published: dict) -> dic
         if request.url.path == "/oauth2/token":
             return Response(200, json={"id_token": issued["id_token"]})
         if request.url.path == "/jwks":
-            return Response(200, json={"keys": [published]})
+            keys = published if isinstance(published, list) else [published]
+            return Response(200, json={"keys": keys})
         return Response(404)
 
     transport = MockTransport(handler)
@@ -660,6 +663,57 @@ class TestIdTokenAlgorithms:
         )
         async with app.state.session_factory() as db:
             assert await UserRepo.get_by_email(db, "mismatch@acme.com") is None
+
+    async def test_a_key_set_that_mixes_key_types_still_signs_in(
+        self, client, app, auth_headers, monkeypatch, idp_keys
+    ):
+        """A provider that publishes an EC key before its RSA key: an RS256 id
+        token still signs in, because only the keys that can verify it are
+        tried (python-jose alone stops at the first key that does not fit)."""
+        from backend.db.repos import UserRepo
+
+        saved = await client.put(
+            f"/organizations/{TEST_ORG_ID}/sso",
+            json={
+                "provider": "oidc",
+                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
+                "client_id": "opsmender-app",
+                "client_secret": "x",
+                "default_role": "operator",
+            },
+            headers=auth_headers,
+        )
+        assert saved.status_code == 200, saved.text
+        issued = _serve_idp(
+            monkeypatch,
+            listed=None,
+            published=[idp_keys["ES256"][1], idp_keys["RS256"][1]],
+        )
+        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
+        query = parse_qs(urlparse(login.headers["location"]).query)
+        now = int(time.time())
+        issued["id_token"] = jose_jwt.encode(
+            {
+                "iss": IDP_ISSUER,
+                "aud": "opsmender-app",
+                "sub": "mixed@acme.com",
+                "email": "mixed@acme.com",
+                "nonce": query["nonce"][0],
+                "iat": now,
+                "exp": now + 300,
+            },
+            idp_keys["RS256"][0],
+            algorithm="RS256",
+        )
+        resp = await client.get(
+            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 302, resp.text
+        assert "/login#sso_token=" in resp.headers["location"]
+        async with app.state.session_factory() as db:
+            assert await UserRepo.get_by_email(db, "mixed@acme.com") is not None
 
 
 # ---------------------------------------------------------------------------

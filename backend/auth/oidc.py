@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from jose.exceptions import JWKError, JWTError
+from jose.exceptions import JWTError
 
 from backend.auth.jwt_decode import decode as decode_jwt
 
@@ -156,7 +156,7 @@ async def exchange_code(
             issuer=doc["issuer"],
             options={"verify_at_hash": False},
         )
-    except (JWTError, JWKError) as exc:
+    except JWTError as exc:
         raise OIDCError(f"id_token validation failed: {exc}") from exc
 
     if nonce is not None and claims.get("nonce") != nonce:

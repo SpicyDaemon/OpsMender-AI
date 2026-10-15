@@ -407,6 +407,37 @@ class TestTeamsActivityEndpoint:
 
         assert resp.status_code == 403
 
+    async def test_a_key_set_that_mixes_key_types_still_accepts_the_action(
+        self, client, app, signing_key, monkeypatch
+    ):
+        """M1-58: an RS256 token while the key set lists an EC key first; only
+        the keys that can verify it are tried, so the action goes through."""
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from jose import jwk
+
+        ec_public = (
+            jwk.construct(ec.generate_private_key(ec.SECP256R1()), "ES256")
+            .public_key()
+            .to_dict()
+        )
+
+        async def published_keys(**_kwargs):
+            return {"keys": [ec_public, _public_jwk(signing_key)]}
+
+        monkeypatch.setattr(bot_framework, "_fetch_jwks", published_keys)
+        connector = await _seed_teams_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id)
+        incident = await _seed_incident(app, title="mixed-keys")
+        body = _activity_payload(action=ACTION_ACK, incident_id=incident.id)
+
+        resp = await client.post(
+            "/bot/teams/activity",
+            json=body,
+            headers={"Authorization": f"Bearer {_sign_jwt(signing_key)}"},
+        )
+
+        assert resp.status_code == 200, resp.text
+
     async def test_ack_button_routes_through_engine(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)

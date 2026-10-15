@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
-from jose.exceptions import JWKError, JWTError
+from jose.exceptions import JWTError
 
 from backend.auth.jwt_decode import decode as decode_jwt
 
@@ -149,6 +149,6 @@ async def verify_bot_framework_token(
             issuer=issuer,
             options={"verify_at_hash": False},
         )
-    except (JWTError, JWKError) as exc:
+    except JWTError as exc:
         raise BotFrameworkAuthError(f"jwt: {exc}") from exc
     return claims

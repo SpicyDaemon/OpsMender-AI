@@ -62,6 +62,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `allow_generic: true` to run under its own tier policies again. Skill
   Studio's Generate from tools and AI assist now mark these names as generic
   and pre-set them to deny, as they already did for the older runner names.
+- OIDC sign-in and Teams actions now name the signature algorithms they
+  accept. An identity provider's id token must be signed with an asymmetric
+  algorithm that its discovery document lists (RS256 when it lists none), and
+  a Teams action with RS256, the algorithm Bot Framework signs with. Before,
+  both checks used whatever algorithm the token named (python-jose advisory
+  GHSA-3qf3-8w2g-rqmx), and a token naming HS256 or `none` caused a server
+  error instead of a refusal. An identity provider set to sign id tokens with
+  HS256 (the client secret) is now refused with a clear message; set it to
+  RS256.
 
 ### Fixed
 

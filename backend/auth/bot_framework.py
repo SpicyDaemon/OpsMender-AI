@@ -10,7 +10,8 @@ This module exposes one entry point :func:`verify_bot_framework_token`
 that:
 
 1. Fetches and caches the public JWKS.
-2. Decodes the bearer token with ``python-jose``.
+2. Decodes the bearer token with ``python-jose``, accepting RS256 only,
+   the algorithm Bot Framework signs with.
 3. Validates ``aud`` against the configured bot app id, ``iss`` against
    the documented Bot Framework issuer, and the standard expiry/nbf
    claims.
@@ -129,8 +130,8 @@ async def verify_bot_framework_token(
     ``expected_audience`` must match the bot's app id (the
     ``bot_app_id`` field on the Teams connector). Raises
     :class:`BotFrameworkAuthError` on any failure - including missing
-    header, malformed token, unknown signing key, audience/issuer
-    mismatch, or expiry.
+    header, malformed token, a signing algorithm other than RS256,
+    unknown signing key, audience/issuer mismatch, or expiry.
     """
 
     token = _extract_bearer(authorization)
@@ -143,6 +144,7 @@ async def verify_bot_framework_token(
         claims = decode_jwt(
             token,
             jwks,
+            algorithms=["RS256"],
             audience=expected_audience,
             issuer=issuer,
             options={"verify_at_hash": False},

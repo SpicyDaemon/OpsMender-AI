@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -74,12 +75,16 @@ def _sign_jwt(
     issuer: str = bot_framework.BOT_FRAMEWORK_ISSUER,
     kid: str = "test-kid",
     expires_in: int = 600,
+    algorithm: str = "RS256",
 ) -> str:
-    pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
+    # An RSA key signs through its PEM; a JWK (a symmetric key) signs as is.
+    key = private_key
+    if not isinstance(private_key, dict):
+        key = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
     now = int(time.time())
     claims = {
         "iss": issuer,
@@ -88,7 +93,7 @@ def _sign_jwt(
         "exp": now + expires_in,
         "appid": audience,
     }
-    return jose_jwt.encode(claims, pem, algorithm="RS256", headers={"kid": kid})
+    return jose_jwt.encode(claims, key, algorithm=algorithm, headers={"kid": kid})
 
 
 @pytest.fixture
@@ -330,6 +335,45 @@ class TestTeamsActivityEndpoint:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
+
+    @pytest.mark.parametrize("algorithm", ["RS384", "HS256"])
+    async def test_token_not_signed_with_rs256_is_refused(
+        self, client, app, signing_key, monkeypatch, algorithm
+    ):
+        """M1-58: Bot Framework signs with RS256, so no other algorithm is
+        accepted. The RS384 token is signed by the published RSA key and the
+        HS256 token by a symmetric key the key set holds, so both signatures
+        are valid; the algorithm alone refuses them."""
+        key = signing_key
+        if algorithm == "HS256":
+            key = {"kty": "oct", "k": secrets.token_urlsafe(32)}
+
+            async def published_keys(**_kwargs):
+                return {"keys": [key]}
+
+            monkeypatch.setattr(bot_framework, "_fetch_jwks", published_keys)
+        connector = await _seed_teams_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id)
+        incident = await _seed_incident(app)
+        body = _activity_payload(action=ACTION_RESOLVE, incident_id=incident.id)
+
+        resp = await client.post(
+            "/bot/teams/activity",
+            json=body,
+            headers={"Authorization": f"Bearer {_sign_jwt(key, algorithm=algorithm)}"},
+        )
+
+        assert resp.status_code == 403
+        assert resp.json() == {"error": "unauthorized"}
+        async with app.state.session_factory() as db:
+            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
+            assert reloaded.status == "open"
+            invocation = await NativeActionInvocationRepo.get_by_key(
+                db, TEST_ORG_ID, connector.id, "activity-1"
+            )
+            assert invocation is None
+            stored = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
+            assert stored.callback_status == "not_configured"
 
     async def test_ack_button_routes_through_engine(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)

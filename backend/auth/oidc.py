@@ -30,6 +30,20 @@ _DISCOVERY_TTL_SECONDS = 600
 _discovery_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _jwks_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
+# An identity provider signs id tokens with a private key, so only these
+# asymmetric algorithms are ever accepted (M1-58).
+_ASYMMETRIC_ALGORITHMS = (
+    "RS256",
+    "RS384",
+    "RS512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256",
+    "ES384",
+    "ES512",
+)
+
 
 @dataclass
 class OIDCClientConfig:
@@ -73,6 +87,15 @@ async def _get_jwks(jwks_uri: str) -> dict[str, Any]:
     keys = resp.json()
     _jwks_cache[jwks_uri] = (now + _DISCOVERY_TTL_SECONDS, keys)
     return keys
+
+
+def _id_token_algorithms(doc: dict[str, Any]) -> list[str]:
+    """The algorithms an id token may be signed with: the asymmetric ones the
+    discovery document lists, or RS256 when it lists none of them."""
+    listed = doc.get("id_token_signing_alg_values_supported")
+    if not isinstance(listed, list):
+        listed = []
+    return [alg for alg in _ASYMMETRIC_ALGORITHMS if alg in listed] or ["RS256"]
 
 
 async def build_authorize_url(
@@ -129,6 +152,7 @@ async def exchange_code(
         claims = decode_jwt(
             id_token,
             jwks,
+            algorithms=_id_token_algorithms(doc),
             audience=config.client_id,
             issuer=doc["issuer"],
             options={"verify_at_hash": False},

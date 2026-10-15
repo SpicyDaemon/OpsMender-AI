@@ -553,6 +553,65 @@ class TestIdTokenAlgorithms:
         async with app.state.session_factory() as db:
             assert await UserRepo.get_by_email(db, "mallory@acme.com") is None
 
+    async def test_id_token_signed_with_rsassa_pss_is_refused_cleanly(
+        self, client, app, auth_headers, monkeypatch, idp_keys
+    ):
+        """python-jose cannot verify PS256, so even a provider that lists it gets
+        a clean refusal (400), never an unhandled error."""
+        import base64
+
+        from backend.db.repos import UserRepo
+
+        def b64(data: bytes) -> str:
+            return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+        saved = await client.put(
+            f"/organizations/{TEST_ORG_ID}/sso",
+            json={
+                "provider": "oidc",
+                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
+                "client_id": "opsmender-app",
+                "client_secret": "x",
+                "default_role": "operator",
+            },
+            headers=auth_headers,
+        )
+        assert saved.status_code == 200, saved.text
+        issued = _serve_idp(
+            monkeypatch, listed=["PS256", "RS256"], published=idp_keys["RS256"][1]
+        )
+        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
+        query = parse_qs(urlparse(login.headers["location"]).query)
+        now = int(time.time())
+        claims = {
+            "iss": IDP_ISSUER,
+            "aud": "opsmender-app",
+            "sub": "pss@acme.com",
+            "email": "pss@acme.com",
+            "nonce": query["nonce"][0],
+            "iat": now,
+            "exp": now + 300,
+        }
+        issued["id_token"] = ".".join(
+            (
+                b64(json.dumps({"alg": "PS256", "typ": "JWT"}).encode()),
+                b64(json.dumps(claims).encode()),
+                b64(bytes(256)),
+            )
+        )
+        resp = await client.get(
+            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"] == (
+            "SSO failed: id_token validation failed: "
+            "The specified alg value is not allowed"
+        )
+        async with app.state.session_factory() as db:
+            assert await UserRepo.get_by_email(db, "pss@acme.com") is None
+
 
 # ---------------------------------------------------------------------------
 # Secret-at-rest helper

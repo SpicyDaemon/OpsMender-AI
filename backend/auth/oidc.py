@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from jose.exceptions import JWTError
+from jose.exceptions import JWKError, JWTError
 
 from backend.auth.jwt_decode import decode as decode_jwt
 
@@ -31,14 +31,13 @@ _discovery_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _jwks_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 # An identity provider signs id tokens with a private key, so only these
-# asymmetric algorithms are ever accepted (M1-58).
+# asymmetric algorithms are ever accepted (M1-58). The RSASSA-PSS ones (PS256
+# and friends) are left out: python-jose cannot verify them, so a token signed
+# that way is refused like any other algorithm not on this list.
 _ASYMMETRIC_ALGORITHMS = (
     "RS256",
     "RS384",
     "RS512",
-    "PS256",
-    "PS384",
-    "PS512",
     "ES256",
     "ES384",
     "ES512",
@@ -157,7 +156,7 @@ async def exchange_code(
             issuer=doc["issuer"],
             options={"verify_at_hash": False},
         )
-    except JWTError as exc:
+    except (JWTError, JWKError) as exc:
         raise OIDCError(f"id_token validation failed: {exc}") from exc
 
     if nonce is not None and claims.get("nonce") != nonce:

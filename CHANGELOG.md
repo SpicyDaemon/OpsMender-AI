@@ -69,8 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both checks used whatever algorithm the token named (python-jose advisory
   GHSA-3qf3-8w2g-rqmx), and a token naming HS256 or `none` caused a server
   error instead of a refusal. An identity provider set to sign id tokens with
-  HS256 (the client secret) is now refused with a clear message; set it to
-  RS256.
+  HS256 (the client secret), or with an RSASSA-PSS algorithm (PS256 and up)
+  that the token library cannot verify, is now refused with a clear message;
+  set it to RS256 or ES256.
 
 ### Fixed
 

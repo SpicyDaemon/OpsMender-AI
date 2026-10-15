@@ -132,7 +132,7 @@ async def test_a_key_setting_must_name_a_variable(client):
             db,
             org_id,
             name="named-key",
-            provider="openai",
+            provider="openai_compatible",
             model_id="gpt-test",
             api_key_env_var="OPENAI_API_KEY",
         )

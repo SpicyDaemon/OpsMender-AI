@@ -45,6 +45,11 @@ port 8001. Both share Postgres and Redis. Existing installations using
 `OPSMENDER_DEPLOYMENT_MODE=development|production` continue to run as
 monoliths.
 
+SQLite, the standalone binary's default database, serves one app process. That
+process takes incoming alerts one at a time, so identical alerts that arrive
+together open one incident. Several app processes on one database, the
+distributed roles included, need PostgreSQL.
+
 ## 3. Model Configuration
 
 OpsMender supports multiple LLM providers. Navigate to **Models** in the sidebar (`/dashboard/models`) to configure them.

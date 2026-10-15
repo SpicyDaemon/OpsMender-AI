@@ -284,7 +284,10 @@ For a quick local evaluation, run the binary with no database configuration:
 This creates `./opsmender.db` with SQLite, starts the dashboard on
 **http://localhost:8000**, and uses the development-only `admin` / `admin123`
 login on a new database. SQLite is for local evaluation only. **PostgreSQL is
-required for production.**
+required for production.** On SQLite the app takes incoming alerts one at a
+time inside its process, so identical alerts that arrive together open one
+incident; run one app process per SQLite database, since several processes
+need PostgreSQL.
 
 For production, configure PostgreSQL and the required security settings:
 

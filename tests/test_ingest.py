@@ -865,6 +865,151 @@ class TestIngestGeneric:
         assert len(sessions) == 1
 
 
+class TestSqliteIntakeTakesTurns:
+    """O-20: on SQLite, alerts take turns through intake inside the process,
+    so identical alerts that arrive together open one incident. The ``app``
+    fixture runs a SQLite file with the default pool, as the binary does."""
+
+    async def test_identical_alerts_together_open_one_incident(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        service = await _create_paged_service(
+            client, app, admin_headers, name="Together", priority="P1"
+        )
+        alert = {
+            "title": "Checkout 503",
+            "description": "six monitors fired at once",
+            "severity": "critical",
+            "id": f"together-{uuid.uuid4()}",
+        }
+
+        answers = await asyncio.gather(
+            *(client.post(service["intake_url"], json=alert) for _ in range(6))
+        )
+
+        assert [r.status_code for r in answers] == [200] * 6, [r.text for r in answers]
+        actions = sorted(r.json()["dedup_action"] for r in answers)
+        assert actions.count("created") == 1, actions
+        assert set(actions) <= {"created", "updated", "skipped"}, actions
+        incident_ids = {r.json()["incident_id"] for r in answers}
+        assert len(incident_ids) == 1, incident_ids
+        incidents, pages = await _service_incidents_and_pages(app, service["id"])
+        assert {str(incident.id) for incident in incidents} == incident_ids
+        # One incident's pages: what a single alert makes on this service.
+        assert pages == 2
+        async with app.state.session_factory() as db:
+            token = await IngestTokenRepo.get_active_for_service(
+                db, TEST_ORG_ID, uuid.UUID(service["id"])
+            )
+            logs = await IngestLogRepo.list_recent(db, TEST_ORG_ID, token_id=token.id)
+        assert sorted(log.dedup_action for log in logs) == actions
+        assert {str(log.incident_id) for log in logs} == incident_ids
+
+    async def test_both_intake_routes_together_answer_and_open_one_incident_each(
+        self, client: AsyncClient, app, admin_headers
+    ):
+        """The token route records the token's use before its turn. Waiting
+        for the turn with that write open would stall the request whose turn
+        it is until SQLite gives up, so each request commits it first."""
+        service = await _create_paged_service(
+            client, app, admin_headers, name="BothRoutes", priority="P1"
+        )
+        raw, _ = await _create_token(app, provider="generic", name="both-routes")
+        service_alert = {
+            "title": "Checkout 503",
+            "description": "through the service intake URL",
+            "severity": "critical",
+            "id": f"both-service-{uuid.uuid4()}",
+        }
+        token_alert = {
+            "title": "Disk full on db-1",
+            "description": "through the token route",
+            "severity": "critical",
+            "id": f"both-token-{uuid.uuid4()}",
+        }
+        posts = []
+        for _ in range(6):
+            posts.append(client.post(service["intake_url"], json=service_alert))
+            posts.append(
+                client.post(
+                    "/incidents/ingest",
+                    json=token_alert,
+                    headers={"X-OpsMender-Token": raw},
+                )
+            )
+
+        answers = await asyncio.gather(*posts)
+
+        assert [r.status_code for r in answers] == [200] * 12, [r.text for r in answers]
+        for route_answers in (answers[0::2], answers[1::2]):
+            actions = sorted(r.json()["dedup_action"] for r in route_answers)
+            assert actions.count("created") == 1, actions
+            assert set(actions) <= {"created", "updated", "skipped"}, actions
+            assert len({r.json()["incident_id"] for r in route_answers}) == 1
+        async with app.state.session_factory() as db:
+            incidents = await IncidentRepo.list_all(db, TEST_ORG_ID)
+        assert sorted(incident.external_id for incident in incidents) == sorted(
+            [service_alert["id"], token_alert["id"]]
+        )
+
+    @pytest.mark.parametrize("route", ["service", "token"])
+    async def test_learning_an_alert_shape_does_not_hold_up_other_alerts(
+        self, client: AsyncClient, app, admin_headers, monkeypatch, route
+    ):
+        """Shape learning runs before the SQLite turn on both intake routes,
+        so another service's alert need not wait for the model (O-20)."""
+        from backend.ingest import service as ingest_service
+
+        shapeless = await _create_paged_service(
+            client, app, admin_headers, name="Shapeless", priority="P1"
+        )
+        quick = await _create_paged_service(
+            client, app, admin_headers, name="Quick", priority="P1"
+        )
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def learning_slowly(db, org_id, **kwargs):
+            entered.set()
+            await asyncio.wait_for(release.wait(), timeout=20)
+            return None, False
+
+        monkeypatch.setattr(ingest_service, "apply_shape_cache", learning_slowly)
+        url, headers = shapeless["intake_url"], {}
+        if route == "token":
+            raw, _ = await _create_token(app, provider="auto", name="shape-learning")
+            url, headers = "/incidents/ingest", {"X-OpsMender-Token": raw}
+        # No title anywhere, so the auto adapter asks the model for the shape.
+        waiting = asyncio.create_task(
+            client.post(url, headers=headers, json={"m": {"cpu": 99}, "n": [1, 2, 3]})
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=20)
+            answer = await asyncio.wait_for(
+                client.post(
+                    quick["intake_url"],
+                    json={
+                        "title": "Checkout 503",
+                        "description": "while another alert's shape is learned",
+                        "severity": "critical",
+                        "id": f"quick-{uuid.uuid4()}",
+                    },
+                ),
+                timeout=15,
+            )
+            assert answer.status_code == 200, answer.text
+            assert answer.json()["dedup_action"] == "created"
+            assert not waiting.done()
+            incidents, pages = await _service_incidents_and_pages(app, quick["id"])
+            assert [str(incident.id) for incident in incidents] == [
+                answer.json()["incident_id"]
+            ]
+            assert pages == 2
+        finally:
+            release.set()
+            late = await asyncio.wait_for(waiting, timeout=20)
+        assert late.status_code in (200, 422), late.text
+
+
 class TestAlertNoiseIntelligence:
     async def test_grouping_default_off_keeps_pipeline_behavior(
         self, client: AsyncClient, app, admin_headers

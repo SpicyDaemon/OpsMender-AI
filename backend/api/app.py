@@ -338,6 +338,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         max_requests=config.ingest.rate_limit,
         window_seconds=config.ingest.rate_window,
     )
+    # On SQLite, alerts take turns through intake inside this process (O-20).
+    app.state.sqlite_intake_lock = asyncio.Lock()
 
     # -- Failed sign-in limits (KI-014) -------------------------------------
     from backend.auth.signin_throttle import SignInThrottle

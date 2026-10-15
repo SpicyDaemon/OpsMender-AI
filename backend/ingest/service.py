@@ -4,6 +4,7 @@ and audit logging for ``POST /incidents/ingest``.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import hashlib
 import logging
@@ -93,16 +94,60 @@ async def authenticate_token(
     return None
 
 
+class SqliteIntakeTurn:
+    """On SQLite, one alert at a time from the dedup lookup through the
+    commit, so identical alerts that arrive together open one incident (O-20).
+
+    ``ingest_incident`` takes the turn right before the lookup, where
+    PostgreSQL's ``take_turns`` waits in the database, so parsing and the
+    shape-learning model call run outside it. The route gives the turn back
+    after its commit by leaving ``async with``. ``lock`` is the app's
+    ``sqlite_intake_lock``: one per process, so several processes on one
+    SQLite file still need PostgreSQL. On PostgreSQL this does nothing.
+    """
+
+    def __init__(self, db: AsyncSession, lock: asyncio.Lock) -> None:
+        self._db = db
+        self._lock = lock
+        self._held = False
+        self._sqlite = db.get_bind().dialect.name == "sqlite"
+
+    async def take(self) -> None:
+        if self._held or not self._sqlite:
+            return
+        # Commit what intake wrote so far (a learned alert shape) so the request
+        # never holds SQLite's write lock while it waits for its turn.
+        await self._db.commit()
+        await self._lock.acquire()
+        self._held = True
+
+    async def __aenter__(self) -> SqliteIntakeTurn:
+        if self._sqlite:
+            # Commit what the request wrote before intake (the token's last use,
+            # a new service token) so an alert whose shape the model has to
+            # learn never holds SQLite's write lock during that call.
+            await self._db.commit()
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        if self._held:
+            self._held = False
+            self._lock.release()
+
+
 async def ingest_incident(
     db: AsyncSession,
     *,
     token: IngestToken,
     payload: dict[str, Any],
     config: AppConfig,
+    turn: SqliteIntakeTurn | None = None,
 ) -> IngestResult:
     """Parse an inbound payload, dedup, and create/update an incident.
 
-    Always creates an ``ingest_log`` entry regardless of outcome.
+    Always creates an ``ingest_log`` entry regardless of outcome. With a
+    ``turn`` (the intake routes), SQLite runs the dedup and what follows one
+    alert at a time until the caller commits (O-20).
     """
     org_id = token.org_id
     provider = token.provider
@@ -226,12 +271,15 @@ async def ingest_incident(
                 return IngestResult(success=True, dedup_action="skipped")
 
     # Identical alerts arriving together take turns, so the second sees the
-    # first's incident instead of racing it (R-03).
+    # first's incident instead of racing it (R-03): PostgreSQL waits in the
+    # database, SQLite in this process (O-20).
     if parsed.external_id and parsed.external_source:
         await take_turns(
             db,
             f"intake:{org_id}:{parsed.external_source}:{parsed.external_id}",
         )
+    if turn is not None:
+        await turn.take()
 
     # ── Dedup by external fingerprint ──────────────────────────────────
     dedup_action = "created"

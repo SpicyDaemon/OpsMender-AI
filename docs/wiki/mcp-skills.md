@@ -24,7 +24,7 @@ incident session. It is **separate** from:
 | Tier | Name | Behaviour |
 |------|------|-----------|
 | **0** | **Autonomous** | May execute remediation automatically (incl. rollbacks, restarts, failovers, and destructive ops) **but only within MCP Skill policy, deny lists, MCP permissions, and backend guardrails.** Most autonomous; **not** unlimited. Selecting Tier 0 shows a red warning. |
-| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; deny-listed actions never run. |
+| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; a generic command tool always asks for **operator approval** whatever its T1 policy says, unless `allow_generic: true`; deny-listed actions never run. |
 | **2** | **Advisory Only** *(default)* | Analysis, recommendations, runbooks, read-only observation. **No write/remediation actions execute.** |
 
 - **Default** for new installs and new sessions is **Tier 2: Advisory Only**.
@@ -34,8 +34,9 @@ incident session. It is **separate** from:
 - **Tier 3 is removed.** Any legacy stored value of `3` is automatically
   remapped to `2`.
 - **Unknown actions are never silently allowed**: they are denied at every
-  tier (Tier 2 blocks all remediation; Tier 1 denies unknown; Tier 0 denies
-  unknown unless explicitly allowed by skill policy).
+  tier (Tier 2 blocks all remediation; Tier 1 denies unknown, except that a
+  [generic command tool](#generic-command-tools-high-risk) asks for operator
+  approval; Tier 0 denies unknown unless explicitly allowed by skill policy).
 
 ---
 
@@ -163,28 +164,69 @@ hardcodes prod/staging/dev.
 ## Generic command tools (high-risk)
 
 Generic execution tools run **arbitrary** commands, so the tool name alone does
-not bound what they can do. OpsMender detects them automatically (e.g. `shell`,
-`bash`, `run_command`, `kubectl`, `aws_cli`, `gcloud`, `az`, `terraform`, `sql`,
-`python`, `node`, `python_repl`, `code_interpreter`, and `*_exec` / `run_*` /
-`*_cli` patterns) and guards them conservatively. Names are compared without
-case and with camel case, hyphens, dots and spaces folded to underscores, so
-`ExecuteCommand`, `run-command` and `kubectl-exec` count too:
+not bound what they can do. OpsMender detects them automatically by the names
+below and guards them conservatively. Names are compared without case and with
+camel case, hyphens, dots and spaces folded to underscores, so
+`ExecuteCommand`, `run-command`, `kubectl-exec`, `Terminal`, `ShellExec` and
+`bash-tool` count too:
 
 - **Tier 2**: blocked.
-- **Tier 1**: **requires operator approval** before execution.
+- **Tier 1**: **requires operator approval** before execution, and runs once
+  approved.
 - **Tier 0**: blocked (there is no command-pattern allowlisting yet, so a
   generic tool cannot run autonomously).
 
+The guardrail is checked after the deny-list and **before the tool's own tier
+policy**, so at Tier 1 a generic tool asks for operator approval, and runs once
+approved, even when its entry sets T1 to `blocked` or `advisory` or the skill
+does not list it. A `blocked` T1 policy is not enough to stop it: give it a
+`deny: true` entry, which is checked first and blocks it at every tier. This
+also holds for names OpsMender has started detecting, such as `terminal`,
+`sudo` and `docker`: where a skill blocked one at Tier 1 before it was
+detected, Tier 1 sessions now ask for approval to run it until the tool is
+deny-listed.
+
+| Kind | Detected names |
+| --- | --- |
+| Shells and runners | `shell`, `bash`, `sh`, `zsh`, `fish`, `powershell`, `pwsh`, `cmd`, `shellexec`, `bash_tool`, `shell_tool`, `invoke_expression`, `run`, `run_command`, `runcommand`, `run_cmd`, `exec`, `execute`, `command`, `eval`, `evaluate`, `spawn`, `system` |
+| Terminals, processes and privilege | `terminal`, `console`, `tty`, `pty`, `subprocess`, `popen`, `os_system`, `sudo`, `su` |
+| Containers and host services | `docker`, `podman`, `nerdctl`, `crictl`, `systemctl` |
+| Cloud and infrastructure CLIs | `kubectl`, `oc`, `helm`, `aws`, `aws_cli`, `awscli`, `gcloud`, `az`, `azure_cli`, `azurecli`, `terraform`, `tf`, `pulumi`, `ansible`, `ansible_playbook`, `salt`, `chef`, `puppet` |
+| Database and query runners | `sql`, `psql`, `mysql`, `sqlcmd`, `mongo`, `redis_cli`, `query`, `run_query`, `execute_sql`, `exec_sql`, `raw_query` |
+| Language runtimes | `python`, `python3`, `node`, `nodejs`, `ruby`, `perl`, `php`, `groovy`, `jshell`, `repl`, `python_repl`, `code_interpreter`, `interpreter` |
+| Network and transfer | `curl`, `wget`, `ssh`, `scp`, `sftp`, `telnet`, `nc`, `netcat` |
+| Build and package | `make`, `npm`, `npx`, `pip`, `apt`, `yum`, `apk` |
+| Runner tools of common MCP servers | `kubectl_generic`, `call_kubectl`, `call_az`, `call_aws`, `call_helm`, `call_cilium`, `call_hubble`, `execute_kubectl`, `execute_helm`, `execute_istioctl`, `execute_argocd`, `aws_cli_pipeline`, `kubernetes_proxy`, `ssh_execute`, `ssh_execute_sudo`, `ssh_execute_group`, `ssh_session_send`, `start_process`, `interact_with_process`, `powershell_tool`, `execute_code`, `execute_code_file`, `execute_python`, `execute_cell`, `insert_execute_code_cell`, `execute_ipython`, `execute_tool`, `use_tool`, `browser_run_code`, `browser_run_code_unsafe`, `deploy_one_off_dyno`, `ansible_task`, `transact`, `pg_psql`, `apply_migration`, `execute_sql_readonly`, `explain_sql_statement`, `generic_open_search_api_tool` |
+| Names starting with | `exec_`, `run_`, `shell_`, `cmd_`, `eval_`, `bash_`, `powershell_`, `power_shell_`, `pwsh_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`, `subprocess_` |
+| Names ending with | `_exec`, `_shell`, `_command`, `_cmd`, `_cli`, `_eval`, `_query`, `_run`, `_script`, `_repl`, `_interpreter`, `_terminal`, `_console`, `_bash`, `_powershell`, `_pwsh`, `_subprocess`, `_cypher` |
+
+A name counts as a whole or by its start or end, never by a word in the
+middle: `refresh`, `dashboard` and `get_console_output` are ordinary tools.
+
+Some tools are bounded by design but still powerful, so no name rule catches
+them: manifest and chart appliers (`apply_yaml`, `resources_create_or_update`,
+`kubectl_apply`, `install_helm_chart`), multi-operation job tools
+(`manage_aws_emr_ec2_steps`, `create_pyspark_batch`,
+`prepare_database_migration`), single router tools that reach a whole
+service (`azure`, `postgres`, `kusto`), page scripting
+(`browser_evaluate`) and tool names with a server prefix (`aws___call_aws`).
+Classify these in the Skill: deny them, or give them a destructive class and
+the tier policies you want.
+
 To opt a **narrowly-scoped** wrapper out of the guardrail, list it **by its
-exact name** in the skill with `allow_generic: true` (normal tier/classification
-rules then apply). A glob such as `run_*` can't opt tools out. Prefer explicit
-`deny: true` entries for anything dangerous.
+exact name** in the skill with `allow_generic: true`: its own tier policies
+then apply as written, a T1 `blocked` or `advisory` included. A glob such as
+`run_*` can't opt tools out. Prefer explicit `deny: true` entries for anything
+dangerous. A few prefixes and suffixes also catch bounded tools: `docker_logs`
+and `console_url` start with `docker_` and `console_`, and `get_console` and
+`aws_console` end with `_console`, so they stay guarded until their exact
+entry sets `allow_generic: true`.
 
 ```yaml
 operations:
   - tool: shell
     deny: true              # blocked at every tier (deny always wins)
-  - tool: kubectl_get_only  # a scoped read-only wrapper you trust
+  - tool: docker_logs       # only reads container logs; docker_ flags it
     classification: safe
     allow_generic: true
     tiers:
@@ -226,7 +268,9 @@ and T2. The structured policy is the source of truth enforced by
 
 - `mode: autonomous` permits execution without an operator ACK.
 - `mode: approval` routes the action through the approval gate.
-- `mode: blocked` denies execution.
+- `mode: blocked` denies execution. At Tier 1 a generic command tool (see
+  below) asks for approval instead, unless the Skill sets `allow_generic: true`
+  for it or deny-lists it.
 - `mode: advisory` allows guidance but no execution.
 - `require_reversible: true` keeps the Tier 0 reversible floor. Safe reads are
   implicitly reversible; side-effecting operations also need
@@ -336,7 +380,8 @@ Observe, diagnose, and explain what should be done. Do not execute write actions
 
 Enforcement order is fixed: deny entries always win, then the generic-command
 guardrail applies, then the operation's explicit active-tier policy, followed by
-the Tier 0 reversible floor. Unknown or underspecified operations are denied.
+the Tier 0 reversible floor. Unknown or underspecified operations are denied,
+except a generic command tool at Tier 1, which asks for approval.
 
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's
@@ -345,7 +390,9 @@ classification, whether approval is required, and whether the action is denied.
 - **Tier 2**: explicit policies may be advisory or blocked, never autonomous or
   approval-gated; blocked actions are logged.
 - **Tier 1**: each operation explicitly chooses autonomous or approval mode;
-  deny-listed and unknown actions are blocked; decisions are logged.
+  deny-listed and unknown actions are blocked; decisions are logged. A generic
+  command tool without `allow_generic` is the exception: it asks for approval
+  whatever its own policy says, unless it is deny-listed.
 - **Tier 0**: executes only actions explicitly permitted by skill policy and
   not deny-listed. Explicit policy may set `require_reversible: false`; otherwise
   the reversible sandbox floor applies. Unknown actions are blocked and every

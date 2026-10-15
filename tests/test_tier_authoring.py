@@ -1,6 +1,14 @@
 """M1-44 (R-12): when several globs in a skill match a tool, the strictest
 wins whatever order they are written in, and the generic-runner guard folds
-case and separators. The frozen enforcement module is unchanged."""
+case and separators. The frozen enforcement module is unchanged.
+
+M1-52 (N-06): common runner names (terminals, process spawners, sudo and the
+container tools) are generic runners in every spelling, and a bounded tool that
+one of the new prefixes or suffixes catches follows its own policy again once
+its exact entry sets allow_generic. The frozen gate checks the runner guard
+before a tool's own tier policy, so at Tier 1 a newly caught tool asks for
+approval even where its Skill blocks it; a deny-list entry refuses it at every
+tier."""
 
 from __future__ import annotations
 
@@ -85,11 +93,209 @@ def test_runner_names_are_caught_whatever_their_case_or_separators(name):
     assert is_generic_execution_tool(name) is True
 
 
+# Each runner word or affix the card names (M1-52) with other spellings a tool
+# source may use.
+RUNNER_SPELLINGS = {
+    # exact names; powershell, pwsh, cmd and shell_tool were caught before M1-52
+    "powershell": ("PowerShell", "POWERSHELL", "Powershell"),
+    "pwsh": ("Pwsh", "PWSH"),
+    "cmd": ("Cmd", "CMD"),
+    "terminal": ("Terminal", "TERMINAL"),
+    "console": ("Console",),
+    "tty": ("TTY",),
+    "pty": ("Pty",),
+    "shellexec": ("ShellExec", "SHELLEXEC"),
+    "bash_tool": ("BashTool", "bash-tool", "bash.tool", "Bash Tool"),
+    "shell_tool": ("ShellTool", "shell-tool", "shell.tool"),
+    "invoke_expression": ("InvokeExpression", "invoke-expression", "Invoke-Expression"),
+    "subprocess": ("Subprocess", "SubProcess"),
+    "popen": ("Popen",),
+    "os_system": ("OsSystem", "os-system", "os.system"),
+    "sudo": ("Sudo",),
+    "su": ("SU",),
+    "docker": ("Docker",),
+    "podman": ("Podman",),
+    "nerdctl": ("NerdCtl",),
+    "crictl": ("CriCtl",),
+    "systemctl": ("SystemCtl",),
+    # prefixes
+    "bash_session": ("BashSession", "bash-session", "bash.session"),
+    "powershell_execute": ("PowerShellExecute", "powershell-execute", "powershell.exe"),
+    "pwsh_execute": ("PwshExecute", "pwsh-execute", "pwsh.exe"),
+    "sh_session": ("ShSession", "sh-session", "sh.session"),
+    "terminal_session": ("TerminalSession", "terminal-session", "terminal.session"),
+    "console_session": ("ConsoleSession", "console-session", "console.session"),
+    "sudo_edit": ("SudoEdit", "sudo-edit", "sudo.edit"),
+    "docker_compose": ("DockerCompose", "docker-compose", "docker.compose"),
+    "subprocess_check_output": (
+        "SubprocessCheckOutput",
+        "subprocess-check-output",
+        "subprocess.check_output",
+    ),
+    # suffixes
+    "open_terminal": ("OpenTerminal", "open-terminal", "open.terminal"),
+    "web_console": ("WebConsole", "web-console", "web.console"),
+    "invoke_bash": ("InvokeBash", "invoke-bash", "invoke.bash"),
+    "execute_powershell": (
+        "ExecutePowerShell",
+        "execute-powershell",
+        "invoke_powershell",
+    ),
+    "execute_pwsh": ("ExecutePwsh", "execute-pwsh", "invoke.pwsh"),
+    "spawn_subprocess": ("SpawnSubprocess", "spawn-subprocess", "spawn.subprocess"),
+}
+
+
 @pytest.mark.parametrize(
-    "name", ["get_pods", "getPods", "scale_deployment", "list-nodes", "describe_node"]
+    "name",
+    [
+        spelling
+        for word, others in RUNNER_SPELLINGS.items()
+        for spelling in (word, *others)
+    ],
+)
+def test_common_runner_names_are_caught_in_every_spelling(name):
+    assert is_generic_execution_tool(name) is True
+
+
+# Runner tools of common MCP servers, as each server publishes the name (the
+# owner asked which other tools to add; survey of 2026-10-15). Namespaced
+# names keep their prefix, so only a suffix rule reaches them.
+MCP_SERVER_RUNNERS = [
+    "kubectl_generic",
+    "call_kubectl",
+    "call_az",
+    "call_aws",
+    "call_helm",
+    "call_cilium",
+    "call_hubble",
+    "execute_kubectl",
+    "execute_helm",
+    "execute_istioctl",
+    "execute_argocd",
+    "aws_cli_pipeline",
+    "kubernetes_proxy",
+    "kubernetesProxy",
+    "ssh_execute",
+    "ssh_execute_sudo",
+    "ssh_execute_group",
+    "ssh_session_send",
+    "start_process",
+    "interact_with_process",
+    "Powershell-Tool",
+    "execute_code",
+    "execute_code_file",
+    "execute_python",
+    "execute_cell",
+    "insert_execute_code_cell",
+    "execute_ipython",
+    "execute_tool",
+    "use_tool",
+    "browser_run_code",
+    "browser_run_code_unsafe",
+    "deploy_one_off_dyno",
+    "ansible-task",
+    "transact",
+    "pg_psql",
+    "apply_migration",
+    "execute_sql_readonly",
+    "explain_sql_statement",
+    "GenericOpenSearchApiTool",
+    "execute_cypher",
+    "read_neo4j_cypher",
+    "mydb-write_neo4j_cypher",
+]
+
+
+@pytest.mark.parametrize("name", MCP_SERVER_RUNNERS)
+def test_runner_tools_of_common_mcp_servers_are_generic(name):
+    assert is_generic_execution_tool(name) is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "kubectl_get",
+        "kubectl_describe",
+        "kubectl_logs",
+        "istioctl_analyze",
+        "ssh_list_servers",
+        "aws_cli_help",
+        "read_process_output",
+        "list_processes",
+        "browser_snapshot",
+        "browser_navigate",
+    ],
+)
+def test_bounded_tools_of_the_same_servers_stay_ordinary(name):
+    assert is_generic_execution_tool(name) is False
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "get_pods",
+        "getPods",
+        "scale_deployment",
+        "list-nodes",
+        "describe_node",
+        "refresh",
+        "dashboard",
+        "describe_pod",
+        "list_containers",
+        "get_console_output",
+    ],
 )
 def test_ordinary_tools_are_not_runners(name):
     assert is_generic_execution_tool(name) is False
+
+
+@pytest.mark.parametrize(
+    "tool", ["docker_logs", "console_url", "get_console", "aws_console"]
+)
+def test_a_bounded_tool_a_new_affix_catches_runs_with_allow_generic(tool):
+    guarded = _skill(_op(tool, "safe", "autonomous"))
+    trusted = _skill(_op(tool, "safe", "autonomous", allow_generic=True))
+    held_back = _skill(_op(tool, "safe", "blocked", allow_generic=True))
+
+    assert is_generic_execution_tool(tool) is True
+    blocked = enforcement.check(tool, 0, guarded)
+    assert blocked.permitted is False
+    assert blocked.classification == "generic_execution"
+    assert enforcement.check(tool, 1, guarded).requires_approval is True
+    allowed = enforcement.check(tool, 0, trusted)
+    assert allowed.permitted is True
+    assert allowed.classification == "safe"
+    # allow_generic puts the tool back under its own policies, a block included.
+    own_block = enforcement.check(tool, 1, held_back)
+    assert own_block.permitted is False
+    assert own_block.reason == "explicit T1 skill policy: blocked"
+
+
+@pytest.mark.parametrize("t1", ["blocked", "advisory", None])
+def test_a_new_runner_name_asks_for_approval_at_tier_1_over_its_own_policy(t1):
+    """The frozen gate checks the runner guard before a tool's own tier
+    policy, so at Tier 1 ``sudo`` asks for approval even where its entry
+    blocks it or makes it advisory, or no entry lists it; each was refused
+    before M1-52. Tier 0 and Tier 2 refuse it, and a deny-list entry refuses
+    it at every tier."""
+    listed = [_op("sudo", "destructive", t1)] if t1 else []
+    skill = _skill(*listed, _op("get_pods", "safe", "autonomous"))
+    denied = _skill(_op("sudo", "destructive", "blocked", deny=True))
+
+    approval = enforcement.check("sudo", 1, skill)
+    assert approval.permitted is True
+    assert approval.requires_approval is True
+    assert approval.classification == "generic_execution"
+    for tier in (0, 2):
+        refused = enforcement.check("sudo", tier, skill)
+        assert refused.permitted is False
+        assert refused.classification == "generic_execution"
+    for tier in (0, 1, 2):
+        refused = enforcement.check("sudo", tier, denied)
+        assert refused.permitted is False
+        assert refused.requires_approval is False
+        assert refused.reason == "deny-list policy match: blocked at every tier"
 
 
 def test_the_frozen_enforcement_module_is_unchanged():

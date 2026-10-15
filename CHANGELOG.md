@@ -35,6 +35,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before reading or storing it, without repeating it. Settings saved before
   this change are not rewritten. An unknown provider in discovery answers
   `400` instead of a server error.
+- The generic command guard now also catches common runner names: `terminal`,
+  `console`, `tty`, `pty`, `shellexec`, `bash_tool`, `invoke_expression`,
+  `subprocess`, `popen`, `os_system`, `sudo`, `su`, `docker`, `podman`,
+  `nerdctl`, `crictl` and `systemctl`, names that start with `bash_`,
+  `powershell_`, `pwsh_`, `sh_`, `terminal_`, `console_`, `sudo_`, `docker_`
+  or `subprocess_`, and names that end with `_terminal`, `_console`, `_bash`,
+  `_powershell`, `_pwsh`, `_subprocess` or `_cypher`, in any case or separator
+  style (`Terminal`, `BashTool`, `bash-tool`, `PowerShellExecute`). It also
+  catches the runner tools of common MCP servers, such as `kubectl_generic`,
+  `call_kubectl`, `call_aws`, `execute_kubectl`, `ssh_execute`,
+  `start_process`, `execute_code`, `browser_run_code_unsafe` and
+  `explain_sql_statement` (which runs the statement when it analyzes it); the
+  MCP Skills page lists all of them and the bounded tools to classify in a
+  Skill instead. Before, `terminal`,
+  `shellexec`, `bash_tool` and the like were ordinary tools, so a Skill entry
+  or glob that allowed one let it run at Tier 0, without approval at Tier 1,
+  and in environment scans. Now they are blocked at Tier 0 and Tier 2 and in
+  environment scans. **At Tier 1 they ask for operator approval, and run once
+  approved, even where the Skill blocks them**: the guard is checked before a
+  tool's own tier policy, so a T1 policy of `blocked` or `advisory`, or no
+  entry for the tool, no longer refuses it. To block one at every tier, add it
+  to the Skill's deny-list with `deny: true`. A narrowly scoped tool that a
+  new prefix or suffix catches, such as `docker_logs`, `console_url`,
+  `get_console` or `aws_console`, needs an entry with its exact name and
+  `allow_generic: true` to run under its own tier policies again. Skill
+  Studio's Generate from tools and AI assist now mark these names as generic
+  and pre-set them to deny, as they already did for the older runner names.
 
 ### Fixed
 

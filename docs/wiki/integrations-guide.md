@@ -268,7 +268,7 @@ Both intake endpoints refuse a body over 1 MiB with `413` and a body whose
 objects and arrays nest more than 64 levels with `400`; neither opens an
 incident, and the token's delivery log keeps a short row naming the limit,
 never the body. Every other API route refuses a JSON body nested more than
-64 levels with `400` before reading it.
+64 levels with `400` before the route acts on it.
 
 OpsMender natively supports several popular monitoring tools:
 - **Datadog:** Parses Datadog monitor alerts.

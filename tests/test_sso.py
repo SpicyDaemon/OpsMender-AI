@@ -411,10 +411,16 @@ def idp_keys():
 
 
 def _serve_idp(
-    monkeypatch, *, listed: list[str] | None, published: dict | list[dict]
+    monkeypatch,
+    *,
+    listed: list[str] | None,
+    published: dict | list[dict],
+    bare: bool = False,
 ) -> dict:
     """Serve the provider's discovery document, token endpoint and key set
-    from memory. The token endpoint answers with ``issued["id_token"]``."""
+    from memory. The token endpoint answers with ``issued["id_token"]``; with
+    ``bare`` the key endpoint serves ``published`` itself, one key without a
+    key set around it."""
     from backend.auth import oidc as oidc_mod
 
     discovery = {
@@ -433,6 +439,8 @@ def _serve_idp(
         if request.url.path == "/oauth2/token":
             return Response(200, json={"id_token": issued["id_token"]})
         if request.url.path == "/jwks":
+            if bare:
+                return Response(200, json=published)
             keys = published if isinstance(published, list) else [published]
             return Response(200, json={"keys": keys})
         return Response(404)
@@ -461,6 +469,7 @@ async def _sign_in_with_id_token(
     email,
     published=None,
     id_token=None,
+    bare=False,
 ):
     """Sign in through OIDC with an id token signed by ``algorithm``'s key,
     from a provider that lists ``listed`` and publishes that key (or the
@@ -482,6 +491,7 @@ async def _sign_in_with_id_token(
         monkeypatch,
         listed=listed,
         published=own_key if published is None else published,
+        bare=bare,
     )
     login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
     query = parse_qs(urlparse(login.headers["location"]).query)
@@ -636,6 +646,41 @@ class TestIdTokenAlgorithms:
         )
         async with app.state.session_factory() as db:
             assert await UserRepo.get_by_email(db, "mismatch@acme.com") is None
+
+    @pytest.mark.parametrize(
+        ("published", "status"),
+        [("ES256", 400), ("RS256", 302)],
+        ids=["bare-key-that-does-not-fit-is-refused", "bare-key-that-fits-signs-in"],
+    )
+    async def test_a_provider_that_publishes_one_bare_key(
+        self, client, app, auth_headers, monkeypatch, idp_keys, published, status
+    ):
+        """A provider that publishes a single key instead of a key set: an
+        RS256 id token is refused cleanly (400) when that key is an EC key,
+        and signs in when it is the RSA key (M1-65)."""
+        from backend.db.repos import UserRepo
+
+        email = f"bare-{published.lower()}@acme.com"
+        resp = await _sign_in_with_id_token(
+            client,
+            auth_headers,
+            monkeypatch,
+            idp_keys,
+            listed=None,
+            algorithm="RS256",
+            email=email,
+            published=idp_keys[published][1],
+            bare=True,
+        )
+
+        assert resp.status_code == status, resp.text
+        if status == 400:
+            assert resp.json()["detail"].startswith(
+                "SSO failed: id_token validation failed: "
+            )
+        async with app.state.session_factory() as db:
+            signed_in = await UserRepo.get_by_email(db, email) is not None
+        assert signed_in == (status == 302)
 
     async def test_a_key_set_that_mixes_key_types_still_signs_in(
         self, client, app, auth_headers, monkeypatch, idp_keys

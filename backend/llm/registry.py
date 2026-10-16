@@ -22,11 +22,16 @@ KEY_LIST_MESSAGE = (
 )
 
 
+def key_setting_is_a_variable_name(value: str | None) -> bool:
+    """Whether a saved key setting names a variable; an empty setting does."""
+    return not value or bool(_ENV_VAR_NAME.fullmatch(value))
+
+
 def check_key_env_var_name(value: str | None) -> None:
     """A key setting names the variable to read the key from; a value not
     shaped like a variable name is most likely a pasted key, so it is refused
     before it is read or stored, without repeating it (M1-60)."""
-    if value and not _ENV_VAR_NAME.fullmatch(value):
+    if not key_setting_is_a_variable_name(value):
         raise ValueError(KEY_NAME_MESSAGE)
 
 

@@ -113,9 +113,13 @@ async def _lifespan(app: FastAPI):
         # + OPSMENDER_MODEL_ID + provider-specific base_url) so an operator can
         # bring up a working agent loop on a fresh DB without clicking through
         # /dashboard/models first. No-op if any model_configs row already exists.
-        from backend.llm.bootstrap import bootstrap_model_config
+        from backend.llm.bootstrap import (
+            bootstrap_model_config,
+            report_invalid_key_settings,
+        )
 
         await bootstrap_model_config(factory, config.providers)
+        await report_invalid_key_settings(factory)
 
     if deployment.mode == "monolith":
         # A monolith runs every AI session in this one process, so sessions

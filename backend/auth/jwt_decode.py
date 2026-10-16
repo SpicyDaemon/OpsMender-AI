@@ -11,7 +11,9 @@ order, and stops with an error at the first one that does not fit, so an
 identity provider that publishes an EC key before its RSA keys would make a
 valid RS256 id token fail (M1-58). decode tries only the keys that can verify
 the token, and only those with its key id when any key has it, so a key set's
-order and mix of key types no longer matter.
+order and mix of key types no longer matter. A provider that publishes one
+bare key instead of a key set gets the same treatment, so a bare key that
+does not fit is a refusal, not a server error (M1-65).
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ def _usable_keys(token: str, key: Any) -> Any:
     """From a key set, the keys that can verify ``token``, built for its
     algorithm: those with its key id when any has it. Any other key is
     returned as given."""
+    if isinstance(key, Mapping) and "keys" not in key and "kty" in key:
+        key = {"keys": [key]}
     if not (isinstance(key, Mapping) and isinstance(key.get("keys"), list)):
         return key
     header = jwt.get_unverified_header(token)

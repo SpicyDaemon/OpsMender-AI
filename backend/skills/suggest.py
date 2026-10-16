@@ -49,7 +49,6 @@ _SAFE_VERBS: frozenset[str] = frozenset(
         "head",
         "stat",
         "diff",
-        "explain",
     }
 )
 _DESTRUCTIVE_VERBS: frozenset[str] = frozenset(

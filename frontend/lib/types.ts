@@ -627,6 +627,8 @@ export interface ModelConfigResponse {
   provider: string;
   model_id: string;
   api_key_env_var: string | null;
+  /** The saved key setting is not a variable name; hidden until the config is edited. */
+  key_setting_invalid?: boolean;
   base_url: string | null;
   api_version: string | null;
   provider_meta: Record<string, string> | null;

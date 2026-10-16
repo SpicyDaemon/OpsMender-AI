@@ -975,6 +975,9 @@ class ModelConfigResponse(BaseModel):
     provider: str
     model_id: str
     api_key_env_var: Optional[str]
+    # The saved key setting is not a variable name (most likely a key pasted
+    # before such values were refused); it is hidden until the config is edited.
+    key_setting_invalid: bool = False
     base_url: Optional[str]
     api_version: Optional[str]
     provider_meta: Optional[dict[str, str]]

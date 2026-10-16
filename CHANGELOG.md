@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   providers (`ollama`, `openai_compatible`) keep any URL but may only use
   listed keys. Model configs saved before this change keep working until
   edited.
+- A local (stdio) MCP server now receives only PATH, the OS basics and the
+  variables its own configuration names. Before, it received every variable
+  of the app, so a server (and through it an admin) could read the token
+  signing secret or the database URL. A server saved before this change
+  keeps receiving everything until an admin saves it again, which the MCP
+  page points out; a server defined in `OPSMENDER_MCP_SERVERS_JSON` inherits
+  only with `"inherit_env": true`. A server that needs `KUBECONFIG` or
+  `AWS_PROFILE` gets it named in its variables.
 
 ## [1.1.2] - 2026-10-16
 

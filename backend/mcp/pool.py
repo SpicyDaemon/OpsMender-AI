@@ -49,6 +49,7 @@ def _db_to_runtime(server: MCPServer) -> MCPServerConfig:
         env=server.env_vars,
         url=server.url,
         token=server.token,
+        inherit_env=server.inherit_env,
     )
 
 
@@ -186,6 +187,7 @@ class MCPServerPool:
                                     env=cfg.env,
                                     url=cfg.url,
                                     token=access_token,
+                                    inherit_env=cfg.inherit_env,
                                 ),
                                 row.id,
                             )

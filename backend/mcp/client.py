@@ -205,6 +205,39 @@ def _resolve_node_command(command: str) -> str:
     )
 
 
+# What every local MCP server needs to start and find its tools: the search
+# path, a home for caches, the OS basics on Windows, and OpsMender's own
+# Node location. Anything else comes from the server's configuration.
+_BASE_ENV_NAMES = (
+    "PATH",
+    "PATHEXT",
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "SYSTEMROOT",
+    "SystemRoot",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "OPSMENDER_NODE_PATH",
+)
+
+
+def child_environment(server: MCPServerConfig) -> dict[str, str]:
+    """The environment a local MCP server process receives: the base names
+    above plus the server's own ``env``, so a server (and through it an admin)
+    cannot read every variable of the app, such as the token signing secret
+    (O-22). A server configured with ``inherit_env`` gets everything."""
+    if server.inherit_env:
+        return {**os.environ, **(server.env or {})}
+    base = {name: os.environ[name] for name in _BASE_ENV_NAMES if name in os.environ}
+    return {**base, **(server.env or {})}
+
+
 @asynccontextmanager
 async def _connect_stdio(
     server: MCPServerConfig,
@@ -214,7 +247,7 @@ async def _connect_stdio(
     params = StdioServerParameters(
         command=command,
         args=server.args or [],
-        env={**os.environ, **(server.env or {})},
+        env=child_environment(server),
     )
     async with stdio_client(params) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:

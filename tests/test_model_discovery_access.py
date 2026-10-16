@@ -166,3 +166,103 @@ async def test_a_key_setting_must_name_a_variable(client):
     assert PASTED_KEY not in configs.text
     [kept] = [item for item in configs.json()["items"] if item["id"] == str(saved_id)]
     assert kept["api_key_env_var"] == "OPENAI_API_KEY"
+
+
+LISTED = "Model keys and hosts stay with their provider (O-22, M1-63)."
+
+
+async def test_a_key_setting_must_be_a_listed_variable(client, monkeypatch):
+    """Even an admin cannot name any variable the server holds as a model key:
+    only the provider's own variable or one the operator lists in
+    OPSMENDER_MODEL_KEY_VARS, wherever a key setting is taken."""
+    monkeypatch.delenv("OPSMENDER_MODEL_KEY_VARS", raising=False)
+    h = await _headers(client)
+    body = {
+        "name": "leak",
+        "provider": "openai_compatible",
+        "model_id": "m",
+        "base_url": "http://127.0.0.1:9/v1",
+        "api_key_env_var": "OPSMENDER_JWT_SECRET",
+    }
+    answers = [
+        await client.get("/models", headers=h["admin"], params=LEAK),
+        await client.post("/models/configs", headers=h["admin"], json=body),
+        await client.put("/config/model", headers=h["admin"], json=body),
+    ]
+    for resp in answers:
+        assert resp.status_code == 400, resp.text
+        assert "OPSMENDER_JWT_SECRET" not in resp.text
+        assert resp.json()["detail"].startswith(
+            "api_key_env_var must be the provider's own key variable"
+        )
+
+    # A variable the operator lists is accepted; discovery then runs against
+    # the closed port and reports its error instead of refusing.
+    monkeypatch.setenv("OPSMENDER_MODEL_KEY_VARS", "GROQ_API_KEY, OTHER_KEY")
+    listed = await client.get(
+        "/models",
+        headers=h["admin"],
+        params={**LEAK, "api_key_env_var": "GROQ_API_KEY"},
+    )
+    assert listed.status_code == 200, listed.text
+    saved = await client.post(
+        "/models/configs",
+        headers=h["admin"],
+        json={**body, "api_key_env_var": "GROQ_API_KEY"},
+    )
+    assert saved.status_code in (200, 201), saved.text
+    assert saved.json()["config"]["api_key_env_var"] == "GROQ_API_KEY"
+
+    # The provider's own variable needs no listing.
+    own = await client.get(
+        "/models",
+        headers=h["admin"],
+        params={"provider": "openai", "api_key_env_var": "OPENAI_API_KEY"},
+    )
+    assert own.status_code == 200, own.text
+
+
+async def test_a_fixed_host_provider_refuses_another_base_url(client, monkeypatch):
+    """A provider with a fixed host only connects there, so its key cannot be
+    sent to a URL of the caller's choosing; the free-URL providers take any
+    URL but only listed keys."""
+    monkeypatch.setenv("OPSMENDER_MODEL_KEY_VARS", "GROQ_API_KEY")
+    h = await _headers(client)
+    foreign = "http://127.0.0.1:9/v1"
+    body = {
+        "name": "foreign",
+        "provider": "openai",
+        "model_id": "m",
+        "base_url": foreign,
+    }
+    answers = [
+        await client.get(
+            "/models",
+            headers=h["admin"],
+            params={"provider": "openai", "base_url": foreign},
+        ),
+        await client.post("/models/configs", headers=h["admin"], json=body),
+        await client.put("/config/model", headers=h["admin"], json=body),
+    ]
+    for resp in answers:
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"] == (
+            "Provider 'openai' only connects to api.openai.com; base_url must be a URL there"
+        )
+
+    at_home = await client.get(
+        "/models",
+        headers=h["admin"],
+        params={"provider": "openai", "base_url": "https://api.openai.com/v1"},
+    )
+    assert at_home.status_code == 200, at_home.text
+    free = await client.get(
+        "/models",
+        headers=h["admin"],
+        params={
+            "provider": "openai_compatible",
+            "base_url": foreign,
+            "api_key_env_var": "GROQ_API_KEY",
+        },
+    )
+    assert free.status_code == 200, free.text

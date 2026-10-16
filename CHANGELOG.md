@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- A model's key setting must now be the provider's own variable
+  (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`) or one the
+  server operator lists in `OPSMENDER_MODEL_KEY_VARS`, and the providers with
+  a fixed host (`anthropic`, `openai`, `azure_openai`) refuse a base URL
+  anywhere else. Before, an admin could name any variable the server holds,
+  the token signing secret included, and pair it with any URL, so a model
+  setting could send that value to a host of their choosing. The free-URL
+  providers (`ollama`, `openai_compatible`) keep any URL but may only use
+  listed keys. Model configs saved before this change keep working until
+  edited.
 
 ## [1.1.2] - 2026-10-16
 

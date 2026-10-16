@@ -802,6 +802,7 @@ function SessionPageContent() {
     }
     const startedMs = new Date(session.started_at).getTime();
     const deadlineMs = startedMs + session.tier0_max_session_seconds * 1000;
+    // eslint-disable-next-line react-hooks/purity -- the countdown recomputes on the 1-second timerTick
     const nowMs = Date.now() + timerTick * 0;
     const remainingSeconds = Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
     const expired = remainingSeconds <= 0;

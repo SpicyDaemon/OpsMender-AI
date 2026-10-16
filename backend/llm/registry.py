@@ -6,6 +6,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from .factory import create_provider
 
@@ -15,6 +16,10 @@ KEY_NAME_MESSAGE = (
     "api_key_env_var must name an environment variable (letters, digits and "
     "underscores, not starting with a digit), not hold the key itself"
 )
+KEY_LIST_MESSAGE = (
+    "api_key_env_var must be the provider's own key variable or one of the "
+    "variables the operator lists in OPSMENDER_MODEL_KEY_VARS"
+)
 
 
 def check_key_env_var_name(value: str | None) -> None:
@@ -23,6 +28,42 @@ def check_key_env_var_name(value: str | None) -> None:
     before it is read or stored, without repeating it (M1-60)."""
     if value and not _ENV_VAR_NAME.fullmatch(value):
         raise ValueError(KEY_NAME_MESSAGE)
+
+
+def operator_key_vars() -> frozenset[str]:
+    """The variables the operator allows as model keys, from
+    OPSMENDER_MODEL_KEY_VARS (comma-separated) in the server's environment."""
+    raw = os.environ.get("OPSMENDER_MODEL_KEY_VARS", "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
+def check_key_env_var_allowed(spec: "ProviderSpec", value: str | None) -> None:
+    """A key setting must be the provider's own variable or one the operator
+    lists, so an admin cannot point a model at any variable the server holds,
+    such as the token signing secret (O-22). The message never repeats it."""
+    if (
+        value
+        and value != spec.default_api_key_env_var
+        and value not in operator_key_vars()
+    ):
+        raise ValueError(KEY_LIST_MESSAGE)
+
+
+def check_base_url_host(spec: "ProviderSpec", base_url: str | None) -> None:
+    """A provider with a fixed host only connects there, so a provider's key
+    cannot be sent to a URL of the caller's choosing (O-22). Providers whose
+    endpoint is the operator's own (ollama, openai_compatible) take any URL."""
+    if not base_url or not spec.allowed_hosts:
+        return
+    host = (urlparse(base_url).hostname or "").lower()
+    if not any(
+        host == allowed or (allowed.startswith(".") and host.endswith(allowed))
+        for allowed in spec.allowed_hosts
+    ):
+        raise ValueError(
+            f"Provider '{spec.provider}' only connects to "
+            f"{', '.join(spec.allowed_hosts)}; base_url must be a URL there"
+        )
 
 
 def _looks_like_placeholder(value: str | None) -> bool:
@@ -185,6 +226,9 @@ class ProviderSpec:
     requires_api_key: bool = True
     requires_base_url: bool = False
     requires_api_version: bool = False
+    # Hosts a caller's base_url may name; a leading dot allows subdomains.
+    # Empty means the endpoint is the operator's own and any URL is fine.
+    allowed_hosts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -211,12 +255,14 @@ class ProviderRegistry:
             label="Anthropic",
             default_model_id="claude-sonnet-4-20250514",
             default_api_key_env_var="ANTHROPIC_API_KEY",
+            allowed_hosts=("api.anthropic.com",),
         ),
         "openai": ProviderSpec(
             provider="openai",
             label="OpenAI",
             default_model_id="gpt-4o",
             default_api_key_env_var="OPENAI_API_KEY",
+            allowed_hosts=("api.openai.com",),
         ),
         "azure_openai": ProviderSpec(
             provider="azure_openai",
@@ -225,6 +271,7 @@ class ProviderRegistry:
             default_api_key_env_var="AZURE_OPENAI_API_KEY",
             requires_base_url=True,
             requires_api_version=True,
+            allowed_hosts=(".openai.azure.com",),
         ),
         "bedrock": ProviderSpec(
             provider="bedrock",
@@ -315,6 +362,8 @@ class ProviderRegistry:
         results: list[dict[str, object]] = []
         for provider_name in providers:
             spec = self.get_spec(provider_name)
+            check_key_env_var_allowed(spec, api_key_env_var)
+            check_base_url_host(spec, base_url)
             selected_model = model_id or spec.default_model_id
             selected_api_key = api_key_env_var or spec.default_api_key_env_var
             per_provider_env = env_defaults.get(provider_name, {})
@@ -400,6 +449,8 @@ class ProviderRegistry:
     ) -> ValidationResult:
         check_key_env_var_name(api_key_env_var)
         spec = self.get_spec(provider)
+        check_key_env_var_allowed(spec, api_key_env_var)
+        check_base_url_host(spec, base_url)
         provider_meta = provider_meta or {}
 
         if spec.requires_base_url and not base_url:

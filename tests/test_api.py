@@ -8711,6 +8711,30 @@ class TestNotificationPreferences:
         )
         assert r.status_code == 422
 
+    async def test_bad_quiet_hours_name_the_inbox_setting(
+        self, client: AsyncClient, auth_headers
+    ):
+        # The Inbox preferences page shows the detail under its form. My
+        # Routing has quiet hours of its own, so the message says which.
+        r = await client.put(
+            "/notifications/preferences",
+            json={"quiet_hours": {"enabled": True, "start": "9am", "end": "07:00"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        assert r.json()["detail"] == "Inbox quiet hours start must be HH:MM"
+        r = await client.put(
+            "/notifications/preferences",
+            json={"quiet_hours": {"enabled": True, "start": "22:00"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 422
+        assert r.json()["detail"] == "Inbox quiet hours end is required when enabled"
+        # Neither request saved anything.
+        r = await client.get("/notifications/preferences", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.json()["quiet_hours"] is None
+
     async def test_mute_suppresses_notification(
         self, client: AsyncClient, app, auth_headers, viewer_headers
     ):

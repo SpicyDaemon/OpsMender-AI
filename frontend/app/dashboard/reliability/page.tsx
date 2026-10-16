@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Activity, Plus, ServerCrash, Calendar, Trash2, Pencil, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
@@ -36,6 +36,12 @@ function fmtLastCheck(iso: string | null): string {
   return formatDate(iso);
 }
 
+/** An aborted request is not a load failure, so it is not logged. Some
+ *  browsers abort a page's requests this way when the person leaves it. */
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
 function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
@@ -55,6 +61,17 @@ export default function ReliabilityPage() {
   const [editingMW, setEditingMW] = useState<MaintenanceWindowResponse | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [editingTarget, setEditingTarget] = useState<SLATargetResponse | null>(null);
+  // Set while the browser unloads the page (a reload, a typed address, a
+  // link out of the app): it fires pagehide and then cancels the page's
+  // requests, which Chromium reports as a plain TypeError ("Failed to
+  // fetch") rather than an AbortError, so that failure is not logged.
+  const unloadingRef = useRef(false);
+  // Cleared when the page unmounts (moving to another page of the app). Its
+  // requests are not cancelled then, so a load that fails afterwards is still
+  // logged.
+  const mountedRef = useRef(true);
+  // Once the page is left either way, a load no longer updates it.
+  const inUse = () => mountedRef.current && !unloadingRef.current;
 
   const loadData = async () => {
     setLoading(true);
@@ -65,14 +82,16 @@ export default function ReliabilityPage() {
         listMaintenanceWindows(),
         getSLORecommendations().catch(() => null),
       ]);
+      if (!inUse()) return;
       setTargets(targetsData.items);
       setSummary(summaryData);
       setMaintenanceWindows(mwData.items);
       setRecommendations(recsData?.items ?? []);
     } catch (err) {
+      if (unloadingRef.current || isAbortError(err)) return;
       console.error("Failed to load reliability data:", err);
     } finally {
-      setLoading(false);
+      if (inUse()) setLoading(false);
     }
   };
 
@@ -97,7 +116,24 @@ export default function ReliabilityPage() {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+    unloadingRef.current = false;
+    const onPageHide = () => {
+      unloadingRef.current = true;
+    };
+    // The back/forward cache can show this same page again without mounting
+    // it, and then it is in use again.
+    const onPageShow = () => {
+      unloadingRef.current = false;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
     loadData();
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, []);
 
   return (

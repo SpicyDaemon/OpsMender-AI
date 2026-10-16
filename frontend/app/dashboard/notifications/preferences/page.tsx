@@ -8,12 +8,14 @@ import {
   updateNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/api";
+import { requiredRolesForPath } from "@/components/Sidebar";
 import { Button } from "@/components/ui/Button";
 import { FormError, Input, Label, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/context/auth";
 import { timeZoneOptionsWithOffset } from "@/lib/timezones";
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -24,6 +26,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   reliability: "Reliability / SLO",
   account: "Account",
 };
+
+// My Routing, where the quiet hours that hold pages are set.
+const MY_ROUTING_HREF = "/dashboard/paging/notifications";
 
 function categoryLabel(category: string) {
   return CATEGORY_LABELS[category] ?? category;
@@ -39,6 +44,12 @@ function browserTz() {
 
 export default function NotificationPreferencesPage() {
   const toast = useToast();
+  const { user } = useAuth();
+  // Link to My Routing only for the roles its page lets in, by the rule the
+  // route guard applies; anyone else would land on Access denied.
+  const myRoutingRoles = requiredRolesForPath(MY_ROUTING_HREF);
+  const canOpenMyRouting =
+    myRoutingRoles === null || Boolean(user && myRoutingRoles.includes(user.role));
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -114,7 +125,7 @@ export default function NotificationPreferencesPage() {
         },
       });
       applyPrefs(prefs);
-      toast.success("Notification preferences saved");
+      toast.success("Inbox preferences saved");
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -125,15 +136,15 @@ export default function NotificationPreferencesPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader
-        title="Notification preferences"
-        subtitle="Choose which in-app notifications you receive and set quiet hours."
+        title="Inbox preferences"
+        subtitle="Choose which notices reach your Inbox and set Inbox quiet hours."
         icon={<BellRing size={18} />}
         actions={
           <Link
             href="/dashboard/notifications"
             className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-bg-surface px-3 py-2 text-sm font-medium text-fg-primary transition-colors hover:bg-bg-hover"
           >
-            <ArrowLeft size={14} /> Back to inbox
+            <ArrowLeft size={14} /> Back to Inbox
           </Link>
         }
       />
@@ -150,8 +161,8 @@ export default function NotificationPreferencesPage() {
           <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
             <h2 className="text-sm font-semibold text-fg-primary">Categories</h2>
             <p className="mt-0.5 text-sm text-fg-secondary">
-              Turn a category off to mute its notifications. Muted categories no
-              longer appear in your notification center or pop live.
+              Turn a category off to mute its notices. Notices in a muted
+              category no longer reach your Inbox or pop live.
             </p>
             <ul className="mt-4 divide-y divide-border-subtle">
               {categories.map((category) => {
@@ -176,21 +187,36 @@ export default function NotificationPreferencesPage() {
             </ul>
           </section>
 
-          {/* Quiet hours */}
+          {/* Inbox quiet hours: My Routing has its own quiet hours for pages */}
           <section className="rounded-xl border border-border-subtle bg-bg-panel p-5 shadow-sm sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-sm font-semibold text-fg-primary">
-                  Quiet hours
+                  Inbox quiet hours
                 </h2>
                 <p className="mt-0.5 text-sm text-fg-secondary">
-                  During quiet hours we suppress the live pop and badge bump.
-                  Notifications still appear in your notification center.
+                  During Inbox quiet hours we suppress the live pop and badge
+                  bump. Notices still appear in your Inbox.
+                </p>
+                <p className="mt-1 text-sm text-fg-secondary">
+                  Inbox quiet hours only affect Inbox notices.
+                  {canOpenMyRouting && (
+                    <>
+                      {" "}Pages have their own quiet hours in{" "}
+                      <Link
+                        href={MY_ROUTING_HREF}
+                        className="font-medium text-accent-text underline underline-offset-2"
+                      >
+                        My Routing
+                      </Link>
+                      .
+                    </>
+                  )}
                 </p>
               </div>
               <Toggle
                 id="quiet-enabled"
-                aria-label="Enable quiet hours"
+                aria-label="Enable Inbox quiet hours"
                 checked={quietEnabled}
                 onChange={setQuietEnabled}
               />

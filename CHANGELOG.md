@@ -102,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Routing's only. Upgrading moves saved Inbox quiet hours to their new
   place; SQLite evaluation databases are not migrated, so set Inbox quiet
   hours again there.
+- Reloading the Reliability page, or following a link out of the app, while
+  it is still loading no longer logs "Failed to load reliability data" in the
+  browser console: the browser cancels the page's requests then, and a
+  cancelled or aborted request is not a failure. A load that really fails is
+  still logged, also after you move to another page of the app.
 
 ### Changed
 
@@ -118,6 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the session content a Viewer reads to it. Before, the Auth guide said
   Viewers could read sessions and the People guide didn't say what a Viewer
   could open.
+- The two quiet-hours settings now say which is which. The Inbox preferences
+  page (Inbox, then Preferences; it was called Notification preferences) calls
+  its setting Inbox quiet hours, says it only affects Inbox notices, and links
+  admins and operators to My Routing. The quiet hours in My Routing say they
+  hold pages and link back to the Inbox preferences page. Before, both pages
+  just said "quiet hours", so setting one looked like setting the other.
 
 ## [1.1.1] - 2026-10-10
 

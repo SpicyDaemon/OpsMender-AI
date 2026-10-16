@@ -17,6 +17,12 @@ const apiMocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/api", () => apiMocks);
 
+// The page links admins and operators to My Routing; Viewers can't open it.
+const auth = vi.hoisted(() => ({ role: "operator" }));
+vi.mock("@/context/auth", () => ({
+  useAuth: () => ({ user: { role: auth.role } }),
+}));
+
 import NotificationPreferencesPage from "@/app/dashboard/notifications/preferences/page";
 
 const CATEGORIES = [
@@ -44,6 +50,7 @@ function prefs(over: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.role = "operator";
   apiMocks.getNotificationPreferences.mockResolvedValue(prefs());
   apiMocks.updateNotificationPreferences.mockImplementation(async (body) =>
     prefs({
@@ -53,7 +60,7 @@ beforeEach(() => {
   );
 });
 
-describe("Notification preferences", () => {
+describe("Inbox preferences", () => {
   it("renders a toggle per fetched category", async () => {
     render(<NotificationPreferencesPage />);
     // ON (receive) by default
@@ -78,12 +85,13 @@ describe("Notification preferences", () => {
     expect(body.muted_categories).toContain("incident");
   });
 
-  it("enabling quiet hours saves the window", async () => {
+  it("enabling Inbox quiet hours saves the window", async () => {
     render(<NotificationPreferencesPage />);
-    // Wait for prefs to load, then flip the quiet-hours enable toggle (by id).
+    // Wait for prefs to load, then flip the Inbox quiet hours toggle.
     await screen.findByRole("switch", { name: /Incidents/i });
-    const quietToggle = document.getElementById("quiet-enabled")!;
-    fireEvent.click(quietToggle);
+    fireEvent.click(
+      screen.getByRole("switch", { name: "Enable Inbox quiet hours" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /Save preferences/i }));
     await waitFor(() =>
       expect(apiMocks.updateNotificationPreferences).toHaveBeenCalled(),
@@ -112,5 +120,46 @@ describe("Notification preferences", () => {
     );
     const body = apiMocks.updateNotificationPreferences.mock.calls[0][0];
     expect(body.quiet_hours.tz).toBe("America/Chicago");
+  });
+
+  it("names Inbox quiet hours and points to My Routing for pages", async () => {
+    render(<NotificationPreferencesPage />);
+    expect(
+      await screen.findByRole("heading", { name: "Inbox quiet hours" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Inbox preferences" })).toBeTruthy();
+    expect(screen.getByText(/only affect Inbox notices/).textContent).toBe(
+      "Inbox quiet hours only affect Inbox notices. " +
+        "Pages have their own quiet hours in My Routing.",
+    );
+    const link = screen.getByRole("link", { name: "My Routing" });
+    expect(link.getAttribute("href")).toBe("/dashboard/paging/notifications");
+  });
+
+  it("keeps the My Routing link from Viewers, who can't open it", async () => {
+    auth.role = "viewer";
+    render(<NotificationPreferencesPage />);
+    expect(
+      await screen.findByRole("heading", { name: "Inbox quiet hours" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/only affect Inbox notices/).textContent).toBe(
+      "Inbox quiet hours only affect Inbox notices.",
+    );
+    expect(screen.queryByRole("link", { name: "My Routing" })).toBeNull();
+  });
+
+  it("calls them Inbox notices throughout", async () => {
+    const { container } = render(<NotificationPreferencesPage />);
+    await screen.findByRole("heading", { name: "Inbox quiet hours" });
+    expect(
+      screen.getByRole("link", { name: "Back to Inbox" }).getAttribute("href"),
+    ).toBe("/dashboard/notifications");
+    expect(screen.getByText(/mute its notices/).textContent).toBe(
+      "Turn a category off to mute its notices. Notices in a muted " +
+        "category no longer reach your Inbox or pop live.",
+    );
+    // One word for what lands in the Inbox, and the Inbox always named so.
+    expect(container.textContent).not.toMatch(/notification/i);
+    expect(container.textContent).not.toMatch(/\binbox\b/);
   });
 });

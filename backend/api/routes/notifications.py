@@ -31,14 +31,18 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 def _validate_quiet_hours(qh) -> None:
-    """Reject malformed quiet-hours times so the stored shape stays clean."""
+    """Reject malformed Inbox quiet hours so the stored shape stays clean.
+
+    The Inbox preferences page shows the detail under its form, so it names
+    the setting the way the page does: My Routing has its own quiet hours.
+    """
     if qh is None or not qh.enabled:
         return
     for label, value in (("start", qh.start), ("end", qh.end)):
         if not value:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"quiet_hours.{label} is required when enabled",
+                detail=f"Inbox quiet hours {label} is required when enabled",
             )
         try:
             h, m = (int(x) for x in str(value).split(":"))
@@ -47,7 +51,7 @@ def _validate_quiet_hours(qh) -> None:
         except (ValueError, TypeError):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"quiet_hours.{label} must be HH:MM",
+                detail=f"Inbox quiet hours {label} must be HH:MM",
             )
 
 
@@ -91,7 +95,7 @@ async def unread_count(
 @router.get(
     "/preferences",
     response_model=NotificationPreferencesResponse,
-    summary="Get the user's in-app notification preferences",
+    summary="Get the user's Inbox preferences",
 )
 async def get_preferences(
     db: AsyncSession = Depends(get_db),
@@ -117,7 +121,7 @@ async def get_preferences(
 @router.put(
     "/preferences",
     response_model=NotificationPreferencesResponse,
-    summary="Update in-app notification mute + quiet-hours",
+    summary="Update Inbox category mutes and Inbox quiet hours",
 )
 async def update_preferences(
     body: NotificationPreferencesUpdate,

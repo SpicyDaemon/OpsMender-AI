@@ -84,10 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every pull request and release now audits dependencies: the web app's
   runtime npm packages fail the check on a high or critical advisory, and
   the installed Python packages fail it on any known advisory (checked
-  against OSV). Two advisories with no fixed release are ignored because
-  they do not apply: GHSA-3qf3-8w2g-rqmx in python-jose (every token check
-  names its algorithms) and GHSA-wj6h-64fc-37mp in ecdsa (it affects
-  signing, which OpsMender never does with ecdsa).
+  against OSV). Three advisories are ignored because they do not apply:
+  GHSA-3qf3-8w2g-rqmx in python-jose (every token check names its
+  algorithms), GHSA-wj6h-64fc-37mp in ecdsa (it affects signing, which
+  OpsMender never does with ecdsa) and GHSA-84m7-p3x7-pcfv in the MCP SDK
+  (it affects MCP servers; OpsMender only connects to them as a client).
 
 ### Fixed
 

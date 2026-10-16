@@ -3,11 +3,26 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass, field
 
 from .factory import create_provider
-from .key_names import check_key_env_var_name
+
+
+_ENV_VAR_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+KEY_NAME_MESSAGE = (
+    "api_key_env_var must name an environment variable (letters, digits and "
+    "underscores, not starting with a digit), not hold the key itself"
+)
+
+
+def check_key_env_var_name(value: str | None) -> None:
+    """A key setting names the variable to read the key from; a value not
+    shaped like a variable name is most likely a pasted key, so it is refused
+    before it is read or stored, without repeating it (M1-60)."""
+    if value and not _ENV_VAR_NAME.fullmatch(value):
+        raise ValueError(KEY_NAME_MESSAGE)
 
 
 def _looks_like_placeholder(value: str | None) -> bool:

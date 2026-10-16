@@ -835,33 +835,35 @@ class MarkReadResponse(BaseModel):
     updated: int
 
 
+def is_clock(value: object) -> bool:
+    """``HH:MM`` on a 24-hour clock."""
+    try:
+        h, m = (int(part) for part in str(value).split(":"))
+    except ValueError:
+        return False
+    return 0 <= h < 24 and 0 <= m < 60
+
+
 class QuietHours(BaseModel):
     enabled: bool = False
     start: Optional[str] = None  # "HH:MM"
     end: Optional[str] = None  # "HH:MM"
     tz: str = "UTC"
 
+    def well_formed(self) -> bool:
+        """Enabled quiet hours need an HH:MM start and end."""
+        return not self.enabled or (is_clock(self.start) and is_clock(self.end))
+
 
 def _inbox_quiet_hours_ok(value: object) -> bool:
-    """The Inbox quiet-hours shape that GET /notifications/preferences reads
-    back from ``routing.in_app.quiet_hours`` (M1-59): a ``QuietHours`` with
-    HH:MM start and end when enabled. Absent is fine."""
+    """The Inbox quiet hours under ``routing.in_app`` (M1-59): absent, or a
+    well-formed ``QuietHours``."""
     if value is None:
         return True
     try:
-        hours = QuietHours.model_validate(value, strict=True)
+        return QuietHours.model_validate(value, strict=True).well_formed()
     except ValidationError:
         return False
-    if not hours.enabled:
-        return True
-    for clock in (hours.start, hours.end):
-        try:
-            h, m = (int(part) for part in str(clock or "").split(":"))
-        except ValueError:
-            return False
-        if not (0 <= h < 24 and 0 <= m < 60):
-            return False
-    return True
 
 
 class NotificationPreferencesResponse(BaseModel):

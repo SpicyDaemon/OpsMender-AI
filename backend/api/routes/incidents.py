@@ -1906,6 +1906,21 @@ _CLOSED_MEANWHILE = (
 )
 
 
+async def _acknowledge_refusal(
+    db: AsyncSession, org_id: uuid.UUID, incident_id: uuid.UUID, outcome
+) -> str | None:
+    """Why an acknowledgement outcome refuses the change, or None when it
+    went through: someone else holds the incident, the owner changed after
+    the check (O-19), or it closed meanwhile. Nothing was written."""
+    if outcome.status == "owned_by_other":
+        return await _owner_holds_detail(db, org_id, incident_id)
+    if outcome.status == "owner_changed":
+        return await _owner_changed_detail(db, org_id, incident_id)
+    if outcome.status == "closed":
+        return _CLOSED_MEANWHILE
+    return None
+
+
 def _ensure_open(incident) -> None:
     if incident.status in _CLOSED_STATUSES:
         raise HTTPException(
@@ -2228,24 +2243,9 @@ async def assign_incident(
         note=note,
         expected_owner_id=active.assigned_to if active else None,
     )
-    if outcome.status == "owned_by_other":
+    if refusal := await _acknowledge_refusal(db, org_id, incident_id, outcome):
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=await _owner_holds_detail(db, org_id, incident_id),
-        )
-    if outcome.status == "owner_changed":
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=await _owner_changed_detail(db, org_id, incident_id),
-        )
-    if outcome.status == "closed":
-        # Resolved or merged after the open check above: nothing was written.
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=_CLOSED_MEANWHILE
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=refusal)
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
     assert assignment is not None
     # Notify the assignee when someone else assigns them (self-ack is silent).
@@ -2509,31 +2509,12 @@ async def bulk_incident_action(
                     note=note,
                     expected_owner_id=active.assigned_to if active else None,
                 )
-                if outcome.status == "owned_by_other":
+                if refusal := await _acknowledge_refusal(
+                    db, org_id, incident_id, outcome
+                ):
                     items.append(
                         IncidentBulkActionResult(
-                            incident_id=incident_id,
-                            ok=False,
-                            error=await _owner_holds_detail(db, org_id, incident_id),
-                        )
-                    )
-                    failed += 1
-                    continue
-                if outcome.status == "owner_changed":
-                    items.append(
-                        IncidentBulkActionResult(
-                            incident_id=incident_id,
-                            ok=False,
-                            error=await _owner_changed_detail(db, org_id, incident_id),
-                        )
-                    )
-                    failed += 1
-                    continue
-                if outcome.status == "closed":
-                    # Resolved or merged after the open check: nothing written.
-                    items.append(
-                        IncidentBulkActionResult(
-                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
+                            incident_id=incident_id, ok=False, error=refusal
                         )
                     )
                     failed += 1
@@ -2584,21 +2565,12 @@ async def bulk_incident_action(
                     note=note,
                     expected_owner_id=active.assigned_to if active else None,
                 )
-                if outcome.status == "owner_changed":
+                if refusal := await _acknowledge_refusal(
+                    db, org_id, incident_id, outcome
+                ):
                     items.append(
                         IncidentBulkActionResult(
-                            incident_id=incident_id,
-                            ok=False,
-                            error=await _owner_changed_detail(db, org_id, incident_id),
-                        )
-                    )
-                    failed += 1
-                    continue
-                if outcome.status == "closed":
-                    # Resolved or merged after the open check: nothing written.
-                    items.append(
-                        IncidentBulkActionResult(
-                            incident_id=incident_id, ok=False, error=_CLOSED_MEANWHILE
+                            incident_id=incident_id, ok=False, error=refusal
                         )
                     )
                     failed += 1

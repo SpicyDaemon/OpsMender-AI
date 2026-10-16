@@ -29,6 +29,17 @@ export function clearToken(): void {
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
 
+/** A request that fails validation gets 422 with a list of errors as its
+ *  detail; their messages are the text to show. */
+function validationText(detail: unknown): string | undefined {
+  if (!Array.isArray(detail)) return undefined;
+  const messages = detail
+    .map((item) => (item as { msg?: unknown } | null)?.msg)
+    .filter((msg): msg is string => typeof msg === "string" && msg !== "")
+    .map((msg) => msg.replace(/^Value error, /, ""));
+  return messages.length > 0 ? messages.join("; ") : undefined;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -59,7 +70,8 @@ async function request<T>(
     let code: unknown;
     try {
       const body = await res.json();
-      detail = body.detail ?? JSON.stringify(body);
+      detail =
+        validationText(body.detail) ?? body.detail ?? JSON.stringify(body);
       code = body.code;
     } catch {
       // non-JSON response

@@ -12,7 +12,7 @@ from datetime import date, datetime
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # ---------------------------------------------------------------------------
 # Shared validators
@@ -840,6 +840,28 @@ class QuietHours(BaseModel):
     start: Optional[str] = None  # "HH:MM"
     end: Optional[str] = None  # "HH:MM"
     tz: str = "UTC"
+
+
+def _inbox_quiet_hours_ok(value: object) -> bool:
+    """The Inbox quiet-hours shape that GET /notifications/preferences reads
+    back from ``routing.in_app.quiet_hours`` (M1-59): a ``QuietHours`` with
+    HH:MM start and end when enabled. Absent is fine."""
+    if value is None:
+        return True
+    try:
+        hours = QuietHours.model_validate(value, strict=True)
+    except ValidationError:
+        return False
+    if not hours.enabled:
+        return True
+    for clock in (hours.start, hours.end):
+        try:
+            h, m = (int(part) for part in str(clock or "").split(":"))
+        except ValueError:
+            return False
+        if not (0 <= h < 24 and 0 <= m < 60):
+            return False
+    return True
 
 
 class NotificationPreferencesResponse(BaseModel):
@@ -1904,14 +1926,21 @@ class UserNotificationPrefUpdate(BaseModel):
                 muted = (
                     entry.get("muted_categories") if isinstance(entry, dict) else None
                 )
-                if not isinstance(entry, dict) or (
-                    muted is not None
-                    and (
-                        not isinstance(muted, list)
-                        or not all(isinstance(c, str) for c in muted)
+                if (
+                    not isinstance(entry, dict)
+                    or (
+                        muted is not None
+                        and (
+                            not isinstance(muted, list)
+                            or not all(isinstance(c, str) for c in muted)
+                        )
                     )
+                    or not _inbox_quiet_hours_ok(entry.get("quiet_hours"))
                 ):
-                    raise ValueError("routing.in_app must be {muted_categories: [..]}")
+                    raise ValueError(
+                        "routing.in_app must be {muted_categories: [..], "
+                        "quiet_hours: {enabled, start, end, tz}}"
+                    )
                 continue
             if key not in _ROUTING_PRIORITIES:
                 raise ValueError(f"routing key {key!r} must be P0 to P3 or in_app")

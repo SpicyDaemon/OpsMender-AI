@@ -4565,9 +4565,15 @@ export function NotificationPreferencesPanel({
         ]);
         setPref(data);
         setChannels(data.channels ?? {});
+        // Only P0 to P3 are My Routing's, and only those are saved back.
+        // routing.in_app holds the Inbox settings, which the Inbox
+        // preferences page saves.
+        const loaded: Record<string, unknown> = data.routing ?? {};
         const normalized: Record<string, RoutingStage[]> = {};
-        for (const [priority, raw] of Object.entries(data.routing ?? {})) {
-          normalized[priority] = normalizeRoutingStages(raw);
+        for (const priority of ALL_PRIORITIES) {
+          if (priority in loaded) {
+            normalized[priority] = normalizeRoutingStages(loaded[priority]);
+          }
         }
         setRouting(normalized);
         setBotConnectors(connectors.items);

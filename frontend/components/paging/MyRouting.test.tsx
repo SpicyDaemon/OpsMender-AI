@@ -24,8 +24,9 @@ vi.mock("@/components/NotificationChannelsPage", () => ({
 vi.mock("@/components/RosterCalendarModal", () => ({
   RosterCalendarModal: () => null,
 }));
+const toastError = vi.fn();
 vi.mock("@/components/ui/Toast", () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
+  useToast: () => ({ success: vi.fn(), error: toastError }),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -300,5 +301,74 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
     expect(body.routing.P0[0]).toHaveProperty("channel_id");
     expect(body.routing.P0[0]).toHaveProperty("delay_seconds");
     expect(body.quiet_hours.min_priority_to_break).toBe("P0");
+  });
+
+  it("saves only P0 to P3 after the Inbox settings were saved", async () => {
+    // The Inbox preferences page stores its mutes and quiet hours under
+    // routing.in_app; My Routing must not send them back as stages.
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: {
+        ...basePref.routing,
+        in_app: {
+          muted_categories: ["incident"],
+          quiet_hours: { enabled: true, start: "22:00", end: "07:00", tz: "UTC" },
+        },
+      },
+    });
+    render(<NotificationPreferencesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /save routing/i }));
+    await waitFor(() => expect(updateMyNotificationPreferences).toHaveBeenCalled());
+    const body = updateMyNotificationPreferences.mock.calls[0][0];
+    expect(Object.keys(body.routing).sort()).toEqual(["P0", "P1"]);
+    expect(body.routing).not.toHaveProperty("in_app");
+  });
+
+  it("shows the reason a save was refused as text", async () => {
+    // The real API client reads the 422 list FastAPI sends for a bad body.
+    const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+    // The client reads its token from localStorage; give it a working one, as
+    // lib/api.test.ts does (Node 25's own localStorage global has no methods
+    // without --localstorage-file and hides jsdom's).
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          detail: [
+            {
+              type: "value_error",
+              loc: ["body", "routing"],
+              msg: "Value error, routing.P1 must be a list of up to 3 stages",
+            },
+          ],
+        }),
+      })),
+    );
+    updateMyNotificationPreferences.mockImplementation((body) =>
+      actual.updateMyNotificationPreferences(body),
+    );
+    try {
+      render(<NotificationPreferencesPanel />);
+      fireEvent.click(await screen.findByRole("button", { name: /save routing/i }));
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          "routing.P1 must be a list of up to 3 stages",
+        ),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

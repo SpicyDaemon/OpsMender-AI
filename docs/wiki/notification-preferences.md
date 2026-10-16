@@ -96,7 +96,10 @@ Click **Test notification** (top-right) to send a one-off test to your routed ch
 ## 2. Quiet hours
 
 Quiet hours hold back P1 pages to you during a configured window. (P2 and P3
-don't page at all, and P0 always gets through.) Enable the panel and fill in:
+don't page at all, and P0 always gets through.) They are saved separately
+from the quiet hours on the Inbox's notification preferences page, which only
+hold back the Inbox's live pop, so saving one page never changes the other.
+Enable the panel and fill in:
 
 - **Time zone**: any IANA name (`UTC`, `America/Los_Angeles`, `Europe/Berlin`).
 - **Start / End**: local times. Windows wrap midnight correctly (`22:00 → 07:00`).

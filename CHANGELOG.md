@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redirect only within its own scheme, host and port; any other redirect
   fails the connection with a message naming the other origin, so an
   admin enters that URL if it is the server they mean.
+- Every workflow runs on the Node 24 releases of its actions (checkout v7,
+  setup-python v7, setup-node v7, upload-artifact v7, download-artifact v8,
+  action-gh-release v3, codeql-action v4, setup-uv v10.3.0 (it publishes no
+  moving major tag), upload-pages-artifact
+  v5, deploy-pages v5, setup-buildx-action v4, build-push-action v7, and
+  trivy-action 0.36.0 whose own steps run on Node 24), and the repository
+  carries `.nvmrc` (`24`) beside the frontend's `engines` field, so Node 24
+  is the minimum everywhere.
 
 ## [1.1.2] - 2026-10-16
 

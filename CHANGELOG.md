@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only with `"inherit_env": true`. A server that needs `KUBECONFIG` or
   `AWS_PROFILE` gets it named in its variables.
 
+### Changed
+
+- The MCP SDK moves to 1.30.0, and CI's audit no longer ignores its
+  advisory. A remote (SSE or HTTP) MCP server is now followed through a
+  redirect only within its own scheme, host and port; any other redirect
+  fails the connection with a message naming the other origin, so an
+  admin enters that URL if it is the server they mean.
+
 ## [1.1.2] - 2026-10-16
 
 ### Security

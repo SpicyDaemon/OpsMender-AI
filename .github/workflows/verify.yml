@@ -42,16 +42,11 @@ jobs:
       # - GHSA-wj6h-64fc-37mp, ecdsa 0.19.2 (required by python-jose), high,
       #   no fix planned: a timing leak while signing with P-256. OpsMender
       #   never signs with ecdsa; python-jose uses its cryptography backend.
-      # - GHSA-84m7-p3x7-pcfv, mcp 1.28.1, unbounded sessions in a Streamable
-      #   HTTP MCP server: OpsMender only connects to MCP servers as a client and
-      #   never serves MCP. The fixed 1.30.0 also changes client redirect and
-      #   OAuth handling, so moving to it is its own change.
       - name: Audit Python dependencies
         run: >-
           uv run pip-audit --skip-editable --vulnerability-service osv
           --ignore-vuln GHSA-3qf3-8w2g-rqmx
           --ignore-vuln GHSA-wj6h-64fc-37mp
-          --ignore-vuln GHSA-84m7-p3x7-pcfv
 
       - name: Lint
         run: uv run ruff check .

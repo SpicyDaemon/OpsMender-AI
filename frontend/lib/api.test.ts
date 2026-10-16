@@ -77,4 +77,25 @@ describe("request", () => {
     await expect(api.get("/config")).rejects.toThrow("not in allowed roles");
     expect(window.location.href).toBe("http://localhost/dashboard/settings");
   });
+
+  it("turns the list FastAPI sends for a bad body into one message", async () => {
+    // A page shows err.message, so a refused save names its reason (M1-59).
+    setToken("session-token");
+    vi.stubGlobal(
+      "fetch",
+      answer(422, {
+        detail: [
+          {
+            type: "value_error",
+            loc: ["body", "routing"],
+            msg: "Value error, routing.P1 must be a list of up to 3 stages",
+          },
+        ],
+      }),
+    );
+    openAt("/dashboard/paging");
+    await expect(
+      api.put("/users/me/notification-preferences", {}),
+    ).rejects.toThrow("routing.P1 must be a list of up to 3 stages");
+  });
 });

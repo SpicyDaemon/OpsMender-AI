@@ -36,12 +36,6 @@ function fmtLastCheck(iso: string | null): string {
   return formatDate(iso);
 }
 
-/** An aborted request is not a load failure, so it is not logged. Some
- *  browsers abort a page's requests this way when the person leaves it. */
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === "AbortError";
-}
-
 function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel px-4 py-3 shadow-sm">
@@ -64,14 +58,10 @@ export default function ReliabilityPage() {
   // Set while the browser unloads the page (a reload, a typed address, a
   // link out of the app): it fires pagehide and then cancels the page's
   // requests, which Chromium reports as a plain TypeError ("Failed to
-  // fetch") rather than an AbortError, so that failure is not logged.
+  // fetch") rather than an AbortError, so that failure is not logged. Moving
+  // to another page of the app only unmounts this one; a load that fails
+  // afterwards is a real failure and is still logged.
   const unloadingRef = useRef(false);
-  // Cleared when the page unmounts (moving to another page of the app). Its
-  // requests are not cancelled then, so a load that fails afterwards is still
-  // logged.
-  const mountedRef = useRef(true);
-  // Once the page is left either way, a load no longer updates it.
-  const inUse = () => mountedRef.current && !unloadingRef.current;
 
   const loadData = async () => {
     setLoading(true);
@@ -82,16 +72,18 @@ export default function ReliabilityPage() {
         listMaintenanceWindows(),
         getSLORecommendations().catch(() => null),
       ]);
-      if (!inUse()) return;
+      if (unloadingRef.current) return;
       setTargets(targetsData.items);
       setSummary(summaryData);
       setMaintenanceWindows(mwData.items);
       setRecommendations(recsData?.items ?? []);
     } catch (err) {
-      if (unloadingRef.current || isAbortError(err)) return;
+      // An aborted request is not a load failure either.
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      if (unloadingRef.current || aborted) return;
       console.error("Failed to load reliability data:", err);
     } finally {
-      if (inUse()) setLoading(false);
+      if (!unloadingRef.current) setLoading(false);
     }
   };
 
@@ -116,7 +108,6 @@ export default function ReliabilityPage() {
   };
 
   useEffect(() => {
-    mountedRef.current = true;
     unloadingRef.current = false;
     const onPageHide = () => {
       unloadingRef.current = true;
@@ -130,7 +121,6 @@ export default function ReliabilityPage() {
     window.addEventListener("pageshow", onPageShow);
     loadData();
     return () => {
-      mountedRef.current = false;
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
     };

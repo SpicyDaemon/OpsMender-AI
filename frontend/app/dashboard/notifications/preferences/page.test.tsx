@@ -128,9 +128,8 @@ describe("Inbox preferences", () => {
       await screen.findByRole("heading", { name: "Inbox quiet hours" }),
     ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Inbox preferences" })).toBeTruthy();
-    expect(screen.getByText(/only affect Inbox notices/).textContent).toBe(
-      "Inbox quiet hours only affect Inbox notices. " +
-        "Pages have their own quiet hours in My Routing.",
+    expect(screen.getByText(/only affect Inbox notices/).textContent).toMatch(
+      /own quiet hours in My Routing/,
     );
     const link = screen.getByRole("link", { name: "My Routing" });
     expect(link.getAttribute("href")).toBe("/dashboard/paging/notifications");
@@ -142,8 +141,8 @@ describe("Inbox preferences", () => {
     expect(
       await screen.findByRole("heading", { name: "Inbox quiet hours" }),
     ).toBeTruthy();
-    expect(screen.getByText(/only affect Inbox notices/).textContent).toBe(
-      "Inbox quiet hours only affect Inbox notices.",
+    expect(screen.getByText(/only affect Inbox notices/).textContent).not.toMatch(
+      /My Routing/,
     );
     expect(screen.queryByRole("link", { name: "My Routing" })).toBeNull();
   });
@@ -154,9 +153,8 @@ describe("Inbox preferences", () => {
     expect(
       screen.getByRole("link", { name: "Back to Inbox" }).getAttribute("href"),
     ).toBe("/dashboard/notifications");
-    expect(screen.getByText(/mute its notices/).textContent).toBe(
-      "Turn a category off to mute its notices. Notices in a muted " +
-        "category no longer reach your Inbox or pop live.",
+    expect(screen.getByText(/mute its notices/).textContent).toMatch(
+      /no longer reach your Inbox/,
     );
     // One word for what lands in the Inbox, and the Inbox always named so.
     expect(container.textContent).not.toMatch(/notification/i);

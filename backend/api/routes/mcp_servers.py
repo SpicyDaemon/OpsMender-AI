@@ -140,6 +140,7 @@ def _to_response(
         url=server.url if reveal else None,
         env_vars=server.env_vars if reveal else None,
         env_keys=sorted(server.env_vars or {}),
+        inherit_env=server.inherit_env,
         is_active=server.is_active,
         created_at=server.created_at,
         has_token=bool(server.token),
@@ -543,6 +544,7 @@ async def test_mcp_server(
         env=server.env_vars,
         url=server.url,
         token=server.token,
+        inherit_env=server.inherit_env,
     )
     try:
         async with connect(runtime_config) as session:

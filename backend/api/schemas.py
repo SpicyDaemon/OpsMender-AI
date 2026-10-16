@@ -1046,6 +1046,9 @@ class MCPServerResponse(BaseModel):
     # values carry credentials and go to admins only; everyone else gets the
     # key names (M1-29).
     env_keys: list[str] = Field(default_factory=list)
+    # Saved before v1.2 and not edited since: still receives every variable
+    # of the app. Saving the server lists what it needs and clears this.
+    inherit_env: bool = False
     is_active: bool
     created_at: datetime
     has_token: bool

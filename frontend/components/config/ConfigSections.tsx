@@ -1659,6 +1659,13 @@ function MCPServerModal({
                 <Plus size={12} /> Variable
               </Button>
             </div>
+            <p className="mt-1 text-xs text-fg-muted">
+              A local server receives PATH and the variables listed here, nothing
+              else.
+              {initialServer?.inherit_env
+                ? " This server was saved before v1.2 and still receives every variable of the app; saving stops that, so list what it needs."
+                : null}
+            </p>
             {form.envPairs.length === 0 ? (
               <p className="mt-2 text-xs text-fg-muted">
                 None. Click <em>+ Variable</em> to add KEY=value pairs.
@@ -2220,6 +2227,11 @@ export function MCPSection({
                     : null}
                 </p>
               )}
+              {server.inherit_env ? (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  Receives every variable of the app until it is saved again
+                </p>
+              ) : null}
             </div>
           );
         },

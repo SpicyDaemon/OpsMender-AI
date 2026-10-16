@@ -249,6 +249,9 @@ class MCPServerConfig:
     env: dict[str, str] | None = None
     url: str | None = None
     token: str | None = None
+    # A stdio server receives PATH, the OS basics and ``env``; only a server
+    # that says so inherits the whole process environment (O-22, M1-64).
+    inherit_env: bool = False
 
     def __post_init__(self) -> None:
         if self.transport not in ("stdio", "sse", "http"):
@@ -541,6 +544,7 @@ def _parse_mcp_servers(env: dict[str, str]) -> list[MCPServerConfig]:
                 env=entry.get("env") or entry.get("env_vars"),
                 url=entry.get("url"),
                 token=entry.get("token"),
+                inherit_env=bool(entry.get("inherit_env", False)),
             )
         )
     return servers

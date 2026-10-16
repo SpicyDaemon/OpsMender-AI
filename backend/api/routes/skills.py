@@ -423,6 +423,7 @@ async def discover_skill_tools(
         env=server.env_vars,
         url=server.url,
         token=server.token,
+        inherit_env=server.inherit_env,
     )
     try:
         async with connect(runtime_config) as session:

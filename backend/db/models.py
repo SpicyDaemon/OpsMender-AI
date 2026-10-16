@@ -769,6 +769,11 @@ class MCPServer(Base):
     url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     token: Mapped[str | None] = mapped_column(Text, nullable=True)
     env_vars: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # True only for servers saved before v1.2 and not edited since: they still
+    # receive the whole process environment (M1-64).
+    inherit_env: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_successful_call_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

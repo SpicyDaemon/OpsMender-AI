@@ -714,6 +714,8 @@ export interface MCPServerResponse {
   env_vars: Record<string, string> | null;
   /** Environment variable names; command, args, URL and values are for admins only. */
   env_keys?: string[];
+  /** Saved before v1.2 and not edited since: still receives every variable of the app. */
+  inherit_env?: boolean;
   is_active: boolean;
   created_at: string;
   has_token: boolean;

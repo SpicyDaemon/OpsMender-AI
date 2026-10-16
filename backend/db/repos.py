@@ -2191,6 +2191,7 @@ class MCPServerRepo:
         token: str | None = None,
         env_vars: dict[str, str] | None = None,
         is_active: bool = True,
+        inherit_env: bool = False,
     ) -> MCPServer:
         server = MCPServer(
             org_id=org_id,
@@ -2202,6 +2203,7 @@ class MCPServerRepo:
             token=token,
             env_vars=env_vars,
             is_active=is_active,
+            inherit_env=inherit_env,
         )
         db.add(server)
         await db.flush()
@@ -2265,7 +2267,10 @@ class MCPServerRepo:
         token: str | None = None,
         env_vars: dict[str, str] | None = None,
         is_active: bool = True,
+        inherit_env: bool = False,
     ) -> MCPServer | None:
+        # A save lists what the server needs, so it stops inheriting unless
+        # the caller (an mcp.json import) says otherwise (M1-64).
         stmt = (
             update(MCPServer)
             .where(MCPServer.org_id == org_id)
@@ -2281,6 +2286,7 @@ class MCPServerRepo:
                 token=token,
                 env_vars=env_vars,
                 is_active=is_active,
+                inherit_env=inherit_env,
             )
         )
         result = await db.execute(stmt)

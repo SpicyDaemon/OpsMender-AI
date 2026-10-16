@@ -124,8 +124,13 @@ def server_to_entry(server: MCPServer) -> dict[str, Any]:
         # read for compatibility.)
         if server.env_vars:
             entry["env"] = dict(server.env_vars)
+    extension: dict[str, Any] = {}
     if not server.is_active:
-        entry["opsmender"] = {"is_active": False}
+        extension["is_active"] = False
+    if server.inherit_env:
+        extension["inherit_env"] = True
+    if extension:
+        entry["opsmender"] = extension
     return entry
 
 
@@ -150,6 +155,7 @@ def entry_to_kwargs(name: str, entry: dict[str, Any]) -> dict[str, Any]:
         "env_vars": None,
         "token": None,
         "is_active": bool(opsmender_ext.get("is_active", True)),
+        "inherit_env": bool(opsmender_ext.get("inherit_env", False)),
     }
 
     env = entry.get("env")

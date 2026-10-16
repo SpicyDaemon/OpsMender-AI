@@ -1975,13 +1975,14 @@ async def update_my_notification_preferences(
     user: User = Depends(reject_api_tokens),
 ):
     routing = body.routing
-    if routing is not None and "in_app" not in routing:
-        # The paging form sends only P0-P3. Keep the Inbox mutes, which the
-        # Inbox preferences page stores under routing.in_app.
+    if routing is not None:
+        # The paging form sends only P0-P3. Keep the Inbox settings, which the
+        # Inbox preferences page stores under routing.in_app, key by key, so a
+        # body that names only one of them never drops the other (M1-59).
         existing = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
         in_app = (existing.routing or {}).get("in_app") if existing else None
         if in_app is not None:
-            routing = {**routing, "in_app": in_app}
+            routing = {**routing, "in_app": {**in_app, **routing.get("in_app", {})}}
     pref = await UserNotificationPrefRepo.upsert(
         db,
         org_id,

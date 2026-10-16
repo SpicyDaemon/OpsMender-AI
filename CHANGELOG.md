@@ -134,6 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   browser console: the browser cancels the page's requests then, and a
   cancelled or aborted request is not a failure. A load that really fails is
   still logged, also after you move to another page of the app.
+- Saving My Routing through the API with only one of the Inbox settings
+  under `routing.in_app` (a category mute, say) no longer drops the other
+  (the Inbox quiet hours); the settings are merged with what is saved. The
+  My Routing page never sends them, so this only affected API calls.
 
 ### Changed
 

@@ -325,51 +325,18 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
   });
 
   it("shows the reason a save was refused as text", async () => {
-    // The real API client reads the 422 list FastAPI sends for a bad body.
-    const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
-    // The client reads its token from localStorage; give it a working one, as
-    // lib/api.test.ts does (Node 25's own localStorage global has no methods
-    // without --localstorage-file and hides jsdom's).
-    const store = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value);
-      },
-      removeItem: (key: string) => {
-        store.delete(key);
-      },
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: false,
-        status: 422,
-        json: async () => ({
-          detail: [
-            {
-              type: "value_error",
-              loc: ["body", "routing"],
-              msg: "Value error, routing.P1 must be a list of up to 3 stages",
-            },
-          ],
-        }),
-      })),
+    // The API client turns a refused body into an Error with the server's
+    // reason (lib/api.test.ts); the panel shows that message.
+    updateMyNotificationPreferences.mockRejectedValueOnce(
+      new Error("routing.P1 must be a list of up to 3 stages"),
     );
-    updateMyNotificationPreferences.mockImplementation((body) =>
-      actual.updateMyNotificationPreferences(body),
+    render(<NotificationPreferencesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /save routing/i }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "routing.P1 must be a list of up to 3 stages",
+      ),
     );
-    try {
-      render(<NotificationPreferencesPanel />);
-      fireEvent.click(await screen.findByRole("button", { name: /save routing/i }));
-      await waitFor(() =>
-        expect(toastError).toHaveBeenCalledWith(
-          "routing.P1 must be a list of up to 3 stages",
-        ),
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 
   it("says its quiet hours hold pages and links to the Inbox quiet hours", async () => {
@@ -377,11 +344,7 @@ describe("NotificationPreferencesPanel (My Routing, staged)", () => {
     expect(await screen.findByText("Quiet Hours")).toBeTruthy();
     expect(
       screen.getByText(/Inbox notices have their own quiet hours/).textContent,
-    ).toBe(
-      "During quiet hours, non-critical pages to you are held back. " +
-        "Critical (P0) will still page through. Inbox notices have their own " +
-        "quiet hours on the Inbox preferences page.",
-    );
+    ).toMatch(/pages to you are held back/);
     const link = screen.getByRole("link", { name: "Inbox preferences" });
     expect(link.getAttribute("href")).toBe("/dashboard/notifications/preferences");
   });

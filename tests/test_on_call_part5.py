@@ -681,6 +681,18 @@ async def test_r08_saving_my_routing_keeps_inbox_quiet_hours_and_mutes(
         "in_app": {"muted_categories": ["incident"], "quiet_hours": INBOX_QUIET},
     }
 
+    # A save that names only one Inbox setting under in_app (the page never
+    # does; an API caller might) keeps the other.
+    saved = await client.put(
+        "/users/me/notification-preferences",
+        json={"routing": {**UI_ROUTING, "in_app": {"muted_categories": []}}},
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+    prefs = await client.get("/notifications/preferences", headers=auth_headers)
+    assert prefs.json()["muted_categories"] == []
+    assert prefs.json()["quiet_hours"] == INBOX_QUIET
+
 
 @pytest.mark.parametrize(
     "bad",

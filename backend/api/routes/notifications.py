@@ -20,6 +20,7 @@ from backend.api.schemas import (
     NotificationPreferencesResponse,
     NotificationPreferencesUpdate,
     UnreadCountResponse,
+    is_clock,
 )
 from backend.db.models import User
 from backend.db.repos import InAppNotificationRepo, UserNotificationPrefRepo
@@ -44,11 +45,7 @@ def _validate_quiet_hours(qh) -> None:
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Inbox quiet hours {label} is required when enabled",
             )
-        try:
-            h, m = (int(x) for x in str(value).split(":"))
-            if not (0 <= h < 24 and 0 <= m < 60):
-                raise ValueError
-        except (ValueError, TypeError):
+        if not is_clock(value):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Inbox quiet hours {label} must be HH:MM",

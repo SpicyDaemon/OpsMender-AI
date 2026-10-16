@@ -451,10 +451,20 @@ def _serve_idp(
 
 
 async def _sign_in_with_id_token(
-    client, auth_headers, monkeypatch, idp_keys, *, listed, algorithm, email
+    client,
+    auth_headers,
+    monkeypatch,
+    idp_keys,
+    *,
+    listed,
+    algorithm,
+    email,
+    published=None,
+    id_token=None,
 ):
     """Sign in through OIDC with an id token signed by ``algorithm``'s key,
-    from a provider that lists ``listed`` and publishes that key."""
+    from a provider that lists ``listed`` and publishes that key (or the
+    ``published`` key set); ``id_token`` replaces the signed token outright."""
     saved = await client.put(
         f"/organizations/{TEST_ORG_ID}/sso",
         json={
@@ -467,23 +477,28 @@ async def _sign_in_with_id_token(
         headers=auth_headers,
     )
     assert saved.status_code == 200, saved.text
-    signing_key, published = idp_keys[algorithm]
-    issued = _serve_idp(monkeypatch, listed=listed, published=published)
+    signing_key, own_key = idp_keys[algorithm]
+    issued = _serve_idp(
+        monkeypatch,
+        listed=listed,
+        published=own_key if published is None else published,
+    )
     login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
     query = parse_qs(urlparse(login.headers["location"]).query)
     now = int(time.time())
-    issued["id_token"] = jose_jwt.encode(
-        {
-            "iss": IDP_ISSUER,
-            "aud": "opsmender-app",
-            "sub": email,
-            "email": email,
-            "nonce": query["nonce"][0],
-            "iat": now,
-            "exp": now + 300,
-        },
-        signing_key,
-        algorithm=algorithm,
+    claims = {
+        "iss": IDP_ISSUER,
+        "aud": "opsmender-app",
+        "sub": email,
+        "email": email,
+        "nonce": query["nonce"][0],
+        "iat": now,
+        "exp": now + 300,
+    }
+    issued["id_token"] = (
+        jose_jwt.encode(claims, signing_key, algorithm=algorithm)
+        if id_token is None
+        else id_token(claims)
     )
     return await client.get(
         f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
@@ -568,43 +583,24 @@ class TestIdTokenAlgorithms:
         def b64(data: bytes) -> str:
             return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
-        saved = await client.put(
-            f"/organizations/{TEST_ORG_ID}/sso",
-            json={
-                "provider": "oidc",
-                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
-                "client_id": "opsmender-app",
-                "client_secret": "x",
-                "default_role": "operator",
-            },
-            headers=auth_headers,
-        )
-        assert saved.status_code == 200, saved.text
-        issued = _serve_idp(
-            monkeypatch, listed=["PS256", "RS256"], published=idp_keys["RS256"][1]
-        )
-        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
-        query = parse_qs(urlparse(login.headers["location"]).query)
-        now = int(time.time())
-        claims = {
-            "iss": IDP_ISSUER,
-            "aud": "opsmender-app",
-            "sub": "pss@acme.com",
-            "email": "pss@acme.com",
-            "nonce": query["nonce"][0],
-            "iat": now,
-            "exp": now + 300,
-        }
-        issued["id_token"] = ".".join(
-            (
-                b64(json.dumps({"alg": "PS256", "typ": "JWT"}).encode()),
-                b64(json.dumps(claims).encode()),
-                b64(bytes(256)),
+        def pss_token(claims):
+            return ".".join(
+                (
+                    b64(json.dumps({"alg": "PS256", "typ": "JWT"}).encode()),
+                    b64(json.dumps(claims).encode()),
+                    b64(bytes(256)),
+                )
             )
-        )
-        resp = await client.get(
-            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
-            follow_redirects=False,
+
+        resp = await _sign_in_with_id_token(
+            client,
+            auth_headers,
+            monkeypatch,
+            idp_keys,
+            listed=["PS256", "RS256"],
+            algorithm="RS256",
+            email="pss@acme.com",
+            id_token=pss_token,
         )
 
         assert resp.status_code == 400, resp.text
@@ -623,38 +619,15 @@ class TestIdTokenAlgorithms:
         clean refusal (400), never an unhandled error."""
         from backend.db.repos import UserRepo
 
-        saved = await client.put(
-            f"/organizations/{TEST_ORG_ID}/sso",
-            json={
-                "provider": "oidc",
-                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
-                "client_id": "opsmender-app",
-                "client_secret": "x",
-                "default_role": "operator",
-            },
-            headers=auth_headers,
-        )
-        assert saved.status_code == 200, saved.text
-        issued = _serve_idp(monkeypatch, listed=None, published=idp_keys["ES256"][1])
-        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
-        query = parse_qs(urlparse(login.headers["location"]).query)
-        now = int(time.time())
-        issued["id_token"] = jose_jwt.encode(
-            {
-                "iss": IDP_ISSUER,
-                "aud": "opsmender-app",
-                "sub": "mismatch@acme.com",
-                "email": "mismatch@acme.com",
-                "nonce": query["nonce"][0],
-                "iat": now,
-                "exp": now + 300,
-            },
-            idp_keys["RS256"][0],
+        resp = await _sign_in_with_id_token(
+            client,
+            auth_headers,
+            monkeypatch,
+            idp_keys,
+            listed=None,
             algorithm="RS256",
-        )
-        resp = await client.get(
-            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
-            follow_redirects=False,
+            email="mismatch@acme.com",
+            published=idp_keys["ES256"][1],
         )
 
         assert resp.status_code == 400, resp.text
@@ -672,42 +645,15 @@ class TestIdTokenAlgorithms:
         tried (python-jose alone stops at the first key that does not fit)."""
         from backend.db.repos import UserRepo
 
-        saved = await client.put(
-            f"/organizations/{TEST_ORG_ID}/sso",
-            json={
-                "provider": "oidc",
-                "discovery_url": f"{IDP_ISSUER}/.well-known/openid-configuration",
-                "client_id": "opsmender-app",
-                "client_secret": "x",
-                "default_role": "operator",
-            },
-            headers=auth_headers,
-        )
-        assert saved.status_code == 200, saved.text
-        issued = _serve_idp(
+        resp = await _sign_in_with_id_token(
+            client,
+            auth_headers,
             monkeypatch,
+            idp_keys,
             listed=None,
-            published=[idp_keys["ES256"][1], idp_keys["RS256"][1]],
-        )
-        login = await client.get("/auth/sso/test-org/login", follow_redirects=False)
-        query = parse_qs(urlparse(login.headers["location"]).query)
-        now = int(time.time())
-        issued["id_token"] = jose_jwt.encode(
-            {
-                "iss": IDP_ISSUER,
-                "aud": "opsmender-app",
-                "sub": "mixed@acme.com",
-                "email": "mixed@acme.com",
-                "nonce": query["nonce"][0],
-                "iat": now,
-                "exp": now + 300,
-            },
-            idp_keys["RS256"][0],
             algorithm="RS256",
-        )
-        resp = await client.get(
-            f"/auth/sso/test-org/callback?code=stub&state={query['state'][0]}",
-            follow_redirects=False,
+            email="mixed@acme.com",
+            published=[idp_keys["ES256"][1], idp_keys["RS256"][1]],
         )
 
         assert resp.status_code == 302, resp.text

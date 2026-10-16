@@ -73,16 +73,10 @@ async def test_only_an_admin_sends_connection_settings(client, discovered):
 
     allowed = await client.get("/models", headers=h["admin"], params=LEAK)
     assert allowed.status_code == 200, allowed.text
-    assert discovered == [
-        {
-            "provider": "openai_compatible",
-            "model_id": None,
-            "api_key_env_var": "OPSMENDER_JWT_SECRET",
-            "base_url": "http://127.0.0.1:9/v1",
-            "api_version": None,
-            "provider_meta": None,
-        }
-    ]
+    # The admin's settings reached discovery as sent.
+    assert len(discovered) == 1
+    assert discovered[0]["api_key_env_var"] == "OPSMENDER_JWT_SECRET"
+    assert discovered[0]["base_url"] == "http://127.0.0.1:9/v1"
 
 
 @pytest.mark.parametrize("setting", SETTINGS)

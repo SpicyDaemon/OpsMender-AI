@@ -95,66 +95,62 @@ def test_runner_names_are_caught_whatever_their_case_or_separators(name):
 
 # Each runner word or affix the card names (M1-52) with other spellings a tool
 # source may use.
-RUNNER_SPELLINGS = {
+RUNNER_NAMES = [
     # exact names; powershell, pwsh, cmd and shell_tool were caught before M1-52
-    "powershell": ("PowerShell", "POWERSHELL", "Powershell"),
-    "pwsh": ("Pwsh", "PWSH"),
-    "cmd": ("Cmd", "CMD"),
-    "terminal": ("Terminal", "TERMINAL"),
-    "console": ("Console",),
-    "tty": ("TTY",),
-    "pty": ("Pty",),
-    "shellexec": ("ShellExec", "SHELLEXEC"),
-    "bash_tool": ("BashTool", "bash-tool", "bash.tool", "Bash Tool"),
-    "shell_tool": ("ShellTool", "shell-tool", "shell.tool"),
-    "invoke_expression": ("InvokeExpression", "invoke-expression", "Invoke-Expression"),
-    "subprocess": ("Subprocess", "SubProcess"),
-    "popen": ("Popen",),
-    "os_system": ("OsSystem", "os-system", "os.system"),
-    "sudo": ("Sudo",),
-    "su": ("SU",),
-    "docker": ("Docker",),
-    "podman": ("Podman",),
-    "nerdctl": ("NerdCtl",),
-    "crictl": ("CriCtl",),
-    "systemctl": ("SystemCtl",),
+    "powershell",
+    "pwsh",
+    "cmd",
+    "terminal",
+    "console",
+    "tty",
+    "pty",
+    "shellexec",
+    "bash_tool",
+    "shell_tool",
+    "invoke_expression",
+    "subprocess",
+    "popen",
+    "os_system",
+    "sudo",
+    "su",
+    "docker",
+    "podman",
+    "nerdctl",
+    "crictl",
+    "systemctl",
     # prefixes
-    "bash_session": ("BashSession", "bash-session", "bash.session"),
-    "powershell_execute": ("PowerShellExecute", "powershell-execute", "powershell.exe"),
-    "pwsh_execute": ("PwshExecute", "pwsh-execute", "pwsh.exe"),
-    "sh_session": ("ShSession", "sh-session", "sh.session"),
-    "terminal_session": ("TerminalSession", "terminal-session", "terminal.session"),
-    "console_session": ("ConsoleSession", "console-session", "console.session"),
-    "sudo_edit": ("SudoEdit", "sudo-edit", "sudo.edit"),
-    "docker_compose": ("DockerCompose", "docker-compose", "docker.compose"),
-    "subprocess_check_output": (
-        "SubprocessCheckOutput",
-        "subprocess-check-output",
-        "subprocess.check_output",
-    ),
+    "bash_session",
+    "powershell_execute",
+    "pwsh_execute",
+    "sh_session",
+    "terminal_session",
+    "console_session",
+    "sudo_edit",
+    "docker_compose",
+    "subprocess_check_output",
     # suffixes
-    "open_terminal": ("OpenTerminal", "open-terminal", "open.terminal"),
-    "web_console": ("WebConsole", "web-console", "web.console"),
-    "invoke_bash": ("InvokeBash", "invoke-bash", "invoke.bash"),
-    "execute_powershell": (
-        "ExecutePowerShell",
-        "execute-powershell",
-        "invoke_powershell",
-    ),
-    "execute_pwsh": ("ExecutePwsh", "execute-pwsh", "invoke.pwsh"),
-    "spawn_subprocess": ("SpawnSubprocess", "spawn-subprocess", "spawn.subprocess"),
-}
+    "open_terminal",
+    "web_console",
+    "invoke_bash",
+    "execute_powershell",
+    "invoke_powershell",
+    "execute_pwsh",
+    "spawn_subprocess",
+    # spellings a tool source may use that fold onto a rule above: the case
+    # and separator folding itself is proved by the test before this one
+    "Bash Tool",
+    "Invoke-Expression",
+    "os.system",
+    "subprocess.check_output",
+    "PowerShellExecute",
+    "powershell.exe",
+    "pwsh.exe",
+    "invoke.pwsh",
+]
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        spelling
-        for word, others in RUNNER_SPELLINGS.items()
-        for spelling in (word, *others)
-    ],
-)
-def test_common_runner_names_are_caught_in_every_spelling(name):
+@pytest.mark.parametrize("name", RUNNER_NAMES)
+def test_common_runner_names_are_caught(name):
     assert is_generic_execution_tool(name) is True
 
 

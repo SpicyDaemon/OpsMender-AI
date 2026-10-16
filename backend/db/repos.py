@@ -3392,6 +3392,39 @@ class IngestLogRepo:
 
 class SLATargetRepo:
     @staticmethod
+    async def claim_poll(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        target_id: uuid.UUID,
+        *,
+        now: datetime,
+        interval_seconds: int,
+    ) -> bool:
+        """Claim this poll of a target for this process: one UPDATE that only
+        matches while the target is active and its last claim is older than
+        the poll interval (less a tenth, so a process whose tick lands just
+        before the interval still gets its turn). Pollers in several
+        processes probe each target once per interval between them (M1-68).
+        """
+
+        stale = now - timedelta(seconds=interval_seconds * 0.9)
+        result = await db.execute(
+            update(SLATarget)
+            .where(
+                SLATarget.org_id == org_id,
+                SLATarget.id == target_id,
+                SLATarget.is_active.is_(True),
+                or_(
+                    SLATarget.poll_claimed_at.is_(None),
+                    SLATarget.poll_claimed_at <= stale,
+                ),
+            )
+            .values(poll_claimed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
+    @staticmethod
     async def create(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -5762,18 +5795,59 @@ class AuditScheduleRepo:
         return (await db.execute(stmt)).scalars().all()
 
     @staticmethod
+    async def claim(
+        db: AsyncSession,
+        schedule_id: uuid.UUID,
+        *,
+        now: datetime,
+        lease_minutes: int,
+    ) -> bool:
+        """Claim a due schedule for this process: one UPDATE that only matches
+        while the schedule is active, due and unclaimed, or claimed longer ago
+        than the lease (a claimant that died). Two schedulers that tick
+        together get one True between them (M1-68, O-23)."""
+
+        result = await db.execute(
+            update(AuditSchedule)
+            .where(
+                AuditSchedule.id == schedule_id,
+                AuditSchedule.is_active.is_(True),
+                AuditSchedule.next_run_at <= now,
+                or_(
+                    AuditSchedule.claimed_at.is_(None),
+                    AuditSchedule.claimed_at <= now - timedelta(minutes=lease_minutes),
+                ),
+            )
+            .values(claimed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
+    @staticmethod
     async def mark_run(
         db: AsyncSession,
         schedule: AuditSchedule,
         *,
         now: datetime,
     ) -> None:
-        """Advance ``last_run_at`` to ``now`` and push ``next_run_at`` by
-        ``interval_minutes``. Idempotent - never moves backwards."""
+        """Advance ``last_run_at`` to ``now``, push ``next_run_at`` by
+        ``interval_minutes`` and release the claim, by id so the schedule may
+        belong to another session. Idempotent - never moves backwards."""
 
-        schedule.last_run_at = now
-        schedule.next_run_at = now + timedelta(minutes=schedule.interval_minutes)
-        await db.flush()
+        next_run_at = now + timedelta(minutes=schedule.interval_minutes)
+        await db.execute(
+            update(AuditSchedule)
+            .where(AuditSchedule.id == schedule.id)
+            .values(last_run_at=now, next_run_at=next_run_at, claimed_at=None)
+            .execution_options(synchronize_session=False)
+        )
+        if schedule in db:
+            await db.refresh(schedule)
+        else:
+            # A detached schedule (the scheduler's own copy) mirrors the update.
+            schedule.last_run_at = now
+            schedule.next_run_at = next_run_at
+            schedule.claimed_at = None
 
     @staticmethod
     async def update(

@@ -45,6 +45,13 @@ port 8001. Both share Postgres and Redis. Existing installations using
 `OPSMENDER_DEPLOYMENT_MODE=development|production` continue to run as
 monoliths.
 
+Any number of app instances behind a load balancer, or scheduler replicas in
+distributed mode, may run at once: due audit schedules, SLA polls, Escalation
+Chains, personal notification steps, report schedules and the session queue
+are each claimed per row before they run, and a claim lasts one interval, so
+every job runs once across all processes and a process that dies mid-run
+hands its job to another after that interval. SQLite serves one process.
+
 SQLite, the standalone binary's default database, serves one app process. That
 process takes incoming alerts one at a time, so identical alerts that arrive
 together open one incident. Several app processes on one database, the

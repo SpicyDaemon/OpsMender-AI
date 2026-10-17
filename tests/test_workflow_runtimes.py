@@ -58,6 +58,17 @@ def test_every_action_is_a_node_24_release():
     assert set(NODE24_MAJORS) <= seen, sorted(set(NODE24_MAJORS) - seen)
 
 
+def test_the_postgres_concurrency_step_has_room_to_finish():
+    """The hosted PostgreSQL step runs about five minutes; its ceiling must stay
+    well above that, or a passing run is killed at the finish line (M1-71)."""
+    verify = (ROOT / ".github/workflows/verify.yml").read_text(encoding="utf-8")
+    step = verify.split("- name: Postgres concurrency tests", 1)[1].split("- name:", 1)[
+        0
+    ]
+    match = re.search(r"timeout-minutes:\s*(\d+)", step)
+    assert match and int(match[1]) >= 12, step
+
+
 def test_node_24_is_the_minimum_everywhere():
     assert (ROOT / ".nvmrc").read_text(encoding="utf-8").strip() == "24"
     package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))

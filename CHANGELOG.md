@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- The hosted PostgreSQL concurrency step may now take twelve minutes instead
+  of five: its 123 cases take about five on a GitHub runner, and the v1.2.0
+  release run was stopped at the limit with every test passed.
 
 ## [1.2.0] - 2026-10-17
 

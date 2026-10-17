@@ -109,7 +109,10 @@ OpsMender uses the Model Context Protocol (MCP) to interact with your infrastruc
    OS basics and the variables you list for it, nothing else, so name
    `KUBECONFIG`, `AWS_PROFILE` or any other variable the server needs. A
    server saved before v1.2 still receives every variable of the app until
-   you save it again; the page says so next to it.
+   you save it again; the page says so next to it. A remote (SSE or HTTP)
+   server's URL is followed through a redirect only within its own scheme,
+   host and port; if the server answers from another URL, the test names
+   it, and you enter that URL instead.
 3. Go to **Skills** to import, edit, clone, or bind `SKILL.md` content to an MCP server.
 4. Use tiers and Skill classifications together to control what OpsMender can execute.
 

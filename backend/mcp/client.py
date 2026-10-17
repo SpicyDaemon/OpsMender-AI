@@ -13,7 +13,9 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
+from urllib.parse import urljoin, urlparse
 
+import httpx
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
@@ -255,6 +257,32 @@ async def _connect_stdio(
             yield session
 
 
+def _redirect_refused(exc: Exception, url: str) -> MCPClientError | None:
+    """The named refusal for a remote server that redirects away from its own
+    origin. Since mcp 1.30 the SDK follows a redirect only within the server
+    URL's scheme, host and port (an http to https upgrade on the same host
+    aside) and raises an HTTP status error for any other; this names what
+    happened and what to do, without the SDK's wording (M1-66)."""
+    if isinstance(exc, BaseExceptionGroup):
+        # anyio raises the transport's error inside a task group.
+        for inner in exc.exceptions:
+            refused = _redirect_refused(inner, url)
+            if refused is not None:
+                return refused
+        return None
+    if not (isinstance(exc, httpx.HTTPStatusError) and exc.response.is_redirect):
+        return None
+    target = urlparse(urljoin(url, exc.response.headers.get("location", "")))
+    origin = urlparse(url)
+    return MCPClientError(
+        f"The MCP server at {origin.scheme}://{origin.netloc} redirected to "
+        f"{target.scheme}://{target.hostname or ''}"
+        + (f":{target.port}" if target.port else "")
+        + ", and a redirect is followed only within the server URL's own scheme, "
+        "host and port. If that is the server you mean, enter it as the server URL."
+    )
+
+
 @asynccontextmanager
 async def _connect_sse(
     server: MCPServerConfig,
@@ -263,13 +291,19 @@ async def _connect_sse(
     headers: dict[str, str] = {}
     if server.token:
         headers["Authorization"] = f"Bearer {server.token}"
-    async with sse_client(server.url, headers=headers) as (
-        read_stream,
-        write_stream,
-    ):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            yield session
+    try:
+        async with sse_client(server.url, headers=headers) as (
+            read_stream,
+            write_stream,
+        ):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                yield session
+    except Exception as exc:
+        refused = _redirect_refused(exc, server.url or "")
+        if refused is None:
+            raise
+        raise refused from exc
 
 
 @asynccontextmanager
@@ -280,14 +314,20 @@ async def _connect_http(
     headers: dict[str, str] = {}
     if server.token:
         headers["Authorization"] = f"Bearer {server.token}"
-    async with streamablehttp_client(server.url, headers=headers) as (
-        read_stream,
-        write_stream,
-        _get_session_id,
-    ):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            yield session
+    try:
+        async with streamablehttp_client(server.url, headers=headers) as (
+            read_stream,
+            write_stream,
+            _get_session_id,
+        ):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                yield session
+    except Exception as exc:
+        refused = _redirect_refused(exc, server.url or "")
+        if refused is None:
+            raise
+        raise refused from exc
 
 
 @asynccontextmanager

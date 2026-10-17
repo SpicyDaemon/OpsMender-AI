@@ -7,6 +7,11 @@ advances the schedule's ``last_run_at`` / ``next_run_at``.
 
 Mirrors the shape of :class:`backend.paging.scheduler.EscalationScheduler`
 - restart-safe via the schedule's own ``next_run_at`` watermark.
+
+Several app processes may run this scheduler (instances behind a load
+balancer, scheduler replicas in distributed mode): a due schedule is claimed
+with one UPDATE before it runs, the claim lasts one interval, and the run
+releases it, so each due run happens once across all processes (M1-68).
 """
 
 from __future__ import annotations
@@ -65,23 +70,31 @@ class AuditScheduler:
             await asyncio.sleep(self._poll_interval_seconds)
 
     async def tick(self, *, now: datetime) -> int:
-        """Fire every due schedule. Returns the count fired.
+        """Fire every due schedule this process claims. Returns the count fired.
 
         Exposed for tests so they can drive the scheduler synchronously
         without spinning up the asyncio loop.
         """
 
-        fired = 0
         async with self._session_factory() as db:
-            try:
-                due = await AuditScheduleRepo.list_due(db, now=now)
-                for schedule in due:
-                    await self._fire(db, schedule, now=now)
-                    fired += 1
+            due = list(await AuditScheduleRepo.list_due(db, now=now))
+        fired = 0
+        for schedule in due:
+            async with self._session_factory() as db:
+                claimed = await AuditScheduleRepo.claim(
+                    db, schedule.id, now=now, lease_minutes=schedule.interval_minutes
+                )
                 await db.commit()
-            except Exception:
-                await db.rollback()
-                raise
+            if not claimed:
+                continue
+            async with self._session_factory() as db:
+                try:
+                    await self._fire(db, schedule, now=now)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
+            fired += 1
         return fired
 
     async def _fire(self, db: AsyncSession, schedule, *, now: datetime) -> None:

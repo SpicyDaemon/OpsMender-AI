@@ -215,12 +215,25 @@ class SLAPoller:
         async with self._session_factory() as db:
             organizations = await OrganizationRepo.list_all(db)
 
+        interval = self._config.sla.poll_interval_default
         for org in organizations:
             org_id = org.id
             async with self._session_factory() as db:
                 targets = await SLATargetRepo.list_all(db, org_id, active_only=True)
                 for target in targets:
                     if target.id in self._running_probes:
+                        continue
+                    # One probe per interval across every poller process:
+                    # the claim is a row update only one of them wins (M1-68).
+                    claimed = await SLATargetRepo.claim_poll(
+                        db,
+                        org_id,
+                        target.id,
+                        now=datetime.now(timezone.utc),
+                        interval_seconds=interval,
+                    )
+                    await db.commit()
+                    if not claimed:
                         continue
                     self._running_probes.add(target.id)
                     asyncio.create_task(self._probe_and_record(org_id, target))

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- With several app instances behind a load balancer, or scheduler replicas
+  in distributed mode, a due audit schedule ran once per process and every
+  process probed every SLA target. A due audit schedule is now claimed with
+  one row update before it runs, a claim lasts one interval and the run
+  releases it; each SLA target's poll is claimed the same way, so every
+  job runs once across all processes and a process that dies mid-run hands
+  its job to another after the interval. The admin guide says how many
+  replicas may run (any number; SQLite serves one process).
+
 ### Security
 
 - A model config whose saved key setting is not a variable name (a key

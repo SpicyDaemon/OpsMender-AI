@@ -1353,6 +1353,11 @@ class SLATarget(Base):
         Uuid, ForeignKey("services.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # When a poller process claimed the target's probe; one probe per poll
+    # interval across every process (M1-68).
+    poll_claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -2022,6 +2027,11 @@ class AuditSchedule(Base):
     )
     next_run_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+    # When a scheduler process claimed the due run; the claim lasts one
+    # interval, so a crashed claimant's run happens once more, not twice (M1-68).
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True

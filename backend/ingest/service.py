@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import hashlib
+import json
 import logging
 import secrets
 import uuid
@@ -17,8 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config_loader import AppConfig
 from backend.db.models import Incident, IngestToken
+from backend.agent.hygiene import addressed_to_assistant
 from backend.db.repos import (
     take_turns,
+    AuditEntryRepo,
+    IncidentCommentRepo,
     IncidentRepo,
     IngestLogRepo,
     IngestTokenRepo,
@@ -133,6 +137,49 @@ class SqliteIntakeTurn:
         if self._held:
             self._held = False
             self._lock.release()
+
+
+async def flag_text_addressed_to_assistant(
+    db,
+    org_id: uuid.UUID,
+    *,
+    incident: Incident,
+    parsed,
+    raw_payload,
+) -> list[str]:
+    """When an alert's text talks to the assistant, say so on the incident and
+    in the audit log, and do nothing else: a session treats the text as data,
+    and the tier gate alone decides what it may do (M1-69)."""
+
+    parts = [parsed.title or "", parsed.description or ""]
+    if raw_payload is not None:
+        parts.append(json.dumps(raw_payload, default=str))
+    phrases = addressed_to_assistant("\n".join(parts))
+    if not phrases:
+        return []
+    await IncidentCommentRepo.create(
+        db,
+        org_id,
+        incident_id=incident.id,
+        body=(
+            "This alert addresses the assistant ("
+            + "; ".join(phrases)
+            + "). Its text is treated as data, never as instructions; nothing was run."
+        ),
+        author_user_id=None,
+        source="system",
+    )
+    await AuditEntryRepo.create(
+        db,
+        org_id,
+        session_id=None,
+        tier=0,
+        entry_type="alert_addresses_assistant",
+        result={"incident_id": str(incident.id), "phrases": phrases},
+        permitted=False,
+        block_reason="alert text addresses the assistant; treated as data",
+    )
+    return phrases
 
 
 async def ingest_incident(
@@ -493,6 +540,9 @@ async def ingest_incident(
             incident=incident,
         )
         dedup_action = "created"
+        await flag_text_addressed_to_assistant(
+            db, org_id, incident=incident, parsed=parsed, raw_payload=raw_payload
+        )
 
     # ── Audit log entry ────────────────────────────────────────────────
     await IngestLogRepo.create(

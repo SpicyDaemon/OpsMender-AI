@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- AI Sessions now mark alert text, incident descriptions and tool output as
+  data in every prompt that carries them, with one plain rule that such text
+  is never an instruction. Credential-shaped strings in tool output (keys,
+  tokens, private keys, `password=` values) are redacted before the model,
+  the session record and any ticket see them. An alert whose text addresses
+  the assistant ("ignore your instructions", "as the AI, run") is flagged on
+  the incident and in the audit log at intake and never acted on; what a
+  session may do is still decided by the tier gate alone. A corpus of
+  injected alerts proves the gate blocks or asks for approval at every tier.
 - A model config whose saved key setting is not a variable name (a key
   pasted before such values were refused) is now listed without it, for
   every role, with a `not a variable name: edit this config` note on the

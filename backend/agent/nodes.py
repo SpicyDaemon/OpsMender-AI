@@ -27,6 +27,7 @@ from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
 from backend.agent.writing_style import PLAIN_WRITING
 from backend.approvals import ApprovalService
+from backend.agent.hygiene import UNTRUSTED_RULE, redact_value, untrusted
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
 
@@ -41,9 +42,9 @@ You are an expert Site Reliability Engineer (SRE) performing incident response.
 
 An incident has been reported with the following description:
 
----
 {incident_description}
----
+
+{untrusted_rule}
 
 Based on this description, provide a structured summary of:
 1. What is known so far
@@ -123,9 +124,9 @@ You are an expert Site Reliability Engineer (SRE) verifying incident remediation
 Diagnosis: {diagnosis}
 Actions executed: {tool_call_count}
 Results:
----
 {tool_call_results}
----
+
+{untrusted_rule}
 
 Based on the results, assess:
 1. Were the actions successful?
@@ -143,11 +144,14 @@ SUMMARIZE_PROMPT = (
     """\
 You are an expert Site Reliability Engineer (SRE) writing an incident summary.
 
-Incident description: {incident_description}
+Incident description:
+{incident_description}
 Diagnosis: {diagnosis}
 Verification: {verification}
 Actions taken: {tool_call_count}
 Blocked actions: {blocked_count}
+
+{untrusted_rule}
 
 Write a concise incident summary covering:
 1. What happened
@@ -262,9 +266,9 @@ You are an expert Site Reliability Engineer (SRE) performing incident response.
 {memory_context}\
 An incident has been reported with the following description:
 
----
 {incident_description}
----
+
+{untrusted_rule}
 
 Based on this description, provide a structured summary of:
 1. What is known so far
@@ -293,7 +297,8 @@ def _build_observe(
         produced a context block (Sprint 45), it is prepended to the
         prompt so prior lessons inform the first pass.
         """
-        description = state.get("incident_description", "")
+        # The alert text is data from outside the conversation (M1-69).
+        description = untrusted("INCIDENT", state.get("incident_description", ""))
         memory_context = state.get("memory_context", "")
         if memory_context:
             # Trailing blank line so the memory block reads cleanly above
@@ -302,9 +307,12 @@ def _build_observe(
             prompt = OBSERVE_PROMPT_WITH_MEMORY.format(
                 memory_context=memory_block,
                 incident_description=description,
+                untrusted_rule=UNTRUSTED_RULE,
             )
         else:
-            prompt = OBSERVE_PROMPT.format(incident_description=description)
+            prompt = OBSERVE_PROMPT.format(
+                incident_description=description, untrusted_rule=UNTRUSTED_RULE
+            )
         observations = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return {
             "observations": observations,
@@ -715,14 +723,18 @@ def _build_execute(
                 tool_caller=tool_caller,
             )
 
+            # Credential-shaped strings in tool output never reach the model,
+            # the session record or a ticket (M1-69).
+            tool_result, _ = redact_value(result.result)
+            tool_error, _ = redact_value(result.error)
             records.append(
                 {
                     "tool_name": tool_name,
                     "tool_parameters": tool_params,
                     "classification": result.enforcement.classification,
                     "permitted": result.permitted,
-                    "result": result.result,
-                    "error": result.error,
+                    "result": tool_result,
+                    "error": tool_error,
                     "duration_ms": result.duration_ms,
                     "block_reason": None,
                 }
@@ -771,7 +783,8 @@ def _build_verify(
         prompt = VERIFY_PROMPT.format(
             diagnosis=diagnosis,
             tool_call_count=len(tool_calls),
-            tool_call_results=results,
+            tool_call_results=untrusted("TOOL RESULTS", results),
+            untrusted_rule=UNTRUSTED_RULE,
         )
         verification = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return {
@@ -804,11 +817,14 @@ def _build_summarize(
     def summarize(state: IncidentState) -> dict:
         """Produce a final incident summary."""
         prompt = SUMMARIZE_PROMPT.format(
-            incident_description=state.get("incident_description", ""),
+            incident_description=untrusted(
+                "INCIDENT", state.get("incident_description", "")
+            ),
             diagnosis=state.get("diagnosis", ""),
             verification=state.get("verification", ""),
             tool_call_count=len(state.get("tool_calls", [])),
             blocked_count=len(state.get("blocked_actions", [])),
+            untrusted_rule=UNTRUSTED_RULE,
         )
         summary = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         status = state.get("status")

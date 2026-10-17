@@ -115,6 +115,15 @@ alongside an entry recording the deletion.
   its entry, so a successful response means the change is recorded.
 - It is invaluable for post-incident reviews (post-mortems) to understand exactly what the AI did, when, and who approved it. The Audit Log feeds the **Timeline** section of the dedicated postmortem editor: see [postmortem-guide.md](postmortem-guide.md).
 
+### Alerts that talk to the assistant
+
+An alert whose text addresses the assistant ("ignore your instructions",
+"as the AI, run ...") gets a system comment on the incident naming the
+phrases, and an audit entry `alert_addresses_assistant`. Nothing in the
+alert is acted on: a session treats alert text and tool output as data, and
+the tier gate alone decides what it may do. Read the alert with that in mind
+and tell the source team their payload carries instructions.
+
 ## 7. Writing Postmortems
 
 Once an incident reaches its final `resolved` status, the Incident Command Strip surfaces a **Create postmortem** action that opens a dedicated editor at `/dashboard/incidents/postmortem?id=<incident_id>`. The editor ships with an Edit/Preview toggle, the seven recommended sections (Summary · Impact · Timeline · Root cause · Resolution · Lessons learned · Memory candidates), Save / Clear / Reset-to-template actions, and a one-line tip for each section. Memory candidates are intended as the shortlist you'll later promote into `/dashboard/memories`. Admins and operators can edit; viewers see the editor read-only. The full walkthrough lives in [postmortem-guide.md](postmortem-guide.md).

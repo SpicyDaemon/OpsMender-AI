@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.0] - 2026-10-17
+
 ### Fixed
 
 - With several app instances behind a load balancer, or scheduler replicas
@@ -2888,7 +2892,8 @@ Archived draft release notes from the earlier Sprints 1-23 milestone planning. K
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
 - Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
-[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.0.0...v1.1.0

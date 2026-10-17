@@ -56,22 +56,22 @@ jobs:
             echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.ref.outputs.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v10.3.0
 
       - name: Build binary (Unix)
         if: matrix.platform != 'windows'
@@ -125,7 +125,7 @@ jobs:
           "checksum=dist/$archive.sha256" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opsmender-${{ matrix.label }}
           path: |
@@ -154,7 +154,7 @@ jobs:
             echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 0
@@ -168,7 +168,7 @@ jobs:
             > "opsmender-ai-${VERSION}-source.tar.gz.sha256"
 
       - name: Download all binary artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
           pattern: opsmender-*
@@ -193,7 +193,7 @@ jobs:
           PY
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ref.outputs.ref }}
           name: ${{ steps.ref.outputs.ref }}

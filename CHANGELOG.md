@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- A model config whose saved key setting is not a variable name (a key
+  pasted before such values were refused) is now listed without it, for
+  every role, with a `not a variable name: edit this config` note on the
+  Models page; the server logs the config ids at startup, never the values.
+- Skill Studio no longer suggests `safe` for a tool whose name starts with
+  `explain`: an `EXPLAIN ANALYZE` runs the statement it explains, so such a
+  tool is suggested as `caution` for review.
+- An identity provider that publishes a single bare key instead of a key
+  set no longer ends a sign-in as a server error when that key does not fit
+  the id token; the sign-in is refused like any other bad token.
 - A model's key setting must now be the provider's own variable
   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`) or one the
   server operator lists in `OPSMENDER_MODEL_KEY_VARS`, and the providers with

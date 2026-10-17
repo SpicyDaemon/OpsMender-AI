@@ -1011,9 +1011,15 @@ export function ModelSection({
               <span className="font-medium text-fg-primary">{config.name}</span>
               {config.is_default && <Badge>Default</Badge>}
             </div>
-            <p className="mt-1 font-mono text-xs text-fg-muted">
-              {config.api_key_env_var ?? "No API key env var"}
-            </p>
+            {config.key_setting_invalid ? (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                not a variable name: edit this config
+              </p>
+            ) : (
+              <p className="mt-1 font-mono text-xs text-fg-muted">
+                {config.api_key_env_var ?? "No API key env var"}
+              </p>
+            )}
           </div>
         ),
       },

@@ -28,6 +28,7 @@ from backend.db.models import User
 from backend.db.repos import ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.llm.factory import create_provider
+from backend.llm.registry import key_setting_is_a_variable_name
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -48,8 +49,15 @@ def _save_response(config, warnings) -> ModelConfigSaveResponse:
 
 def _model_config_for(user: User, config) -> ModelConfigResponse:
     """A saved model configuration as ``user`` may see it: Viewers get the
-    base URL without user info, query string or fragment (O-07)."""
+    base URL without user info, query string or fragment (O-07), and a key
+    setting that is not a variable name (a key pasted before M1-60 refused
+    them) is hidden from every role until the config is edited (M1-65).
+    """
     response = ModelConfigResponse.model_validate(config)
+    if not key_setting_is_a_variable_name(response.api_key_env_var):
+        response = response.model_copy(
+            update={"api_key_env_var": None, "key_setting_invalid": True}
+        )
     if request_role(user) == "viewer":
         response = response.model_copy(
             update={"base_url": url_without_secrets(response.base_url)}

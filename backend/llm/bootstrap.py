@@ -13,9 +13,15 @@ a row already exists, idempotent on every restart after that.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
+
+from backend.db.models import ModelConfig
+
 from backend.db.repos import ModelConfigRepo, OrganizationRepo
+from backend.llm.registry import key_setting_is_a_variable_name
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -54,6 +60,33 @@ def _resolve_api_key_env_var(provider: str, cfg: "ProviderConfig") -> str | None
     if provider == "openai_compatible":
         return cfg.openai_compatible_api_key_env_var
     return None
+
+
+async def report_invalid_key_settings(
+    session_factory: "async_sessionmaker",
+) -> list[uuid.UUID]:
+    """Log the ids of saved model configs whose key setting is not a variable
+    name (a key pasted before M1-60 refused them), never the values, so an
+    operator knows which configs to edit; the API hides such settings (M1-65).
+    """
+    async with session_factory() as session:
+        rows = (
+            await session.execute(select(ModelConfig.id, ModelConfig.api_key_env_var))
+        ).all()
+    invalid = [
+        row.id
+        for row in rows
+        if not key_setting_is_a_variable_name(row.api_key_env_var)
+    ]
+    if invalid:
+        logger.warning(
+            "models: %d saved model config(s) have a key setting that is not a "
+            "variable name; it is hidden until the config is edited on the Models "
+            "page: %s",
+            len(invalid),
+            ", ".join(str(config_id) for config_id in invalid),
+        )
+    return invalid
 
 
 async def bootstrap_model_config(

@@ -116,8 +116,11 @@ jobs:
       # deselects them.
       - name: Postgres concurrency tests
         shell: bash
-        # A failed interleaving can leave a lock held through teardown.
-        timeout-minutes: 5
+        # A failed interleaving can leave a lock held through teardown, so the
+        # step has a ceiling; the 123 cases take about five minutes on a hosted
+        # runner (the v1.2.0 release run hit the old five-minute limit with every
+        # test passed), so the ceiling sits well above a normal run.
+        timeout-minutes: 12
         run: >-
           PART4_PG_URL="$OPSMENDER_DATABASE_URL"
           uv run pytest -m integration --run-integration

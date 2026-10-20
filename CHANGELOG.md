@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pillow moves to 13.0.0 and certifi to 2026.10.19: eight Pillow advisories
+  and one certifi advisory were published after the v1.2.0 release, and the
+  dependency audit caught them on the next main run. Pillow is used for MFA
+  QR codes, avatars and PDF reports; certifi carries the trusted root
+  certificates. Nothing else changes.
+
 ### Changed
 
 - The hosted PostgreSQL concurrency step may now take twelve minutes instead

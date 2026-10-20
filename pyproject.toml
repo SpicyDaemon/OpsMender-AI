@@ -94,7 +94,7 @@ dev = [
     "httpx",
     # Used by scripts/combine_screenshots.py to build the composite
     # review images from the per-route captures.
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
     "moto[s3]>=5.1.0",
     "pytest-timeout>=2.4.0",
     "ruff==0.15.20",

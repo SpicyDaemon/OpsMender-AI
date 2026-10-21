@@ -107,7 +107,7 @@ const marquee = [...platforms, ...sources];
     /* Zoom cards: the whole screen first, then a slow push in to one spot with a note. */
     .zoom { cursor: zoom-in; }
     .zoom.focus { cursor: zoom-out; }
-    .zoom-stage { position: absolute; inset: 0; transform-origin: var(--fx) var(--fy); transition: transform 1.6s var(--ease-fluid); will-change: transform; }
+    .zoom-stage { position: absolute; inset: 0; transform-origin: var(--fx) var(--fy); transition: transform 1.6s var(--ease-fluid); }
     .zoom.focus .zoom-stage { transform: translate(var(--tx), var(--ty)) scale(var(--s)); }
     .zoom-ring { position: absolute; transform: translate(-50%, -50%); border: 1.5px solid #fbbf24; border-radius: 8px; opacity: 0;
       box-shadow: 0 0 0 9999px rgba(7,9,15,0); transition: opacity .7s var(--ease-fade) .8s, box-shadow .7s var(--ease-fade) .8s; }
@@ -118,6 +118,21 @@ const marquee = [...platforms, ...sources];
       opacity: 0; transform: translateY(8px); transition: opacity .6s var(--ease-fade) 1.1s, transform .6s var(--ease-fade) 1.1s; }
     .zoom.focus .zoom-note { opacity: 1; transform: none; }
     .zoom-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 9999px; background: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,.18); }
+
+    /* Phone frames: a bezel, a screen, and a browser bar drawn in CSS. */
+    .phone { margin: 0; border-radius: 44px; padding: 10px; background: #0b0f1a; border: 1px solid #2a3a5e; box-shadow: 0 40px 80px -30px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.04); }
+    .phone-screen { position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: 34px; background: #07090f; aspect-ratio: 393 / 852; }
+    .phone-screen img { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
+    .phone-screen::before { content: ''; display: block; height: 46px; flex: none; background: #07090f; }
+    .phone-b .phone-screen { border-radius: 26px; }
+    .phone-b { border-radius: 34px; }
+    .island { position: absolute; top: 12px; left: 50%; width: 36%; height: 24px; transform: translateX(-50%); border-radius: 9999px; background: #000; z-index: 2; }
+    .hole { position: absolute; top: 14px; left: 50%; width: 12px; height: 12px; transform: translateX(-50%); border-radius: 9999px; background: #000; z-index: 2; }
+    .urlbar { flex: none; display: flex; align-items: center; justify-content: center; background: #0d1221; border-top: 1px solid #1a2540; }
+    .urlbar-bottom { height: 70px; padding-bottom: 14px; }
+    .urlbar-top { height: 52px; border-top: 0; border-bottom: 1px solid #1a2540; }
+    .urlpill { display: inline-flex; align-items: center; gap: .4rem; width: 84%; justify-content: center; padding: .45rem 0; border-radius: 9999px; background: #161e33; color: #cbd5e1; font-size: 12px; }
+    .urlpill::before { content: ''; width: 8px; height: 10px; border: 1.5px solid #94a3b8; border-radius: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
 
     /* Policy chips in the gate table. */
     .chip { display: inline-flex; align-items: center; border-radius: 9999px; padding: .3rem .7rem; font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
@@ -168,7 +183,7 @@ const marquee = [...platforms, ...sources];
         <a href="#tiers"    class="nav-link">Autonomy</a>
         <a href="#bring"    class="nav-link">Integrations</a>
         <a href="#gate"     class="nav-link">The gate</a>
-        <a href="#screens"  class="nav-link">Screens</a>
+        <a href="#screens"  class="nav-link">Product tour</a>
       </div>
       <div class="flex items-center gap-3">
         <a href="#install" class="nav-link hidden sm:inline">Install</a>
@@ -269,23 +284,32 @@ const marquee = [...platforms, ...sources];
       <div class="fade-x rise mt-14 overflow-hidden" style="--i:3" aria-label="Alert sources and notification platforms">
         <div class="flex w-max animate-marquee gap-4 pr-4">
           {[...marquee, ...marquee].map((item) => (
-            <div class="flex h-[92px] w-[104px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-ops-border bg-ops-surface/80 text-slate-200" title={item.name}>
+            <div class="flex h-[96px] min-w-[112px] shrink-0 flex-col items-center justify-center gap-2.5 rounded-2xl border border-ops-border bg-ops-surface/80 px-4 text-slate-200" title={item.name}>
               <span class="[&>svg]:h-7 [&>svg]:w-7" set:html={item.svg} />
-              <span class="max-w-[88px] truncate font-mono text-[9.5px] uppercase tracking-[0.1em] text-ops-muted">{item.name}</span>
+              <span class="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.1em] text-ops-muted">{item.name}</span>
             </div>
           ))}
         </div>
       </div>
-      <div class="mx-auto mt-10 max-w-7xl px-5 sm:px-8">
-        <div class="rise grid gap-3 sm:grid-cols-4 lg:grid-cols-7" style="--i:4" aria-label="Model providers">
-          {providers.map((m) => (
-            <div class="flex items-center gap-3 rounded-2xl border border-ops-border bg-ops-surface/80 p-3.5">
-              <span class="shrink-0 text-slate-200 [&>svg]:h-6 [&>svg]:w-6" set:html={m.svg} />
-              <span class="min-w-0"><span class="block truncate text-sm font-medium text-slate-50">{m.name}</span><span class="block truncate text-[11px] text-ops-muted">{m.note}</span></span>
-            </div>
-          ))}
-        </div>
-        <p class="rise mt-5 text-center text-sm text-ops-muted" style="--i:5">Twenty six built in connectors as well, including GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD and Terraform Cloud, with two way ticket sync for Jira and ServiceNow. Any MCP server you care to run.</p>
+      <div class="mx-auto mt-8 max-w-7xl px-5 sm:px-8">
+        <p class="rise mx-auto max-w-3xl text-center text-sm leading-relaxed text-ops-muted" style="--i:4">Twenty six built in connectors as well, including GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD and Terraform Cloud, with two way ticket sync for Jira and ServiceNow. Any MCP server you care to run.</p>
+      </div>
+    </section>
+
+    <!-- MODELS -->
+    <section id="models" class="mx-auto max-w-7xl scroll-mt-28 px-5 pt-24 sm:px-8 sm:pt-32">
+      <div class="text-center">
+        <p class="label rise">Supported AI models</p>
+        <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">Bring the model you already use.</h2>
+        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Seven providers, picked per workspace or per service. Your API key stays on your server, and a model can only ever read its own key.</p>
+      </div>
+      <div class="rise mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" style="--i:3" aria-label="Model providers">
+        {providers.map((m) => (
+          <div class="flex items-center gap-4 rounded-2xl border border-ops-border bg-ops-surface/80 p-5">
+            <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-ops-border bg-ops-bg/60 text-slate-200 [&>svg]:h-7 [&>svg]:w-7" set:html={m.svg} />
+            <span class="min-w-0"><span class="block text-base font-medium text-slate-50">{m.name}</span><span class="mt-0.5 block text-[13px] leading-snug text-ops-muted">{m.note}</span></span>
+          </div>
+        ))}
       </div>
     </section>
 
@@ -392,6 +416,41 @@ const marquee = [...platforms, ...sources];
           <img id="lb-img" src="" alt="" class="max-h-[85vh] w-auto rounded-md border border-ops-border" />
           <figcaption id="lb-cap" class="mt-3 text-center text-sm text-ops-subtle"></figcaption>
         </figure>
+      </div>
+    </section>
+
+    <!-- ON YOUR PHONE -->
+    <section id="mobile" class="mx-auto max-w-7xl scroll-mt-28 px-5 pt-32 sm:px-8 sm:pt-44">
+      <div class="panel rise px-6 py-14 sm:px-12 sm:py-20">
+        <div class="wash wash-blue" aria-hidden="true"></div>
+        <div class="relative grid gap-12 lg:grid-cols-2 lg:items-center">
+          <div>
+            <p class="label">On your phone</p>
+            <h2 class="headline mt-5 text-4xl text-slate-50 sm:text-5xl">Acknowledge from wherever you are.</h2>
+            <p class="mt-5 text-ops-subtle">The same app in the browser your phone already has. Nothing to install and no second login. Open the link from a page, read the incident, approve or reject what the agent proposes, and get back to your evening.</p>
+            <ul class="mt-6 space-y-2.5 text-[15px] text-slate-200">
+              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Every page carries an authenticated link straight to the incident.</li>
+              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Approve, reject or redirect the agent with one tap. Each action is attributed to you.</li>
+              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Watch a live session from the sofa, and stop it if you do not like where it is going.</li>
+            </ul>
+          </div>
+          <div class="flex items-end justify-center gap-5 sm:gap-8">
+            <figure class="phone phone-a w-[46%] max-w-[250px]">
+              <div class="phone-screen">
+                <span class="island" aria-hidden="true"></span>
+                <img src={shot('phone-a-approvals.png')} alt="A pending approval on a phone" width="1179" height="1977" loading="lazy" />
+                <div class="urlbar urlbar-bottom" aria-hidden="true"><span class="urlpill">ops.example.com</span></div>
+              </div>
+            </figure>
+            <figure class="phone phone-b mb-10 w-[46%] max-w-[250px]">
+              <div class="phone-screen">
+                <span class="hole" aria-hidden="true"></span>
+                <div class="urlbar urlbar-top" aria-hidden="true"><span class="urlpill">ops.example.com</span></div>
+                <img src={shot('phone-b-session.png')} alt="A live session on a phone" width="1082" height="2203" loading="lazy" />
+              </div>
+            </figure>
+          </div>
+        </div>
       </div>
     </section>
 

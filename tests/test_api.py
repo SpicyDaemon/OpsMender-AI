@@ -7439,6 +7439,84 @@ class TestModelConfigAPI:
         assert data["model_id"] == "gpt-4o-mini"
         assert data["max_tokens"] == 2048
 
+    async def test_named_vendor_config_create_update_and_test(
+        self, client: AsyncClient, app, auth_headers, monkeypatch
+    ):
+        """A DeepSeek config saves with its own key variable and no base URL
+        (none listed in OPSMENDER_MODEL_KEY_VARS), edits, and its connection
+        test builds the provider from the saved row."""
+        monkeypatch.delenv("OPSMENDER_MODEL_KEY_VARS", raising=False)
+        validated: list[dict[str, object]] = []
+
+        class _Catalog:
+            def list_models(self):
+                return ["deepseek-flash", "deepseek-v4-pro"]
+
+        def _validate_with(**kwargs):
+            validated.append(kwargs)
+            return _Catalog()
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _validate_with)
+
+        created = await client.post(
+            "/models/configs",
+            json={
+                "name": "deepseek-primary",
+                "provider": "deepseek",
+                "model_id": "deepseek-flash",
+                "api_key_env_var": "DEEPSEEK_API_KEY",
+            },
+            headers=auth_headers,
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["warnings"] == []
+        config_id = uuid.UUID(created.json()["config"]["id"])
+        assert validated[-1]["provider"] == "deepseek"
+        assert validated[-1]["api_key_env_var"] == "DEEPSEEK_API_KEY"
+        assert validated[-1]["base_url"] is None
+
+        updated = await client.put(
+            f"/models/configs/{config_id}",
+            json={
+                "name": "deepseek-primary",
+                "provider": "deepseek",
+                "model_id": "deepseek-v4-pro",
+                "api_key_env_var": "DEEPSEEK_API_KEY",
+            },
+            headers=auth_headers,
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["config"]["model_id"] == "deepseek-v4-pro"
+
+        async with app.state.session_factory() as db:
+            row = await ModelConfigRepo.get_by_id(db, TEST_ORG_ID, config_id)
+        assert row is not None
+        assert row.provider == "deepseek"
+        assert row.api_key_env_var == "DEEPSEEK_API_KEY"
+        assert row.base_url is None
+        assert row.model_id == "deepseek-v4-pro"
+
+        probed: dict[str, object] = {}
+
+        class _Reply:
+            def complete(self, prompt):
+                return "pong"
+
+        def _probe_with(**kwargs):
+            probed.update(kwargs)
+            return _Reply()
+
+        monkeypatch.setattr("backend.api.routes.models.create_provider", _probe_with)
+        tested = await client.post(
+            f"/models/configs/{config_id}/test", headers=auth_headers
+        )
+        assert tested.status_code == 200, tested.text
+        assert tested.json()["ok"] is True
+        assert probed["provider"] == "deepseek"
+        assert probed["model_id"] == "deepseek-v4-pro"
+        assert probed["api_key_env_var"] == "DEEPSEEK_API_KEY"
+        assert probed["base_url"] is None
+
     async def _seed_config(self, app) -> uuid.UUID:
         async with app.state.session_factory() as db:
             cfg = await ModelConfigRepo.create(

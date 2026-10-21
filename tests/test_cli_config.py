@@ -138,6 +138,21 @@ class TestConfigArgParsing:
         assert args.project == "opsmender-prod"
         assert args.location == "us-central1"
 
+    @pytest.mark.parametrize("provider", ["qwen", "deepseek", "kimi"])
+    def test_config_model_commands_accept_the_named_vendors(self, provider):
+        listed = _parse_args(["config", "model", "list", "--provider", provider])
+        assert listed.provider == provider
+
+        saved = _parse_args(
+            ["config", "model", "set", "--provider", provider, "--model-id", "m"]
+        )
+        assert saved.provider == provider
+
+        bootstrapped = _parse_args(
+            ["config", "model", "bootstrap", "--provider", provider]
+        )
+        assert bootstrapped.provider == provider
+
 
 # ---------------------------------------------------------------------------
 # Default display

@@ -61,13 +61,16 @@ distributed roles included, need PostgreSQL.
 
 OpsMender supports multiple LLM providers. Navigate to **Models** in the sidebar (`/dashboard/models`) to configure them.
 
-Supported providers as of Sprint 62:
+Supported providers:
 
 | Provider | Notes |
 |----------|-------|
 | **Anthropic** | Claude models. Set `ANTHROPIC_API_KEY` in `.env`. |
 | **OpenAI** | GPT models. Set `OPENAI_API_KEY` in `.env`. |
 | **Azure OpenAI** | Azure-hosted OpenAI deployments. Requires `base_url` (your resource endpoint) and `api_version`. |
+| **Qwen** | Alibaba Cloud Model Studio in its OpenAI-compatible mode. Set `DASHSCOPE_API_KEY` in `.env`. Connects to `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` (Singapore) unless the config's base URL names another Model Studio endpoint: `dashscope.aliyuncs.com` (Beijing), `dashscope-us.aliyuncs.com` (Virginia), `cn-hongkong.dashscope.aliyuncs.com` (Hong Kong) or a workspace endpoint under `maas.aliyuncs.com`. A key works only in the region it was created in. Default model `qwen-plus`. |
+| **DeepSeek** | Set `DEEPSEEK_API_KEY` in `.env`. Connects to `https://api.deepseek.com`. Default model `deepseek-flash`. |
+| **Kimi** | Moonshot AI. Set `MOONSHOT_API_KEY` in `.env`. Connects to `https://api.moonshot.ai/v1`; a key from the China platform needs the base URL `https://api.moonshot.cn/v1`. Default model `kimi-k3`. |
 | **AWS Bedrock** | Uses the native AWS credential chain. Requires an AWS Region; optional AWS Profile name if you want a specific shared-config profile. No raw API key is stored in OpsMender. |
 | **GCP Vertex AI** | Uses ADC. Requires a GCP Project and GCP Location. Supports `google/...`, `anthropic/...`, and `meta/...` publisher/model IDs so partner models stay explicit. |
 | **Ollama** | Local runtime. Default `base_url` is `http://localhost:11434`. No API key required. |
@@ -75,7 +78,7 @@ Supported providers as of Sprint 62:
 
 Per Sprint 62 design, OpsMender stores only the **environment variable name** for each provider's secret, never the raw value. Set the actual key in `.env` and reference it from the dashboard. Cloud providers use native credential discovery instead of long-lived pasted secrets: AWS Bedrock uses the AWS credential chain and GCP Vertex AI uses ADC.
 
-The key field takes the variable's name: letters, digits and underscores, not starting with a digit. Anything else is refused and not stored. Some providers' keys are written like a name (for example `gsk_...`) and cannot be told apart, so put keys only in `.env`; a model config saved before v1.1.2 with a key in this field still shows it, so replace it with the variable's name. Only admins can send connection settings (a base URL, a key variable, an API version, a region, a profile, a project or a location) to model discovery (`GET /models`); every other role, and their API tokens, can list models only with the settings the server already has. Since v1.2 the key field also has to be the provider's own variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`) or one the server operator lists in `OPSMENDER_MODEL_KEY_VARS` in `.env`; every key for an `openai_compatible` endpoint needs listing. The providers with a fixed host (`anthropic`, `openai`, `azure_openai`) refuse a base URL anywhere else; a proxy or gateway in front of one of them is an `openai_compatible` endpoint with its own listed key. A model config saved before v1.2 keeps working until it is edited.
+The key field takes the variable's name: letters, digits and underscores, not starting with a digit. Anything else is refused and not stored. Some providers' keys are written like a name (for example `gsk_...`) and cannot be told apart, so put keys only in `.env`; a model config saved before v1.1.2 with a key in this field still shows it, so replace it with the variable's name. Only admins can send connection settings (a base URL, a key variable, an API version, a region, a profile, a project or a location) to model discovery (`GET /models`); every other role, and their API tokens, can list models only with the settings the server already has. Since v1.2 the key field also has to be the provider's own variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY`, `MOONSHOT_API_KEY`) or one the server operator lists in `OPSMENDER_MODEL_KEY_VARS` in `.env`; every key for an `openai_compatible` endpoint needs listing. The providers with a fixed host (`anthropic`, `openai`, `azure_openai`, `qwen`, `deepseek`, `kimi`) refuse a base URL anywhere else or one that is not `https://`; `qwen`, `deepseek` and `kimi` need no base URL at all, since they know their vendor's. The **New model config** form shows the Base URL field only for providers that require one, so a Qwen or Kimi config for another region sets its base URL with `opsmender config model set --base-url` or the `/models/configs` API. A proxy or gateway in front of one of them is an `openai_compatible` endpoint with its own listed key. A model config saved before v1.2 keeps working until it is edited.
 
 To add a model config:
 

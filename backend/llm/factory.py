@@ -28,6 +28,19 @@ def create_provider(
     provider_meta: dict[str, object] | None = None,
 ) -> LLMProvider:
     """Build a provider instance by provider name."""
+    # The registry imports this module, so its specs are read here.
+    from .registry import ProviderRegistry
+
+    spec = ProviderRegistry._SPECS.get(provider)
+    if spec is not None:
+        base_url = base_url or spec.default_base_url
+    if spec is not None and provider in ("qwen", "deepseek", "kimi"):
+        return OpenAICompatibleProvider(
+            model=model_id or spec.default_model_id,
+            base_url=base_url or "",
+            max_tokens=max_tokens,
+            api_key_env_var=api_key_env_var or spec.default_api_key_env_var,
+        )
     if provider == "anthropic":
         return AnthropicProvider(
             model=model_id or "claude-sonnet-4-20250514",

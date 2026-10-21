@@ -55,12 +55,14 @@ def check_key_env_var_allowed(spec: "ProviderSpec", value: str | None) -> None:
 
 
 def check_base_url_host(spec: "ProviderSpec", base_url: str | None) -> None:
-    """A provider with a fixed host only connects there, so a provider's key
-    cannot be sent to a URL of the caller's choosing (O-22). Providers whose
-    endpoint is the operator's own (ollama, openai_compatible) take any URL."""
+    """A provider with a fixed host only connects there, and only over https,
+    so a provider's key cannot be sent to a URL of the caller's choosing or in
+    the clear (O-22). Providers whose endpoint is the operator's own (ollama,
+    openai_compatible) take any URL."""
     if not base_url or not spec.allowed_hosts:
         return
-    host = (urlparse(base_url).hostname or "").lower()
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
     if not any(
         host == allowed or (allowed.startswith(".") and host.endswith(allowed))
         for allowed in spec.allowed_hosts
@@ -68,6 +70,11 @@ def check_base_url_host(spec: "ProviderSpec", base_url: str | None) -> None:
         raise ValueError(
             f"Provider '{spec.provider}' only connects to "
             f"{', '.join(spec.allowed_hosts)}; base_url must be a URL there"
+        )
+    if parsed.scheme.lower() != "https":
+        raise ValueError(
+            f"Provider '{spec.provider}' only connects over https; "
+            "base_url must start with https://"
         )
 
 
@@ -126,10 +133,14 @@ def _detect_placeholder_creds(
 
     Targets providers whose ``list_models()`` does NOT round-trip
     credentials (Anthropic returns the configured model; Azure
-    deployment returns the configured model), which would otherwise
-    show a misleading green dot in the dashboard.
+    deployment returns the configured model; Qwen, DeepSeek and Kimi
+    fall back to the configured model when the listing fails), which
+    would otherwise show a misleading green dot in the dashboard.
     """
-    if provider in {"anthropic", "openai", "azure_openai"} and api_key_env_var:
+    if (
+        provider in {"anthropic", "openai", "azure_openai", "qwen", "deepseek", "kimi"}
+        and api_key_env_var
+    ):
         key_value = os.environ.get(api_key_env_var)
         if key_value is not None and _looks_like_placeholder(key_value):
             return (
@@ -234,6 +245,9 @@ class ProviderSpec:
     # Hosts a caller's base_url may name; a leading dot allows subdomains.
     # Empty means the endpoint is the operator's own and any URL is fine.
     allowed_hosts: tuple[str, ...] = ()
+    # The URL the factory uses when a config or caller names none, so a
+    # vendor's fixed endpoint works with only a key.
+    default_base_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -309,6 +323,42 @@ class ProviderRegistry:
             default_api_key_env_var=None,
             requires_api_key=False,
             requires_base_url=True,
+        ),
+        # Vendors that serve the OpenAI API at their own hosts. The factory
+        # builds an OpenAICompatibleProvider with the vendor's default URL;
+        # hosts and model ids from the vendors' API docs, read 2026-10-20.
+        # Qwen (Alibaba Cloud Model Studio): the shared regional endpoints
+        # and the workspace endpoints ({WorkspaceId}.<region>.maas...).
+        "qwen": ProviderSpec(
+            provider="qwen",
+            label="Qwen",
+            default_model_id="qwen-plus",
+            default_api_key_env_var="DASHSCOPE_API_KEY",
+            allowed_hosts=(
+                "dashscope-intl.aliyuncs.com",
+                "dashscope.aliyuncs.com",
+                "dashscope-us.aliyuncs.com",
+                "cn-hongkong.dashscope.aliyuncs.com",
+                ".maas.aliyuncs.com",
+            ),
+            default_base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        ),
+        "deepseek": ProviderSpec(
+            provider="deepseek",
+            label="DeepSeek",
+            default_model_id="deepseek-flash",
+            default_api_key_env_var="DEEPSEEK_API_KEY",
+            allowed_hosts=("api.deepseek.com",),
+            default_base_url="https://api.deepseek.com",
+        ),
+        # Kimi (Moonshot AI): the international and the China platform.
+        "kimi": ProviderSpec(
+            provider="kimi",
+            label="Kimi",
+            default_model_id="kimi-k3",
+            default_api_key_env_var="MOONSHOT_API_KEY",
+            allowed_hosts=("api.moonshot.ai", "api.moonshot.cn"),
+            default_base_url="https://api.moonshot.ai/v1",
         ),
     }
 
@@ -507,7 +557,8 @@ class ProviderRegistry:
             )
 
         if (
-            provider in {"openai", "ollama", "openai_compatible"}
+            provider
+            in {"openai", "ollama", "openai_compatible", "qwen", "deepseek", "kimi"}
             and discovered_models
             and model_id not in discovered_models
         ):

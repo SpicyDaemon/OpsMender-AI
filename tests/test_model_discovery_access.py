@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 
+from backend.llm.registry import ProviderRegistry
 from tests.test_role_access import _headers, client as _client_fixture
 
 client = pytest.fixture(_client_fixture.__wrapped__)
@@ -222,16 +223,75 @@ async def test_a_key_setting_must_be_a_listed_variable(client, monkeypatch):
     assert own.status_code == 200, own.text
 
 
-async def test_a_fixed_host_provider_refuses_another_base_url(client, monkeypatch):
-    """A provider with a fixed host only connects there, so its key cannot be
-    sent to a URL of the caller's choosing; the free-URL providers take any
-    URL but only listed keys."""
+@pytest.fixture
+def no_network(monkeypatch):
+    """Record any attempt to build an OpenAI SDK client or send an HTTP
+    request from discovery, and fail it, so a test can prove none was made.
+    Ollama's local probe is answered in process."""
+    import httpx
+    import openai
+
+    attempts: list[str] = []
+
+    def _client(**kwargs):
+        attempts.append(f"openai client for {kwargs.get('base_url')}")
+        raise AssertionError("discovery built a client")
+
+    def _send(self, request, **kwargs):
+        attempts.append(f"http {request.url}")
+        raise AssertionError("discovery sent a request")
+
+    monkeypatch.setattr(openai, "OpenAI", _client)
+    monkeypatch.setattr(httpx.Client, "send", _send)
+    monkeypatch.setattr(
+        "backend.llm.providers.OllamaProvider.list_models", lambda self: [self.model]
+    )
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_ENDPOINT",
+        "OPSMENDER_OPENAI_COMPATIBLE_BASE_URL",
+        "OPSMENDER_OPENAI_COMPATIBLE_API_KEY_ENV_VAR",
+        "DASHSCOPE_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "MOONSHOT_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    ProviderRegistry.clear_discovery_cache()
+    yield attempts
+    ProviderRegistry.clear_discovery_cache()
+
+
+# The fixed-host providers' hosts and home URLs, written out so a changed host
+# list fails here.
+FIXED_HOSTS = {
+    "openai": ("api.openai.com", "https://api.openai.com/v1"),
+    "qwen": (
+        "dashscope-intl.aliyuncs.com, dashscope.aliyuncs.com, "
+        "dashscope-us.aliyuncs.com, cn-hongkong.dashscope.aliyuncs.com, "
+        ".maas.aliyuncs.com",
+        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    ),
+    "deepseek": ("api.deepseek.com", "https://api.deepseek.com"),
+    "kimi": ("api.moonshot.ai, api.moonshot.cn", "https://api.moonshot.ai/v1"),
+}
+
+
+@pytest.mark.parametrize("provider", sorted(FIXED_HOSTS))
+async def test_a_fixed_host_provider_refuses_another_base_url(
+    client, monkeypatch, no_network, provider
+):
+    """A provider with a fixed host only connects there, over https, so its
+    key cannot be sent to a URL of the caller's choosing; the free-URL
+    providers take any URL but only listed keys."""
     monkeypatch.setenv("OPSMENDER_MODEL_KEY_VARS", "GROQ_API_KEY")
+    hosts, home = FIXED_HOSTS[provider]
     h = await _headers(client)
     foreign = "http://127.0.0.1:9/v1"
     body = {
         "name": "foreign",
-        "provider": "openai",
+        "provider": provider,
         "model_id": "m",
         "base_url": foreign,
     }
@@ -239,7 +299,7 @@ async def test_a_fixed_host_provider_refuses_another_base_url(client, monkeypatc
         await client.get(
             "/models",
             headers=h["admin"],
-            params={"provider": "openai", "base_url": foreign},
+            params={"provider": provider, "base_url": foreign},
         ),
         await client.post("/models/configs", headers=h["admin"], json=body),
         await client.put("/config/model", headers=h["admin"], json=body),
@@ -247,15 +307,34 @@ async def test_a_fixed_host_provider_refuses_another_base_url(client, monkeypatc
     for resp in answers:
         assert resp.status_code == 400, resp.text
         assert resp.json()["detail"] == (
-            "Provider 'openai' only connects to api.openai.com; base_url must be a URL there"
+            f"Provider '{provider}' only connects to {hosts}; base_url must be a URL there"
+        )
+
+    plain = home.replace("https://", "http://")
+    in_the_clear = [
+        await client.get(
+            "/models",
+            headers=h["admin"],
+            params={"provider": provider, "base_url": plain},
+        ),
+        await client.post(
+            "/models/configs", headers=h["admin"], json={**body, "base_url": plain}
+        ),
+    ]
+    for resp in in_the_clear:
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"] == (
+            f"Provider '{provider}' only connects over https; "
+            "base_url must start with https://"
         )
 
     at_home = await client.get(
         "/models",
         headers=h["admin"],
-        params={"provider": "openai", "base_url": "https://api.openai.com/v1"},
+        params={"provider": provider, "base_url": home},
     )
     assert at_home.status_code == 200, at_home.text
+    assert no_network == []
     free = await client.get(
         "/models",
         headers=h["admin"],
@@ -266,3 +345,46 @@ async def test_a_fixed_host_provider_refuses_another_base_url(client, monkeypatc
         },
     )
     assert free.status_code == 200, free.text
+
+
+async def test_a_named_vendor_lists_for_every_role_without_settings(client, no_network):
+    """Plain discovery of a named vendor stays open to every role (M1-60), and
+    without its key it answers unavailable without calling anyone."""
+    h = await _headers(client)
+    for who in ("viewer", "operator", "admin"):
+        listed = await client.get(
+            "/models", headers=h[who], params={"provider": "deepseek"}
+        )
+        assert listed.status_code == 200, (who, listed.text)
+        [item] = listed.json()["items"]
+        assert item["provider"] == "deepseek"
+        assert item["label"] == "DeepSeek"
+        assert item["default_api_key_env_var"] == "DEEPSEEK_API_KEY"
+        assert item["available"] is False
+        assert item["error"].startswith(
+            "DEEPSEEK_API_KEY environment variable is not set"
+        )
+    assert no_network == []
+
+
+async def test_models_page_load_calls_no_vendor_without_its_key(client, no_network):
+    """GET /models with no provider probes every provider on each Models page
+    load. A named vendor whose key variable is not set is reported unavailable
+    with the reason, and no client is built and no request leaves."""
+    h = await _headers(client)
+    listed = await client.get("/models", headers=h["viewer"])
+    assert listed.status_code == 200, listed.text
+    items = {item["provider"]: item for item in listed.json()["items"]}
+
+    assert len(items) == 10
+    for provider, label, key in (
+        ("qwen", "Qwen", "DASHSCOPE_API_KEY"),
+        ("deepseek", "DeepSeek", "DEEPSEEK_API_KEY"),
+        ("kimi", "Kimi", "MOONSHOT_API_KEY"),
+    ):
+        item = items[provider]
+        assert item["label"] == label
+        assert item["available"] is False
+        assert item["models"] == []
+        assert item["error"].startswith(f"{key} environment variable is not set")
+    assert no_network == []

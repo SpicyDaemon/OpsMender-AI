@@ -1025,7 +1025,7 @@ class ModelConfigTestResponse(BaseModel):
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
     provider: str = Field(
-        pattern="^(anthropic|openai|azure_openai|bedrock|vertex_ai|ollama|openai_compatible)$"
+        pattern="^(anthropic|openai|azure_openai|bedrock|vertex_ai|ollama|openai_compatible|qwen|deepseek|kimi)$"
     )
     model_id: str = Field(..., min_length=1, max_length=200)
     api_key_env_var: Optional[str] = Field(default=None, max_length=100)

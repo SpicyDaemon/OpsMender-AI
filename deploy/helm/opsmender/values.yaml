@@ -155,12 +155,16 @@ config:
 ##     value out-of-band.
 ##
 ## Provider API keys are optional and depend on the model providers you wire
-## up at runtime (Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex, etc).
+## up at runtime (Anthropic, OpenAI, Azure OpenAI, Qwen, DeepSeek, Kimi,
+## Bedrock, Vertex, etc).
 secrets:
   OPSMENDER_JWT_SECRET: ""
   ANTHROPIC_API_KEY: ""
   OPENAI_API_KEY: ""
   AZURE_OPENAI_API_KEY: ""
+  DASHSCOPE_API_KEY: ""
+  DEEPSEEK_API_KEY: ""
+  MOONSHOT_API_KEY: ""
 
 ## Reuse an existing secret instead of rendering one from `secrets`.
 existingSecret:

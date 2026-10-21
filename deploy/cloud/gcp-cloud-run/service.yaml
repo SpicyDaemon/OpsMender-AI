@@ -57,6 +57,15 @@ spec:
                 secretKeyRef:
                   name: opsmender-anthropic-key
                   key: latest
+            # Using another provider? Swap the key above for its variable,
+            # for example OPENAI_API_KEY, DASHSCOPE_API_KEY (Qwen),
+            # DEEPSEEK_API_KEY or MOONSHOT_API_KEY (Kimi), and set
+            # OPSMENDER_MODEL_PROVIDER and OPSMENDER_MODEL_ID to match.
+            # - name: DEEPSEEK_API_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: opsmender-deepseek-key
+            #       key: latest
           startupProbe:
             httpGet:
               path: /health/live

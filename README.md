@@ -69,9 +69,10 @@ reproduce all 13 images, including the Tier 1 approval view.
   general execution path; encrypted connectors add capability-scoped tools for
   source control, tickets, docs, observability, and infrastructure.
 - **[Bring your own model](#bring-your-own-model)**: Anthropic, OpenAI, Azure
-  OpenAI, Bedrock, Vertex AI, Ollama, or any OpenAI compatible endpoint. Keys
-  are encrypted in your database and requests go straight from your server to
-  the provider. No OpsMender model, no inference bill from us.
+  OpenAI, Bedrock, Vertex AI, Qwen, DeepSeek, Kimi, Ollama, or any OpenAI
+  compatible endpoint. Keys are encrypted in your database and requests go
+  straight from your server to the provider. No OpsMender model, no inference
+  bill from us.
 - **Org-owned skills**: bind `SKILL.md` policy to an MCP server or native
   integration connector so every discovered operation has explicit T0/T1/T2
   behavior plus active-tier operating instructions. Unknown operations fail
@@ -384,7 +385,7 @@ account you already have. The API key is stored encrypted in your own database,
 requests go directly from your server to the provider, and nothing routes
 through us.
 
-![Anthropic](https://img.shields.io/badge/Anthropic-D97757?style=for-the-badge&logo=anthropic&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge) ![Azure OpenAI](https://img.shields.io/badge/Azure%20OpenAI-0078D7?style=for-the-badge) ![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-FF9900?style=for-the-badge) ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white) ![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white) ![OpenAI compatible](https://img.shields.io/badge/OpenAI%20compatible-475569?style=for-the-badge)
+![Anthropic](https://img.shields.io/badge/Anthropic-D97757?style=for-the-badge&logo=anthropic&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge) ![Azure OpenAI](https://img.shields.io/badge/Azure%20OpenAI-0078D7?style=for-the-badge) ![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-FF9900?style=for-the-badge) ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white) ![Qwen](https://img.shields.io/badge/Qwen-6950EF?style=for-the-badge) ![DeepSeek](https://img.shields.io/badge/DeepSeek-4D6BFE?style=for-the-badge) ![Kimi](https://img.shields.io/badge/Kimi-000000?style=for-the-badge) ![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white) ![OpenAI compatible](https://img.shields.io/badge/OpenAI%20compatible-475569?style=for-the-badge)
 
 Ollama runs the model on your own hardware, so with a local model plus local MCP
 servers no part of an incident ever leaves your network.

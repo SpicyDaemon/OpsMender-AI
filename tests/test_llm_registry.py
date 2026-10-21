@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from backend.llm.registry import ProviderRegistry
@@ -33,9 +36,12 @@ class TestProviderRegistry:
             "anthropic",
             "azure_openai",
             "bedrock",
+            "deepseek",
+            "kimi",
             "ollama",
             "openai",
             "openai_compatible",
+            "qwen",
             "vertex_ai",
         ]
 
@@ -313,9 +319,12 @@ class TestProviderRegistry:
             "anthropic",
             "azure_openai",
             "bedrock",
+            "deepseek",
+            "kimi",
             "ollama",
             "openai",
             "openai_compatible",
+            "qwen",
             "vertex_ai",
         ]
         assert all(item["available"] for item in items)
@@ -472,3 +481,202 @@ class TestPlaceholderDetection:
         assert len(results) == 1
         assert results[0]["available"] is False
         assert "azure" in results[0]["error"].lower()
+
+
+# Qwen, DeepSeek and Kimi: vendors that serve the OpenAI API at their own
+# hosts. The expected values are written out here, not read from the specs, so
+# a changed host, key variable or default URL fails a test.
+NAMED_VENDORS = {
+    "qwen": {
+        "label": "Qwen",
+        "key": "DASHSCOPE_API_KEY",
+        "hosts": (
+            "dashscope-intl.aliyuncs.com",
+            "dashscope.aliyuncs.com",
+            "dashscope-us.aliyuncs.com",
+            "cn-hongkong.dashscope.aliyuncs.com",
+            ".maas.aliyuncs.com",
+        ),
+        "default_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "other_url": "https://ws-1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    },
+    "deepseek": {
+        "label": "DeepSeek",
+        "key": "DEEPSEEK_API_KEY",
+        "hosts": ("api.deepseek.com",),
+        "default_url": "https://api.deepseek.com",
+        "model": "deepseek-flash",
+        "other_url": "https://api.deepseek.com/v1",
+    },
+    "kimi": {
+        "label": "Kimi",
+        "key": "MOONSHOT_API_KEY",
+        "hosts": ("api.moonshot.ai", "api.moonshot.cn"),
+        "default_url": "https://api.moonshot.ai/v1",
+        "model": "kimi-k3",
+        "other_url": "https://api.moonshot.cn/v1",
+    },
+}
+
+
+def _install_recording_openai(monkeypatch, models=("listed-model",)):
+    """Replace the openai SDK with a client that records how it was built
+    and lists ``models``; nothing leaves the process."""
+    built: list[dict[str, object]] = []
+
+    class _Client:
+        def __init__(self, **kwargs):
+            built.append(kwargs)
+            self.models = types.SimpleNamespace(
+                list=lambda: types.SimpleNamespace(
+                    data=[types.SimpleNamespace(id=m) for m in models]
+                )
+            )
+
+        def with_options(self, **_kwargs):
+            return self
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=_Client))
+    return built
+
+
+@pytest.mark.parametrize("provider", sorted(NAMED_VENDORS))
+class TestNamedOpenAICompatibleVendors:
+    def test_spec(self, provider):
+        want = NAMED_VENDORS[provider]
+        spec = ProviderRegistry().get_spec(provider)
+
+        assert spec.label == want["label"]
+        assert spec.default_api_key_env_var == want["key"]
+        assert spec.allowed_hosts == want["hosts"]
+        assert spec.default_base_url == want["default_url"]
+        assert spec.default_model_id == want["model"]
+        assert spec.requires_api_key is True
+        assert spec.requires_base_url is False
+
+    def test_refuses_a_foreign_host(self, provider, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["m"]),
+        )
+        hosts = ", ".join(NAMED_VENDORS[provider]["hosts"])
+        for foreign in (
+            "https://127.0.0.1:9/v1",
+            "https://api.openai.com/v1",
+            "https://api.deepseek.com.example.net/v1",
+        ):
+            with pytest.raises(ValueError) as refused:
+                ProviderRegistry().validate_model_config(
+                    provider=provider,
+                    model_id="m",
+                    base_url=foreign,
+                    allow_unverified=True,
+                )
+            assert str(refused.value) == (
+                f"Provider '{provider}' only connects to {hosts}; "
+                "base_url must be a URL there"
+            )
+
+    def test_refuses_http_on_its_own_host(self, provider, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["m"]),
+        )
+        plain = NAMED_VENDORS[provider]["default_url"].replace("https://", "http://")
+        with pytest.raises(ValueError) as refused:
+            ProviderRegistry().validate_model_config(
+                provider=provider, model_id="m", base_url=plain, allow_unverified=True
+            )
+        assert str(refused.value) == (
+            f"Provider '{provider}' only connects over https; "
+            "base_url must start with https://"
+        )
+
+    def test_accepts_another_of_its_hosts(self, provider, monkeypatch):
+        captured: dict[str, object] = {}
+
+        def _create(**kwargs):
+            captured.update(kwargs)
+            return _FakeProvider(["m"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _create)
+        other = NAMED_VENDORS[provider]["other_url"]
+        ProviderRegistry().validate_model_config(
+            provider=provider, model_id="m", base_url=other
+        )
+        assert captured["base_url"] == other
+
+    def test_no_base_url_connects_to_the_vendor_default(self, provider, monkeypatch):
+        """Saving without a base URL is valid: the factory applies the
+        vendor's URL and the provider's own key variable."""
+        want = NAMED_VENDORS[provider]
+        built = _install_recording_openai(monkeypatch, models=(want["model"],))
+        monkeypatch.setenv(want["key"], "test-key")
+
+        result = ProviderRegistry().validate_model_config(
+            provider=provider, model_id=want["model"]
+        )
+
+        assert result.warnings == []
+        assert result.discovered_models == [want["model"]]
+        assert built == [{"api_key": "test-key", "base_url": want["default_url"]}]
+
+    def test_a_model_the_vendor_does_not_list_is_refused(self, provider, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["listed-model"]),
+        )
+        registry = ProviderRegistry()
+        with pytest.raises(
+            ValueError, match=f"not currently reported by provider '{provider}'"
+        ):
+            registry.validate_model_config(provider=provider, model_id="typo-model")
+
+        allowed = registry.validate_model_config(
+            provider=provider, model_id="typo-model", allow_unverified=True
+        )
+        assert [w.code for w in allowed.warnings] == ["model_not_reported"]
+
+    def test_placeholder_key_is_unavailable_without_a_call(self, provider, monkeypatch):
+        key = NAMED_VENDORS[provider]["key"]
+        built = _install_recording_openai(monkeypatch)
+        monkeypatch.setenv(key, "your_key_here")
+
+        [item] = ProviderRegistry().discover_models(provider=provider)
+
+        assert item["available"] is False
+        assert item["error"].startswith(f"{key} is set to the .env.example placeholder")
+        assert built == []
+
+
+def test_http_is_refused_on_every_fixed_host(monkeypatch):
+    """The https rule covers the fixed-host providers that came before, and
+    the free-URL providers keep plain http for local runtimes."""
+    monkeypatch.setattr(
+        "backend.llm.registry.create_provider",
+        lambda **kwargs: _FakeProvider(["m"]),
+    )
+    registry = ProviderRegistry()
+    for provider, url, version in (
+        ("openai", "http://api.openai.com/v1", None),
+        ("anthropic", "http://api.anthropic.com", None),
+        ("azure_openai", "http://example-resource.openai.azure.com/", "2024-10-21"),
+    ):
+        with pytest.raises(ValueError, match="only connects over https"):
+            registry.validate_model_config(
+                provider=provider, model_id="m", base_url=url, api_version=version
+            )
+
+    registry.validate_model_config(
+        provider="openai_compatible",
+        model_id="m",
+        base_url="http://localhost:1234/v1",
+        allow_unverified=True,
+    )
+    registry.validate_model_config(
+        provider="ollama",
+        model_id="m",
+        base_url="http://localhost:11434",
+        allow_unverified=True,
+    )

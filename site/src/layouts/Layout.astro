@@ -10,8 +10,6 @@ const {
   description = 'Open source incident response you run yourself. Tracks incidents, pages the right people, and lets an AI agent investigate and fix things within limits enforced in code.',
   ogImage,
 } = Astro.props;
-
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 <!doctype html>
 <html lang="en" class="scroll-smooth">
@@ -34,7 +32,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
 
@@ -42,8 +40,10 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
     <style is:global>
       :root {
-        --font-sans: 'Inter', system-ui, sans-serif;
+        --font-sans: 'Schibsted Grotesk', 'Inter', system-ui, sans-serif;
         --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        --ease-fade: cubic-bezier(.4, 0, .3, 1);
+        --ease-fluid: cubic-bezier(.2, .7, .2, 1);
       }
       * { box-sizing: border-box; }
       html { background-color: #07090f; }
@@ -61,37 +61,44 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
       ::-webkit-scrollbar-thumb { background: #1a2540; border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: #26355c; }
 
-      /* Nav links: one definition instead of the same six utilities repeated. */
-      .nav-link {
-        border-radius: 0.375rem;
-        padding: 0.375rem 0.625rem;
-        font-size: 0.875rem;
-        line-height: 1.25rem;
-        color: #94a3b8;
-        transition: color 150ms ease, background-color 150ms ease;
-      }
-      .nav-link:hover { color: #e2e8f0; background-color: rgba(255,255,255,0.04); }
+      /* Type: regular-weight grotesk headlines, tight; small mono labels. */
+      .display { font-weight: 400; letter-spacing: -0.025em; line-height: 1.0; }
+      .headline { font-weight: 400; letter-spacing: -0.02em; line-height: 1.08; }
+      .label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #94a3b8; }
+      .sup { font-family: var(--font-mono); font-size: 0.5em; vertical-align: super; color: #64748b; margin-left: 0.35em; letter-spacing: 0.05em; }
 
-      /* Visible keyboard focus everywhere, without a ring on mouse clicks. */
-      .focus-ring:focus-visible {
-        outline: 2px solid #3b82f6;
-        outline-offset: 2px;
-      }
+      /* Pill buttons, the mono label kind. */
+      .pill { display: inline-flex; align-items: center; gap: .6rem; border-radius: 9999px; padding: .55rem .5rem .55rem 1.2rem; font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; text-decoration: none; transition: background-color .25s var(--ease-fade), color .25s var(--ease-fade), border-color .25s var(--ease-fade); }
+      .pill .arrow { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9999px; }
+      .pill-light { background: #f8fafc; color: #07090f; }
+      .pill-light .arrow { background: #07090f; color: #f8fafc; }
+      .pill-light:hover { background: #ffffff; }
+      .pill-ghost { border: 1px solid #1a2540; color: #e2e8f0; padding-right: 1.2rem; }
+      .pill-ghost:hover { border-color: #475569; }
 
-      .soft-pulse { animation: softPulse 2.4s ease-in-out infinite; }
-      @keyframes softPulse {
-        0%, 100% { opacity: 1; }
-        50%      { opacity: 0.35; }
-      }
+      /* Panels: big rounded surfaces with a soft colour wash. */
+      .panel { position: relative; border-radius: 28px; background: #0d1221; border: 1px solid rgba(26,37,64,0.9); overflow: hidden; }
+      .wash { position: absolute; inset: -20%; pointer-events: none; filter: blur(60px); opacity: .9; }
+      .wash-blue { background: radial-gradient(ellipse 40% 45% at 25% 30%, rgba(59,130,246,0.35), transparent 65%), radial-gradient(ellipse 35% 40% at 80% 70%, rgba(99,102,241,0.28), transparent 65%), radial-gradient(ellipse 30% 35% at 60% 20%, rgba(6,182,212,0.18), transparent 65%); }
+      .wash-indigo { background: radial-gradient(ellipse 45% 50% at 70% 25%, rgba(99,102,241,0.32), transparent 65%), radial-gradient(ellipse 40% 45% at 20% 80%, rgba(59,130,246,0.22), transparent 65%); }
+      .wash-grey { background: radial-gradient(ellipse 50% 55% at 30% 40%, rgba(148,163,184,0.16), transparent 65%), radial-gradient(ellipse 40% 45% at 80% 70%, rgba(148,163,184,0.1), transparent 65%); }
 
-      /* Anyone who asks for less motion gets none of it. */
+      .nav-link { border-radius: 9999px; padding: .375rem .7rem; font-size: .875rem; line-height: 1.25rem; color: #94a3b8; transition: color .2s var(--ease-fade), background-color .2s var(--ease-fade); }
+      .nav-link:hover { color: #f1f5f9; background: rgba(255,255,255,0.05); }
+      .nav-link .num { font-family: var(--font-mono); font-size: 9px; color: #64748b; margin-left: .3em; vertical-align: super; }
+
+      .focus-ring:focus-visible, .pill:focus-visible, .nav-link:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+
+      /* Entrances: rise in once, staggered by --i. */
+      .rise { opacity: 0; transform: translateY(14px); transition: opacity .9s var(--ease-fade), transform .9s var(--ease-fade); transition-delay: calc(var(--i, 0) * 90ms); }
+      .rise.in { opacity: 1; transform: none; }
+
+      .fade-x { -webkit-mask-image: linear-gradient(90deg, transparent 0, black 8%, black 92%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0, black 8%, black 92%, transparent 100%); }
+
       @media (prefers-reduced-motion: reduce) {
         html { scroll-behavior: auto; }
-        *, *::before, *::after {
-          animation-duration: 0.01ms !important;
-          animation-iteration-count: 1 !important;
-          transition-duration: 0.01ms !important;
-        }
+        .rise { opacity: 1; transform: none; transition: none; }
+        *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
       }
     </style>
   </head>

@@ -58,12 +58,12 @@ RESULT_MESSAGES = {
 # Chat action results that change what the incident card shows, and the event
 # the web path emits for the same change. Results that changed nothing
 # (already_*, no_escalation_target) leave the card alone; Escalate re-renders
-# it through the escalation engine's own post.
+# it through the escalation engine's own post. Starting an AI session changes
+# nothing the card shows, and the web emits no incident event for it: the
+# session's own chat message is the update.
 CARD_REFRESH_EVENTS = {
     "acknowledged": "incident.acknowledged",
     "resolved": "incident.resolved",
-    "session_started": "incident.updated",
-    "session_queued": "incident.updated",
 }
 
 

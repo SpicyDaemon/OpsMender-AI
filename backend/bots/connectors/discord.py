@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Callable, Mapping
 
@@ -23,6 +24,16 @@ _BUTTONS = (
     ("Escalate", "opsmender:escalate", 2),
     ("Start AI Session", "opsmender:start_ai_session", 3),
 )
+
+# Discord Markdown in embed field values: masked links, emphasis, strikethrough,
+# code, spoilers, quotes, headings and mentions.
+_MARKDOWN_SYNTAX = re.compile(r"([\\*_~`|\[\]()<>#])")
+
+
+def _markdown_escape(value: str) -> str:
+    """Backslash-escape Discord Markdown, so a name or service shows as typed
+    and can never become a masked link."""
+    return _MARKDOWN_SYNTAX.sub(r"\\\1", value)
 
 
 def build_discord_incident_payload(
@@ -53,7 +64,11 @@ def build_discord_incident_payload(
     if facts:
         # Discord caps an embed field name at 256 and its value at 1024.
         embed["fields"] = [
-            {"name": label[:256], "value": value[:1024], "inline": True}
+            {
+                "name": label[:256],
+                "value": _markdown_escape(value)[:1024],
+                "inline": True,
+            }
             for label, value in facts
         ]
     embed["footer"] = {"text": f"{_INCIDENT_FOOTER_PREFIX}{incident.id}"}
@@ -349,6 +364,23 @@ class DiscordAdapter:
         bot_token = credentials.get("bot_token")
         if not bot_token:
             return UpdateResult(ok=False, error="Discord bot token is not configured")
+        payload = build_discord_incident_payload(
+            text,
+            incident=incident,
+            native_actions_ready=native_actions_ready,
+            facts=facts,
+            acknowledged_by=acknowledged_by,
+        )
+        if (
+            incident is not None
+            and not native_actions_ready
+            and connector.native_actions_enabled
+        ):
+            # Discord keeps what an edit leaves out. On a channel with native
+            # actions, a card edited without them (the incident moved to
+            # another team) must not keep the earlier card's buttons or facts.
+            payload["embeds"] = []
+            payload["components"] = []
         try:
             async with self._factory() as client:
                 response = await client.patch(
@@ -358,13 +390,7 @@ class DiscordAdapter:
                         "Authorization": f"Bot {bot_token}",
                         "Content-Type": "application/json",
                     },
-                    json=build_discord_incident_payload(
-                        text,
-                        incident=incident,
-                        native_actions_ready=native_actions_ready,
-                        facts=facts,
-                        acknowledged_by=acknowledged_by,
-                    ),
+                    json=payload,
                 )
         except httpx.HTTPError as exc:
             return UpdateResult(

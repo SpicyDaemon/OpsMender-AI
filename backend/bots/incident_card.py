@@ -29,6 +29,16 @@ from typing import Any
 
 DEFAULT_PUBLIC_URL = "http://localhost:3000"
 
+# The last line of a card without verified action buttons. A card that has the
+# buttons must not carry it.
+SIGN_IN_TO_ACT_HINT = (
+    "Sign in to OpsMender to acknowledge, resolve, escalate, or start an AI session."
+)
+
+# The Team fact on the last card a team-scoped channel gets once the incident
+# has left its teams. That card names no service, team or responder.
+MOVED_TO_ANOTHER_TEAM = "Moved to another team"
+
 # Maps the raw lifecycle event key to the headline shown at the top of the card.
 EVENT_HEADLINES: dict[str, str] = {
     "incident.created": "🚨 New incident",
@@ -189,8 +199,6 @@ def build_incident_message(
     if not supports_actions:
         # Honest, secure fallback: no public action buttons. The operator acts
         # inside OpsMender under login + RBAC.
-        lines.append(
-            "Sign in to OpsMender to acknowledge, resolve, escalate, or start an AI session."
-        )
+        lines.append(SIGN_IN_TO_ACT_HINT)
 
     return "\n".join(lines)

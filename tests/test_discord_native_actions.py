@@ -323,6 +323,24 @@ def test_discord_payload_bolds_headline_and_carries_the_card_facts():
     )
 
 
+def test_discord_embed_fields_cannot_become_masked_links():
+    """Names are self-service: one set to a masked link shows as typed."""
+    incident = type("IncidentStub", (), {"id": uuid.uuid4(), "status": "open"})()
+    payload = build_discord_incident_payload(
+        "*✅ Incident acknowledged: t*",
+        incident=incident,
+        native_actions_ready=True,
+        facts=[
+            ("Responder", "Assigned to [x](https://e.example) Ops"),
+            ("Team", "*a* _b_ ~c~ `d` ||e|| <@1> # f"),
+        ],
+        acknowledged_by="[x](https://e.example) Ops",
+    )
+    fields = {f["name"]: f["value"] for f in payload["embeds"][0]["fields"]}
+    assert fields["Responder"] == r"Assigned to \[x\]\(https://e.example\) Ops"
+    assert fields["Team"] == r"\*a\* \_b\_ \~c\~ \`d\` \|\|e\|\| \<@1\> \# f"
+
+
 async def test_discord_component_rejects_bad_signature(
     client,
     app,

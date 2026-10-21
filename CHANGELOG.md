@@ -63,18 +63,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and stay current after a chat action. Each card shows the same facts as the
   message text, from one source: Service, Team, Org (when set), Responder,
   Acknowledged by (once someone has) and Escalation level (once above 0).
-  Once acknowledged, the Acknowledge button is left off; Resolve, Escalate
-  and Start AI Session stay, and a resolved incident shows none. After an
-  Acknowledge, Resolve or Start AI Session button, the card is brought up to
-  date through the same delivery the web uses: Slack and Discord edit it in
-  place, Teams posts a fresh card. It only updates Notification Channels and
-  never pages anyone; a repeated callback does not post a second card.
-  Escalate from a card keeps the buttons, where the edited Slack card used to
-  lose them. The Slack channel card gets its View in OpsMender button from
-  `OPSMENDER_PUBLIC_URL`, and the person who taps a Slack button now sees the
-  result as a message only they can see, posted to the interaction's
-  `response_url`; Slack never showed the old reply. The Discord headline is
-  bold instead of italic.
+  The Teams FactSet and the Discord embed fields show names as typed and
+  never turn one into a link. Once acknowledged, the Acknowledge button is
+  left off; Resolve, Escalate and Start AI Session stay, and a resolved
+  incident shows none. After an
+  Acknowledge or Resolve button, the Slack `/ack` or `/resolve` command, or
+  keypad 1 on a phone page, the card is brought up to date through the
+  same delivery the web uses: Slack and Discord edit it in place, Teams posts
+  a fresh card. Start AI Session, and a tap or command that changes nothing,
+  leave the card as it is. Every other change of who holds the incident (a
+  release, take, force take, assignment, reassignment or handoff, on the web,
+  in bulk or with the Slack `/take` and `/release` commands, a move to
+  another service, a reopen, or an AI session override that makes the
+  incident yours) edits the card in place so it names the new owner or
+  offers Acknowledge again, and posts nothing new. When the incident moves to
+  another team (a reassignment, a handoff or a move to another team's
+  service), a channel limited to the team it left gets one last edit: the
+  card says Moved to another team, names no service, team or responder, and
+  has no action buttons; later changes reach only the new team's channels.
+  These updates only touch
+  Notification Channels and never page anyone; a repeated callback does not
+  post a second card, and an edit always lands on the incident card, never on
+  a later AI session message. Escalate from a card keeps the buttons, where
+  the edited Slack card used to lose them, and a card with buttons no longer
+  tells readers to sign in to act. The Slack channel card gets its View in
+  OpsMender button from `OPSMENDER_PUBLIC_URL`, and the person who taps a
+  Slack button now sees the result as a message only they can see, posted to
+  the interaction's `response_url` once the action is saved; Slack never
+  showed the old reply. The HTTP client's own request log lines, which print
+  each outbound URL, are no longer written at any log level, so a
+  `response_url` or a bot token in a URL never reaches the log. The Discord
+  headline is bold instead of italic.
 
 ## [1.2.0] - 2026-10-17
 

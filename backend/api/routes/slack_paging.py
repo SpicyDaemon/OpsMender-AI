@@ -90,19 +90,26 @@ async def _post_answer(response_url: str, text: str) -> None:
         logger.warning("Slack response_url answer failed: %s", error)
 
 
-def _answer(
-    background_tasks: BackgroundTasks, response_url: Any, text: str
+async def _answer(
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+    response_url: Any,
+    text: str,
 ) -> Response:
     """Answer the person who tapped a card button.
 
     Slack shows nothing for the HTTP body of a ``block_actions`` request, so
     the text goes to the payload's ``response_url`` as an ephemeral message,
-    after this empty 200. A failed post is logged and never touches the
+    after this empty 200. The request's work is committed first: the post
+    runs before the request session would commit, and it must neither tell
+    the person about a change that is not durable yet nor hold its locks
+    for the Slack round trip. A failed post is logged and never touches the
     action, which is already applied and audited. A payload without a
     ``response_url`` keeps the ephemeral body.
     """
     if not isinstance(response_url, str) or not response_url:
         return _ephemeral(text)
+    await db.commit()
     background_tasks.add_task(_post_answer, response_url, text)
     return Response(status_code=status.HTTP_200_OK)
 
@@ -205,7 +212,8 @@ async def slack_interactions(
     response_url = payload.get("response_url")
     incident_id = parse_incident_id_from_action(payload)
     if incident_id is None:
-        return _answer(
+        return await _answer(
+            db,
             background_tasks,
             response_url,
             "Could not identify the incident from that action.",
@@ -213,7 +221,8 @@ async def slack_interactions(
 
     slack_user_id = (payload.get("user") or {}).get("id")
     if not slack_user_id:
-        return _answer(
+        return await _answer(
+            db,
             background_tasks,
             response_url,
             "Slack didn't tell us who clicked the button.",
@@ -249,7 +258,7 @@ async def slack_interactions(
             "Your external account",
             "Your Slack account",
         )
-        return _answer(background_tasks, response_url, message)
+        return await _answer(db, background_tasks, response_url, message)
 
     await dispatch_native_session_result(
         request.app,
@@ -260,8 +269,8 @@ async def slack_interactions(
     await refresh_incident_card(db, org_id=connector.org_id, result=result)
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
-    return _answer(
-        background_tasks, response_url, callback_result_message(result, title)
+    return await _answer(
+        db, background_tasks, response_url, callback_result_message(result, title)
     )
 
 
@@ -371,6 +380,25 @@ async def _ask_owner_hint(
     return "Use `/take` to request a takeover."
 
 
+async def _refresh_cards(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    incident_id: uuid.UUID,
+    event_type: str | None = None,
+) -> None:
+    """Commit a change, then bring the channel cards up to date the way the
+    other paths do after the same change. An ownership change edits them in
+    place; with ``event_type`` (an acknowledgement or a resolve) the incident
+    event a card tap emits for that change is delivered instead."""
+    from backend.api.routes.incidents import _notify_channels, _refresh_channel_cards
+
+    await db.commit()
+    if event_type is None:
+        await _refresh_channel_cards(db, incident_id, org_id)
+    else:
+        await _notify_channels(db, incident_id, org_id, event_type)
+
+
 async def _handle_slash(
     db: AsyncSession,
     *,
@@ -454,6 +482,11 @@ async def _handle_slash(
             owner_name = await _owner_name(db, connector.org_id, incident_id)
             hint = await _ask_owner_hint(db, connector.org_id, incident_id)
             return _ephemeral(f"*{incident.title}* is owned by {owner_name}. {hint}")
+        if outcome.status == "acknowledged":
+            # A new owner: the same card update a tap on Acknowledge gives.
+            await _refresh_cards(
+                db, connector.org_id, incident_id, "incident.acknowledged"
+            )
         verb = "acknowledged" if outcome.chain_locked else "recorded"
         return _ephemeral(f"You {verb} *{incident.title}*.")
 
@@ -465,6 +498,7 @@ async def _handle_slash(
             requester_id=actor.id,
         )
         if result == "assigned":
+            await _refresh_cards(db, connector.org_id, incident_id)
             msg = f"You're now assigned to *{incident.title}*."
         elif result == "pending":
             msg = (
@@ -514,6 +548,7 @@ async def _handle_slash(
         )
         if not released:
             return _ephemeral(f"*{incident.title}* has no active assignee.")
+        await _refresh_cards(db, connector.org_id, incident_id)
         if was_locked and state.finished_at is None:
             return _ephemeral(
                 f"Released *{incident.title}*. Escalation resumed at the next level."
@@ -521,8 +556,12 @@ async def _handle_slash(
         return _ephemeral(f"Released *{incident.title}*.")
 
     if command == "/resolve":
+        # Read before the write, which can refresh this instance.
+        was_resolved = incident.status == "resolved"
         await _esc.cancel_chain(db, connector.org_id, incident_id=incident_id)
         await IncidentRepo.update_status(db, connector.org_id, incident_id, "resolved")
+        if not was_resolved:
+            await _refresh_cards(db, connector.org_id, incident_id, "incident.resolved")
         return _ephemeral(f"Marked *{incident.title}* resolved.")
 
     if command == "/snooze":

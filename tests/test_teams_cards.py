@@ -168,6 +168,21 @@ class TestAdaptiveCardBuilder:
         )
         assert resolved["actions"] == []
 
+    def test_fact_values_cannot_become_links(self):
+        # Names are self-service: one set to a Markdown link shows as typed.
+        card = build_page_card_adaptive(
+            _incident(),
+            facts=[
+                ("Responder", "Assigned to [x](https://e.example) Ops"),
+                ("Acknowledged by", "**[x](https://e.example)** _Ops_"),
+            ],
+            acknowledged_by="[x](https://e.example) Ops",
+        )
+        facts = next(b for b in card["body"] if b["type"] == "FactSet")["facts"]
+        kv = {f["title"]: f["value"] for f in facts}
+        assert kv["Responder"] == r"Assigned to \[x\]\(https://e.example\) Ops"
+        assert kv["Acknowledged by"] == r"\*\*\[x\]\(https://e.example\)\*\* \_Ops\_"
+
     def test_description_snippet_truncated(self):
         long = "x" * 1000
         card = build_page_card_adaptive(_incident(description=long))

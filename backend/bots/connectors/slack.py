@@ -356,8 +356,12 @@ class SlackAdapter:
         sees. It is ephemeral (only they see it) and never replaces the card.
         Only Slack's hooks hosts are accepted. Never raises.
         """
-        parts = urlsplit(response_url)
-        if parts.scheme != "https" or parts.hostname not in _RESPONSE_URL_HOSTS:
+        try:
+            parts = urlsplit(response_url)
+            host = parts.hostname
+        except ValueError:  # a malformed URL, such as an unclosed IPv6 bracket
+            return False, "Slack response_url is not a Slack hooks URL"
+        if parts.scheme != "https" or host not in _RESPONSE_URL_HOSTS:
             return False, "Slack response_url is not a Slack hooks URL"
         try:
             async with httpx.AsyncClient() as client:

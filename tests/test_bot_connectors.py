@@ -1085,12 +1085,26 @@ class TestSlackAdapter:
             "https://attacker.example/actions/T1/1/abc",
             "http://hooks.slack.com/actions/T1/1/abc",
             "https://hooks.slack.com.attacker.example/x",
+            # Malformed: urlsplit raises on the unclosed IPv6 bracket.
+            "https://[hooks.slack.com/actions/T1/1/abc",
         ):
             ok, error = await get_adapter("slack").respond_to_interaction(
                 response_url=url, text="hi"
             )
             assert ok is False and "hooks" in error
         assert captured == {}
+
+    async def test_respond_to_interaction_reports_a_refused_answer(self, monkeypatch):
+        # Slack answers 404 once a response_url has expired; the route logs
+        # the failure, so the error names the status and never the URL.
+        url = "https://hooks.slack.com/actions/T1/1/expired"
+        self._patch_client(monkeypatch, response_json={}, status_code=404)
+        ok, error = await get_adapter("slack").respond_to_interaction(
+            response_url=url, text="hi"
+        )
+        assert ok is False
+        assert error == "Slack response_url error: HTTP 404"
+        assert url not in error
 
     async def test_update_incident_update_no_token_is_hard_error(self, monkeypatch):
         connector = self._connector()

@@ -22,6 +22,7 @@ same routing helpers.
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -41,6 +42,15 @@ ACTION_VIEW = "opsmender:view"
 ADAPTIVE_CARD_VERSION = "1.4"
 
 ADAPTIVE_CARD_CONTENT_TYPE = "application/vnd.microsoft.card.adaptive"
+
+# Teams renders Markdown links and emphasis in FactSet titles and values.
+_MARKDOWN_SYNTAX = re.compile(r"([\\*_\[\]()])")
+
+
+def _markdown_escape(value: str) -> str:
+    """Backslash-escape link and emphasis syntax, so a name or service shows
+    as typed and can never become a clickable link."""
+    return _MARKDOWN_SYNTAX.sub(r"\\\1", value)
 
 
 def build_page_card_text(incident: Incident) -> str:
@@ -90,7 +100,10 @@ def build_page_card_adaptive(
     ]
     if severity:
         fact_rows.append({"title": "Severity", "value": severity})
-    fact_rows += [{"title": label, "value": value} for label, value in facts or []]
+    fact_rows += [
+        {"title": _markdown_escape(label), "value": _markdown_escape(value)}
+        for label, value in facts or []
+    ]
     fact_rows.append({"title": "Incident", "value": incident_id_str})
 
     body: list[dict[str, Any]] = [

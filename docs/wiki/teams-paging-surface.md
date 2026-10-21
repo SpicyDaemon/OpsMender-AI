@@ -32,9 +32,14 @@ When OpsMender pages you on Teams, the message in the chat carries:
 
 Teams cannot edit a card it has posted (Microsoft Graph app-only access can
 only patch a message's policy fields), so when the incident is acknowledged or
-resolved (on the web or with a card button), escalates, or gets an AI session
-from the card, OpsMender posts a fresh card in the new state to the chat.
-These posts only touch Notification Channels; they never page anyone.
+resolved (on the web, with a card button, a Slack command or keypad 1 on a
+phone page) or escalates, OpsMender posts a fresh card in the new state to the
+chat. These posts only touch Notification Channels; they never page anyone. A
+release, takeover, assignment, reassignment, service move or reopen only edits
+cards already posted on platforms that can edit them (Slack, Discord),
+so Teams gets no card for it; the next acknowledge, resolve or escalation
+posts one in the state of that moment. Starting an AI session posts no
+incident card.
 
 Every action click is JWT-verified and routed through the same durable
 idempotency, identity mapping, active-user, Admin/Operator RBAC, action, and

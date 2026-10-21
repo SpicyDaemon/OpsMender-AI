@@ -866,7 +866,13 @@ class TestVoiceKeypadAuthorization:
                 for row in saved["incident_comments"]
             )
         assert keypad["deliveries"] == []
-        assert len(keypad["notices"]) == (1 if digit == "3" else 0)
+        # An acknowledgement or a resolve updates the channel cards, as from
+        # the web; an escalation posts through the escalation engine instead.
+        assert [event for _, event in keypad["notices"]] == {
+            "1": ["incident.acknowledged"],
+            "2": [],
+            "3": ["incident.resolved"],
+        }[digit]
 
     @pytest.mark.parametrize("digit", ["1", "2", "3"])
     @pytest.mark.parametrize(

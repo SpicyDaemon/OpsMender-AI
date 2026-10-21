@@ -18,15 +18,33 @@ chat.
 When OpsMender pages you on Teams, the message in the chat carries:
 
 - A bold title with the incident name.
-- A FactSet: Priority, Status, Severity (if set), and the OpsMender incident id.
+- A FactSet: Priority, Status, Severity (if set), then the same facts as the
+  message text: Service, Team, Org (when set), Responder (Assigned to,
+  Awaiting, Escalated to or Unassigned), Acknowledged by (once someone has)
+  and Escalation level (once above 0), and the OpsMender incident id. The
+  facts come from the same source as the message text and the Slack and
+  Discord cards, so they always agree.
 - The first line of the incident description.
 - Four optional Action.Submit buttons: **Acknowledge**, **Resolve**,
-  **Escalate**, **Start AI Session**.
+  **Escalate**, **Start AI Session**. Once the incident is acknowledged,
+  **Acknowledge** is left off; a resolved incident has no action buttons.
 - A **View in OpsMender** `Action.OpenUrl` button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to `/dashboard/incidents/detail?id=…&from=teams`. The incident detail page surfaces a "you opened this from Teams" breadcrumb so the chat origin is never lost.
+
+Teams cannot edit a card it has posted (Microsoft Graph app-only access can
+only patch a message's policy fields), so when the incident is acknowledged or
+resolved (on the web, with a card button, a Slack command or keypad 1 on a
+phone page) or escalates, OpsMender posts a fresh card in the new state to the
+chat. These posts only touch Notification Channels; they never page anyone. A
+release, takeover, assignment, reassignment, service move or reopen only edits
+cards already posted on platforms that can edit them (Slack, Discord),
+so Teams gets no card for it; the next acknowledge, resolve or escalation
+posts one in the state of that moment. Starting an AI session posts no
+incident card.
 
 Every action click is JWT-verified and routed through the same durable
 idempotency, identity mapping, active-user, Admin/Operator RBAC, action, and
-audit coordinator Slack uses. Viewers and unmapped users cannot mutate.
+audit coordinator Slack uses. Viewers and unmapped users cannot mutate. A
+repeated delivery of the same click changes nothing and posts no second card.
 
 ---
 
@@ -34,11 +52,15 @@ audit coordinator Slack uses. Viewers and unmapped users cannot mutate.
 
 | Button | What it does |
 |--------|--------------|
-| **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web Acknowledge button. |
-| **Resolve** | Cancels the escalation chain and marks the incident `resolved`. |
-| **Escalate** | Immediately advances to the next configured escalation level. |
+| **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web Acknowledge button. A fresh card then names you under Acknowledged by and has no Acknowledge button. |
+| **Resolve** | Cancels the escalation chain and marks the incident `resolved`. A fresh card then shows no action buttons. |
+| **Escalate** | Immediately advances to the next configured escalation level. A fresh card shows the new responder and level, with its buttons. |
 | **Start AI Session** | Starts the existing advisory Tier 2 incident session, or reports the already-active session. |
 | **View in OpsMender** | Opens the incident detail page with `?from=teams`. |
+
+After a card action, Teams shows you the result as the bot's reply in the
+conversation, for example `acknowledged incident *Checkout 500s*.`, or why it
+could not act.
 
 Action data shape (sent on the `Action.Submit`):
 
@@ -126,7 +148,7 @@ The Azure AD object id is the value that ends up in `activity.from.aadObjectId` 
 2. Configure the Notification Channel default chat ID or destination list.
 3. POST a synthetic incident that matches the channel scope.
 4. You should receive a Teams message in the configured chat with the adaptive card and four buttons.
-5. Click **Acknowledge**. The chain should pause and OpsMender should show you as the assignee.
+5. Click **Acknowledge**. The chain should pause and OpsMender should show you as the assignee. A fresh card in the chat names you under Acknowledged by and has no Acknowledge button.
 6. Click **Resolve**. Incident status flips to `resolved`, the chain is cancelled, and native-action audit entries are recorded.
 
 ---

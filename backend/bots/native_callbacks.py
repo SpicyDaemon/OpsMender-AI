@@ -55,6 +55,17 @@ RESULT_MESSAGES = {
     "already_active": "found an active AI session for",
 }
 
+# Chat action results that change what the incident card shows, and the event
+# the web path emits for the same change. Results that changed nothing
+# (already_*, no_escalation_target) leave the card alone; Escalate re-renders
+# it through the escalation engine's own post. Starting an AI session changes
+# nothing the card shows, and the web emits no incident event for it: the
+# session's own chat message is the update.
+CARD_REFRESH_EVENTS = {
+    "acknowledged": "incident.acknowledged",
+    "resolved": "incident.resolved",
+}
+
 
 @dataclass(frozen=True)
 class NormalizedNativeCallback:
@@ -150,3 +161,27 @@ async def dispatch_native_session_result(
     from backend.services.session_orchestration import dispatch_session_ready
 
     await dispatch_session_ready(app, result.session_id)
+
+
+async def refresh_incident_card(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    result: IncidentActionResult,
+) -> None:
+    """Bring the channel cards up to date after a verified chat action.
+
+    The same delivery the web path runs after the same change: commit, then
+    the incident event, so the background delivery (its own session) reads
+    the new state. Slack and Discord cards are edited in place; Teams cannot
+    edit, so it gets a fresh card. Notification Channels only: nobody is
+    paged. A deduplicated replay changed nothing and is skipped, so a retried
+    callback never posts a second card.
+    """
+    event_type = CARD_REFRESH_EVENTS.get(result.status)
+    if event_type is None or result.detail == "deduplicated":
+        return
+    await db.commit()
+    from backend.api.routes.incidents import _notify_channels
+
+    await _notify_channels(db, result.incident_id, org_id, event_type)

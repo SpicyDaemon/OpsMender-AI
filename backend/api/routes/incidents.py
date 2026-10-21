@@ -181,11 +181,16 @@ async def _notify_channels(
     incident_id: uuid.UUID,
     org_id: uuid.UUID,
     event_type: str,
+    *,
+    edit_only: bool = False,
+    previous_team_id: uuid.UUID | None = None,
 ) -> None:
     """Best-effort: post an incident card to enabled Notification Channels.
 
     Must be called *after* the incident change is committed so the background
-    delivery (which opens its own DB session) sees the new state.
+    delivery (which opens its own DB session) sees the new state. With
+    ``edit_only`` the cards already posted are edited in place and nothing new
+    is posted (see :func:`_refresh_channel_cards`).
 
     We first check - on the already-committed request session - whether any
     enabled channel even wants notifications. Only then do we spawn the
@@ -211,9 +216,46 @@ async def _notify_channels(
             event_type=event_type,
             incident_id=incident_id,
             base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+            edit_only=edit_only,
+            previous_team_id=previous_team_id,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
         _log.warning("incident channel notify skipped", exc_info=True)
+
+
+async def _refresh_channel_cards(
+    db: AsyncSession,
+    incident_id: uuid.UUID,
+    org_id: uuid.UUID,
+    *,
+    previous_team_id: uuid.UUID | None = None,
+) -> None:
+    """After a committed ownership change (release, take, assign, reassign,
+    a service handoff, a reopen, a bulk change, a session override), edit the
+    incident card already in each channel so it names who holds the incident
+    now and offers Acknowledge again once nobody does.
+    Edit in place only: platforms that cannot edit get nothing new, and
+    nobody is paged. A move to another team passes the team it left, whose
+    scoped channels get one last edit saying it moved (see
+    :func:`backend.bots.notifier.deliver_incident_event`)."""
+    await _notify_channels(
+        db,
+        incident_id,
+        org_id,
+        "incident.updated",
+        edit_only=True,
+        previous_team_id=previous_team_id,
+    )
+
+
+async def _owner_team_id(
+    db: AsyncSession, org_id: uuid.UUID, incident: Incident
+) -> uuid.UUID | None:
+    """The team whose scoped channels hold the incident's card now: the
+    team the notifier filters channels by."""
+    from backend.bots.notifier import _resolve_incident_team
+
+    return (await _resolve_incident_team(db, org_id, incident))[0]
 
 
 def _tier0_max_session_seconds() -> int:
@@ -1009,6 +1051,9 @@ async def update_incident(
         if service_changed and incident.service_id is not None
         else None
     )
+    previous_team_id = (
+        await _owner_team_id(db, org_id, incident) if service_changed else None
+    )
 
     updated = await IncidentRepo.update_fields(
         db,
@@ -1120,9 +1165,17 @@ async def update_incident(
             body="Resolved the incident.",
             author_user_id=user.id,
         )
+    # A service handoff or a reopen released the owner of a live incident.
+    owner_released = (
+        service_changed or prior_status == "resolved"
+    ) and updated.status not in _CLOSED_STATUSES
     await db.commit()
     if body.status == "resolved" and prior_status != "resolved":
         await _notify_channels(db, incident_id, org_id, "incident.resolved")
+    if owner_released:
+        await _refresh_channel_cards(
+            db, incident_id, org_id, previous_team_id=previous_team_id
+        )
     if body.status is not None and body.status != prior_status:
         from backend.services.ticket_sync import schedule_ticket_status_sync
 
@@ -2266,6 +2319,7 @@ async def assign_incident(
             db, org_id, incident, active.assigned_to, user, body.note
         )
     await db.commit()
+    await _refresh_channel_cards(db, incident_id, org_id)
     await db.refresh(assignment)
     return IncidentAssignmentResponse.model_validate(assignment)
 
@@ -2307,6 +2361,7 @@ async def release_incident(
     if not released:
         raise HTTPException(status_code=404, detail="No active assignment")
     await db.commit()
+    await _refresh_channel_cards(db, incident_id, org_id)
     from fastapi import Response
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -2440,6 +2495,10 @@ async def bulk_incident_action(
         if action == "resolve":
             for incident in incidents:
                 await _notify_channels(db, incident.id, org_id, "incident.resolved")
+        if action == "reopen":
+            # Reopening released any owner; the cards offer Acknowledge again.
+            for incident in incidents:
+                await _refresh_channel_cards(db, incident.id, org_id)
         return IncidentBulkActionResponse(
             action=action,
             succeeded=len(incidents),
@@ -2612,6 +2671,10 @@ async def bulk_incident_action(
 
     if succeeded > 0:
         await db.commit()
+        # The channel cards name each incident's owner now.
+        for item in items:
+            if item.ok:
+                await _refresh_channel_cards(db, item.incident_id, org_id)
     return IncidentBulkActionResponse(
         action=action, succeeded=succeeded, failed=failed, items=items
     )
@@ -2973,6 +3036,8 @@ async def take_incident(
                 ),
             )
     await db.commit()
+    if result in {"assigned", "confirmed", "taken"}:
+        await _refresh_channel_cards(db, incident_id, org_id)
     state = await IncidentChainStateRepo.get_for_incident(db, org_id, incident_id)
     pages = await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
     return IncidentChainPanelResponse(
@@ -3057,6 +3122,10 @@ async def _bulk_handoff(
                     "handed off."
                 ),
             )
+    previous_team_ids = {
+        incident_id: await _owner_team_id(db, org_id, incident)
+        for incident_id, incident in incidents.items()
+    }
     from backend.paging.channel_factory import build_channel_factory
 
     try:
@@ -3086,6 +3155,13 @@ async def _bulk_handoff(
             detail=f"{exc} Nothing was handed off.",
         ) from exc
     await db.commit()
+    for incident_id in incident_ids:
+        await _refresh_channel_cards(
+            db,
+            incident_id,
+            org_id,
+            previous_team_id=previous_team_ids[incident_id],
+        )
     return IncidentBulkActionResponse(
         action="handoff",
         succeeded=len(incident_ids),
@@ -3164,6 +3240,7 @@ async def reassign_incident(
     team = await TeamRepo.get_by_id(db, org_id, body.team_id)
     if team is None:
         raise HTTPException(status_code=404, detail="Team not found")
+    previous_team_id = await _owner_team_id(db, org_id, incident)
     from backend.paging.channel_factory import build_channel_factory
 
     try:
@@ -3183,6 +3260,9 @@ async def reassign_incident(
         await db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
+    await _refresh_channel_cards(
+        db, incident_id, org_id, previous_team_id=previous_team_id
+    )
     refreshed = await IncidentRepo.get_by_id(db, org_id, incident_id)
     return await _to_incident_response(db, org_id, refreshed)
 

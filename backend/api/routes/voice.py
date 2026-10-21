@@ -152,6 +152,10 @@ async def voice_ack(
         await db.commit()
         if outcome.status == "refreshed":
             return _twiml("You already own this incident. Goodbye.")
+        # The channel cards name the new owner, as after any acknowledgement.
+        from backend.api.routes.incidents import _notify_channels
+
+        await _notify_channels(db, incident_id, org_id, "incident.acknowledged")
         return _twiml("Incident acknowledged. You are now the owner. Goodbye.")
 
     if digit == "2":

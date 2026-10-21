@@ -32,6 +32,12 @@ _DEFAULT_LEVEL = "INFO"
 # own loggers.
 _UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
+# The HTTP client logs every request's full URL at INFO (and more at DEBUG).
+# Some outbound URLs are credentials: a Slack response_url, a Discord
+# interaction follow-up, a chat bot token in the path. These loggers never go
+# below WARNING, whatever the level.
+_HTTP_CLIENT_LOGGERS = ("httpx", "httpcore")
+
 
 # A service's intake URL carries its secret in the path, and the access log
 # prints paths (S-108). Keep the first eight characters, like the UI's hint.
@@ -69,7 +75,8 @@ def configure_logging(level: str | None) -> str:
     """Apply *level* process-wide. Returns the normalized level applied.
 
     Configures the root logger (so OpsMender's own ``logging.getLogger(__name__)``
-    output reaches stdout) plus uvicorn's pre-installed loggers.
+    output reaches stdout) plus uvicorn's pre-installed loggers, and keeps the
+    HTTP client's loggers at WARNING or above so no outbound URL is logged.
     """
     normalized = normalize_level(level)
     numeric = getattr(logging, normalized)
@@ -83,6 +90,8 @@ def configure_logging(level: str | None) -> str:
 
     for name in _UVICORN_LOGGERS:
         logging.getLogger(name).setLevel(numeric)
+    for name in _HTTP_CLIENT_LOGGERS:
+        logging.getLogger(name).setLevel(max(numeric, logging.WARNING))
 
     access = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, IntakeSecretFilter) for f in access.filters):

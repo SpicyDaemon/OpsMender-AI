@@ -24,6 +24,7 @@ from backend.bots.native_callbacks import (
     callback_result_message,
     dispatch_native_session_result,
     execute_normalized_callback,
+    refresh_incident_card,
 )
 from backend.db.models import BotConnector
 from backend.db.repos import IncidentRepo
@@ -163,6 +164,7 @@ async def teams_activity(
         org_id=connector.org_id,
         result=result,
     )
+    await refresh_incident_card(db, org_id=connector.org_id, result=result)
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
     return _reply(callback_result_message(result, title))

@@ -19,7 +19,12 @@ from backend.bots.capabilities import (
 )
 from backend.bots.connectors import get_adapter
 from backend.bots.delivery import DeliveryReceipt, UpdateResult
-from backend.bots.incident_card import build_incident_message
+from backend.bots.incident_card import (
+    MOVED_TO_ANOTHER_TEAM,
+    SIGN_IN_TO_ACT_HINT,
+    build_incident_message,
+    incident_card_facts,
+)
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -85,6 +90,18 @@ def _has_lane(connector: BotConnector, lane: str) -> bool:
     if not lanes and _has_capability(connector, "notifications"):
         lanes = ["respond"]
     return lane in lanes
+
+
+def _native_actions_ready(connector: BotConnector, *, is_track: bool) -> bool:
+    """Whether this channel's incident card carries verified action buttons:
+    an interactive platform, opted in, with a configured verifier, on the
+    Respond lane (Track posts are status-only)."""
+    return bool(
+        supports_interactive_actions(connector.platform)
+        and connector.native_actions_enabled
+        and connector.callback_status in {"configured", "verified"}
+        and not is_track
+    )
 
 
 def _connector_team_scope(connector: BotConnector) -> tuple[str, set[uuid.UUID]]:
@@ -270,6 +287,8 @@ async def _deliver_via_adapter(
     service_name: str | None = None,
     team_name: str | None = None,
     delivery_lane: str = "respond",
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> DeliveryReceipt:
     adapter = get_adapter(connector.platform)
     if adapter is None:
@@ -282,6 +301,8 @@ async def _deliver_via_adapter(
                 "text": text,
                 "incident": incident,
                 "native_actions_ready": native_actions_ready,
+                "facts": facts,
+                "acknowledged_by": acknowledged_by,
             }
             if delivery_lane == "track":
                 kwargs["status_update"] = True
@@ -405,6 +426,8 @@ async def _try_update_incident_notification(
     incident=None,
     native_actions_ready: bool = False,
     delivery_lane: str = "respond",
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> bool:
     """Edit the prior incident message in place when the platform supports it.
 
@@ -433,6 +456,7 @@ async def _try_update_incident_notification(
                 connector_id=connector.id,
             )
         else:
+            # The incident card, never a session message posted after it.
             prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
                 db,
                 org_id,
@@ -440,6 +464,7 @@ async def _try_update_incident_notification(
                 connector_id=connector.id,
                 external_channel_id=chat_id,
                 updateable_only=True,
+                lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
             )
     if prior is None or prior.external_message_id is None:
         return False
@@ -454,6 +479,10 @@ async def _try_update_incident_notification(
     }
     if delivery_lane == "track":
         update_kwargs["status_update"] = True
+    if supports_interactive_actions(connector.platform):
+        # The native cards re-render the same facts a new post would carry.
+        update_kwargs["facts"] = facts
+        update_kwargs["acknowledged_by"] = acknowledged_by
     result: UpdateResult = await adapter.update_incident_update(
         connector,
         **update_kwargs,
@@ -515,6 +544,9 @@ async def _deliver(
     delivery_lane: str = "respond",
     service_name: str | None = None,
     team_name: str | None = None,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
+    edit_only: bool = False,
 ) -> None:
     if incident_id is not None and lifecycle_event is not None:
         updated = await _try_update_incident_notification(
@@ -531,9 +563,14 @@ async def _deliver(
             incident=incident,
             native_actions_ready=native_actions_ready,
             delivery_lane=delivery_lane,
+            facts=facts,
+            acknowledged_by=acknowledged_by,
         )
         if updated:
             return
+    if edit_only:
+        # Nothing to edit here: an edit-only refresh never posts a new message.
+        return
 
     if connector.platform == "telegram":
         receipt = await _deliver_to_telegram(
@@ -559,6 +596,8 @@ async def _deliver(
             service_name=service_name,
             team_name=team_name,
             delivery_lane=delivery_lane,
+            facts=facts,
+            acknowledged_by=acknowledged_by,
         )
     async with factory() as db:
         await _record_delivery(
@@ -742,6 +781,8 @@ async def deliver_incident_event(
     incident_id: uuid.UUID,
     event_type: str,
     base_url: str | None = None,
+    edit_only: bool = False,
+    previous_team_id: uuid.UUID | None = None,
 ) -> None:
     """Post an incident card/message to every enabled Notification Channel that
     has the ``notifications`` capability.
@@ -754,6 +795,17 @@ async def deliver_incident_event(
     mutation.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
+
+    ``edit_only`` brings the cards already posted up to date and nothing
+    else: a channel whose platform cannot edit a message, or that has no
+    card to edit, gets no new post. Ownership changes use it, since a fresh
+    card in every channel for each one would be noise.
+
+    ``previous_team_id`` is the team that handled the incident before a
+    reassign, handoff or service move. A channel scoped to that team but not
+    to the new one gets this one edit: the card says the incident moved to
+    another team, names no service, team or responder, and has no buttons.
+    Later events skip that channel, like any channel scoped to other teams.
     """
     if event_type not in INCIDENT_CHAT_EVENTS:
         return
@@ -778,7 +830,12 @@ async def deliver_incident_event(
             continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
             continue
-        if not _connector_matches_team(connector, team_id):
+        moved_away = not _connector_matches_team(connector, team_id)
+        if moved_away and not (
+            edit_only
+            and previous_team_id is not None
+            and _connector_matches_team(connector, previous_team_id)
+        ):
             continue
         is_track = _has_lane(connector, "track")
         if is_track and connector.platform not in {
@@ -791,21 +848,31 @@ async def deliver_incident_event(
             continue
         if not is_track and not _has_lane(connector, "respond"):
             continue
-        native_actions_ready = bool(
-            supports_interactive_actions(connector.platform)
-            and connector.native_actions_enabled
-            and connector.callback_status in {"configured", "verified"}
-            and not is_track
+        native_actions_ready = not moved_away and _native_actions_ready(
+            connector, is_track=is_track
+        )
+        # The previous team's channel learns only that the incident moved.
+        card = (
+            {
+                "responder": None,
+                "service_name": None,
+                "team_name": MOVED_TO_ANOTHER_TEAM,
+                "org_name": org_name,
+            }
+            if moved_away
+            else {
+                "responder": responder,
+                "service_name": service_name,
+                "team_name": team_name,
+                "org_name": org_name,
+            }
         )
         text = build_incident_message(
             incident,
             event_type=event_type,
             base_url=base_url,
-            responder=responder,
-            service_name=service_name,
-            team_name=team_name,
-            org_name=org_name,
             supports_actions=native_actions_ready,
+            **card,
         )
         chat_ids = _allowed_chat_ids(connector)
         if is_track:
@@ -825,8 +892,13 @@ async def deliver_incident_event(
                 incident=incident,
                 native_actions_ready=native_actions_ready,
                 delivery_lane="track" if is_track else "respond",
-                service_name=service_name,
-                team_name=team_name,
+                service_name=card["service_name"],
+                team_name=card["team_name"],
+                facts=incident_card_facts(incident, **card),
+                acknowledged_by=(card["responder"] or {}).get(
+                    "acknowledged_by_display_name"
+                ),
+                edit_only=edit_only,
             )
 
 
@@ -838,6 +910,8 @@ def schedule_incident_event(
     incident_id: uuid.UUID,
     base_url: str | None = None,
     task_registry: set[asyncio.Task] | None = None,
+    edit_only: bool = False,
+    previous_team_id: uuid.UUID | None = None,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         deliver_incident_event(
@@ -846,6 +920,8 @@ def schedule_incident_event(
             incident_id=incident_id,
             event_type=event_type,
             base_url=base_url,
+            edit_only=edit_only,
+            previous_team_id=previous_team_id,
         )
     )
     if task_registry is not None:
@@ -867,6 +943,8 @@ async def deliver_incident_text(
     respond_only: bool = False,
     strict_team_scope: bool = False,
     informational_only: bool = False,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> None:
     """Fan out a *pre-built* incident message to enabled Notification Channels
     with the ``notifications`` capability.
@@ -874,6 +952,8 @@ async def deliver_incident_text(
     Used when the caller has already resolved the message from a live session
     (e.g. the escalation engine, where the new page row may not be committed
     yet) so the background delivery does not have to re-read incident state.
+    ``facts`` and ``acknowledged_by`` are pre-built the same way for the
+    native cards, which keep their action buttons as on any other event.
     """
     async with factory() as db:
         connectors = list(
@@ -922,6 +1002,21 @@ async def deliver_incident_text(
             scope, team_ids = _connector_team_scope(connector)
             if scope != "teams" or resolved_team_id not in team_ids:
                 continue
+        # The buttons need the card, and the card needs the incident: an
+        # informational post has none, and neither has a delivery that cannot
+        # read the incident yet (a new incident escalated before its commit).
+        native_actions_ready = (
+            incident is not None
+            and not informational_only
+            and _native_actions_ready(connector, is_track=is_track)
+        )
+        # The text was built once for every channel, with the sign-in hint;
+        # a card that carries the buttons drops it.
+        connector_text = (
+            text.replace(f"\n{SIGN_IN_TO_ACT_HINT}", "")
+            if native_actions_ready
+            else text
+        )
         chat_ids = _allowed_chat_ids(connector)
         if is_track:
             chat_ids = chat_ids[:1]
@@ -931,7 +1026,7 @@ async def deliver_incident_text(
                 org_id=org_id,
                 connector=connector,
                 chat_id=chat_id,
-                text=text,
+                text=connector_text,
                 command_label=f"notify:{event_type}",
                 session_id=None,
                 incident_id=incident_id,
@@ -942,9 +1037,12 @@ async def deliver_incident_text(
                 ),
                 rendered_status=rendered_status,
                 incident=None if informational_only else incident,
+                native_actions_ready=native_actions_ready,
                 delivery_lane="track" if is_track else "respond",
                 service_name=service_name,
                 team_name=team_name,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
             )
 
 
@@ -958,6 +1056,8 @@ def schedule_incident_text(
     incident_id: uuid.UUID | None = None,
     rendered_status: str | None = None,
     task_registry: set[asyncio.Task] | None = None,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         deliver_incident_text(
@@ -968,6 +1068,8 @@ def schedule_incident_text(
             team_id=team_id,
             incident_id=incident_id,
             rendered_status=rendered_status,
+            facts=facts,
+            acknowledged_by=acknowledged_by,
         )
     )
     if task_registry is not None:

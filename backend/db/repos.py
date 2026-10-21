@@ -4510,7 +4510,12 @@ class IncidentNotificationReceiptRepo:
         connector_id: uuid.UUID,
         external_channel_id: str | None,
         updateable_only: bool = False,
+        lifecycle_events: Sequence[str] | None = None,
     ) -> IncidentNotificationReceipt | None:
+        """The latest receipt for this incident in one channel. With
+        ``lifecycle_events``, only receipts of those events count, so an
+        incident card edit never lands on an AI session message posted later
+        in the same channel."""
         stmt = (
             select(IncidentNotificationReceipt)
             .where(
@@ -4522,6 +4527,10 @@ class IncidentNotificationReceiptRepo:
             .order_by(IncidentNotificationReceipt.created_at.desc())
             .limit(1)
         )
+        if lifecycle_events is not None:
+            stmt = stmt.where(
+                IncidentNotificationReceipt.lifecycle_event.in_(lifecycle_events)
+            )
         if updateable_only:
             stmt = stmt.where(
                 IncidentNotificationReceipt.can_update,

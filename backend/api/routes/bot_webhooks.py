@@ -30,6 +30,7 @@ from backend.bots.native_callbacks import (
     callback_result_message,
     dispatch_native_session_result,
     execute_normalized_callback,
+    refresh_incident_card,
 )
 from backend.db.models import BotConnector
 from backend.db.repos import IncidentRepo
@@ -142,6 +143,7 @@ async def _complete_discord_component(
                     org_id=connector.org_id,
                     result=result,
                 )
+                await refresh_incident_card(db, org_id=connector.org_id, result=result)
                 incident = await IncidentRepo.get_by_id(
                     db,
                     connector.org_id,

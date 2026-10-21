@@ -777,10 +777,11 @@ async def override_session(
     # A human is now in control. An unowned incident becomes theirs (mirrors
     # the Tier 1/2 ack-then-start gate); an owner keeps it, refreshing the lock
     # when it is them. Override never replaces someone else.
+    new_owner = False
     if session.incident_id is not None:
         from backend.paging.escalation import acknowledge
 
-        await acknowledge(
+        outcome = await acknowledge(
             db,
             org_id,
             incident_id=session.incident_id,
@@ -788,6 +789,7 @@ async def override_session(
             via="session",
             assigned_by="override",
         )
+        new_owner = outcome.status == "acknowledged"
     await AuditEntryRepo.create(
         db,
         org_id,
@@ -807,6 +809,11 @@ async def override_session(
         },
     )
     await db.commit()
+    if new_owner:
+        # The channel cards name who holds the incident now.
+        from backend.api.routes.incidents import _refresh_channel_cards
+
+        await _refresh_channel_cards(db, session.incident_id, org_id)
 
     await publish(
         session_id,

@@ -44,11 +44,14 @@ const policyRows: { ask: string; tiers: (keyof typeof CHIP)[] }[] = [
 
 const tiers = [
   { num: '0', name: 'Autonomous', tone: 'bg-red-400', file: 'tier-0.png',
-    desc: 'Fixes things on its own: restarts, rollbacks, scaling. Only changes it can undo, inside your policy, with a hard time limit.', note: 'For staging and sandboxes.' },
+    desc: 'Fixes things on its own: restarts, rollbacks, scaling. Only changes it can undo, inside your policy, with a hard time limit.', note: 'For staging and sandboxes.',
+    caption: 'A Tier 0 session restarted the deployment, confirmed recovery, and recorded how to undo it.' },
   { num: '1', name: 'Approval required', tone: 'bg-amber-400', file: 'tier-1.png',
-    desc: 'Investigates and proposes. Reads happen right away. Anything that writes waits for a person to approve it.', note: 'The right choice for production.' },
+    desc: 'Investigates and proposes. Reads happen right away. Anything that writes waits for a person to approve it.', note: 'The right choice for production.',
+    caption: 'A Tier 1 session stopped at the gate. Its request is waiting in the approval inbox.' },
   { num: '2', name: 'Advisory', tone: 'bg-ops-blue', file: 'tier-2.png', isDefault: true,
-    desc: 'Reads, explains, and recommends. Writes nothing. A person carries out every step.', note: 'The default for every new install.' },
+    desc: 'Reads, explains, and recommends. Writes nothing. A person carries out every step.', note: 'The default for every new install.',
+    caption: 'A Tier 2 session read, explained, and recommended a plan. Nothing was changed.' },
 ];
 
 const gatePoints = [
@@ -124,15 +127,76 @@ const marquee = [...platforms, ...sources];
     .phone-screen { position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: 34px; background: #07090f; aspect-ratio: 393 / 852; }
     .phone-screen img { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
     .phone-screen::before { content: ''; display: block; height: 46px; flex: none; background: #07090f; }
-    .phone-b .phone-screen { border-radius: 26px; }
-    .phone-b { border-radius: 34px; }
-    .island { position: absolute; top: 12px; left: 50%; width: 36%; height: 24px; transform: translateX(-50%); border-radius: 9999px; background: #000; z-index: 2; }
-    .hole { position: absolute; top: 14px; left: 50%; width: 12px; height: 12px; transform: translateX(-50%); border-radius: 9999px; background: #000; z-index: 2; }
+    .story::before { display: none; }
+    .island { position: absolute; top: 12px; left: 50%; width: 36%; height: 24px; transform: translateX(-50%); border-radius: 9999px; background: #000; z-index: 6; }
     .urlbar { flex: none; display: flex; align-items: center; justify-content: center; background: #0d1221; border-top: 1px solid #1a2540; }
-    .urlbar-bottom { height: 70px; padding-bottom: 14px; }
     .urlbar-top { height: 52px; border-top: 0; border-bottom: 1px solid #1a2540; }
     .urlpill { display: inline-flex; align-items: center; gap: .4rem; width: 84%; justify-content: center; padding: .45rem 0; border-radius: 9999px; background: #161e33; color: #cbd5e1; font-size: 12px; }
     .urlpill::before { content: ''; width: 8px; height: 10px; border: 1.5px solid #94a3b8; border-radius: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
+
+    /* The phone story: scenes stack inside the screen and classes on #story advance them. */
+    .story { display: block; }
+    .sc { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .6s var(--ease-fade); }
+    .sc .urlbar-top { height: 78px; padding-top: 34px; }
+    .sc-page { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
+    .sc-alert { background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59,130,246,.35), transparent 70%), linear-gradient(180deg, #0b1020, #07090f); align-items: center; }
+    .lock-time { margin-top: 54px; font-size: 54px; font-weight: 300; letter-spacing: -0.03em; color: #f1f5f9; line-height: 1; }
+    .lock-date { margin-top: 6px; font-size: 12.5px; color: #94a3b8; }
+    .notif { position: absolute; left: 10px; right: 10px; top: 150px; padding: 12px 13px; border-radius: 18px; background: rgba(30,41,59,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(148,163,184,.18); color: #f1f5f9; transform: translateY(-140px); opacity: 0; transition: transform .8s var(--ease-fluid), opacity .6s var(--ease-fade); }
+    .s1 .notif { transform: none; opacity: 1; }
+    .notif-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #cbd5e1; }
+    .notif-icon { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 4px; background: #3b82f6; color: #fff; font-size: 10px; font-weight: 700; }
+    .notif-title { margin-top: 7px; font-size: 13px; font-weight: 600; }
+    .notif-body { margin-top: 2px; font-size: 12px; color: #cbd5e1; line-height: 1.35; }
+    .notif-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .notif-btn { flex: 1; display: inline-flex; justify-content: center; padding: 7px 0; border-radius: 9px; background: rgba(148,163,184,.16); font-size: 11.5px; font-weight: 600; color: #f1f5f9; transition: background-color .3s var(--ease-fade), color .3s var(--ease-fade); }
+    .btn-ack .ack-on, .s1-acked .btn-ack .ack-off { display: none; }
+    .s1-acked .btn-ack .ack-on { display: inline; }
+    .s1-acked .btn-ack { background: rgba(52,211,153,.22); color: #6ee7b7; }
+    .tap { position: absolute; width: 26px; height: 26px; border-radius: 9999px; background: rgba(255,255,255,.55); box-shadow: 0 0 0 6px rgba(255,255,255,.18); opacity: 0; transform: scale(.6); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5; }
+    .tap-ack { left: 29%; top: 262px; }
+    .s1-tap .tap-ack { opacity: 1; transform: scale(1); }
+    .s1-acked .tap-ack { opacity: 0; transform: scale(1.4); }
+    .s1 .sc-alert { opacity: 1; }
+    .s2 .sc-alert { opacity: 0; }
+    .s2 .sc-browser { opacity: 1; }
+    .url-text { display: inline-block; overflow: hidden; white-space: nowrap; width: 0; transition: width 1s steps(15); }
+    .s2 .url-text, .s3 .url-text { width: 15ch; }
+    .sc-browser .sc-page { transform: translateY(40px); opacity: 0; transition: transform .8s var(--ease-fluid), opacity .6s var(--ease-fade); }
+    .s2-page .sc-browser .sc-page { transform: none; opacity: 1; }
+    .s3 .sc-browser { opacity: 0; }
+    .s3 .sc-session { opacity: 1; }
+    .sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 12px 16px; border-radius: 22px 22px 0 0; background: rgba(13,18,33,.97); border-top: 1px solid #1a2540; box-shadow: 0 -20px 50px rgba(0,0,0,.6); transform: translateY(105%); transition: transform .7s var(--ease-fluid); }
+    .s3-ask .sheet { transform: none; }
+    .sheet-title { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #64748b; }
+    .bubble { max-width: 88%; margin-top: 9px; padding: 8px 11px; border-radius: 14px; font-size: 12.5px; line-height: 1.4; opacity: 0; transform: translateY(8px); transition: opacity .4s var(--ease-fade), transform .4s var(--ease-fade); }
+    .bubble-you { margin-left: auto; background: #2563eb; color: #fff; border-bottom-right-radius: 4px; }
+    .bubble-agent { background: #1a2540; color: #e2e8f0; border-bottom-left-radius: 4px; }
+    .s3-ask .bubble-you, .s3-typing .bubble-agent { opacity: 1; transform: none; }
+    .reply { display: none; }
+    .dots { display: inline-flex; gap: 4px; padding: 3px 2px; }
+    .dots i { width: 6px; height: 6px; border-radius: 9999px; background: #94a3b8; animation: dot 1s infinite ease-in-out; }
+    .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+    @keyframes dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+    .s3-reply .dots { display: none; } .s3-reply .reply { display: inline; }
+    .sheet-actions { display: flex; gap: 8px; margin-top: 12px; opacity: 0; transition: opacity .4s var(--ease-fade); }
+    .s3-reply .sheet-actions { opacity: 1; }
+    .approve, .reject { display: inline-flex; justify-content: center; align-items: center; padding: 8px 0; border-radius: 10px; font-size: 12px; font-weight: 600; }
+    .approve { flex: 1.6; background: #10b981; color: #052e16; transition: background-color .3s var(--ease-fade), color .3s var(--ease-fade); }
+    .reject { flex: 1; border: 1px solid #1a2540; color: #fb7185; }
+    .approve-on, .s3-approved .approve-off { display: none; }
+    .s3-approved .approve-on { display: inline; }
+    .s3-approved .approve { background: rgba(52,211,153,.22); color: #6ee7b7; }
+    .tap-approve { left: 30%; bottom: 20px; }
+    .s3-tap .tap-approve { opacity: 1; transform: scale(1); }
+    .s3-approved .tap-approve { opacity: 0; transform: scale(1.4); }
+    .story-step { border: 1px solid transparent; }
+    .story-step.active { background: rgba(255,255,255,.04); border-color: #1a2540; }
+    .story-step.active .step-num { border-color: #3b82f6; color: #f1f5f9; background: rgba(59,130,246,.2); }
+    @media (prefers-reduced-motion: reduce) {
+      .sc, .notif, .sc-page, .sheet, .bubble, .sheet-actions, .url-text, .tap { transition: none; }
+      .dots i { animation: none; }
+    }
 
     /* Policy chips in the gate table. */
     .chip { display: inline-flex; align-items: center; border-radius: 9999px; padding: .3rem .7rem; font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
@@ -258,19 +322,34 @@ const marquee = [...platforms, ...sources];
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">Three tiers. One is picked per session.</h2>
         <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">The tier is enforced in the backend before any tool call runs, so the agent cannot talk its way past it.</p>
       </div>
-      <div class="mt-14 grid gap-5 md:grid-cols-3">
-        {tiers.map((t, i) => (
-          <article class="panel rise p-5" style={`--i:${i + 1}`}>
-            <img src={shot(t.file)} alt={`A Tier ${t.num} session`} width="3200" height="2000" class="block aspect-[16/10] w-full rounded-xl border border-ops-border object-cover object-top" loading="lazy" />
-            <div class="mt-5 flex items-center justify-between">
-              <span class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-subtle"><span class={`h-2 w-2 rounded-full ${t.tone}`}></span>Tier {t.num}</span>
-              {t.isDefault && <span class="rounded-full border border-ops-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ops-subtle">Default</span>}
-            </div>
-            <h3 class="mt-2 text-[22px] font-medium tracking-tight text-slate-50">{t.name}</h3>
-            <p class="mt-2 text-[15px] leading-relaxed text-ops-subtle">{t.desc}</p>
-            <p class="mt-4 text-sm text-slate-200">{t.note}</p>
-          </article>
-        ))}
+      <div id="tier-switch" class="mt-14 grid gap-5 lg:grid-cols-12 lg:items-stretch">
+        <div class="rise flex flex-col gap-3 lg:col-span-4" role="tablist" aria-label="Autonomy tiers" style="--i:1">
+          {tiers.map((t, i) => (
+            <button type="button" role="tab" aria-selected={i === 0 ? 'true' : 'false'} data-i={i}
+              class={`tier-tab flex-1 rounded-2xl border p-5 text-left transition-colors focus-ring ${i === 0 ? 'border-ops-blue bg-ops-surface' : 'border-ops-border bg-ops-surface/50 hover:border-slate-600'}`}>
+              <span class="flex items-center justify-between">
+                <span class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-subtle"><span class={`h-2 w-2 rounded-full ${t.tone}`}></span>Tier {t.num}</span>
+                {t.isDefault && <span class="rounded-full border border-ops-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ops-subtle">Default</span>}
+              </span>
+              <span class="mt-2 block text-[21px] font-medium tracking-tight text-slate-50">{t.name}</span>
+              <span class="mt-1.5 block text-[14.5px] leading-relaxed text-ops-subtle">{t.desc}</span>
+              <span class="mt-3 block text-sm text-slate-200">{t.note}</span>
+            </button>
+          ))}
+        </div>
+        <div class="panel rise p-3 sm:p-5 lg:col-span-8" style="--i:2">
+          <div class="wash wash-blue" aria-hidden="true"></div>
+          <div class="relative aspect-[16/10] overflow-hidden rounded-2xl border border-ops-border/80 bg-ops-surface shadow-frame">
+            {tiers.map((t, i) => (
+              <img src={shot(t.file)} alt={`A Tier ${t.num} session`} width="2880" height="1800" data-i={i} loading="lazy"
+                class={`tier-shot absolute inset-0 block h-full w-full object-cover object-top transition-opacity duration-700 ${i === 0 ? 'opacity-100' : 'opacity-0'}`} />
+            ))}
+          </div>
+          <div class="relative mt-4 flex items-center justify-between gap-4 px-1">
+            <p id="tier-caption" class="text-sm text-ops-subtle">{tiers[0].caption}</p>
+            <div class="flex shrink-0 gap-1.5" aria-hidden="true">{tiers.map((_, i) => <span class={`tier-dot h-1.5 w-1.5 rounded-full ${i === 0 ? 'bg-ops-blue' : 'bg-ops-border'}`}></span>)}</div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -301,11 +380,11 @@ const marquee = [...platforms, ...sources];
       <div class="text-center">
         <p class="label rise">Supported AI models</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">Bring the model you already use.</h2>
-        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Seven providers, picked per workspace or per service. Your API key stays on your server, and a model can only ever read its own key.</p>
+        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Hosted or local, picked per workspace or per service. Your API key stays on your server, and a model can only ever read its own key.</p>
       </div>
-      <div class="rise mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" style="--i:3" aria-label="Model providers">
+      <div class="rise mt-12 grid gap-4 [grid-auto-rows:1fr] sm:grid-cols-2 lg:grid-cols-4" style="--i:3" aria-label="Model providers">
         {providers.map((m) => (
-          <div class="flex items-center gap-4 rounded-2xl border border-ops-border bg-ops-surface/80 p-5">
+          <div class="flex h-full min-h-[108px] items-center gap-4 rounded-2xl border border-ops-border bg-ops-surface/80 p-5">
             <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-ops-border bg-ops-bg/60 text-slate-200 [&>svg]:h-7 [&>svg]:w-7" set:html={m.svg} />
             <span class="min-w-0"><span class="block text-base font-medium text-slate-50">{m.name}</span><span class="mt-0.5 block text-[13px] leading-snug text-ops-muted">{m.note}</span></span>
           </div>
@@ -427,26 +506,62 @@ const marquee = [...platforms, ...sources];
           <div>
             <p class="label">On your phone</p>
             <h2 class="headline mt-5 text-4xl text-slate-50 sm:text-5xl">Acknowledge from wherever you are.</h2>
-            <p class="mt-5 text-ops-subtle">The same app in the browser your phone already has. Nothing to install and no second login. Open the link from a page, read the incident, approve or reject what the agent proposes, and get back to your evening.</p>
-            <ul class="mt-6 space-y-2.5 text-[15px] text-slate-200">
-              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Every page carries an authenticated link straight to the incident.</li>
-              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Approve, reject or redirect the agent with one tap. Each action is attributed to you.</li>
-              <li class="flex gap-3"><span class="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ops-blue"></span>Watch a live session from the sofa, and stop it if you do not like where it is going.</li>
-            </ul>
+            <p class="mt-5 text-ops-subtle">The same app in the browser your phone already has. Nothing to install and no second login. A page reaches you in chat, one tap acknowledges it, the link opens the incident, and you can talk to the agent before you let it act.</p>
+            <ol id="story-steps" class="mt-7 space-y-1.5">
+              {[
+                ['The page arrives', 'In chat, with the incident and two buttons.'],
+                ['One tap to acknowledge', 'The chain stops escalating. The incident is yours.'],
+                ['The link opens the incident', 'Same app, signed in, straight to the page.'],
+                ['Ask the agent, then approve', 'It explains its plan in plain words. Nothing runs until you say so.'],
+              ].map(([title, sub], i) => (
+                <li>
+                  <button type="button" class="story-step flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors focus-ring" data-step={i + 1}>
+                    <span class="step-num mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-ops-border font-mono text-[11px] text-ops-subtle">{i + 1}</span>
+                    <span><span class="block text-[15px] font-medium text-slate-50">{title}</span><span class="block text-[13.5px] text-ops-subtle">{sub}</span></span>
+                  </button>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div class="flex items-end justify-center gap-5 sm:gap-8">
-            <figure class="phone phone-a w-[46%] max-w-[250px]">
-              <div class="phone-screen">
+          <div class="flex justify-center">
+            <figure class="phone phone-a w-[78%] max-w-[290px]">
+              <div id="story" class="phone-screen story" data-base={base}>
                 <span class="island" aria-hidden="true"></span>
-                <img src={shot('phone-a-approvals.png')} alt="A pending approval on a phone" width="1179" height="1977" loading="lazy" />
-                <div class="urlbar urlbar-bottom" aria-hidden="true"><span class="urlpill">ops.example.com</span></div>
-              </div>
-            </figure>
-            <figure class="phone phone-b mb-10 w-[46%] max-w-[250px]">
-              <div class="phone-screen">
-                <span class="hole" aria-hidden="true"></span>
-                <div class="urlbar urlbar-top" aria-hidden="true"><span class="urlpill">ops.example.com</span></div>
-                <img src={shot('phone-b-session.png')} alt="A live session on a phone" width="1082" height="2203" loading="lazy" />
+
+                <!-- Scene 1: the page arrives in chat, on the lock screen -->
+                <div class="sc sc-alert">
+                  <p class="lock-time">7:48</p>
+                  <p class="lock-date">Tuesday, October 20</p>
+                  <div class="notif">
+                    <div class="notif-head"><span class="notif-icon">O</span><span>OpsMender in chat</span><span class="ml-auto">now</span></div>
+                    <p class="notif-title">P1 · Auth service saturation</p>
+                    <p class="notif-body">Payments is paged. No one has acknowledged yet.</p>
+                    <div class="notif-actions">
+                      <span class="notif-btn btn-ack"><span class="ack-off">Acknowledge</span><span class="ack-on">Acknowledged · you</span></span>
+                      <span class="notif-btn">Open</span>
+                    </div>
+                  </div>
+                  <span class="tap tap-ack" aria-hidden="true"></span>
+                </div>
+
+                <!-- Scene 2: the link opens the incident in the browser -->
+                <div class="sc sc-browser">
+                  <div class="urlbar urlbar-top"><span class="urlpill"><span class="url-text">ops.example.com</span></span></div>
+                  <img class="sc-page" src={shot('phone-a-incident.png')} alt="" width="1179" height="1977" loading="eager" decoding="async" />
+                </div>
+
+                <!-- Scene 3: the live session, a question, an answer, an approval -->
+                <div class="sc sc-session">
+                  <div class="urlbar urlbar-top"><span class="urlpill"><span class="url-text">ops.example.com</span></span></div>
+                  <img class="sc-page" src={shot('phone-a-session.png')} alt="" width="1179" height="1977" loading="eager" decoding="async" />
+                  <div class="sheet">
+                    <p class="sheet-title">Chat with the agent</p>
+                    <div class="bubble bubble-you">Why a restart instead of scaling up?</div>
+                    <div class="bubble bubble-agent"><span class="dots"><i></i><i></i><i></i></span><span class="reply">The pool is saturated, not CPU bound. A rolling restart clears it, and it can be undone. Approve and I will run it.</span></div>
+                    <div class="sheet-actions"><span class="approve"><span class="approve-off">Approve restart</span><span class="approve-on">Approved · you</span></span><span class="reject">Reject</span></div>
+                  </div>
+                  <span class="tap tap-approve" aria-hidden="true"></span>
+                </div>
               </div>
             </figure>
           </div>
@@ -603,6 +718,63 @@ const marquee = [...platforms, ...sources];
         }, { threshold: 0.55 });
         zooms.forEach((z) => zi.observe(z));
       }
+
+      // Tier switcher: click a tier to see its screen; it cycles on its own until someone picks.
+      (() => {
+        const root = document.getElementById('tier-switch'); if (!root) return;
+        const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('.tier-tab'));
+        const shots = Array.from(root.querySelectorAll<HTMLImageElement>('.tier-shot'));
+        const dots = Array.from(root.querySelectorAll<HTMLElement>('.tier-dot'));
+        const caption = document.getElementById('tier-caption')!;
+        const captions = tabs.map((_, i) => (['A Tier 0 session restarted the deployment, confirmed recovery, and recorded how to undo it.', 'A Tier 1 session stopped at the gate. Its request is waiting in the approval inbox.', 'A Tier 2 session read, explained, and recommended a plan. Nothing was changed.'][i]));
+        let current = 0, timer = 0;
+        const show = (i: number) => {
+          current = i;
+          tabs.forEach((t, k) => { t.setAttribute('aria-selected', String(k === i)); t.classList.toggle('border-ops-blue', k === i); t.classList.toggle('bg-ops-surface', k === i); t.classList.toggle('border-ops-border', k !== i); t.classList.toggle('bg-ops-surface/50', k !== i); });
+          shots.forEach((s, k) => { s.classList.toggle('opacity-100', k === i); s.classList.toggle('opacity-0', k !== i); });
+          dots.forEach((d, k) => { d.classList.toggle('bg-ops-blue', k === i); d.classList.toggle('bg-ops-border', k !== i); });
+          caption.textContent = captions[i];
+        };
+        tabs.forEach((t, i) => t.addEventListener('click', () => { clearInterval(timer); show(i); }));
+        if (!reduce) {
+          const io = new IntersectionObserver((entries) => {
+            for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); timer = window.setInterval(() => show((current + 1) % tabs.length), 5500); }
+          }, { threshold: 0.4 });
+          io.observe(root);
+        }
+      })();
+
+      // Phone story: a timeline of classes on the screen; the step list follows along.
+      (() => {
+        const stage = document.getElementById('story'); if (!stage) return;
+        const steps = Array.from(document.querySelectorAll<HTMLButtonElement>('.story-step'));
+        // [time ms, class, step number]
+        const timeline: [number, string, number][] = [
+          [200, 's1', 1], [1600, 's1-tap', 2], [2100, 's1-acked', 2],
+          [3600, 's2', 3], [4700, 's2-page', 3],
+          [7200, 's3', 4], [8000, 's3-ask', 4], [8800, 's3-typing', 4], [10300, 's3-reply', 4],
+          [12300, 's3-tap', 4], [12800, 's3-approved', 4],
+        ];
+        const sceneStart = [0, 200, 1600, 3600, 7200];
+        const LOOP = 15500;
+        let timers: number[] = [];
+        const mark = (n: number) => steps.forEach((s) => s.classList.toggle('active', Number(s.dataset.step) === n));
+        const clear = () => { timers.forEach(clearTimeout); timers = []; stage.className = 'phone-screen story'; };
+        const play = (from: number) => {
+          clear();
+          for (const [t, cls, n] of timeline) {
+            if (t < from) { stage.classList.add(cls); mark(n); continue; }
+            timers.push(window.setTimeout(() => { stage.classList.add(cls); mark(n); }, t - from));
+          }
+          timers.push(window.setTimeout(() => play(0), LOOP - from));
+        };
+        steps.forEach((s) => s.addEventListener('click', () => play(sceneStart[Number(s.dataset.step)])));
+        if (reduce) { for (const [, cls] of timeline.slice(0, 5)) stage.classList.add(cls); mark(3); return; }
+        const io = new IntersectionObserver((entries) => {
+          for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); play(0); }
+        }, { threshold: 0.5 });
+        io.observe(stage);
+      })();
 
       document.getElementById('copy-cmd')?.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText('docker compose -f docker/docker-compose.yml up'); } catch {}

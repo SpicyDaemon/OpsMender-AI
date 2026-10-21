@@ -27,6 +27,7 @@ describe("display name helpers", () => {
     expect(providerName("qwen")).toBe("Qwen");
     expect(providerName("deepseek")).toBe("DeepSeek");
     expect(providerName("kimi")).toBe("Kimi");
+    expect(providerName("lmstudio")).toBe("LM Studio");
     expect(providerName("custom_provider")).toBe("Custom Provider");
   });
 

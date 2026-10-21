@@ -138,7 +138,7 @@ class TestConfigArgParsing:
         assert args.project == "opsmender-prod"
         assert args.location == "us-central1"
 
-    @pytest.mark.parametrize("provider", ["qwen", "deepseek", "kimi"])
+    @pytest.mark.parametrize("provider", ["qwen", "deepseek", "kimi", "lmstudio"])
     def test_config_model_commands_accept_the_named_vendors(self, provider):
         listed = _parse_args(["config", "model", "list", "--provider", provider])
         assert listed.provider == provider
@@ -773,6 +773,47 @@ class TestConfigModel:
         prompt_blob = " ".join(prompts_seen)
         assert "GCP project ID" in prompt_blob
         assert "GCP location" in prompt_blob
+
+    def test_model_bootstrap_lmstudio_asks_only_for_the_model(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """LM Studio needs no key and knows its local address, so bootstrap
+        asks for the provider and the model and nothing else."""
+        cfg_path = _write_cfg(tmp_path)
+        db_path = tmp_path / "opsmender.db"
+        database_url = f"sqlite+aiosqlite:///{db_path}"
+        _create_sqlite_schema(database_url)
+        monkeypatch.setenv("OPSMENDER_DATABASE_URL", database_url)
+        captured_kwargs: dict[str, object] = {}
+
+        def _validate(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            return type("_Validation", (), {"warnings": []})()
+
+        monkeypatch.setattr(
+            "cli.opsmender.ProviderRegistry.validate_model_config",
+            _validate,
+        )
+        prompts_seen: list[str] = []
+        answers = iter(["lmstudio", ""])
+
+        def _fake_input(prompt=""):
+            prompts_seen.append(prompt)
+            return next(answers)
+
+        monkeypatch.setattr("builtins.input", _fake_input)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--config", cfg_path, "config", "model", "bootstrap"])
+
+        assert exc_info.value.code == 0
+        assert len(prompts_seen) == 2
+        assert "/lmstudio/" in prompts_seen[0]
+        assert prompts_seen[1] == "Model ID or deployment name [openai/gpt-oss-20b]: "
+        assert captured_kwargs["provider"] == "lmstudio"
+        assert captured_kwargs["model_id"] == "openai/gpt-oss-20b"
+        assert captured_kwargs["base_url"] is None
+        assert captured_kwargs["api_key_env_var"] is None
 
     def test_model_bootstrap_json_output(self, tmp_path, capsys, monkeypatch):
         cfg_path = _write_cfg(tmp_path)

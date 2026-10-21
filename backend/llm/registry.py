@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -58,7 +59,7 @@ def check_base_url_host(spec: "ProviderSpec", base_url: str | None) -> None:
     """A provider with a fixed host only connects there, and only over https,
     so a provider's key cannot be sent to a URL of the caller's choosing or in
     the clear (O-22). Providers whose endpoint is the operator's own (ollama,
-    openai_compatible) take any URL."""
+    lmstudio, openai_compatible) take any URL."""
     if not base_url or not spec.allowed_hosts:
         return
     parsed = urlparse(base_url)
@@ -191,6 +192,11 @@ def _env_provider_defaults() -> dict[str, dict[str, str | None]]:
             "api_key_env_var": None,
             "api_version": None,
         },
+        "lmstudio": {
+            "base_url": os.environ.get("LMSTUDIO_BASE_URL") or None,
+            "api_key_env_var": None,
+            "api_version": None,
+        },
     }
 
 
@@ -248,6 +254,25 @@ class ProviderSpec:
     # The URL the factory uses when a config or caller names none, so a
     # vendor's fixed endpoint works with only a key.
     default_base_url: str | None = None
+
+
+def _discovery_item(
+    spec: ProviderSpec, *, available: bool, models: list[str], error: str | None
+) -> dict[str, object]:
+    """One provider as discovery reports it (GET /models)."""
+    return {
+        "provider": spec.provider,
+        "label": spec.label,
+        "default_model_id": spec.default_model_id,
+        "default_api_key_env_var": spec.default_api_key_env_var,
+        "default_base_url": spec.default_base_url,
+        "requires_api_key": spec.requires_api_key,
+        "requires_base_url": spec.requires_base_url,
+        "requires_api_version": spec.requires_api_version,
+        "available": available,
+        "models": models,
+        "error": error,
+    }
 
 
 @dataclass(frozen=True)
@@ -310,9 +335,23 @@ class ProviderRegistry:
             default_model_id="llama3.2",
             requires_api_key=False,
         ),
+        # LM Studio's local server speaks the OpenAI API at
+        # http://localhost:1234/v1 with no key by default; LMSTUDIO_BASE_URL
+        # moves it, as OLLAMA_BASE_URL does Ollama's. Its model ids are
+        # whatever the person loaded; the default is the one LM Studio's own
+        # API and CLI examples load (lmstudio.ai/docs, read 2026-10-21).
+        "lmstudio": ProviderSpec(
+            provider="lmstudio",
+            label="LM Studio",
+            default_model_id="openai/gpt-oss-20b",
+            default_api_key_env_var=None,
+            requires_api_key=False,
+            default_base_url="http://localhost:1234/v1",
+        ),
         # Sprint 62 Step 1 - generic OpenAI-API-compatible endpoint.
-        # Covers vLLM, LM Studio, OpenRouter, Together, Groq, Fireworks,
-        # Anyscale, and most local OpenAI-shape runtimes. base_url is
+        # Covers vLLM, llama.cpp, OpenRouter, Together, Groq, Fireworks,
+        # Anyscale, and most local OpenAI-shape runtimes (LM Studio too,
+        # though it has its own provider above). base_url is
         # required (that's what distinguishes it from the plain
         # ``openai`` provider); api_key is optional because some local
         # endpoints don't enforce auth.
@@ -414,11 +453,13 @@ class ProviderRegistry:
         providers = (
             [provider] if provider else [spec.provider for spec in self.list_specs()]
         )
-        results: list[dict[str, object]] = []
-        for provider_name in providers:
-            spec = self.get_spec(provider_name)
+        specs = [self.get_spec(provider_name) for provider_name in providers]
+        for spec in specs:
             check_key_env_var_allowed(spec, api_key_env_var)
             check_base_url_host(spec, base_url)
+
+        def _probe(spec: ProviderSpec) -> dict[str, object]:
+            provider_name = spec.provider
             selected_model = model_id or spec.default_model_id
             selected_api_key = api_key_env_var or spec.default_api_key_env_var
             per_provider_env = env_defaults.get(provider_name, {})
@@ -432,21 +473,9 @@ class ProviderRegistry:
                 provider_name, selected_api_key, selected_base_url
             )
             if placeholder_reason is not None:
-                results.append(
-                    {
-                        "provider": provider_name,
-                        "label": spec.label,
-                        "default_model_id": spec.default_model_id,
-                        "default_api_key_env_var": spec.default_api_key_env_var,
-                        "requires_api_key": spec.requires_api_key,
-                        "requires_base_url": spec.requires_base_url,
-                        "requires_api_version": spec.requires_api_version,
-                        "available": False,
-                        "models": [],
-                        "error": placeholder_reason,
-                    }
+                return _discovery_item(
+                    spec, available=False, models=[], error=placeholder_reason
                 )
-                continue
 
             try:
                 client = create_provider(
@@ -458,35 +487,16 @@ class ProviderRegistry:
                     provider_meta=provider_meta,
                 )
                 models = client.list_models()
-                results.append(
-                    {
-                        "provider": provider_name,
-                        "label": spec.label,
-                        "default_model_id": spec.default_model_id,
-                        "default_api_key_env_var": spec.default_api_key_env_var,
-                        "requires_api_key": spec.requires_api_key,
-                        "requires_base_url": spec.requires_base_url,
-                        "requires_api_version": spec.requires_api_version,
-                        "available": True,
-                        "models": models,
-                        "error": None,
-                    }
-                )
+                return _discovery_item(spec, available=True, models=models, error=None)
             except Exception as exc:
-                results.append(
-                    {
-                        "provider": provider_name,
-                        "label": spec.label,
-                        "default_model_id": spec.default_model_id,
-                        "default_api_key_env_var": spec.default_api_key_env_var,
-                        "requires_api_key": spec.requires_api_key,
-                        "requires_base_url": spec.requires_base_url,
-                        "requires_api_version": spec.requires_api_version,
-                        "available": False,
-                        "models": [],
-                        "error": str(exc),
-                    }
-                )
+                return _discovery_item(spec, available=False, models=[], error=str(exc))
+
+        # Each probe waits on its own timeout, and a refused ``localhost`` on
+        # Windows costs one per address, so the providers are asked at the
+        # same time: the page waits for the slowest, not for the sum. The
+        # results keep the providers' order.
+        with ThreadPoolExecutor(max_workers=len(specs)) as pool:
+            results = list(pool.map(_probe, specs))
         if use_cache:
             _DISCOVERY_CACHE[cache_key] = (time.monotonic(), results)
         return results
@@ -558,7 +568,15 @@ class ProviderRegistry:
 
         if (
             provider
-            in {"openai", "ollama", "openai_compatible", "qwen", "deepseek", "kimi"}
+            in {
+                "openai",
+                "ollama",
+                "lmstudio",
+                "openai_compatible",
+                "qwen",
+                "deepseek",
+                "kimi",
+            }
             and discovered_models
             and model_id not in discovered_models
         ):

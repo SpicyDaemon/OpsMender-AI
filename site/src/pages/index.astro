@@ -395,7 +395,7 @@ const marquee = [...platforms, ...sources];
       <div class="mx-auto max-w-7xl px-5 text-center sm:px-8">
         <p class="label rise">Integrations</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">OpsMender fits the tools your team already uses.</h2>
-        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Alerts in from sixteen sources. Pages out to twenty platforms, with buttons in Slack, Teams, and Discord. Any of ten model providers, and your key never leaves your deployment.</p>
+        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Alerts in from sixteen sources. Pages out to twenty platforms, with buttons in Slack, Teams, and Discord. Any of eleven model providers, and your key never leaves your deployment.</p>
       </div>
       <div class="fade-x rise mt-14 overflow-hidden" style="--i:3" aria-label="Alert sources and notification platforms">
         <div class="flex w-max animate-marquee gap-4 pr-4">
@@ -929,8 +929,8 @@ const marquee = [...platforms, ...sources];
           points: ['Twenty platforms including Slack, Teams, Discord, Telegram, Matrix, Google Chat, and email.', 'Slack, Teams, and Discord get buttons: acknowledge, resolve, escalate, start a session. Every press is verified and audited.', 'SMS and voice calls through Twilio. The voice menu is 1 acknowledge, 2 escalate, 3 resolve.', 'Every message carries an authenticated link back to the incident.'],
           code: 'backend/bots/ · backend/bots/capabilities.py' },
         { id: 'models', x: 110, y: 300, label: 'Models', sub: 'bring your own', kind: 'AI',
-          summary: 'Ten providers, and the keys never leave your deployment.',
-          points: ['Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex AI, Qwen, DeepSeek, Kimi, Ollama, or any OpenAI compatible endpoint such as LM Studio.', 'A model may only read its own provider\'s key variable, or one the operator lists, never the app\'s own secrets.', 'A per service model list narrows what an operator can pick for a session. The workspace default is always available.'],
+          summary: 'Eleven providers, and the keys never leave your deployment.',
+          points: ['Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex AI, Qwen, DeepSeek, Kimi, Ollama, LM Studio, or any OpenAI compatible endpoint such as vLLM.', 'A model may only read its own provider\'s key variable, or one the operator lists, never the app\'s own secrets.', 'A per service model list narrows what an operator can pick for a session. The workspace default is always available.'],
           code: 'backend/llm/factory.py · backend/llm/registry.py' },
         { id: 'session', x: 330, y: 300, label: 'AI session', sub: 'observe, diagnose, plan, act', kind: 'AI',
           summary: 'A structured workflow, not a free running chat.',

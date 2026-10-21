@@ -156,6 +156,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "bedrock",
             "vertex_ai",
             "ollama",
+            "lmstudio",
             "openai_compatible",
             "qwen",
             "deepseek",
@@ -230,6 +231,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "bedrock",
             "vertex_ai",
             "ollama",
+            "lmstudio",
             "openai_compatible",
             "qwen",
             "deepseek",
@@ -314,6 +316,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "bedrock",
             "vertex_ai",
             "ollama",
+            "lmstudio",
             "openai_compatible",
             "qwen",
             "deepseek",
@@ -795,7 +798,7 @@ def _bootstrap_model_args(
 ) -> argparse.Namespace:
     provider = args.provider or _prompt_value(
         "Provider (anthropic/openai/azure_openai/bedrock/vertex_ai/ollama/"
-        "openai_compatible/qwen/deepseek/kimi)",
+        "lmstudio/openai_compatible/qwen/deepseek/kimi)",
         default="openai",
     )
     spec = registry.get_spec(provider)

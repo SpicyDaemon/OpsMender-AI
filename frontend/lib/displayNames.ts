@@ -28,6 +28,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   gcp_vertex: "Vertex AI",
   bedrock: "AWS Bedrock",
   ollama: "Ollama",
+  lmstudio: "LM Studio",
   anthropic: "Anthropic",
   qwen: "Qwen",
   deepseek: "DeepSeek",

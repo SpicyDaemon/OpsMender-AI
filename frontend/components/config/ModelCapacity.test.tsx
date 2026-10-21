@@ -24,6 +24,7 @@ const PROVIDERS: ProviderModelsResponse[] = [
     label: "Ollama",
     default_model_id: "llama3.2",
     default_api_key_env_var: null,
+    default_base_url: null,
     requires_api_key: false,
     requires_base_url: false,
     requires_api_version: false,

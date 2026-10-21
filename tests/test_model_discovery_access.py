@@ -9,6 +9,10 @@ variable, never hold a key; an unknown provider is a 400, not a server error.
 
 from __future__ import annotations
 
+import asyncio
+import socket
+import threading
+import time
 import uuid
 
 import pytest
@@ -227,7 +231,7 @@ async def test_a_key_setting_must_be_a_listed_variable(client, monkeypatch):
 def no_network(monkeypatch):
     """Record any attempt to build an OpenAI SDK client or send an HTTP
     request from discovery, and fail it, so a test can prove none was made.
-    Ollama's local probe is answered in process."""
+    The local probes, Ollama's and LM Studio's, are answered in process."""
     import httpx
     import openai
 
@@ -245,6 +249,12 @@ def no_network(monkeypatch):
     monkeypatch.setattr(httpx.Client, "send", _send)
     monkeypatch.setattr(
         "backend.llm.providers.OllamaProvider.list_models", lambda self: [self.model]
+    )
+    monkeypatch.setattr(
+        "backend.llm.providers.LMStudioProvider.__post_init__", lambda self: None
+    )
+    monkeypatch.setattr(
+        "backend.llm.providers.LMStudioProvider.list_models", lambda self: [self.model]
     )
     for name in (
         "ANTHROPIC_API_KEY",
@@ -376,7 +386,7 @@ async def test_models_page_load_calls_no_vendor_without_its_key(client, no_netwo
     assert listed.status_code == 200, listed.text
     items = {item["provider"]: item for item in listed.json()["items"]}
 
-    assert len(items) == 10
+    assert len(items) == 11
     for provider, label, key in (
         ("qwen", "Qwen", "DASHSCOPE_API_KEY"),
         ("deepseek", "DeepSeek", "DEEPSEEK_API_KEY"),
@@ -387,4 +397,205 @@ async def test_models_page_load_calls_no_vendor_without_its_key(client, no_netwo
         assert item["available"] is False
         assert item["models"] == []
         assert item["error"].startswith(f"{key} environment variable is not set")
+    # LM Studio is local like Ollama: it needs no key and says where it looks.
+    lmstudio = items["lmstudio"]
+    assert lmstudio["label"] == "LM Studio"
+    assert lmstudio["default_base_url"] == "http://localhost:1234/v1"
+    assert lmstudio["default_api_key_env_var"] is None
+    assert lmstudio["requires_api_key"] is False
+    assert lmstudio["available"] is True
+    assert items["anthropic"]["default_base_url"] is None
     assert no_network == []
+
+
+def _closed_local_url() -> str:
+    """An LM Studio address nothing listens on: a loopback port just freed."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    return f"http://127.0.0.1:{port}/v1"
+
+
+async def test_lmstudio_with_nothing_listening_is_unavailable_and_still_saves(
+    client, monkeypatch
+):
+    """With LM Studio not running, discovery says so with the error, and an
+    admin can still save the config, which comes back with a warning.
+    LMSTUDIO_BASE_URL points discovery and the save at the closed port, so
+    nothing else is contacted; it names one address, so the probe gives up
+    within its two second connect cap (a ``localhost`` URL tries each of its
+    addresses in turn, each with the cap)."""
+    from backend.api.deps import get_current_session_factory
+    from backend.db.repos import ModelConfigRepo
+
+    monkeypatch.setenv("LMSTUDIO_BASE_URL", _closed_local_url())
+    ProviderRegistry.clear_discovery_cache()
+    h = await _headers(client)
+
+    started = time.monotonic()
+    listed = await client.get(
+        "/models", headers=h["viewer"], params={"provider": "lmstudio"}
+    )
+    elapsed = time.monotonic() - started
+    assert listed.status_code == 200, listed.text
+    [item] = listed.json()["items"]
+    assert item["available"] is False
+    assert item["models"] == []
+    assert item["error"].startswith("LM Studio list_models failed: ")
+    assert elapsed < 5, elapsed
+
+    saved = await client.post(
+        "/models/configs",
+        headers=h["admin"],
+        json={"name": "lm-studio", "provider": "lmstudio", "model_id": "qwen/qwen3-8b"},
+    )
+    assert saved.status_code == 201, saved.text
+    [warning] = saved.json()["warnings"]
+    assert warning["code"] == "provider_unverified"
+    assert "LM Studio list_models failed" in warning["message"]
+
+    me = (await client.get("/auth/me", headers=h["admin"])).json()
+    async with get_current_session_factory()() as db:
+        [row] = await ModelConfigRepo.list_all(db, uuid.UUID(me["primary_org_id"]))
+    assert row.provider == "lmstudio"
+    assert row.model_id == "qwen/qwen3-8b"
+    # Nothing stored for the address or a key: LMSTUDIO_BASE_URL, else the
+    # default, applies each time the config is used.
+    assert row.base_url is None
+    assert row.api_key_env_var is None
+    ProviderRegistry.clear_discovery_cache()
+
+
+class _NetworkWait:
+    """Stands in for a provider call that waits on the network (a refused
+    ``localhost`` on Windows takes about two seconds per address). It returns
+    only once the event loop has run again after the call started, which
+    cannot happen if the route makes the call on the loop itself, stalling
+    every other request to the server."""
+
+    def __init__(self, result):
+        self.result = result
+        self.started = threading.Event()
+        self.released = threading.Event()
+
+    def __call__(self, *_args, **kwargs):
+        self.started.set()
+        if not self.released.wait(2):
+            raise AssertionError("the provider call held the event loop")
+        return self.result
+
+    async def send(self, request):
+        async def _release_once_started():
+            while not self.started.is_set():
+                await asyncio.sleep(0.01)
+            self.released.set()
+
+        releaser = asyncio.ensure_future(_release_once_started())
+        try:
+            return await request
+        finally:
+            releaser.cancel()
+
+
+async def test_discovery_leaves_the_event_loop_free(client, monkeypatch):
+    wait = _NetworkWait([])
+    monkeypatch.setattr(ProviderRegistry, "discover_models", wait)
+    h = await _headers(client)
+
+    listed = await wait.send(client.get("/models", headers=h["viewer"]))
+
+    assert listed.status_code == 200, listed.text
+    assert wait.started.is_set()
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("POST", "/models/configs"),
+        ("PUT", "/models/configs/{id}"),
+        ("PUT", "/config/model"),
+    ],
+)
+async def test_saving_a_model_leaves_the_event_loop_free(
+    client, monkeypatch, method, path
+):
+    """Each save checks the provider first; that check waits on the network
+    too, so it also runs off the event loop."""
+    from backend.llm.registry import ValidationResult
+
+    h = await _headers(client)
+    body = {"name": "lm-studio", "provider": "lmstudio", "model_id": "qwen/qwen3-8b"}
+    if "{id}" in path:
+        monkeypatch.setattr(
+            ProviderRegistry,
+            "validate_model_config",
+            lambda self, **kwargs: ValidationResult(
+                provider=kwargs["provider"], model_id=kwargs["model_id"]
+            ),
+        )
+        created = await client.post("/models/configs", headers=h["admin"], json=body)
+        assert created.status_code == 201, created.text
+        path = path.format(id=created.json()["config"]["id"])
+        body = {**body, "model_id": "google/gemma-3-12b"}
+    wait = _NetworkWait(
+        ValidationResult(provider="lmstudio", model_id=body["model_id"])
+    )
+    monkeypatch.setattr(ProviderRegistry, "validate_model_config", wait)
+
+    saved = await wait.send(client.request(method, path, headers=h["admin"], json=body))
+
+    assert saved.status_code in (200, 201), saved.text
+    assert saved.json()["config"]["model_id"] == body["model_id"]
+    assert wait.started.is_set()
+
+
+def _lmstudio_env_config(tmp_path, monkeypatch, address: str):
+    """The config an env-only LM Studio install loads."""
+    from backend.config_loader import Config
+
+    monkeypatch.setenv("OPSMENDER_MODEL_PROVIDER", "lmstudio")
+    monkeypatch.setenv("OPSMENDER_MODEL_ID", "qwen/qwen3-8b")
+    monkeypatch.setenv("LMSTUDIO_BASE_URL", address)
+    env_file = tmp_path / "lmstudio.env"
+    env_file.write_text("")
+    return Config.load(env_file)
+
+
+def test_lmstudio_base_url_reaches_the_env_fallback(tmp_path, monkeypatch):
+    """With no saved config, the auditor, Skill Studio and intake build their
+    model from the env (OPSMENDER_MODEL_PROVIDER=lmstudio); LMSTUDIO_BASE_URL
+    is the address they get, as OLLAMA_BASE_URL is for Ollama."""
+    from backend.auditor._helpers import resolve_provider_kwargs
+
+    cfg = _lmstudio_env_config(tmp_path, monkeypatch, "http://gpu-box.internal:1234/v1")
+
+    kwargs = resolve_provider_kwargs(cfg, None)
+    assert kwargs["provider"] == "lmstudio"
+    assert kwargs["model_id"] == "qwen/qwen3-8b"
+    assert kwargs["base_url"] == "http://gpu-box.internal:1234/v1"
+    assert kwargs["api_key_env_var"] is None
+
+
+async def test_lmstudio_base_url_reaches_the_first_run_model(
+    client, tmp_path, monkeypatch
+):
+    """An env-only install writes its first model row at startup; for LM
+    Studio the row keeps LMSTUDIO_BASE_URL as its base URL."""
+    from backend.api.deps import get_current_session_factory
+    from backend.db.repos import ModelConfigRepo
+    from backend.llm.bootstrap import bootstrap_model_config
+
+    cfg = _lmstudio_env_config(tmp_path, monkeypatch, "http://gpu-box.internal:1234/v1")
+    h = await _headers(client)
+    me = (await client.get("/auth/me", headers=h["admin"])).json()
+    factory = get_current_session_factory()
+
+    await bootstrap_model_config(factory, cfg.providers)
+
+    async with factory() as db:
+        [row] = await ModelConfigRepo.list_all(db, uuid.UUID(me["primary_org_id"]))
+    assert row.provider == "lmstudio"
+    assert row.model_id == "qwen/qwen3-8b"
+    assert row.base_url == "http://gpu-box.internal:1234/v1"
+    assert row.api_key_env_var is None
+    assert row.is_default is True

@@ -43,6 +43,8 @@ def _resolve_base_url(provider: str, cfg: "ProviderConfig") -> str | None:
     """Pick the right base_url for a given provider out of ProviderConfig."""
     if provider == "ollama":
         return cfg.ollama_base_url
+    if provider == "lmstudio":
+        return cfg.lmstudio_base_url
     if provider == "azure_openai":
         return cfg.azure_openai_endpoint
     if provider == "openai_compatible":

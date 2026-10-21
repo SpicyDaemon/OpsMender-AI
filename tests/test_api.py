@@ -8345,6 +8345,37 @@ class TestResolveLLM:
         assert isinstance(llm.provider, OpenAICompatibleProvider)
         assert llm.provider.base_url == "http://localhost:1234/v1"
 
+    async def test_resolve_llm_reaches_lmstudio_without_a_saved_config(
+        self, app, monkeypatch
+    ):
+        """A session on LM Studio with no saved config falls back to
+        create_llm(provider, model_id): LMSTUDIO_BASE_URL when the operator
+        sets it, else LM Studio's default local address. Building the client
+        contacts nothing."""
+        from backend.api.session_runner import _resolve_llm
+        from backend.llm.providers import LMStudioProvider
+
+        factory = app.state.session_factory
+        async with factory() as db:
+            session = await SessionRepo.create(
+                db,
+                TEST_ORG_ID,
+                tier=0,
+                model_provider="lmstudio",
+                model_id="qwen/qwen3-8b",
+            )
+            await db.commit()
+
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+        llm = await _resolve_llm(factory, session)
+        assert isinstance(llm.provider, LMStudioProvider)
+        assert llm.provider.model == "qwen/qwen3-8b"
+        assert llm.provider.base_url == "http://localhost:1234/v1"
+
+        monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://gpu-box.internal:1234/v1")
+        llm = await _resolve_llm(factory, session)
+        assert llm.provider.base_url == "http://gpu-box.internal:1234/v1"
+
 
 class TestIncidentCombine:
     """v1.2 - Combine (merge) incidents."""

@@ -25,6 +25,11 @@ The same command also refreshes the nine other gallery PNGs in one run:
 - `tier-1.png`
 - `tier-2.png`
 
+Desktop captures are 1440x900 at a device scale factor of 2 (2880x1800 PNG).
+The same run also captures eight phone PNGs for the site's phone section, four
+per device profile (`phone-a-*` at 393 wide, `phone-b-*` at 412 wide):
+`incidents`, `incident`, `approvals`, and `session`.
+
 ## Capture command
 
 1. Start a fresh, isolated synthetic demo instance. Capture before running QA,

@@ -1,7 +1,7 @@
-// Curated README screenshot capture for OpsMender.
+// Curated README and site screenshot capture for OpsMender.
 //
 // Run against a fresh database created by scripts/seed_demo.py:
-//   node scripts/take_screenshots.mjs
+//   OPSMENDER_DEMO_OPERATOR_PASSWORD='<seeded demo password>' node scripts/take_screenshots.mjs
 //
 // Env:
 //   OPSMENDER_BASE_URL       default http://localhost:8000
@@ -9,7 +9,11 @@
 //   OPSMENDER_PASSWORD       login override
 //   OPSMENDER_DEMO_OPERATOR_PASSWORD  seeded operator login (gallery capture)
 //   OPSMENDER_SCREENSHOT_DIR default site/public/screenshots
-
+//
+// Desktop captures are 1440x900 at 2x (2880x1800). Phone captures use two
+// device profiles (a: 393 wide at 3x, b: 412 wide at 2.625x) so the site can
+// show the app in a phone browser.
+//
 // The script never starts an AI session. It captures only deterministic seeded
 // scenarios and restores the workspace tier even when a capture fails.
 
@@ -18,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const require = createRequire(new URL("../frontend/node_modules/", import.meta.url));
-const { chromium } = require("playwright");
+const { chromium, devices } = require("playwright");
 
 function readDotEnv() {
   const envPath = path.resolve(".env");
@@ -47,18 +51,7 @@ const PASSWORD =
   process.env.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD ||
   DOTENV.OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD;
 const OPERATOR_PASSWORD = process.env.OPSMENDER_DEMO_OPERATOR_PASSWORD;
-const OUT = path.resolve(
-  process.env.OPSMENDER_SCREENSHOT_DIR || "site/public/screenshots",
-);
-
-const VIEWPORT = { width: 1440, height: 900 };
-const SCENARIO_IDS = ["demo-tier-0", "demo-tier-1", "demo-tier-2"];
-const FORBIDDEN_TEXT = [
-  "invalid x-api-key",
-  "no events were recorded",
-  "session failed",
-  "failed to load session",
-];
+const OUT = path.resolve(process.env.OPSMENDER_SCREENSHOT_DIR || "site/public/screenshots");
 
 if (!EMAIL || !PASSWORD) {
   throw new Error(
@@ -69,14 +62,19 @@ if (!OPERATOR_PASSWORD) {
   throw new Error("Set OPSMENDER_DEMO_OPERATOR_PASSWORD for the seeded operator gallery capture.");
 }
 
+const VIEWPORT = { width: 1440, height: 900 };
+const SCALE = 2;
+const SCENARIO_IDS = ["demo-tier-0", "demo-tier-1", "demo-tier-2"];
+const FORBIDDEN_TEXT = ["invalid x-api-key", "no events were recorded", "session failed", "failed to load session"];
+const PHONES = {
+  a: { ...devices["iPhone 15 Pro"], defaultBrowserType: undefined },
+  b: { ...devices["Pixel 7"], defaultBrowserType: undefined },
+};
+
 fs.mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({
-  viewport: VIEWPORT,
-  colorScheme: "dark",
-  deviceScaleFactor: 1,
-});
+const context = await browser.newContext({ viewport: VIEWPORT, colorScheme: "dark", deviceScaleFactor: SCALE });
 let page = await context.newPage();
 
 let responseFailures = [];
@@ -99,29 +97,22 @@ async function settle(ms = 900) {
 }
 
 async function requestJson(method, url, token, data) {
-  const options = {
-    method,
-    headers: { Authorization: `Bearer ${token}` },
-  };
+  const options = { method, headers: { Authorization: `Bearer ${token}` } };
   if (data !== undefined) options.data = data;
   const response = await page.request.fetch(`${BASE}${url}`, options);
-  if (!response.ok()) {
-    throw new Error(
-      `${method} ${url} failed: ${response.status()} ${await response.text()}`,
-    );
-  }
+  if (!response.ok()) throw new Error(`${method} ${url} failed: ${response.status()} ${await response.text()}`);
   const body = await response.text();
   return body ? JSON.parse(body) : null;
 }
 
+async function tokenFor(username, password) {
+  const response = await page.request.post(`${BASE}/auth/login`, { data: { username, password } });
+  if (!response.ok()) throw new Error(`Login failed for ${username}: ${response.status()}`);
+  return (await response.json()).access_token;
+}
+
 async function login() {
-  const response = await page.request.post(`${BASE}/auth/login`, {
-    data: { username: EMAIL, password: PASSWORD },
-  });
-  if (!response.ok()) {
-    throw new Error(`Login failed: ${response.status()} ${await response.text()}`);
-  }
-  const { access_token: token } = await response.json();
+  const token = await tokenFor(EMAIL, PASSWORD);
   await page.addInitScript((accessToken) => {
     localStorage.setItem("opsmender_token", accessToken);
     localStorage.setItem("opsmender:theme", "dark");
@@ -135,96 +126,49 @@ async function loadScenarioState(token) {
     requestJson("GET", "/sessions?limit=100", token),
     requestJson("GET", "/approvals?status=pending&limit=100", token),
   ]);
-  const incidents = new Map(
-    incidentResponse.items
-      .filter((incident) => SCENARIO_IDS.includes(incident.external_id))
-      .map((incident) => [incident.external_id, incident]),
-  );
-  const sessionsByIncident = new Map(
-    sessionResponse.items.map((session) => [session.incident_id, session]),
-  );
+  const incidents = new Map(incidentResponse.items.filter((i) => SCENARIO_IDS.includes(i.external_id)).map((i) => [i.external_id, i]));
+  const sessionsByIncident = new Map(sessionResponse.items.map((s) => [s.incident_id, s]));
   const scenarios = {};
-
   for (let tier = 0; tier <= 2; tier += 1) {
-    const externalId = `demo-tier-${tier}`;
-    const incident = incidents.get(externalId);
+    const incident = incidents.get(`demo-tier-${tier}`);
     const session = incident ? sessionsByIncident.get(incident.id) : null;
-    if (!incident || !session || session.tier !== tier) {
-      throw new Error(
-        `Fresh demo seed is required: missing deterministic Tier ${tier} incident/session.`,
-      );
-    }
+    if (!incident || !session || session.tier !== tier) throw new Error(`Fresh demo seed is required: missing Tier ${tier} incident/session.`);
     scenarios[tier] = { incident, session };
   }
-
-  const tier1Approval = approvalResponse.items.find(
-    (approval) => approval.session_id === scenarios[1].session.id,
-  );
-  if (!tier1Approval) {
-    throw new Error("Fresh demo seed is required: Tier 1 pending approval is missing.");
-  }
-
+  if (!approvalResponse.items.find((a) => a.session_id === scenarios[1].session.id)) throw new Error("Fresh demo seed is required: Tier 1 pending approval is missing.");
   return scenarios;
 }
 
 async function setWorkspaceTier(token, tier) {
   const config = await requestJson("PUT", "/config", token, { tier });
-  if (config.tier !== tier) {
-    throw new Error(`Workspace tier remained ${config.tier}; expected ${tier}.`);
-  }
+  if (config.tier !== tier) throw new Error(`Workspace tier remained ${config.tier}; expected ${tier}.`);
 }
 
 async function assertCleanCapture(label, requireEvents) {
   const bodyText = (await page.locator("body").innerText()).toLowerCase();
   const forbidden = FORBIDDEN_TEXT.find((text) => bodyText.includes(text));
-  if (forbidden) {
-    throw new Error(`${label} contains forbidden state: ${forbidden}`);
-  }
-  if (/qa-\d{10,}/i.test(bodyText)) {
-    throw new Error(`${label} contains test-run debris; use a fresh demo seed.`);
-  }
+  if (forbidden) throw new Error(`${label} contains forbidden state: ${forbidden}`);
+  if (/qa-\d{10,}/i.test(bodyText)) throw new Error(`${label} contains test-run debris; use a fresh demo seed.`);
   const addresses = bodyText.match(/[a-z0-9._%+-]+@(?:[a-z0-9.-]+\.[a-z]{2,}|localhost)/g) ?? [];
-  if (addresses.some((address) => !address.endsWith("@example.com") && !address.endsWith("@localhost"))) {
-    throw new Error(`${label} contains an email outside the reserved demo domains.`);
-  }
+  if (addresses.some((a) => !a.endsWith("@example.com") && !a.endsWith("@localhost"))) throw new Error(`${label} contains an email outside the reserved demo domains.`);
   const toasts = await page.locator(".ops-toast").allInnerTexts();
-  if (toasts.length > 0) {
-    throw new Error(`${label} rendered a toast: ${toasts.join(" | ")}`);
-  }
-  if (responseFailures.length > 0) {
-    throw new Error(`${label} made forbidden requests:\n${responseFailures.join("\n")}`);
-  }
-  if (pageErrors.length > 0) {
-    throw new Error(`${label} raised page errors:\n${pageErrors.join("\n")}`);
-  }
+  if (toasts.length > 0) throw new Error(`${label} rendered a toast: ${toasts.join(" | ")}`);
+  if (responseFailures.length > 0) throw new Error(`${label} made forbidden requests:\n${responseFailures.join("\n")}`);
+  if (pageErrors.length > 0) throw new Error(`${label} raised page errors:\n${pageErrors.join("\n")}`);
   if (requireEvents) {
     const eventLog = page.locator('[role="log"][aria-label="Session event stream"]');
     await eventLog.waitFor({ state: "visible", timeout: 15000 });
     const eventText = (await eventLog.innerText()).trim();
-    if (!eventText || /waiting for events/i.test(eventText)) {
-      throw new Error(`${label} has an empty session event stream.`);
-    }
+    if (!eventText || /waiting for events/i.test(eventText)) throw new Error(`${label} has an empty session event stream.`);
   }
 }
 
-async function capture({
-  file,
-  route,
-  label,
-  requireEvents = false,
-  focusEvents = false,
-}) {
+async function capture({ file, route, label, requireEvents = false, focusEvents = false }) {
   responseFailures = [];
   pageErrors = [];
-  await page.goto(`${BASE}${route}`, {
-    waitUntil: "domcontentloaded",
-    timeout: 30000,
-  });
+  await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 30000 });
   await settle();
-  await page.evaluate(() => {
-    window.scrollTo(0, 0);
-    document.getElementById("main-content")?.scrollTo(0, 0);
-  });
+  await page.evaluate(() => { window.scrollTo(0, 0); document.getElementById("main-content")?.scrollTo(0, 0); });
   if (focusEvents) {
     const eventLog = page.locator('[role="log"][aria-label="Session event stream"]');
     await eventLog.waitFor({ state: "visible", timeout: 15000 });
@@ -232,10 +176,7 @@ async function capture({
       const main = element.closest("main");
       const panel = element.parentElement;
       if (!main || !panel) return;
-      const offset =
-        panel.getBoundingClientRect().top -
-        main.getBoundingClientRect().top +
-        main.scrollTop;
+      const offset = panel.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop;
       main.scrollTo({ top: Math.max(0, offset - 170), behavior: "instant" });
     });
   }
@@ -243,7 +184,30 @@ async function capture({
   await assertCleanCapture(label, requireEvents);
   const output = path.join(OUT, file);
   await page.screenshot({ path: output, animations: "disabled" });
-  console.log(`OK ${label}: ${path.relative(process.cwd(), output)}`);
+  console.log(`OK ${label}: ${file}`);
+}
+
+// Phone captures reuse the admin token in a device-emulating context.
+async function capturePhones(token, scenarios) {
+  const adminPage = page;
+  for (const [key, device] of Object.entries(PHONES)) {
+    const phoneContext = await browser.newContext({ ...device, colorScheme: "dark" });
+    try {
+      page = await phoneContext.newPage();
+      monitor(page);
+      await page.addInitScript((accessToken) => {
+        localStorage.setItem("opsmender_token", accessToken);
+        localStorage.setItem("opsmender:theme", "dark");
+      }, token);
+      await capture({ file: `phone-${key}-incidents.png`, route: "/dashboard/incidents", label: `Phone ${key} incidents` });
+      await capture({ file: `phone-${key}-incident.png`, route: `/dashboard/incidents/detail?id=${scenarios[1].incident.id}`, label: `Phone ${key} incident detail` });
+      await capture({ file: `phone-${key}-approvals.png`, route: "/dashboard/approvals", label: `Phone ${key} approvals` });
+      await capture({ file: `phone-${key}-session.png`, route: `/dashboard/sessions/detail?id=${scenarios[1].session.id}`, label: `Phone ${key} session`, requireEvents: true });
+    } finally {
+      page = adminPage;
+      await phoneContext.close();
+    }
+  }
 }
 
 let token = null;
@@ -255,123 +219,49 @@ try {
   const scenarios = await loadScenarioState(token);
   originalTier = (await requestJson("GET", "/config", token)).tier;
 
-  await capture({
-    file: "incidents-list.png",
-    route: "/dashboard/incidents",
-    label: "Incident command center",
-  });
-  await capture({
-    file: "incidents-admin.png",
-    route: "/dashboard/incidents",
-    label: "Admin incident board",
-  });
-  await capture({
-    file: "incident-detail.png",
-    route: `/dashboard/incidents/detail?id=${scenarios[1].incident.id}`,
-    label: "Incident detail",
-  });
+  await capture({ file: "incidents-list.png", route: "/dashboard/incidents", label: "Incident command center" });
+  await capture({ file: "incidents-admin.png", route: "/dashboard/incidents", label: "Admin incident board" });
+  await capture({ file: "incident-detail.png", route: `/dashboard/incidents/detail?id=${scenarios[1].incident.id}`, label: "Incident detail" });
 
   const adminPage = page;
-  const operatorContext = await browser.newContext({
-    viewport: VIEWPORT,
-    colorScheme: "dark",
-    deviceScaleFactor: 1,
-  });
+  const operatorContext = await browser.newContext({ viewport: VIEWPORT, colorScheme: "dark", deviceScaleFactor: SCALE });
   try {
     page = await operatorContext.newPage();
     monitor(page);
-    const operatorLogin = await page.request.post(`${BASE}/auth/login`, {
-      data: { username: "john", password: OPERATOR_PASSWORD },
-    });
-    if (!operatorLogin.ok()) {
-      throw new Error(`Seeded operator login failed: ${operatorLogin.status()}`);
-    }
-    const { access_token: operatorToken } = await operatorLogin.json();
+    const operatorToken = await tokenFor("john", OPERATOR_PASSWORD);
     await page.addInitScript((accessToken) => {
       localStorage.setItem("opsmender_token", accessToken);
       localStorage.setItem("opsmender:theme", "dark");
     }, operatorToken);
-    await capture({
-      file: "incidents-operator.png",
-      route: "/dashboard/incidents",
-      label: "Operator incident board",
-    });
+    await capture({ file: "incidents-operator.png", route: "/dashboard/incidents", label: "Operator incident board" });
   } finally {
     page = adminPage;
     await operatorContext.close();
   }
 
   await setWorkspaceTier(token, 1);
-  await capture({
-    file: "live-session-detail.png",
-    route: `/dashboard/sessions/detail?id=${scenarios[1].session.id}`,
-    label: "Tier 1 live session detail",
-    requireEvents: true,
-  });
-  await capture({
-    file: "approvals-pending.png",
-    route: "/dashboard/approvals",
-    label: "Pending approval inbox",
-  });
-  await capture({
-    file: "tier-1.png",
-    route: "/dashboard/approvals",
-    label: "Tier 1 paused for approval",
-  });
+  await capture({ file: "live-session-detail.png", route: `/dashboard/sessions/detail?id=${scenarios[1].session.id}`, label: "Tier 1 live session detail", requireEvents: true });
+  await capture({ file: "approvals-pending.png", route: "/dashboard/approvals", label: "Pending approval inbox" });
+  await capture({ file: "tier-1.png", route: "/dashboard/approvals", label: "Tier 1 paused for approval" });
+  await capturePhones(token, scenarios);
 
   await setWorkspaceTier(token, 0);
-  await capture({
-    file: "tier-0.png",
-    route: `/dashboard/sessions/detail?id=${scenarios[0].session.id}`,
-    label: "Tier 0 autonomous remediation",
-    requireEvents: true,
-    focusEvents: true,
-  });
-  await capture({
-    file: "ai-session.png",
-    route: `/dashboard/sessions/detail?id=${scenarios[0].session.id}`,
-    label: "AI session",
-    requireEvents: true,
-    focusEvents: true,
-  });
+  await capture({ file: "tier-0.png", route: `/dashboard/sessions/detail?id=${scenarios[0].session.id}`, label: "Tier 0 autonomous remediation", requireEvents: true, focusEvents: true });
+  await capture({ file: "ai-session.png", route: `/dashboard/sessions/detail?id=${scenarios[0].session.id}`, label: "AI session", requireEvents: true, focusEvents: true });
 
   await setWorkspaceTier(token, 2);
-  await capture({
-    file: "tier-2.png",
-    route: `/dashboard/sessions/detail?id=${scenarios[2].session.id}`,
-    label: "Tier 2 advisory analysis",
-    requireEvents: true,
-    focusEvents: true,
-  });
-  await capture({
-    file: "settings.png",
-    route: "/dashboard/config",
-    label: "Workspace settings",
-  });
-  await capture({
-    file: "mcp-skills.png",
-    route: "/dashboard/skills",
-    label: "Skill Studio",
-  });
-  await capture({
-    file: "people-rbac.png",
-    route: "/dashboard/people",
-    label: "People and access",
-  });
+  await capture({ file: "tier-2.png", route: `/dashboard/sessions/detail?id=${scenarios[2].session.id}`, label: "Tier 2 advisory analysis", requireEvents: true, focusEvents: true });
+  await capture({ file: "settings.png", route: "/dashboard/config", label: "Workspace settings" });
+  await capture({ file: "mcp-skills.png", route: "/dashboard/skills", label: "Skill Studio" });
+  await capture({ file: "people-rbac.png", route: "/dashboard/people", label: "People and access" });
 } catch (error) {
   runError = error;
 } finally {
   if (token !== null && originalTier !== null) {
-    try {
-      await setWorkspaceTier(token, originalTier);
-      console.log(`Restored workspace tier to ${originalTier}.`);
-    } catch (error) {
-      runError ??= error;
-      console.error(`Could not restore workspace tier: ${error}`);
-    }
+    try { await setWorkspaceTier(token, originalTier); } catch (error) { runError ??= error; }
   }
   await browser.close();
 }
 
 if (runError) throw runError;
-console.log(`Done. Thirteen verified screenshots saved to ${path.relative(process.cwd(), OUT)}.`);
+console.log(`Done. Twenty one verified screenshots saved to ${path.relative(process.cwd(), OUT)}.`);

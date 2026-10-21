@@ -32,4 +32,4 @@ def test_without_installed_metadata_the_pyproject_version_is_used(monkeypatch):
 
 
 def test_the_release_version_is_the_packaged_one():
-    assert importlib.metadata.version("opsmender") == PYPROJECT_VERSION == "1.2.0"
+    assert importlib.metadata.version("opsmender") == PYPROJECT_VERSION == "1.2.1"

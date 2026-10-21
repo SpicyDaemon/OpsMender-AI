@@ -77,14 +77,19 @@ Nothing yet.
   a fresh card. Start AI Session, and a tap or command that changes nothing,
   leave the card as it is. Every other change of who holds the incident (a
   release, take, force take, assignment, reassignment or handoff, on the web,
-  in bulk or with the Slack `/take` and `/release` commands, a move to
-  another service, a reopen, or an AI session override that makes the
-  incident yours) edits the card in place so it names the new owner or
-  offers Acknowledge again, and posts nothing new. When the incident moves to
-  another team (a reassignment, a handoff or a move to another team's
-  service), a channel limited to the team it left gets one last edit: the
-  card says Moved to another team, names no service, team or responder, and
-  has no action buttons; later changes reach only the new team's channels.
+  in bulk or with the Slack `/take` and `/release` commands, an Acknowledge
+  in bulk from the incident list, a move to another service, a reopen, or an
+  AI session override that makes the incident yours) edits the Slack and
+  Discord cards in place so they name the new owner or offer Acknowledge
+  again, and posts nothing new. Teams cannot edit a posted card, so these
+  changes post nothing there, and a Teams card catches up at the next
+  acknowledge, resolve or escalation. When the incident moves to another
+  team (a reassignment, a handoff or a move to another team's service), a
+  Slack or Discord channel limited to the team it left gets one last edit:
+  the card says Moved to another team, names no service, team or responder,
+  and has no action buttons. A Teams channel limited to that team gets no
+  such edit, and its card is left as it was. Later changes reach only the
+  new team's channels.
   These updates only touch
   Notification Channels and never page anyone; a repeated callback does not
   post a second card, and an edit always lands on the incident card, never on

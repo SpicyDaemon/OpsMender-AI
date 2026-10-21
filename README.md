@@ -18,9 +18,10 @@ You install it on your own infrastructure, invite your on call operators,
 connect a model, and point your monitoring at it.
 
 You bring the model. There is no OpsMender model and no inference bill from us:
-you connect an account you already have, the key stays in your deployment, and
-prompts go from your server straight to the provider you picked. Run Ollama and
-nothing leaves the machine. See [bring your own model](#bring-your-own-model).
+you connect an account you already have, the key stays in your server's
+environment, and prompts go from your server straight to the provider you
+picked. Run Ollama and nothing leaves the machine. See
+[bring your own model](#bring-your-own-model).
 
 When an incident comes in, OpsMender pages the right people through escalation
 chains and rosters. An operator can start an AI session on the incident. The
@@ -70,9 +71,9 @@ reproduce all 13 images, including the Tier 1 approval view.
   source control, tickets, docs, observability, and infrastructure.
 - **[Bring your own model](#bring-your-own-model)**: Anthropic, OpenAI, Azure
   OpenAI, Bedrock, Vertex AI, Qwen, DeepSeek, Kimi, Ollama, LM Studio, or any
-  OpenAI compatible endpoint. Keys are encrypted in your database and requests
-  go straight from your server to the provider. No OpsMender model, no
-  inference bill from us.
+  OpenAI compatible endpoint. Keys stay in your server's environment
+  (OpsMender saves only the variable name) and requests go straight from your
+  server to the provider. No OpsMender model, no inference bill from us.
 - **Org-owned skills**: bind `SKILL.md` policy to an MCP server or native
   integration connector so every discovered operation has explicit T0/T1/T2
   behavior plus active-tier operating instructions. Unknown operations fail
@@ -381,9 +382,9 @@ as bcrypt hashes.
 ## Bring your own model
 
 OpsMender does not ship a model and does not resell inference. Point it at an
-account you already have. The API key is stored encrypted in your own database,
-requests go directly from your server to the provider, and nothing routes
-through us.
+account you already have. The API key stays in your server's environment (a
+model config saves only the name of the variable that holds it), requests go
+directly from your server to the provider, and nothing routes through us.
 
 ![Anthropic](https://img.shields.io/badge/Anthropic-D97757?style=for-the-badge&logo=anthropic&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge) ![Azure OpenAI](https://img.shields.io/badge/Azure%20OpenAI-0078D7?style=for-the-badge) ![AWS Bedrock](https://img.shields.io/badge/AWS%20Bedrock-FF9900?style=for-the-badge) ![Vertex AI](https://img.shields.io/badge/Vertex%20AI-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white) ![Qwen](https://img.shields.io/badge/Qwen-6950EF?style=for-the-badge) ![DeepSeek](https://img.shields.io/badge/DeepSeek-4D6BFE?style=for-the-badge) ![Kimi](https://img.shields.io/badge/Kimi-000000?style=for-the-badge) ![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white) ![LM Studio](https://img.shields.io/badge/LM%20Studio-7A5CF5?style=for-the-badge) ![OpenAI compatible](https://img.shields.io/badge/OpenAI%20compatible-475569?style=for-the-badge)
 

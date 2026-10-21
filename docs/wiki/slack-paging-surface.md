@@ -61,7 +61,7 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | `/release [incident-id]` | Release the incident. Only the owner or an admin can. If the owner held it under an acknowledgement, the next level is paged straight away. |
 | `/resolve [incident-id]` | Cancel chain and mark the incident resolved. Only admins and operators on the team handling the incident can. |
 | `/snooze [duration] [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
-| `/status [incident-id]` | Without an id, lists the org's active chains. With an id, prints status / step index / next-due-at / current owner. |
+| `/status [incident-id]` | With an id, prints the chain status, step index and next check time, and whether the incident has an owner (an owner is written as a mention of their OpsMender user id, which Slack cannot turn into a name). Without an id, it reports on your most recently paged incident whose chain is still live, or, if there is none, lists up to ten of the org's running and snoozed chains. |
 
 A paged operator can usually just type `/ack` after receiving the DM: the implicit fallback to "your most recently paged incident" works in 95% of cases.
 
@@ -118,8 +118,8 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 3. POST a synthetic incident matching the channel scope.
 4. You should receive a Slack Block Kit incident card with Service, Team and Responder facts and four action buttons.
 5. Click **Acknowledge**. The chain should pause; `/dashboard/incidents/detail?id=…` should show you as the assignee. You get a confirmation only you can see, and the card in the channel is edited in place: it reads `Acknowledged by <you>` and no longer has an **Acknowledge** button.
-6. Run `/status` in any channel. You should see your incident in the active chains list with `paused`.
-7. Run `/resolve`. Incident status flips to `resolved`, the chain is `cancelled`, and the audit log records the slash-command source.
+6. Run `/status <incident-id>`. It should report chain `acked`. The list `/status` prints without an id shows only running and snoozed chains, so an acknowledged incident is not in it.
+7. Run `/resolve <incident-id>`. Incident status flips to `resolved`, the chain is `cancelled`, and the card in the channel is updated and shows no action buttons.
 
 ---
 

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
+from backend.bots.incident_card import incident_card_facts
 from backend.config_loader import set_env_path
 from backend.db.models import Base, Incident, Organization
 from backend.db.repos import (
@@ -263,6 +264,102 @@ class TestPageCardBuilder:
             "https://opsmender.example.com/dashboard/incidents/detail"
         )
         assert "from=slack" in view["url"]
+
+    @staticmethod
+    def _card(status="open", *, acknowledged: bool, base_url=None):
+        """A Checkout card as the notifier builds it, before or after Sam
+        acknowledges."""
+        inc = Incident(
+            id=uuid.uuid4(),
+            org_id=TEST_ORG_ID,
+            title="checkout 500s",
+            priority="P1",
+            status=status,
+            severity="high",
+        )
+        responder = {
+            "responder_state": "assigned" if acknowledged else "awaiting",
+            "responder_display_name": "Sam Ops",
+            "acknowledged_by_display_name": "Sam Ops" if acknowledged else None,
+            "escalation_level": 0,
+        }
+        blocks = build_page_card_blocks(
+            inc,
+            base_url=base_url,
+            include_native_actions=True,
+            facts=incident_card_facts(
+                inc,
+                responder=responder,
+                service_name="Checkout API",
+                team_name="Payments",
+                org_name="Slack Org",
+            ),
+            acknowledged_by="Sam Ops" if acknowledged else None,
+        )
+        return inc, blocks
+
+    @staticmethod
+    def _action_ids(blocks):
+        actions = [b for b in blocks if b["type"] == "actions"]
+        return [e["action_id"] for e in actions[0]["elements"]] if actions else []
+
+    def test_facts_render_as_fields_between_title_and_context(self):
+        inc, blocks = self._card(acknowledged=False)
+        assert [b["type"] for b in blocks] == [
+            "section",
+            "section",
+            "context",
+            "actions",
+        ]
+        assert [f["text"] for f in blocks[1]["fields"]] == [
+            "*Service*\nCheckout API",
+            "*Team*\nPayments",
+            "*Org*\nSlack Org",
+            "*Responder*\nAwaiting Sam Ops",
+        ]
+        assert blocks[2]["elements"][0]["text"] == f"Incident `{inc.id}`"
+        assert self._action_ids(blocks) == [
+            ACTION_ACK,
+            ACTION_RESOLVE,
+            ACTION_ESCALATE,
+            ACTION_START_AI_SESSION,
+        ]
+
+    def test_acknowledged_card_names_acknowledger_and_drops_acknowledge(self):
+        inc, blocks = self._card(acknowledged=True)
+        fields = [f["text"] for f in blocks[1]["fields"]]
+        assert "*Responder*\nAssigned to Sam Ops" in fields
+        assert "*Acknowledged by*\nSam Ops" in fields
+        assert blocks[2]["elements"][0]["text"] == (
+            f"Acknowledged by Sam Ops · Incident `{inc.id}`"
+        )
+        assert self._action_ids(blocks) == [
+            ACTION_RESOLVE,
+            ACTION_ESCALATE,
+            ACTION_START_AI_SESSION,
+        ]
+
+    def test_resolved_card_shows_no_action_buttons(self):
+        _, blocks = self._card("resolved", acknowledged=True)
+        assert self._action_ids(blocks) == []
+        _, blocks = self._card(
+            "resolved", acknowledged=True, base_url="https://ops.example.com"
+        )
+        assert self._action_ids(blocks) == [ACTION_VIEW]
+
+    def test_fact_values_cannot_become_mentions_or_links(self):
+        inc = Incident(id=uuid.uuid4(), org_id=TEST_ORG_ID, title="t", status="open")
+        blocks = build_page_card_blocks(
+            inc,
+            facts=[("Responder", "Assigned to <!channel> & <https://x|y>")],
+            acknowledged_by="<!here>",
+        )
+        assert blocks[1]["fields"][0]["text"] == (
+            "*Responder*\nAssigned to &lt;!channel&gt; &amp; &lt;https://x|y&gt;"
+        )
+        assert blocks[2]["elements"][0]["text"].startswith(
+            "Acknowledged by &lt;!here&gt; · "
+        )
 
     def test_parse_incident_id_from_action_uses_value_then_block_id(self):
         incident_id = uuid.uuid4()

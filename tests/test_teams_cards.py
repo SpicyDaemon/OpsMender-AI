@@ -94,6 +94,80 @@ class TestAdaptiveCardBuilder:
         assert kv["Status"] == "Investigating"
         assert kv["Severity"] == "high"
 
+    @staticmethod
+    def _facts(inc, *, acknowledged: bool):
+        from backend.bots.incident_card import incident_card_facts
+
+        return incident_card_facts(
+            inc,
+            responder={
+                "responder_state": "assigned" if acknowledged else "awaiting",
+                "responder_display_name": "Sam Ops",
+                "acknowledged_by_display_name": "Sam Ops" if acknowledged else None,
+                "escalation_level": 0,
+            },
+            service_name="Checkout API",
+            team_name="Payments",
+            org_name=None,
+        )
+
+    def test_factset_names_responder_and_acknowledger(self):
+        inc = _incident()
+        msg = build_graph_chat_message(
+            inc,
+            include_native_actions=True,
+            facts=self._facts(inc, acknowledged=True),
+            acknowledged_by="Sam Ops",
+        )
+        card = msg["attachments"][0]["content"]
+        facts = next(b for b in card["body"] if b["type"] == "FactSet")["facts"]
+        assert [f["title"] for f in facts] == [
+            "Priority",
+            "Status",
+            "Severity",
+            "Service",
+            "Team",
+            "Responder",
+            "Acknowledged by",
+            "Incident",
+        ]
+        kv = {f["title"]: f["value"] for f in facts}
+        assert kv["Responder"] == "Assigned to Sam Ops"
+        assert kv["Acknowledged by"] == "Sam Ops"
+        assert kv["Service"] == "Checkout API"
+        assert kv["Team"] == "Payments"
+
+    def test_acknowledge_action_absent_once_acknowledged(self):
+        inc = _incident()
+        before = build_page_card_adaptive(
+            inc,
+            include_native_actions=True,
+            facts=self._facts(inc, acknowledged=False),
+        )
+        after = build_page_card_adaptive(
+            inc,
+            include_native_actions=True,
+            facts=self._facts(inc, acknowledged=True),
+            acknowledged_by="Sam Ops",
+        )
+        assert [a["data"]["action"] for a in before["actions"]] == [
+            ACTION_ACK,
+            ACTION_RESOLVE,
+            ACTION_ESCALATE,
+            ACTION_START_AI_SESSION,
+        ]
+        assert [a["data"]["action"] for a in after["actions"]] == [
+            ACTION_RESOLVE,
+            ACTION_ESCALATE,
+            ACTION_START_AI_SESSION,
+        ]
+        resolved = build_page_card_adaptive(
+            _incident(status="resolved"),
+            include_native_actions=True,
+            acknowledged_by="Sam Ops",
+        )
+        assert resolved["actions"] == []
+
     def test_description_snippet_truncated(self):
         long = "x" * 1000
         card = build_page_card_adaptive(_incident(description=long))

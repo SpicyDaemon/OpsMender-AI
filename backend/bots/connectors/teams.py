@@ -132,6 +132,8 @@ class TeamsAdapter:
         incident=None,
         native_actions_ready: bool = False,
         status_update: bool = False,
+        facts: list[tuple[str, str]] | None = None,
+        acknowledged_by: str | None = None,
     ) -> DeliveryReceipt:
         payload = (
             build_graph_chat_message(
@@ -139,6 +141,8 @@ class TeamsAdapter:
                 base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
                 include_native_actions=native_actions_ready,
                 status_update=status_update,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
             )
             if incident is not None
             else {

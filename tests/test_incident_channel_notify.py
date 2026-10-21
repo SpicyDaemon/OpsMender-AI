@@ -320,6 +320,8 @@ class TestIncidentEventFanOut:
                 text,
                 incident=None,
                 native_actions_ready=False,
+                facts=None,
+                acknowledged_by=None,
             ):
                 self.sent.append((chat_id, text))
                 return DeliveryReceipt(
@@ -339,6 +341,8 @@ class TestIncidentEventFanOut:
                 external_thread_id=None,
                 incident=None,
                 native_actions_ready=False,
+                facts=None,
+                acknowledged_by=None,
             ):
                 self.updated.append(
                     (chat_id, external_message_id, external_thread_id, text)
@@ -411,6 +415,8 @@ class TestIncidentEventFanOut:
                 text,
                 incident=None,
                 native_actions_ready=False,
+                facts=None,
+                acknowledged_by=None,
             ):
                 self.sent.append((chat_id, text))
                 return DeliveryReceipt(
@@ -429,6 +435,8 @@ class TestIncidentEventFanOut:
                 external_thread_id=None,
                 incident=None,
                 native_actions_ready=False,
+                facts=None,
+                acknowledged_by=None,
             ):
                 return UpdateResult(
                     ok=False, error="edit_window_closed", fallback_to_followup=True

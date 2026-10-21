@@ -29,7 +29,7 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 import re
 from datetime import datetime, timedelta, timezone
@@ -44,12 +44,14 @@ from backend.bots.actions import (
     IncidentActionError,
     resolve_authorized_external_actor,
 )
+from backend.bots.connectors import get_adapter
 from backend.bots.native_callbacks import (
     NormalizedNativeCallback,
     callback_error_message,
     callback_result_message,
     dispatch_native_session_result,
     execute_normalized_callback,
+    refresh_incident_card,
 )
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
@@ -75,6 +77,34 @@ SLACK_SIGNATURE_REPLAY_WINDOW_SECONDS = 60 * 5
 
 def _ephemeral(text: str) -> JSONResponse:
     return JSONResponse({"response_type": "ephemeral", "text": text})
+
+
+async def _post_answer(response_url: str, text: str) -> None:
+    try:
+        ok, error = await get_adapter("slack").respond_to_interaction(
+            response_url=response_url, text=text
+        )
+    except Exception as exc:  # the action is already done; only log
+        ok, error = False, type(exc).__name__
+    if not ok:
+        logger.warning("Slack response_url answer failed: %s", error)
+
+
+def _answer(
+    background_tasks: BackgroundTasks, response_url: Any, text: str
+) -> Response:
+    """Answer the person who tapped a card button.
+
+    Slack shows nothing for the HTTP body of a ``block_actions`` request, so
+    the text goes to the payload's ``response_url`` as an ephemeral message,
+    after this empty 200. A failed post is logged and never touches the
+    action, which is already applied and audited. A payload without a
+    ``response_url`` keeps the ephemeral body.
+    """
+    if not isinstance(response_url, str) or not response_url:
+        return _ephemeral(text)
+    background_tasks.add_task(_post_answer, response_url, text)
+    return Response(status_code=status.HTTP_200_OK)
 
 
 def _verify_signature(*, signing_secret: str, headers, raw_body: bytes) -> bool:
@@ -135,6 +165,7 @@ async def _find_slack_connector(
 )
 async def slack_interactions(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     raw_body = await request.body()
@@ -171,13 +202,22 @@ async def slack_interactions(
         # Pure link button - Slack already opened the URL.
         return JSONResponse({"ok": True})
 
+    response_url = payload.get("response_url")
     incident_id = parse_incident_id_from_action(payload)
     if incident_id is None:
-        return _ephemeral("Could not identify the incident from that action.")
+        return _answer(
+            background_tasks,
+            response_url,
+            "Could not identify the incident from that action.",
+        )
 
     slack_user_id = (payload.get("user") or {}).get("id")
     if not slack_user_id:
-        return _ephemeral("Slack didn't tell us who clicked the button.")
+        return _answer(
+            background_tasks,
+            response_url,
+            "Slack didn't tell us who clicked the button.",
+        )
 
     raw_action = actions[0]
     idempotency_key = str(
@@ -209,7 +249,7 @@ async def slack_interactions(
             "Your external account",
             "Your Slack account",
         )
-        return _ephemeral(message)
+        return _answer(background_tasks, response_url, message)
 
     await dispatch_native_session_result(
         request.app,
@@ -217,9 +257,12 @@ async def slack_interactions(
         org_id=connector.org_id,
         result=result,
     )
+    await refresh_incident_card(db, org_id=connector.org_id, result=result)
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
-    return _ephemeral(callback_result_message(result, title))
+    return _answer(
+        background_tasks, response_url, callback_result_message(result, title)
+    )
 
 
 # ---------------------------------------------------------------------------

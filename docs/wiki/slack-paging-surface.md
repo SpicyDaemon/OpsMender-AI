@@ -15,12 +15,15 @@ user IDs, enable verified Slack actions, and send incident updates to a channel.
 When OpsMender posts an incident update to an opted-in Slack Notification
 Channel, the Block Kit card includes:
 
-- The priority and status of the incident.
-- The first line of the incident description.
-- Four action buttons: **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**.
-- A **View in OpsMender** link button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to the incident detail page with a `?from=slack` breadcrumb.
+- The priority, status and severity of the incident, and the first line of its description.
+- The incident facts in two columns (Slack stacks them on a phone): **Service**, **Team**, **Org** (when set), **Responder** (Assigned to, Awaiting, Escalated to or Unassigned), **Acknowledged by** (once someone has) and **Escalation level** (once above 0). They come from the same source as the message text, so the card and the text always agree.
+- A context line with the incident id. Once someone acknowledges, it reads `Acknowledged by <name> · Incident <id>`.
+- Action buttons: **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**. Once the incident is acknowledged, **Acknowledge** is left off and the other three stay. A resolved incident shows no action buttons.
+- A **View in OpsMender** link button that deep-links to the incident detail page with a `?from=slack` breadcrumb. It uses `OPSMENDER_PUBLIC_URL`, the same address as the incident link in the message text, so set it to the address your responders open.
 
-Every button click is signed, verified, and authenticated against your `bot_user_links` row before any state change happens. Slack users without a link get a friendly ephemeral "your account isn't linked" message instead of a silent failure.
+The card stays current. When the incident is acknowledged or resolved (on the web or with a card button), escalates, or gets an AI session from the card, OpsMender edits the card in place with `chat.update`, so the channel always shows who holds the incident and which buttons still apply. If Slack can no longer edit the message (deleted, or the edit window closed), OpsMender posts a fresh card instead. These updates only touch Notification Channels; they never page anyone.
+
+Every button click is signed, verified, and authenticated against your `bot_user_links` row before any state change happens. Slack users without a link get a friendly "your account isn't linked" message, visible only to them, instead of a silent failure.
 
 ---
 
@@ -28,14 +31,22 @@ Every button click is signed, verified, and authenticated against your `bot_user
 
 | Button | What it does |
 |--------|--------------|
-| **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web "Acknowledge" button. |
-| **Resolve** | Cancels the escalation chain and marks the incident `resolved`. |
-| **Escalate** | Immediately advances to the next configured escalation level. |
+| **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web "Acknowledge" button. The card then names you and drops this button. |
+| **Resolve** | Cancels the escalation chain and marks the incident `resolved`. The card then shows no action buttons. |
+| **Escalate** | Immediately advances to the next configured escalation level. The card shows the new responder and level and keeps its buttons. |
 | **Start AI Session** | Starts the advisory Tier 2 incident session, or reports the already-active session. |
 | **View in OpsMender** | Opens `/dashboard/incidents/detail?id=…&from=slack` in your browser. The detail page surfaces a "you opened this from Slack" banner so context is never lost. |
 
+After a button press, OpsMender tells you what happened in a message only you
+can see, for example `acknowledged incident *Checkout 500s*.`, or why it could
+not act. Slack ignores the body of a button request, so this answer is posted
+to the interaction's `response_url` as an ephemeral message; the request itself
+gets an empty `200`. Everyone else sees the change on the card.
+
 Native actions use durable idempotency records and bot-action audits so the
-source user, channel, incident, and result remain traceable.
+source user, channel, incident, and result remain traceable. A repeated
+delivery of the same click is answered again but changes nothing and does not
+update the card a second time.
 
 ---
 
@@ -105,8 +116,8 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 1. Make sure your operator user has a verified identity link for that Slack connector.
 2. Configure a destination on the Slack Notification Channel.
 3. POST a synthetic incident matching the channel scope.
-4. You should receive a Slack Block Kit incident card.
-5. Click **Acknowledge**. The chain should pause; `/dashboard/incidents/detail?id=…` should show you as the assignee.
+4. You should receive a Slack Block Kit incident card with Service, Team and Responder facts and four action buttons.
+5. Click **Acknowledge**. The chain should pause; `/dashboard/incidents/detail?id=…` should show you as the assignee. You get a confirmation only you can see, and the card in the channel is edited in place: it reads `Acknowledged by <you>` and no longer has an **Acknowledge** button.
 6. Run `/status` in any channel. You should see your incident in the active chains list with `paused`.
 7. Run `/resolve`. Incident status flips to `resolved`, the chain is `cancelled`, and the audit log records the slash-command source.
 
@@ -117,6 +128,8 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 | Symptom | Likely cause |
 |---------|--------------|
 | "Your Slack account isn't linked" on every click | Missing `bot_user_links` row for that Slack user id in that connector + org. |
+| A click works but you see no confirmation | The answer goes to the interaction's `response_url`. OpsMender logs `Slack response_url answer failed` when it cannot reach `hooks.slack.com` (an outbound firewall, for example). The action itself is already applied. |
+| **View in OpsMender** opens the wrong host | `OPSMENDER_PUBLIC_URL` is unset or points at an internal address. Set it to the address your responders open. |
 | 403 `invalid_signature` in OpsMender logs | The Slack `signing_secret` on the `bot_connectors` row doesn't match the app's signing secret. |
 | Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs. |
 | Buttons + cards show up but per-incident channels don't | `slack_incident_channels_enabled` is off on the org, or the Slack app is missing `channels:manage`. The OpsMender logs will say `slack channel mirror create failed: missing_scope`. |

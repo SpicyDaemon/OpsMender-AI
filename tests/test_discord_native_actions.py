@@ -254,6 +254,75 @@ def test_discord_incident_payload_renders_all_four_action_ids():
     assert payload["embeds"][0]["footer"]["text"].endswith(str(incident_id))
 
 
+def test_discord_payload_bolds_headline_and_carries_the_card_facts():
+    from backend.bots.connectors.discord import parse_incident_id_from_component
+    from backend.bots.incident_card import build_incident_message, incident_card_facts
+
+    incident = type(
+        "IncidentStub",
+        (),
+        {
+            "id": uuid.uuid4(),
+            "title": "database latency",
+            "description": "writes are slow",
+            "status": "open",
+            "severity": "high",
+            "priority": "P1",
+            "external_source": None,
+            "created_at": None,
+        },
+    )()
+    card = dict(
+        responder={
+            "responder_state": "assigned",
+            "responder_display_name": "Dee Ops",
+            "acknowledged_by_display_name": "Dee Ops",
+            "escalation_level": 0,
+        },
+        service_name="Storage",
+        team_name="Data",
+        org_name="Discord Org",
+    )
+    text = build_incident_message(
+        incident, event_type="incident.acknowledged", supports_actions=True, **card
+    )
+    facts = incident_card_facts(incident, **card)
+    payload = build_discord_incident_payload(
+        text,
+        incident=incident,
+        native_actions_ready=True,
+        facts=facts,
+        acknowledged_by="Dee Ops",
+    )
+
+    headline, rest = payload["content"].split("\n", 1)
+    assert headline == "**✅ Incident acknowledged: database latency**"
+    assert rest == text.split("\n", 1)[1]
+    embed = payload["embeds"][0]
+    assert embed["fields"] == [
+        {"name": label, "value": value, "inline": True} for label, value in facts
+    ]
+    assert {"name": "Acknowledged by", "value": "Dee Ops", "inline": True} in (
+        embed["fields"]
+    )
+    assert embed["footer"]["text"].endswith(str(incident.id))
+    assert [b["custom_id"] for b in payload["components"][0]["components"]] == [
+        "opsmender:resolve",
+        "opsmender:escalate",
+        "opsmender:start_ai_session",
+    ]
+    # A tap on the edited card still resolves to this incident.
+    assert (
+        parse_incident_id_from_component(
+            {
+                "data": {"custom_id": "opsmender:resolve"},
+                "message": {"embeds": payload["embeds"]},
+            }
+        )
+        == incident.id
+    )
+
+
 async def test_discord_component_rejects_bad_signature(
     client,
     app,

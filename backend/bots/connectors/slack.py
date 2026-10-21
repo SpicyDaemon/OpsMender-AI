@@ -6,12 +6,14 @@ import hmac
 import hashlib
 import time
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException, status
 import httpx
 
 from backend.db.models import BotConnector
 from backend.bots.delivery import DeliveryReceipt, UpdateResult
+from backend.bots.incident_card import public_base_url
 from backend.paging.slack_cards import build_page_card_blocks
 from .base import FieldSpec, InboundMessage
 
@@ -26,6 +28,10 @@ _SLACK_UPDATE_FALLBACK_ERRORS = {
     "channel_not_found",
     "is_inactive",
 }
+
+# Slack sends a block_actions ``response_url`` on its hooks host (GovSlack
+# workspaces use slack-gov.com). Nothing else is ever posted to.
+_RESPONSE_URL_HOSTS = {"hooks.slack.com", "hooks.slack-gov.com"}
 
 
 class SlackAdapter:
@@ -208,6 +214,8 @@ class SlackAdapter:
         incident=None,
         native_actions_ready: bool = False,
         status_update: bool = False,
+        facts: list[tuple[str, str]] | None = None,
+        acknowledged_by: str | None = None,
     ) -> DeliveryReceipt:
         credentials = connector.credentials or {}
         bot_token = credentials.get("bot_token")
@@ -218,9 +226,11 @@ class SlackAdapter:
         if incident is not None:
             payload["blocks"] = build_page_card_blocks(
                 incident,
-                base_url=None,
+                base_url=public_base_url(),
                 include_native_actions=native_actions_ready,
                 status_update=status_update,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
             )
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -262,6 +272,8 @@ class SlackAdapter:
         incident=None,
         native_actions_ready: bool = False,
         status_update: bool = False,
+        facts: list[tuple[str, str]] | None = None,
+        acknowledged_by: str | None = None,
     ) -> UpdateResult:
         """Edit an existing Slack incident message in place via chat.update.
 
@@ -283,9 +295,11 @@ class SlackAdapter:
         if incident is not None:
             payload["blocks"] = build_page_card_blocks(
                 incident,
-                base_url=None,
+                base_url=public_base_url(),
                 include_native_actions=native_actions_ready,
                 status_update=status_update,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
             )
 
         try:
@@ -328,3 +342,39 @@ class SlackAdapter:
                 can_update=True,
             ),
         )
+
+    async def respond_to_interaction(
+        self,
+        *,
+        response_url: str,
+        text: str,
+    ) -> tuple[bool, str | None]:
+        """Tell the person who tapped a card button what happened.
+
+        Slack shows nothing for the HTTP body of a ``block_actions`` request;
+        a message posted to the payload's ``response_url`` is what that person
+        sees. It is ephemeral (only they see it) and never replaces the card.
+        Only Slack's hooks hosts are accepted. Never raises.
+        """
+        parts = urlsplit(response_url)
+        if parts.scheme != "https" or parts.hostname not in _RESPONSE_URL_HOSTS:
+            return False, "Slack response_url is not a Slack hooks URL"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    response_url,
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    json={
+                        "response_type": "ephemeral",
+                        "replace_original": False,
+                        "text": text,
+                    },
+                    timeout=10.0,
+                )
+        except httpx.HTTPError as exc:
+            # The type only: the error text can carry the response_url, which
+            # anyone could use to post to this person until it expires.
+            return False, f"Slack response_url network error: {type(exc).__name__}"
+        if resp.status_code != 200:
+            return False, f"Slack response_url error: HTTP {resp.status_code}"
+        return True, None

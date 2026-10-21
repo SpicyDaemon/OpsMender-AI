@@ -30,20 +30,34 @@ def build_discord_incident_payload(
     *,
     incident=None,
     native_actions_ready: bool = False,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> dict[str, Any]:
-    """Render a Discord message and its verified native action controls."""
+    """Render a Discord message and its verified native action controls.
 
-    payload: dict[str, Any] = {"content": text[:2000]}
+    The headline is the card text's first line. Its single asterisks are bold
+    on Slack but italic on Discord, so it is doubled here. ``facts`` (from
+    ``incident_card_facts``) become inline embed fields above the footer that
+    carries the incident id; once ``acknowledged_by`` is set the Acknowledge
+    button goes.
+    """
+
+    headline, newline, rest = text.partition("\n")
+    if len(headline) > 2 and headline[0] == headline[-1] == "*" and headline[1] != "*":
+        headline = f"*{headline}*"
+    payload: dict[str, Any] = {"content": f"{headline}{newline}{rest}"[:2000]}
     if incident is None or not native_actions_ready:
         return payload
 
-    payload["embeds"] = [
-        {
-            "footer": {
-                "text": f"{_INCIDENT_FOOTER_PREFIX}{incident.id}",
-            }
-        }
-    ]
+    embed: dict[str, Any] = {}
+    if facts:
+        # Discord caps an embed field name at 256 and its value at 1024.
+        embed["fields"] = [
+            {"name": label[:256], "value": value[:1024], "inline": True}
+            for label, value in facts
+        ]
+    embed["footer"] = {"text": f"{_INCIDENT_FOOTER_PREFIX}{incident.id}"}
+    payload["embeds"] = [embed]
     payload["components"] = []
     if incident.status != "resolved":
         payload["components"] = [
@@ -57,6 +71,7 @@ def build_discord_incident_payload(
                         "custom_id": action_id,
                     }
                     for label, action_id, style in _BUTTONS
+                    if not (acknowledged_by and action_id == "opsmender:ack")
                 ],
             }
         ]
@@ -273,6 +288,8 @@ class DiscordAdapter:
         incident=None,
         native_actions_ready: bool = False,
         status_update: bool = False,
+        facts: list[tuple[str, str]] | None = None,
+        acknowledged_by: str | None = None,
     ) -> DeliveryReceipt:
         credentials = connector.credentials or {}
         bot_token = credentials.get("bot_token")
@@ -292,6 +309,8 @@ class DiscordAdapter:
                         text,
                         incident=incident,
                         native_actions_ready=native_actions_ready,
+                        facts=facts,
+                        acknowledged_by=acknowledged_by,
                     ),
                 )
         except httpx.HTTPError as exc:
@@ -323,6 +342,8 @@ class DiscordAdapter:
         incident=None,
         native_actions_ready: bool = False,
         status_update: bool = False,
+        facts: list[tuple[str, str]] | None = None,
+        acknowledged_by: str | None = None,
     ) -> UpdateResult:
         credentials = connector.credentials or {}
         bot_token = credentials.get("bot_token")
@@ -341,6 +362,8 @@ class DiscordAdapter:
                         text,
                         incident=incident,
                         native_actions_ready=native_actions_ready,
+                        facts=facts,
+                        acknowledged_by=acknowledged_by,
                     ),
                 )
         except httpx.HTTPError as exc:

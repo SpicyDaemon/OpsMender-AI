@@ -59,6 +59,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The hosted PostgreSQL concurrency step may now take twelve minutes instead
   of five: its 123 cases take about five on a GitHub runner, and the v1.2.0
   release run was stopped at the limit with every test passed.
+- The Slack, Teams and Discord incident cards now say who holds the incident
+  and stay current after a chat action. Each card shows the same facts as the
+  message text, from one source: Service, Team, Org (when set), Responder,
+  Acknowledged by (once someone has) and Escalation level (once above 0).
+  Once acknowledged, the Acknowledge button is left off; Resolve, Escalate
+  and Start AI Session stay, and a resolved incident shows none. After an
+  Acknowledge, Resolve or Start AI Session button, the card is brought up to
+  date through the same delivery the web uses: Slack and Discord edit it in
+  place, Teams posts a fresh card. It only updates Notification Channels and
+  never pages anyone; a repeated callback does not post a second card.
+  Escalate from a card keeps the buttons, where the edited Slack card used to
+  lose them. The Slack channel card gets its View in OpsMender button from
+  `OPSMENDER_PUBLIC_URL`, and the person who taps a Slack button now sees the
+  result as a message only they can see, posted to the interaction's
+  `response_url`; Slack never showed the old reply. The Discord headline is
+  bold instead of italic.
 
 ## [1.2.0] - 2026-10-17
 

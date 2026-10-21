@@ -45,6 +45,12 @@ def _block_id_for_incident(incident_id: uuid.UUID | str) -> str:
     return f"opsmender:incident:{incident_id}"
 
 
+def _mrkdwn_escape(value: str) -> str:
+    """Escape the three characters Slack mrkdwn treats as control syntax, so a
+    name or service can never become a mention or a link."""
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def build_page_card_text(incident: Incident) -> str:
     """The fallback ``text`` field - what Slack shows in notifications when
     Block Kit can't render (mobile lock screens, screen readers, IFTTT)."""
@@ -61,11 +67,18 @@ def build_page_card_blocks(
     include_native_actions: bool = False,
     status_update: bool = False,
     org_name: str | None = None,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> list[dict[str, Any]]:
     """Block Kit JSON for an actionable page card. ``base_url`` is the
     OpsMender web UI origin (e.g. ``https://opsmender.example.com``); when
     omitted, the "View in OpsMender" button is dropped (still safe - Sprint
-    36 just degrades to text + the remaining action buttons)."""
+    36 just degrades to text + the remaining action buttons).
+
+    ``facts`` (from ``incident_card_facts``) render as a two-column fields
+    section under the title. Once ``acknowledged_by`` is set the context line
+    names that person and the Acknowledge button goes; Resolve, Escalate and
+    Start AI Session stay until the incident is resolved."""
 
     block_id = _block_id_for_incident(incident.id)
     priority = (incident.priority or "P?").upper()
@@ -86,38 +99,54 @@ def build_page_card_blocks(
         if snippet:
             header_lines.append(snippet)
 
+    if acknowledged_by:
+        context_text = (
+            f"Acknowledged by {_mrkdwn_escape(acknowledged_by)} · "
+            f"Incident `{incident_id_str}`"
+        )
+    elif org_name:
+        context_text = f"Org: *{org_name}*  •  Incident `{incident_id_str}`"
+    else:
+        context_text = f"Incident `{incident_id_str}`"
+
     blocks: list[dict[str, Any]] = [
         {
             "type": "section",
             "block_id": block_id,
             "text": {"type": "mrkdwn", "text": "\n".join(header_lines)},
         },
+    ]
+    if facts:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*{label}*\n{_mrkdwn_escape(value)}"}
+                    for label, value in facts
+                ],
+            }
+        )
+    blocks.append(
         {
             "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"Org: *{org_name}*  •  Incident `{incident_id_str}`"
-                        if org_name
-                        else f"Incident `{incident_id_str}`"
-                    ),
-                }
-            ],
-        },
-    ]
+            "elements": [{"type": "mrkdwn", "text": context_text}],
+        }
+    )
 
     elements: list[dict[str, Any]] = []
     if include_native_actions and incident.status != "resolved":
-        elements.extend(
-            [
+        if not acknowledged_by:
+            elements.append(
                 {
                     "type": "button",
                     "action_id": ACTION_ACK,
                     "text": {"type": "plain_text", "text": "Acknowledge"},
                     "style": "primary",
                     "value": incident_id_str,
-                },
+                }
+            )
+        elements.extend(
+            [
                 {
                     "type": "button",
                     "action_id": ACTION_RESOLVE,

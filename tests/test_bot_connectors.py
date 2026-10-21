@@ -1013,6 +1013,85 @@ class TestSlackAdapter:
         assert result.ok is False
         assert result.fallback_to_followup is True
 
+    async def test_channel_card_gets_facts_and_view_button_from_public_url(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("OPSMENDER_PUBLIC_URL", "https://ops.example.com/")
+        facts = [("Service", "Checkout API"), ("Responder", "Assigned to Sam Ops")]
+        adapter = get_adapter("slack")
+        for call in ("send", "update"):
+            captured = self._patch_client(
+                monkeypatch,
+                response_json={"ok": True, "channel": "C123", "ts": "1700000000.1"},
+            )
+            if call == "send":
+                await adapter.send_incident_update(
+                    self._connector(),
+                    chat_id="C123",
+                    text="fallback",
+                    incident=self._incident(),
+                    native_actions_ready=True,
+                    facts=facts,
+                    acknowledged_by="Sam Ops",
+                )
+            else:
+                await adapter.update_incident_update(
+                    self._connector(),
+                    chat_id="C123",
+                    text="fallback",
+                    external_message_id="1700000000.1",
+                    incident=self._incident(),
+                    native_actions_ready=True,
+                    facts=facts,
+                    acknowledged_by="Sam Ops",
+                )
+            blocks = captured["json"]["blocks"]
+            fields = [f["text"] for b in blocks if "fields" in b for f in b["fields"]]
+            assert fields == [
+                "*Service*\nCheckout API",
+                "*Responder*\nAssigned to Sam Ops",
+            ]
+            elements = [b for b in blocks if b["type"] == "actions"][0]["elements"]
+            assert [e["action_id"] for e in elements] == [
+                "opsmender:resolve",
+                "opsmender:escalate",
+                "opsmender:start_ai_session",
+                "opsmender:view",
+            ]
+            view = elements[-1]
+            assert view["url"].startswith(
+                "https://ops.example.com/dashboard/incidents/detail?id="
+                "00000000-0000-0000-0000-000000000123"
+            )
+            assert view["url"].endswith("from=slack")
+
+    async def test_respond_to_interaction_posts_an_ephemeral_answer(self, monkeypatch):
+        captured = self._patch_client(monkeypatch, response_json={})
+        ok, error = await get_adapter("slack").respond_to_interaction(
+            response_url="https://hooks.slack.com/actions/T1/1/abc",
+            text="acknowledged incident *API outage*.",
+        )
+        assert (ok, error) == (True, None)
+        assert captured["url"] == "https://hooks.slack.com/actions/T1/1/abc"
+        assert captured["json"] == {
+            "response_type": "ephemeral",
+            "replace_original": False,
+            "text": "acknowledged incident *API outage*.",
+        }
+
+    async def test_respond_to_interaction_only_posts_to_slack_hooks(self, monkeypatch):
+        captured = self._patch_client(monkeypatch, response_json={})
+        for url in (
+            "https://attacker.example/actions/T1/1/abc",
+            "http://hooks.slack.com/actions/T1/1/abc",
+            "https://hooks.slack.com.attacker.example/x",
+        ):
+            ok, error = await get_adapter("slack").respond_to_interaction(
+                response_url=url, text="hi"
+            )
+            assert ok is False and "hooks" in error
+        assert captured == {}
+
     async def test_update_incident_update_no_token_is_hard_error(self, monkeypatch):
         connector = self._connector()
         connector.credentials = {"signing_secret": "shh"}

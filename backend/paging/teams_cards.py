@@ -59,10 +59,16 @@ def build_page_card_adaptive(
     include_native_actions: bool = False,
     status_update: bool = False,
     org_name: str | None = None,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> dict[str, Any]:
     """Return a single adaptive card payload (the value that goes inside
     an attachment's ``content`` field). Use :func:`wrap_card_as_attachment`
     to convert it into the Graph chat-message ``attachments`` array.
+
+    ``facts`` (from ``incident_card_facts``) join the FactSet. Once
+    ``acknowledged_by`` is set the Acknowledge action goes; Teams cannot edit
+    a posted card, so each change posts a fresh one in this state.
     """
 
     priority = (incident.priority or "P?").upper()
@@ -75,16 +81,17 @@ def build_page_card_adaptive(
         first_line = incident.description.strip().splitlines()[0]
         snippet = first_line[:300]
 
-    facts: list[dict[str, str]] = []
+    fact_rows: list[dict[str, str]] = []
     if org_name:
-        facts.append({"title": "Org", "value": org_name})
-    facts += [
+        fact_rows.append({"title": "Org", "value": org_name})
+    fact_rows += [
         {"title": "Priority", "value": priority},
         {"title": "Status", "value": status_label},
     ]
     if severity:
-        facts.append({"title": "Severity", "value": severity})
-    facts.append({"title": "Incident", "value": incident_id_str})
+        fact_rows.append({"title": "Severity", "value": severity})
+    fact_rows += [{"title": label, "value": value} for label, value in facts or []]
+    fact_rows.append({"title": "Incident", "value": incident_id_str})
 
     body: list[dict[str, Any]] = [
         {
@@ -94,7 +101,7 @@ def build_page_card_adaptive(
             "text": f"{'Status update' if status_update else 'OpsMender page'}: {title}",
             "wrap": True,
         },
-        {"type": "FactSet", "facts": facts},
+        {"type": "FactSet", "facts": fact_rows},
     ]
     if snippet:
         body.append(
@@ -109,8 +116,8 @@ def build_page_card_adaptive(
 
     actions: list[dict[str, Any]] = []
     if include_native_actions and incident.status != "resolved":
-        actions.extend(
-            [
+        if not acknowledged_by:
+            actions.append(
                 {
                     "type": "Action.Submit",
                     "title": "Acknowledge",
@@ -119,7 +126,10 @@ def build_page_card_adaptive(
                         "action": ACTION_ACK,
                         "incident_id": incident_id_str,
                     },
-                },
+                }
+            )
+        actions.extend(
+            [
                 {
                     "type": "Action.Submit",
                     "title": "Resolve",
@@ -193,6 +203,8 @@ def build_graph_chat_message(
     base_url: str | None = None,
     include_native_actions: bool = False,
     status_update: bool = False,
+    facts: list[tuple[str, str]] | None = None,
+    acknowledged_by: str | None = None,
 ) -> dict[str, Any]:
     """Return a complete Graph ``chats/{id}/messages`` payload carrying
     the adaptive card. This is the value the dispatcher posts to Graph.
@@ -203,6 +215,8 @@ def build_graph_chat_message(
         base_url=base_url,
         include_native_actions=include_native_actions,
         status_update=status_update,
+        facts=facts,
+        acknowledged_by=acknowledged_by,
     )
     attachment = wrap_card_as_attachment(card)
     fallback = build_page_card_text(incident)

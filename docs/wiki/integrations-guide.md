@@ -501,6 +501,17 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/slack/webhook
 
 Ensure you subscribe to the `message.channels` bot event. OpsMender verifies every inbound request using HMAC-SHA256 signatures (`X-Slack-Signature`) against your `signing_secret`.
 
+Incident cards: the channel card shows the same facts as the message text
+(Service, Team, Org when set, Responder, Acknowledged by once someone has,
+Escalation level once above 0) and a **View in OpsMender** button built from
+`OPSMENDER_PUBLIC_URL`. With **verified Slack actions** enabled (Interactivity
+Request URL `https://<your-opsmender-url>/bot/slack/interactions`), it also
+carries Acknowledge, Resolve, Escalate and Start AI Session; Acknowledge is
+left off once someone has acknowledged. After a button press OpsMender edits
+the card in place (`chat.update`) and answers the person who tapped with an
+ephemeral message posted to the interaction's `response_url`. See
+[Slack as your paging surface](slack-paging-surface.md).
+
 Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
 
 ### Microsoft Teams (Graph + Bot Framework)
@@ -527,6 +538,13 @@ POST https://<your-opsmender-url>/bot/teams/activity
 Enable verified Teams actions on the Notification Channel only after the Bot
 Framework app ID is set. OpsMender validates the Microsoft-signed JWT audience,
 issuer, and time claims before processing an action.
+
+The card's FactSet carries the same facts as the message text (Service, Team,
+Org when set, Responder, Acknowledged by once someone has, Escalation level
+once above 0), and Acknowledge is left off once someone has acknowledged.
+Graph app-only access cannot edit a posted message, so each change, including
+one made from a card button, posts a fresh card in the new state. See
+[Teams as your paging surface](teams-paging-surface.md).
 
 Identity mapping (RBAC): Use the user's Azure AD object ID
 (`activity.from.aadObjectId`) as the platform user ID.
@@ -558,6 +576,13 @@ Enable **verified Discord actions** on the Notification Channel to render
 Acknowledge, Resolve, Escalate, and Start AI Session buttons. OpsMender returns
 an immediate ephemeral acknowledgement, then completes the signed interaction.
 Repeated delivery of the same interaction ID is deduplicated.
+
+The message headline is bold. With verified actions, the same facts as the
+message text (Service, Team, Org when set, Responder, Acknowledged by once
+someone has, Escalation level once above 0) also appear as inline embed fields
+above the footer that carries the incident id. After a button press OpsMender edits
+the posted message in place, and Acknowledge is left off once someone has
+acknowledged.
 
 Identity mapping (RBAC): Use the Discord User ID (e.g.,
 `123456789012345678`) as the platform user ID and link it to an active

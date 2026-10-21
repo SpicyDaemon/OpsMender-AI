@@ -26,7 +26,15 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > uses Microsoft Bot Framework JWT verification; Discord uses Ed25519
 > interaction signatures. Each click is mapped to an
 > active OpsMender user, checked for Admin/Operator RBAC, deduplicated, and
-> audited. Other chat platforms still use the link fallback, and message
+> audited. The Slack, Teams and Discord cards show the same facts as the
+> message (Service, Team, Org, Responder, Acknowledged by, Escalation level),
+> and once someone acknowledges, the Acknowledge button is left off. After a
+> verified Acknowledge, Resolve or Start AI Session, the card in the channel
+> is brought up to date through the same delivery the web uses: Slack and
+> Discord edit it in place, Teams posts a fresh card. That update only touches
+> Notification Channels and never pages anyone. Slack shows the person who
+> tapped the result in a message only they can see.
+> Other chat platforms still use the link fallback, and message
 > edit-in-place is advertised only where an adapter has a verified update path.
 > Native buttons require platform-verified callbacks + RBAC; the
 > authenticated-link fallback remains universal.

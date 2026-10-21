@@ -61,10 +61,10 @@ const gatePoints = [
 ];
 
 const whatsNew = [
-  ['Alert text is data, never orders',  'Every prompt marks alert text, incident descriptions and tool output as data. Keys and passwords in tool output are removed before the model sees them. An alert that tries to give the AI instructions is flagged on the incident and never acted on.'],
-  ['Keys stay where they belong',       'A model may only read its own provider\'s key, and a local MCP server only sees the environment you give it. Neither can reach the app\'s own secrets.'],
-  ['Run more than one copy',            'Scheduled audits and uptime checks are claimed per row, so several instances behind a load balancer run each job once. A copy that dies hands its work to another after the interval.'],
-  ['Current foundations',               'The MCP SDK is at 1.30 with its advisory closed, a redirect to another host is refused by name, and every build and release step runs on Node 24.'],
+  ['Qwen, DeepSeek and Kimi by name',   'Pick them on the Models page and put the key in .env. There is no base URL to type, and each one connects only to its vendor\'s hosts.'],
+  ['LM Studio as a local provider',     'Pick LM Studio by name. It needs no key and connects to its default local address unless you name another. The new model form shows the default URL for LM Studio, Qwen, DeepSeek and Kimi, so you type one only when yours differs.'],
+  ['Cards that say who holds it',       'Slack, Teams and Discord cards name the responder and who acknowledged. After an acknowledge or resolve from chat, Slack and Discord edit the card in place and drop Acknowledge, and Teams, which cannot edit a posted card, posts a fresh one without it.'],
+  ['Slack answers who pressed',         'Press a Slack button and the result comes back in a message only you can see, once the action is saved. Slack never showed the old reply.'],
 ];
 
 const shots = [
@@ -395,7 +395,7 @@ const marquee = [...platforms, ...sources];
       <div class="mx-auto max-w-7xl px-5 text-center sm:px-8">
         <p class="label rise">Integrations</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">OpsMender fits the tools your team already uses.</h2>
-        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Alerts in from sixteen sources. Pages out to twenty platforms, with buttons in Slack, Teams, and Discord. Any of eleven model providers, and your key never leaves your deployment.</p>
+        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Alerts in from sixteen sources. Pages out to twenty platforms, with buttons in Slack, Teams, and Discord. Any of eleven model providers. Your key stays in your server's environment and is sent only to that provider's API.</p>
       </div>
       <div class="fade-x rise mt-14 overflow-hidden" style="--i:3" aria-label="Alert sources and notification platforms">
         <div class="flex w-max animate-marquee gap-4 pr-4">
@@ -417,7 +417,7 @@ const marquee = [...platforms, ...sources];
       <div class="text-center">
         <p class="label rise">Supported AI models</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">Bring the model you already use.</h2>
-        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Hosted or local, picked per workspace or per service. Your API key stays on your server, and a model can only ever read its own key.</p>
+        <p class="rise mx-auto mt-5 max-w-xl text-ops-subtle" style="--i:2">Hosted or local, picked per workspace or per service. Your API key stays in your server's environment and is sent only to that provider's API. A model can only ever read its own key.</p>
       </div>
       <div class="rise mt-12 grid gap-4 [grid-auto-rows:1fr] sm:grid-cols-2 lg:grid-cols-4" style="--i:3" aria-label="Model providers">
         {providers.map((m) => (
@@ -474,13 +474,13 @@ const marquee = [...platforms, ...sources];
           </div>
         ))}
       </div>
-      <p class="rise mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-muted">v1.2.0 <span class="mx-2">·</span> MIT license <span class="mx-2">·</span> <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="underline decoration-ops-border underline-offset-4 hover:text-slate-200 focus-ring">changelog</a></p>
+      <p class="rise mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-muted">v1.2.1 <span class="mx-2">·</span> MIT license <span class="mx-2">·</span> <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="underline decoration-ops-border underline-offset-4 hover:text-slate-200 focus-ring">changelog</a></p>
     </section>
 
     <!-- WHAT'S NEW -->
     <section id="new" class="mx-auto max-w-7xl scroll-mt-28 px-5 pt-32 sm:px-8 sm:pt-44">
       <div class="text-center">
-        <p class="label rise">Version 1.2.0</p>
+        <p class="label rise">Version 1.2.1</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">What's new</h2>
       </div>
       <ol class="mt-14 grid gap-5 md:grid-cols-2">
@@ -929,7 +929,7 @@ const marquee = [...platforms, ...sources];
           points: ['Twenty platforms including Slack, Teams, Discord, Telegram, Matrix, Google Chat, and email.', 'Slack, Teams, and Discord get buttons: acknowledge, resolve, escalate, start a session. Every press is verified and audited.', 'SMS and voice calls through Twilio. The voice menu is 1 acknowledge, 2 escalate, 3 resolve.', 'Every message carries an authenticated link back to the incident.'],
           code: 'backend/bots/ · backend/bots/capabilities.py' },
         { id: 'models', x: 110, y: 300, label: 'Models', sub: 'bring your own', kind: 'AI',
-          summary: 'Eleven providers, and the keys never leave your deployment.',
+          summary: 'Eleven providers. Each key stays in your server\'s environment and goes only to its provider\'s API.',
           points: ['Anthropic, OpenAI, Azure OpenAI, Bedrock, Vertex AI, Qwen, DeepSeek, Kimi, Ollama, LM Studio, or any OpenAI compatible endpoint such as vLLM.', 'A model may only read its own provider\'s key variable, or one the operator lists, never the app\'s own secrets.', 'A per service model list narrows what an operator can pick for a session. The workspace default is always available.'],
           code: 'backend/llm/factory.py · backend/llm/registry.py' },
         { id: 'session', x: 330, y: 300, label: 'AI session', sub: 'observe, diagnose, plan, act', kind: 'AI',
@@ -942,7 +942,7 @@ const marquee = [...platforms, ...sources];
           code: 'backend/tiers/enforcement.py · backend/tiers/sandbox.py' },
         { id: 'mcp', x: 790, y: 240, label: 'MCP servers', sub: 'yours, local or remote', kind: 'Tools',
           summary: 'The general purpose way to give the agent hands.',
-          points: ['Run any MCP server: local over stdio, or remote over HTTP with OAuth 2.1.', 'A local server receives only the environment you give it, never the app\'s secrets. A remote server is followed through a redirect only within its own origin.', 'Each service has a strict allowlist of servers. Empty means none.', 'Import server definitions from the config files of tools you already use.'],
+          points: ['Run any MCP server: local over stdio, or remote over HTTP with OAuth 2.1.', 'A local server receives only the environment you give it, never the app\'s secrets, unless its entry in mcp.json or OPSMENDER_MCP_SERVERS_JSON sets inherit_env. One saved before v1.2 keeps the full environment until an admin saves it again. A remote server is followed through a redirect only within its own origin.', 'Each service has a strict allowlist of servers. Empty means none.', 'Import server definitions from the config files of tools you already use.'],
           code: 'backend/mcp/' },
         { id: 'connectors', x: 790, y: 360, label: 'Native connectors', sub: '26 kinds', kind: 'Tools',
           summary: 'Built in integrations that need no MCP server at all.',

@@ -32,8 +32,11 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > verified Acknowledge or Resolve, the card in the channel is brought up to
 > date through the same delivery the web uses: Slack and Discord edit it in
 > place, Teams posts a fresh card. A release, takeover, assignment,
-> reassignment, service move or reopen edits the cards already posted in place
-> and posts nothing new. Start AI Session
+> reassignment, bulk Acknowledge from the incident list, service move or
+> reopen edits the Slack and Discord cards already posted in place and posts
+> nothing new. Teams cannot edit a posted card, so these changes post nothing
+> there, and the Teams card catches up at the next acknowledge, resolve or
+> escalation. Start AI Session
 > leaves the card as it is. These updates only touch Notification Channels and
 > never page anyone. Slack shows the person who tapped the result in a message
 > only they can see.
@@ -233,8 +236,11 @@ configured. Every channel has one or both delivery lanes:
   platform supports them.
 - **Track**: one-way shared lifecycle status for Slack, Microsoft Teams,
   Discord, Google Chat, or AWS EventBridge. Slack, Discord, and Google Chat
-  update one post in place; Teams posts follow-ups; EventBridge emits a
-  structured event.
+  update one post in place; Teams posts a follow-up and EventBridge emits a
+  structured event when an incident is created, acknowledged, escalated or
+  resolved. Changes that only edit cards, such as a bulk Acknowledge from the
+  incident list (see the list above), edit the Slack, Discord and Google Chat
+  posts and reach neither Teams nor EventBridge.
 
 Each channel has a friendly name and provider details that live here only.
 
@@ -243,7 +249,7 @@ Adding a channel here makes it immediately routable in **My Routing** with no fu
 Each channel has a **Team Scope**:
 
 - **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
-- **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically from the incident Service's team, then the active escalation chain's team. If neither exists, only workspace-wide channels receive the post. When an incident moves to another team (a reassignment, a handoff, or a move to another team's service), the card already in a channel of the team it left is edited once more: it says **Moved to another team**, names no service, team or responder, and has no action buttons. Nothing about the incident reaches that channel after that.
+- **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically: the team it was reassigned to, then the incident Service's team, then the active escalation chain's team. If none exists, only workspace-wide channels receive the post. When an incident moves to another team (a reassignment, a handoff, or a move to another team's service), the card already in a channel of the team it left is edited once more where the platform can edit a posted message (Slack, Discord, Google Chat): it says **Moved to another team**, names no service, team or responder, and has no action buttons. Teams cannot edit a posted card, so a Teams card there is left as it was. Nothing about the incident reaches that channel after that.
 
 Respond channels receive incident and AI-session delivery. Track channels
 receive incident **created / acknowledged / escalated / resolved** status only,

@@ -549,8 +549,9 @@ once above 0), shown as typed, and Acknowledge is left off once someone has
 acknowledged. Graph app-only access cannot edit a posted message, so each
 acknowledge, resolve or escalation, including one made from a card button,
 posts a fresh card in the new state. Changes that only edit cards in place (a
-release, takeover, assignment, reassignment, service move or reopen) post
-nothing on Teams. See
+release, takeover, assignment, reassignment, service move or reopen, and an
+Acknowledge or reassign in bulk from the incident list) post nothing on
+Teams. See
 [Teams as your paging surface](teams-paging-surface.md).
 
 Identity mapping (RBAC): Use the user's Azure AD object ID

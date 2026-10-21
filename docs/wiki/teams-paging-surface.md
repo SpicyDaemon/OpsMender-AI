@@ -15,7 +15,8 @@ chat.
 
 ## 1. What you get
 
-When OpsMender pages you on Teams, the message in the chat carries:
+When OpsMender posts an incident update to a Teams Notification Channel, the
+card in the chat carries:
 
 - A bold title with the incident name.
 - A FactSet: Priority, Status, Severity (if set), then the same facts as the
@@ -30,16 +31,21 @@ When OpsMender pages you on Teams, the message in the chat carries:
   **Acknowledge** is left off; a resolved incident has no action buttons.
 - A **View in OpsMender** `Action.OpenUrl` button (when `OPSMENDER_PUBLIC_URL` is set) that deep-links to `/dashboard/incidents/detail?id=…&from=teams`. The incident detail page surfaces a "you opened this from Teams" breadcrumb so the chat origin is never lost.
 
+A personal Teams page (the `teams_dm_graph` channel) carries a simpler card:
+the title, Org (when set), Priority, Status, Severity (if set), the incident
+id, the first line of the description and **View in OpsMender**, without the
+responder facts or action buttons.
+
 Teams cannot edit a card it has posted (Microsoft Graph app-only access can
 only patch a message's policy fields), so when the incident is acknowledged or
 resolved (on the web, with a card button, a Slack command or keypad 1 on a
 phone page) or escalates, OpsMender posts a fresh card in the new state to the
 chat. These posts only touch Notification Channels; they never page anyone. A
-release, takeover, assignment, reassignment, service move or reopen only edits
-cards already posted on platforms that can edit them (Slack, Discord),
-so Teams gets no card for it; the next acknowledge, resolve or escalation
-posts one in the state of that moment. Starting an AI session posts no
-incident card.
+release, takeover, assignment, reassignment, service move or reopen, and an
+Acknowledge or reassign in bulk from the incident list, only edit cards
+already posted on platforms that can edit them (Slack, Discord), so Teams
+gets no card for them; the next acknowledge, resolve or escalation posts one
+in the state of that moment. Starting an AI session posts no incident card.
 
 Every action click is JWT-verified and routed through the same durable
 idempotency, identity mapping, active-user, Admin/Operator RBAC, action, and

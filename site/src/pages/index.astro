@@ -139,24 +139,40 @@ const marquee = [...platforms, ...sources];
     .sc { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .6s var(--ease-fade); }
     .sc .urlbar-top { height: 78px; padding-top: 34px; }
     .sc-page { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
-    .sc-alert { background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59,130,246,.35), transparent 70%), linear-gradient(180deg, #0b1020, #07090f); align-items: center; }
-    .lock-time { margin-top: 54px; font-size: 54px; font-weight: 300; letter-spacing: -0.03em; color: #f1f5f9; line-height: 1; }
-    .lock-date { margin-top: 6px; font-size: 12.5px; color: #94a3b8; }
-    .notif { position: absolute; left: 10px; right: 10px; top: 150px; padding: 12px 13px; border-radius: 18px; background: rgba(30,41,59,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(148,163,184,.18); color: #f1f5f9; transform: translateY(-140px); opacity: 0; transition: transform .8s var(--ease-fluid), opacity .6s var(--ease-fade); }
-    .s1 .notif { transform: none; opacity: 1; }
-    .notif-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #cbd5e1; }
-    .notif-icon { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 4px; background: #3b82f6; color: #fff; font-size: 10px; font-weight: 700; }
-    .notif-title { margin-top: 7px; font-size: 13px; font-weight: 600; }
-    .notif-body { margin-top: 2px; font-size: 12px; color: #cbd5e1; line-height: 1.35; }
-    .notif-actions { display: flex; gap: 6px; margin-top: 10px; }
-    .notif-btn { flex: 1; display: inline-flex; justify-content: center; padding: 7px 0; border-radius: 9px; background: rgba(148,163,184,.16); font-size: 11.5px; font-weight: 600; color: #f1f5f9; transition: background-color .3s var(--ease-fade), color .3s var(--ease-fade); }
-    .btn-ack .ack-on, .s1-acked .btn-ack .ack-off { display: none; }
-    .s1-acked .btn-ack .ack-on { display: inline; }
-    .s1-acked .btn-ack { background: rgba(52,211,153,.22); color: #6ee7b7; }
+    /* Scene 1 is the chat app: a channel, and the incident card the connector posts, with its buttons. */
+    .sc-alert { background: #0f1420; }
+    .chat-head { display: flex; align-items: center; gap: 5px; flex: none; height: 78px; padding: 40px 14px 0; font-size: 13px; font-weight: 600; color: #f1f5f9; border-bottom: 1px solid #1a2540; }
+    .chat-hash { color: #64748b; font-weight: 500; }
+    .chat-old { padding: 14px 14px 0; display: flex; flex-direction: column; gap: 8px; }
+    .chat-line { display: block; height: 8px; border-radius: 4px; background: #1a2540; }
+    .msg { margin: 16px 10px 0; transform: translateY(16px); opacity: 0; transition: transform .7s var(--ease-fluid), opacity .5s var(--ease-fade); }
+    .s1 .msg { transform: none; opacity: 1; }
+    .msg-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; }
+    .msg-avatar { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 5px; background: #3b82f6; color: #fff; font-size: 11px; font-weight: 700; }
+    .msg-name { font-weight: 600; color: #f1f5f9; }
+    .msg-app { padding: 1px 4px; border-radius: 3px; background: #1a2540; font-size: 8.5px; font-weight: 600; letter-spacing: .04em; }
+    .card { margin-top: 6px; padding: 9px 10px 10px 11px; border-left: 3px solid #fb7185; border-radius: 6px; background: #141b2d; }
+    .card-headline { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #fda4af; }
+    .card-dot { width: 7px; height: 7px; border-radius: 9999px; background: #fb7185; }
+    .card-title { margin-top: 4px; font-size: 12px; font-weight: 600; color: #f1f5f9; line-height: 1.35; }
+    .card-line { margin-top: 4px; font-size: 10.5px; color: #cbd5e1; line-height: 1.35; }
+    .card-acked { display: none; color: #6ee7b7; }
+    .ack-check { display: inline-block; margin-right: 4px; font-weight: 700; }
+    .s1-acked .card-responder { display: none; }
+    .s1-acked .card-acked { display: block; }
+    .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 9px; transition: opacity .4s var(--ease-fade); }
+    .card-btn { display: inline-flex; justify-content: center; padding: 6px 0; border-radius: 6px; border: 1px solid #2a3a5e; font-size: 10.5px; font-weight: 600; color: #f1f5f9; white-space: nowrap; }
+    .btn-ack { background: rgba(52,211,153,.14); border-color: rgba(52,211,153,.4); color: #6ee7b7; transition: all .3s var(--ease-fade); }
+    .s1-acked .btn-ack { background: transparent; border-color: #2a3a5e; color: #64748b; }
+    .card-link { margin-top: 8px; font-size: 10.5px; color: #94a3b8; }
+    .card-url { color: #60a5fa; text-decoration: underline; text-underline-offset: 2px; }
     .tap { position: absolute; width: 26px; height: 26px; border-radius: 9999px; background: rgba(255,255,255,.55); box-shadow: 0 0 0 6px rgba(255,255,255,.18); opacity: 0; transform: scale(.6); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 5; }
-    .tap-ack { left: 29%; top: 262px; }
+    .tap-ack { left: 28%; top: 282px; }
     .s1-tap .tap-ack { opacity: 1; transform: scale(1); }
     .s1-acked .tap-ack { opacity: 0; transform: scale(1.4); }
+    .tap-open { left: 58%; top: 352px; }
+    .s1-open .tap-open { opacity: 1; transform: scale(1); }
+    .s2 .tap-open { opacity: 0; transform: scale(1.4); }
     .s1 .sc-alert { opacity: 1; }
     .s2 .sc-alert { opacity: 0; }
     .s2 .sc-browser { opacity: 1; }
@@ -194,7 +210,7 @@ const marquee = [...platforms, ...sources];
     .story-step.active { background: rgba(255,255,255,.04); border-color: #1a2540; }
     .story-step.active .step-num { border-color: #3b82f6; color: #f1f5f9; background: rgba(59,130,246,.2); }
     @media (prefers-reduced-motion: reduce) {
-      .sc, .notif, .sc-page, .sheet, .bubble, .sheet-actions, .url-text, .tap { transition: none; }
+      .sc, .msg, .sc-page, .sheet, .bubble, .sheet-actions, .url-text, .tap { transition: none; }
       .dots i { animation: none; }
     }
 
@@ -509,8 +525,8 @@ const marquee = [...platforms, ...sources];
             <p class="mt-5 text-ops-subtle">The same app in the browser your phone already has. Nothing to install and no second login. A page reaches you in chat, one tap acknowledges it, the link opens the incident, and you can talk to the agent before you let it act.</p>
             <ol id="story-steps" class="mt-7 space-y-1.5">
               {[
-                ['The page arrives', 'In chat, with the incident and two buttons.'],
-                ['One tap to acknowledge', 'The chain stops escalating. The incident is yours.'],
+                ['The page arrives in chat', 'The incident card, with its buttons, in the channel you already watch.'],
+                ['One tap to acknowledge', 'The chain stops escalating. The card says the incident is yours.'],
                 ['The link opens the incident', 'Same app, signed in, straight to the page.'],
                 ['Ask the agent, then approve', 'It explains its plan in plain words. Nothing runs until you say so.'],
               ].map(([title, sub], i) => (
@@ -530,18 +546,25 @@ const marquee = [...platforms, ...sources];
 
                 <!-- Scene 1: the page arrives in chat, on the lock screen -->
                 <div class="sc sc-alert">
-                  <p class="lock-time">7:48</p>
-                  <p class="lock-date">Tuesday, October 20</p>
-                  <div class="notif">
-                    <div class="notif-head"><span class="notif-icon">O</span><span>OpsMender in chat</span><span class="ml-auto">now</span></div>
-                    <p class="notif-title">P1 · Auth service saturation</p>
-                    <p class="notif-body">Payments is paged. No one has acknowledged yet.</p>
-                    <div class="notif-actions">
-                      <span class="notif-btn btn-ack"><span class="ack-off">Acknowledge</span><span class="ack-on">Acknowledged · you</span></span>
-                      <span class="notif-btn">Open</span>
+                  <div class="chat-head"><span class="chat-hash">#</span>payments-incidents</div>
+                  <div class="chat-old"><span class="chat-line w-3/4"></span><span class="chat-line w-1/2"></span></div>
+                  <div class="msg">
+                    <div class="msg-head"><span class="msg-avatar">O</span><span class="msg-name">OpsMender</span><span class="msg-app">APP</span><span class="msg-time">7:48 PM</span></div>
+                    <div class="card">
+                      <p class="card-headline"><span class="card-dot"></span>New incident</p>
+                      <p class="card-title">P1 · Auth service saturation requires rollout approval</p>
+                      <p class="card-line">Service: auth-service · Team: Payments</p>
+                      <p class="card-line card-responder">Responder: paging the Payments roster</p>
+                      <p class="card-line card-acked"><span class="ack-check">✓</span>Acknowledged by: you</p>
+                      <div class="card-actions">
+                        <span class="card-btn btn-ack">Acknowledge</span><span class="card-btn">Resolve</span>
+                        <span class="card-btn">Escalate</span><span class="card-btn">Start AI session</span>
+                      </div>
+                      <p class="card-link">Open incident: <span class="card-url">ops.example.com/…/incidents/7d99</span></p>
                     </div>
                   </div>
                   <span class="tap tap-ack" aria-hidden="true"></span>
+                  <span class="tap tap-open" aria-hidden="true"></span>
                 </div>
 
                 <!-- Scene 2: the link opens the incident in the browser -->
@@ -750,12 +773,12 @@ const marquee = [...platforms, ...sources];
         const steps = Array.from(document.querySelectorAll<HTMLButtonElement>('.story-step'));
         // [time ms, class, step number]
         const timeline: [number, string, number][] = [
-          [200, 's1', 1], [1600, 's1-tap', 2], [2100, 's1-acked', 2],
-          [3600, 's2', 3], [4700, 's2-page', 3],
+          [200, 's1', 1], [1700, 's1-tap', 2], [2200, 's1-acked', 2], [3300, 's1-open', 3],
+          [3900, 's2', 3], [5000, 's2-page', 3],
           [7200, 's3', 4], [8000, 's3-ask', 4], [8800, 's3-typing', 4], [10300, 's3-reply', 4],
           [12300, 's3-tap', 4], [12800, 's3-approved', 4],
         ];
-        const sceneStart = [0, 200, 1600, 3600, 7200];
+        const sceneStart = [0, 200, 1700, 3300, 7200];
         const LOOP = 15500;
         let timers: number[] = [];
         const mark = (n: number) => steps.forEach((s) => s.classList.toggle('active', Number(s.dataset.step) === n));

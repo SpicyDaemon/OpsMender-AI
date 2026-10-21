@@ -139,6 +139,22 @@ const marquee = [...platforms, ...sources];
     .sc { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .6s var(--ease-fade); }
     .sc .urlbar-top { height: 78px; padding-top: 34px; }
     .sc-page { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
+    /* Scene 0 is the lock screen: the chat app's own notification, no buttons, because that is what a phone shows. */
+    .sc-lock { background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59,130,246,.35), transparent 70%), linear-gradient(180deg, #0b1020, #07090f); align-items: center; }
+    .s0 .sc-lock { opacity: 1; }
+    .s1 .sc-lock { opacity: 0; }
+    .lock-time { margin-top: 54px; font-size: 54px; font-weight: 300; letter-spacing: -0.03em; color: #f1f5f9; line-height: 1; }
+    .lock-date { margin-top: 6px; font-size: 12.5px; color: #94a3b8; }
+    .notif { position: absolute; left: 10px; right: 10px; top: 150px; padding: 11px 13px 12px; border-radius: 18px; background: rgba(30,41,59,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(148,163,184,.18); color: #f1f5f9; transform: translateY(-140px); opacity: 0; transition: transform .8s var(--ease-fluid), opacity .6s var(--ease-fade); }
+    .s0 .notif { transform: none; opacity: 1; }
+    .notif-head { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #cbd5e1; }
+    .notif-icon { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 4px; background: #4a154b; color: #fff; font-size: 10px; font-weight: 700; }
+    .notif-title { margin-top: 6px; font-size: 12.5px; font-weight: 600; }
+    .notif-body { margin-top: 2px; font-size: 11.5px; color: #cbd5e1; line-height: 1.35; }
+    .tap-notif { left: 46%; top: 200px; }
+    .s0-tap .tap-notif { opacity: 1; transform: scale(1); }
+    .s1 .tap-notif { opacity: 0; transform: scale(1.4); }
+
     /* Scene 1 is the chat app: a channel, and the incident card the connector posts, with its buttons. */
     .sc-alert { background: #0f1420; }
     .chat-head { display: flex; align-items: center; gap: 5px; flex: none; height: 78px; padding: 40px 14px 0; font-size: 13px; font-weight: 600; color: #f1f5f9; border-bottom: 1px solid #1a2540; }
@@ -522,10 +538,10 @@ const marquee = [...platforms, ...sources];
           <div>
             <p class="label">On your phone</p>
             <h2 class="headline mt-5 text-4xl text-slate-50 sm:text-5xl">Acknowledge from wherever you are.</h2>
-            <p class="mt-5 text-ops-subtle">The same app in the browser your phone already has. Nothing to install and no second login. A page reaches you in chat, one tap acknowledges it, the link opens the incident, and you can talk to the agent before you let it act.</p>
+            <p class="mt-5 text-ops-subtle">There is no app to install. The page reaches you through the chat app you already use, one tap acknowledges it, the link opens the incident in your phone's browser, and you can talk to the agent before you let it act.</p>
             <ol id="story-steps" class="mt-7 space-y-1.5">
               {[
-                ['The page arrives in chat', 'The incident card, with its buttons, in the channel you already watch.'],
+                ['The page arrives in chat', 'A notification from the chat app you already have, then the incident card with its buttons.'],
                 ['One tap to acknowledge', 'The chain stops escalating. The card says the incident is yours.'],
                 ['The link opens the incident', 'Same app, signed in, straight to the page.'],
                 ['Ask the agent, then approve', 'It explains its plan in plain words. Nothing runs until you say so.'],
@@ -544,7 +560,19 @@ const marquee = [...platforms, ...sources];
               <div id="story" class="phone-screen story" data-base={base}>
                 <span class="island" aria-hidden="true"></span>
 
-                <!-- Scene 1: the page arrives in chat, on the lock screen -->
+                <!-- Scene 0: the chat app's notification on the lock screen -->
+                <div class="sc sc-lock">
+                  <p class="lock-time">7:48</p>
+                  <p class="lock-date">Tuesday, October 20</p>
+                  <div class="notif">
+                    <div class="notif-head"><span class="notif-icon">S</span><span>Slack · #payments-incidents</span><span class="ml-auto">now</span></div>
+                    <p class="notif-title">OpsMender</p>
+                    <p class="notif-body">New incident · P1 · Auth service saturation requires rollout approval. Paging the Payments roster.</p>
+                  </div>
+                  <span class="tap tap-notif" aria-hidden="true"></span>
+                </div>
+
+                <!-- Scene 1: the incident card in the channel, with its buttons -->
                 <div class="sc sc-alert">
                   <div class="chat-head"><span class="chat-hash">#</span>payments-incidents</div>
                   <div class="chat-old"><span class="chat-line w-3/4"></span><span class="chat-line w-1/2"></span></div>
@@ -773,13 +801,14 @@ const marquee = [...platforms, ...sources];
         const steps = Array.from(document.querySelectorAll<HTMLButtonElement>('.story-step'));
         // [time ms, class, step number]
         const timeline: [number, string, number][] = [
-          [200, 's1', 1], [1700, 's1-tap', 2], [2200, 's1-acked', 2], [3300, 's1-open', 3],
-          [3900, 's2', 3], [5000, 's2-page', 3],
-          [7200, 's3', 4], [8000, 's3-ask', 4], [8800, 's3-typing', 4], [10300, 's3-reply', 4],
-          [12300, 's3-tap', 4], [12800, 's3-approved', 4],
+          [200, 's0', 1], [1700, 's0-tap', 1], [2200, 's1', 1],
+          [3600, 's1-tap', 2], [4100, 's1-acked', 2], [5200, 's1-open', 3],
+          [5800, 's2', 3], [6900, 's2-page', 3],
+          [9100, 's3', 4], [9900, 's3-ask', 4], [10700, 's3-typing', 4], [12200, 's3-reply', 4],
+          [14200, 's3-tap', 4], [14700, 's3-approved', 4],
         ];
-        const sceneStart = [0, 200, 1700, 3300, 7200];
-        const LOOP = 15500;
+        const sceneStart = [0, 200, 3600, 5200, 9100];
+        const LOOP = 17400;
         let timers: number[] = [];
         const mark = (n: number) => steps.forEach((s) => s.classList.toggle('active', Number(s.dataset.step) === n));
         const clear = () => { timers.forEach(clearTimeout); timers = []; stage.className = 'phone-screen story'; };
@@ -792,7 +821,7 @@ const marquee = [...platforms, ...sources];
           timers.push(window.setTimeout(() => play(0), LOOP - from));
         };
         steps.forEach((s) => s.addEventListener('click', () => play(sceneStart[Number(s.dataset.step)])));
-        if (reduce) { for (const [, cls] of timeline.slice(0, 5)) stage.classList.add(cls); mark(3); return; }
+        if (reduce) { for (const [, cls] of timeline.slice(0, 8)) stage.classList.add(cls); mark(3); return; }
         const io = new IntersectionObserver((entries) => {
           for (const e of entries) if (e.isIntersecting) { io.unobserve(e.target); play(0); }
         }, { threshold: 0.5 });

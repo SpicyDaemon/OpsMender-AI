@@ -252,6 +252,7 @@ const marquee = [...platforms, ...sources];
     .arch-edge.dim, .arch-flow.dim { opacity: .1; }
     .arch-flow.lit { opacity: 1; }
     .dot { display: inline-block; width: 7px; height: 7px; border-radius: 9999px; background: var(--c); }
+    .arch-item.active { border-color: var(--c); background: #12203a; }
     .dossier { transform: translateX(105%); transition: transform .35s var(--ease-fluid); }
     .dossier.open { transform: none; }
     @media (max-width: 1023px) { .dossier { transform: translateY(105%); } .dossier.open { transform: none; } }
@@ -626,15 +627,16 @@ const marquee = [...platforms, ...sources];
         <div class="rise">
           <p class="label">Under the hood</p>
           <h2 class="headline mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl">The whole system on one map.</h2>
-          <p class="mt-5 max-w-2xl text-ops-subtle">Alerts come in on the top row. The agent and its tools sit in the middle. Everything it does is recorded at the bottom. Click any component to open its dossier.</p>
+          <p class="mt-5 max-w-2xl text-ops-subtle"><span class="hidden sm:inline">Alerts come in on the top row. The agent and its tools sit in the middle. Everything it does is recorded at the bottom. Click any component to open its dossier.</span><span class="sm:hidden">Alerts come in at the top, the agent and its tools sit in the middle, and everything is recorded at the end. Tap any component to open its dossier.</span></p>
         </div>
         <p class="hidden font-mono text-[11px] text-ops-muted lg:block">click · explore &nbsp; ← → · move &nbsp; esc · close</p>
       </div>
       <div class="relative mt-10">
-        <div class="panel rise overflow-x-auto p-2" style="--i:1">
+        <div class="panel rise hidden overflow-x-auto p-2 sm:block" style="--i:1">
           <svg id="arch" viewBox="0 0 1200 600" class="block min-w-[880px] w-full" role="group" aria-label="OpsMender architecture map"></svg>
         </div>
-        <div id="legend" class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ops-subtle" aria-label="Component families"></div>
+        <div id="arch-list" class="rise grid gap-2 sm:hidden" style="--i:1" role="list" aria-label="OpsMender components"></div>
+        <div id="legend" class="mt-4 hidden flex-wrap gap-x-5 gap-y-2 text-xs text-ops-subtle sm:flex" aria-label="Component families"></div>
         <aside id="dossier" class="dossier fixed inset-x-0 bottom-0 z-40 max-h-[80vh] overflow-y-auto border-t border-ops-border bg-ops-surface shadow-2xl lg:bottom-0 lg:left-auto lg:right-0 lg:top-0 lg:max-h-none lg:w-[400px] lg:border-l lg:border-t-0" aria-live="polite" aria-label="Component details" hidden>
           <div class="sticky top-0 flex items-center justify-between border-b border-ops-border bg-ops-surface px-6 py-4">
             <span id="d-kind" class="font-mono text-[11px] uppercase tracking-[0.18em] text-ops-blue"></span>
@@ -1006,6 +1008,18 @@ const marquee = [...platforms, ...sources];
       const legend = document.getElementById('legend');
       if (legend) for (const k in KIND) { const s = document.createElement('span'); s.className = 'inline-flex items-center gap-1.5'; s.style.setProperty('--c', KIND[k]); s.innerHTML = `<span class="dot"></span>${k}`; legend.appendChild(s); }
 
+      // Phones get the same components as a stacked list; the map needs more width than a phone has.
+      const list = document.getElementById('arch-list');
+      const listEls: Record<string, HTMLButtonElement> = {};
+      if (list) for (const n of nodes) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.dataset.id = n.id; b.setAttribute('role', 'listitem');
+        b.className = 'arch-item flex w-full items-center gap-3 rounded-xl border border-ops-border bg-ops-surface/80 px-4 py-3 text-left focus-ring';
+        b.style.setProperty('--c', KIND[n.kind]);
+        b.innerHTML = `<span class="dot shrink-0"></span><span class="min-w-0"><span class="block text-[15px] font-medium text-slate-50">${n.label}</span><span class="block truncate text-[12.5px] text-ops-muted">${n.sub}</span></span><span class="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-ops-muted">${n.kind}</span>`;
+        list.appendChild(b); listEls[n.id] = b;
+      }
+
       const dossier = document.getElementById('dossier')!;
       const set = (id: string, v: string) => { document.getElementById(id)!.textContent = v; };
       let active: string | null = null;
@@ -1020,6 +1034,7 @@ const marquee = [...platforms, ...sources];
         const nb = new Set<string>(); for (const e of edges) { if (e[0] === id) nb.add(e[1]); if (e[1] === id) nb.add(e[0]); }
         for (const m of nb) { const b = document.createElement('button'); b.className = 'rounded-full border border-ops-border px-2.5 py-1 text-xs text-slate-200 hover:border-ops-blue focus-ring'; b.textContent = byId[m].label; b.onclick = () => open(m); links.appendChild(b); }
         for (const k in nodeEls) nodeEls[k].classList.toggle('active', k === id), nodeEls[k].classList.toggle('dim', k !== id && !nb.has(k));
+        for (const k in listEls) listEls[k].classList.toggle('active', k === id);
         for (const e of edgeEls) { const lit = e.a === id || e.b === id; e.base.style.stroke = lit ? KIND[byId[e.a].kind] : ''; e.base.classList.toggle('dim', !lit); e.flow.classList.toggle('lit', lit); e.flow.classList.toggle('dim', !lit); }
         dossier.hidden = false; requestAnimationFrame(() => dossier.classList.add('open'));
       }
@@ -1027,8 +1042,10 @@ const marquee = [...platforms, ...sources];
         active = null; dossier.classList.remove('open');
         setTimeout(() => { if (!active) dossier.hidden = true; }, 350);
         for (const k in nodeEls) nodeEls[k].classList.remove('active', 'dim');
+        for (const k in listEls) listEls[k].classList.remove('active');
         for (const e of edgeEls) { e.base.style.stroke = ''; e.base.classList.remove('dim'); e.flow.classList.remove('lit', 'dim'); }
       }
+      list?.addEventListener('click', (ev) => { const b = (ev.target as Element).closest('.arch-item') as HTMLElement | null; if (b) open(b.dataset.id!); });
       gN.addEventListener('click', (ev) => { const g = (ev.target as Element).closest('.arch-node') as HTMLElement | null; if (g) open(g.dataset.id!); });
       gN.addEventListener('keydown', (ev) => {
         const g = (ev.target as Element).closest('.arch-node') as HTMLElement | null; if (!g) return;
@@ -1043,7 +1060,7 @@ const marquee = [...platforms, ...sources];
         const j = (i + (ev.key === 'ArrowRight' ? 1 : nodes.length - 1)) % nodes.length;
         open(nodes[j].id); nodeEls[nodes[j].id].focus();
       });
-      document.addEventListener('click', (ev) => { if (active && !dossier.contains(ev.target as Node) && !svg.contains(ev.target as Node)) close(); });
+      document.addEventListener('click', (ev) => { if (active && !dossier.contains(ev.target as Node) && !svg.contains(ev.target as Node) && !list?.contains(ev.target as Node)) close(); });
     })();
 
     // ---------- Screenshot viewer + lightbox ----------

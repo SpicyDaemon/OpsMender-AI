@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
 from .base import LLM, LLMProvider
 from .providers import (
     AnthropicProvider,
     BedrockProvider,
+    LMStudioProvider,
     OllamaProvider,
     OpenAICompatibleProvider,
     OpenAIProvider,
@@ -32,6 +35,18 @@ def create_provider(
     from .registry import ProviderRegistry
 
     spec = ProviderRegistry._SPECS.get(provider)
+    if spec is not None and provider == "lmstudio":
+        # LMSTUDIO_BASE_URL moves LM Studio's default address, as
+        # OLLAMA_BASE_URL does Ollama's; a config's own base URL still wins.
+        return LMStudioProvider(
+            model=model_id or spec.default_model_id,
+            base_url=base_url
+            or os.environ.get("LMSTUDIO_BASE_URL")
+            or spec.default_base_url
+            or "",
+            max_tokens=max_tokens,
+            api_key_env_var=api_key_env_var,
+        )
     if spec is not None:
         base_url = base_url or spec.default_base_url
     if spec is not None and provider in ("qwen", "deepseek", "kimi"):

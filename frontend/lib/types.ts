@@ -687,6 +687,8 @@ export interface ProviderModelsResponse {
   label: string;
   default_model_id: string;
   default_api_key_env_var: string | null;
+  /** The URL the server uses when a config names none. */
+  default_base_url: string | null;
   requires_api_key: boolean;
   requires_base_url: boolean;
   requires_api_version: boolean;

@@ -268,14 +268,17 @@ class OpenAICompatibleProvider:
         yield self.complete(prompt)
 
     def list_models(self) -> list[str]:
-        # 2s discovery cap matches the OpenAI provider - discovery is on
-        # the page-load hot path. If the endpoint doesn't implement
-        # /v1/models, fall back to the configured model so manual entry
-        # keeps working.
+        # If the endpoint doesn't implement /v1/models, fall back to the
+        # configured model so manual entry keeps working.
         try:
-            models = self._client.with_options(timeout=2.0, max_retries=0).models.list()
+            return self._listed_models()
         except Exception:
             return [self.model]
+
+    def _listed_models(self) -> list[str]:
+        # 2s discovery cap matches the OpenAI provider - discovery is on
+        # the page-load hot path.
+        models = self._client.with_options(timeout=2.0, max_retries=0).models.list()
         data = getattr(models, "data", models)
         ids: list[str] = []
         for item in data:
@@ -283,6 +286,20 @@ class OpenAICompatibleProvider:
             if model_id:
                 ids.append(model_id)
         return ids or [self.model]
+
+
+@dataclasses.dataclass
+class LMStudioProvider(OpenAICompatibleProvider):
+    """LM Studio's local server, which speaks the OpenAI API (by default at
+    http://localhost:1234/v1 with no key). Its model ids are whatever the
+    person loaded, so a server that does not answer is reported to
+    discovery as an error instead of hidden behind the typed id."""
+
+    def list_models(self) -> list[str]:
+        try:
+            return self._listed_models()
+        except Exception as exc:
+            raise RuntimeError(f"LM Studio list_models failed: {exc}") from exc
 
 
 @dataclasses.dataclass

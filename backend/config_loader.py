@@ -508,6 +508,9 @@ class ProviderConfig:
     active_provider: str = "ollama"
     active_model_id: str = "llama3.2"
     ollama_base_url: str = "http://localhost:11434"
+    # LM Studio's address when it is not http://localhost:1234/v1; unset
+    # leaves the provider's default to the factory.
+    lmstudio_base_url: str | None = None
     anthropic_api_key_env_var: str = "ANTHROPIC_API_KEY"
     openai_api_key_env_var: str = "OPENAI_API_KEY"
     azure_openai_api_key_env_var: str = "AZURE_OPENAI_API_KEY"
@@ -718,6 +721,7 @@ class AppConfig:
                     env, "OLLAMA_BASE_URL", "http://localhost:11434"
                 )
                 or "http://localhost:11434",
+                lmstudio_base_url=_env_str(env, "LMSTUDIO_BASE_URL"),
                 azure_openai_endpoint=_env_str(env, "AZURE_OPENAI_ENDPOINT"),
                 azure_openai_api_version=_env_str(env, "AZURE_OPENAI_API_VERSION"),
                 azure_openai_deployment=_env_str(env, "AZURE_OPENAI_DEPLOYMENT"),

@@ -414,6 +414,26 @@ type ModelFormState = {
   max_concurrent_sessions: number;
 };
 
+// The model a new config starts with: the provider's default when the server
+// lists it or lists nothing, else the first model it lists, which is what the
+// model select shows (a local server's ids are whatever was loaded there).
+function suggestedModelId(provider: ProviderModelsResponse): string {
+  const { default_model_id, models } = provider;
+  return models.length === 0 || models.includes(default_model_id)
+    ? default_model_id
+    : models[0];
+}
+
+function keyFieldHelp(provider: ProviderModelsResponse | undefined): string {
+  const help =
+    "Store the secret in `.env`; this field saves the variable name only.";
+  if (!provider || provider.requires_api_key) return help;
+  if (provider.provider === "openai_compatible") {
+    return `${help} Leave blank for an endpoint that does not require auth, such as a local vLLM or llama.cpp server.`;
+  }
+  return `${help} Leave blank unless the endpoint requires a key.`;
+}
+
 function createModelFormState(
   providers: ProviderModelsResponse[],
   current?: ModelConfigResponse | null,
@@ -426,7 +446,9 @@ function createModelFormState(
   return {
     name: current?.name ?? "",
     provider: current?.provider ?? selectedProvider?.provider ?? "anthropic",
-    model_id: current?.model_id ?? selectedProvider?.default_model_id ?? "",
+    model_id:
+      current?.model_id ??
+      (selectedProvider ? suggestedModelId(selectedProvider) : ""),
     api_key_env_var:
       current?.api_key_env_var ??
       selectedProvider?.default_api_key_env_var ??
@@ -521,7 +543,7 @@ function ModelConfigModal({
     setForm((current) => ({
       ...current,
       provider: providerName,
-      model_id: nextProvider?.default_model_id ?? current.model_id,
+      model_id: nextProvider ? suggestedModelId(nextProvider) : current.model_id,
       api_key_env_var: nextProvider?.default_api_key_env_var ?? "",
       base_url: "",
       api_version: "",
@@ -680,21 +702,23 @@ function ModelConfigModal({
               }
             />
             <p className="mt-1 text-xs text-fg-muted">
-              {selectedProvider && !selectedProvider.requires_api_key
-                ? "Store the secret in `.env`; this field saves the variable name only. Leave blank for endpoints that don't require auth (e.g. local LM Studio, vLLM)."
-                : "Store the secret in `.env`; this field saves the variable name only."}
+              {keyFieldHelp(selectedProvider)}
             </p>
           </div>
         </div>
 
-        {(selectedProvider?.requires_base_url || form.base_url) && (
+        {(selectedProvider?.requires_base_url ||
+          selectedProvider?.default_base_url ||
+          form.base_url) && (
           <div>
             <Label htmlFor="model-url">Base URL</Label>
             <Input
               id="model-url"
               value={form.base_url}
               onChange={(e) => setField("base_url", e.target.value)}
-              placeholder="http://localhost:11434"
+              placeholder={
+                selectedProvider?.default_base_url ?? "http://localhost:11434"
+              }
             />
           </div>
         )}

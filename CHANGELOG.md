@@ -30,9 +30,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `kimi-k3`, read from the vendors' API docs on 2026-10-20. A provider
   with a fixed host, Anthropic, OpenAI and Azure OpenAI included, now also
   refuses a base URL that is not https.
+- LM Studio is a named local provider. Pick it on the Models page or with
+  `opsmender config model set --provider lmstudio`; it needs no key and
+  connects to LM Studio's default server address, `http://localhost:1234/v1`,
+  unless `LMSTUDIO_BASE_URL` in `.env` (read like `OLLAMA_BASE_URL`, also for
+  the first-run model and the env fallback) or the config's base URL names
+  another. A server that does not answer shows as unavailable with the
+  error, and a config for it still saves, with a warning. Model ids are
+  whatever was loaded in LM Studio, so a new
+  config starts on the first model the server lists, as it now does for any
+  provider whose list lacks its default (the form used to show that model
+  but save the default); the default `openai/gpt-oss-20b` is the model LM
+  Studio's API and CLI docs load, read on 2026-10-21. The New model config
+  form now also shows the Base URL field for Qwen, DeepSeek, Kimi and LM
+  Studio, with the provider's default URL as the placeholder. LM Studio
+  still works as an OpenAI compatible endpoint, which is unchanged for vLLM,
+  llama.cpp and gateways.
 
 ### Changed
 
+- Model discovery asks the providers at the same time instead of one after
+  another, so the Models page and the Start Session model list wait for the
+  slowest provider, not for all of them in turn. Discovery and the provider
+  check before a model config saves now run off the server's request loop,
+  so a local server that does not answer (on Windows a refused `localhost`
+  takes about two seconds for each of its addresses) no longer holds up
+  other requests.
 - The hosted PostgreSQL concurrency step may now take twelve minutes instead
   of five: its 123 cases take about five on a GitHub runner, and the v1.2.0
   release run was stopped at the limit with every test passed.

@@ -165,6 +165,21 @@ function KimiBrandIcon({ size, className, ...props }: BrandIconProps) {
   );
 }
 
+// LM Studio's mark, the same path the product site shows for it.
+function LMStudioBrandIcon({ size, className, ...props }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      className={className}
+      {...props}
+    >
+      <path fill="#7A5CF5" d="M5.6 0A5.6 5.6 0 0 0 0 5.6v12.8A5.6 5.6 0 0 0 5.6 24h12.8a5.6 5.6 0 0 0 5.6-5.6V5.6A5.6 5.6 0 0 0 18.4 0zm0 2h12.8A3.6 3.6 0 0 1 22 5.6v12.8a3.6 3.6 0 0 1-3.6 3.6H5.6A3.6 3.6 0 0 1 2 18.4V5.6A3.6 3.6 0 0 1 5.6 2m-.4 2.8a1.2 1.2 0 0 0 0 2.4h10.4a1.2 1.2 0 0 0 0-2.4zm3.2 4a1.2 1.2 0 0 0 0 2.4h10.4a1.2 1.2 0 0 0 0-2.4zm-3.2 4a1.2 1.2 0 0 0 0 2.4h10.4a1.2 1.2 0 0 0 0-2.4zm3.2 4a1.2 1.2 0 0 0 0 2.4h10.4a1.2 1.2 0 0 0 0-2.4z" />
+    </svg>
+  );
+}
+
 const INTEGRATION_ICONS: Record<string, Brand> = {
   ansible: { Icon: SiAnsible },
   argocd: { Icon: SiArgo, color: "#EF7B4D" },
@@ -224,6 +239,7 @@ const PROVIDER_ICONS: Record<string, Brand> = {
   anthropic: { Icon: SiAnthropic, color: "#D97757" },
   openai: { Icon: SiOpenai },
   ollama: { Icon: SiOllama },
+  lmstudio: { Icon: LMStudioBrandIcon },
   vertex_ai: { Icon: SiGooglecloud, color: "#4285F4" },
   azure_openai: { Icon: VscAzure, color: "#0078D4" },
   bedrock: { Icon: FaAws, color: "#FF9900" },

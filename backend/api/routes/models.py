@@ -112,7 +112,10 @@ async def list_models(
     }
 
     try:
-        items = registry.discover_models(
+        # The probes wait on the network, so they run in a worker thread
+        # and the server keeps answering other requests meanwhile.
+        items = await asyncio.to_thread(
+            registry.discover_models,
             provider=provider,
             model_id=model_id,
             api_key_env_var=api_key_env_var,
@@ -178,7 +181,8 @@ async def create_model_config(
 ):
     registry = ProviderRegistry()
     try:
-        validation = registry.validate_model_config(
+        validation = await asyncio.to_thread(
+            registry.validate_model_config,
             provider=body.provider,
             model_id=body.model_id,
             api_key_env_var=body.api_key_env_var,
@@ -258,7 +262,8 @@ async def update_model_config(
 
     registry = ProviderRegistry()
     try:
-        validation = registry.validate_model_config(
+        validation = await asyncio.to_thread(
+            registry.validate_model_config,
             provider=body.provider,
             model_id=body.model_id,
             api_key_env_var=body.api_key_env_var,

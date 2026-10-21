@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import types
 
 import pytest
@@ -38,6 +39,7 @@ class TestProviderRegistry:
             "bedrock",
             "deepseek",
             "kimi",
+            "lmstudio",
             "ollama",
             "openai",
             "openai_compatible",
@@ -321,6 +323,7 @@ class TestProviderRegistry:
             "bedrock",
             "deepseek",
             "kimi",
+            "lmstudio",
             "ollama",
             "openai",
             "openai_compatible",
@@ -680,3 +683,198 @@ def test_http_is_refused_on_every_fixed_host(monkeypatch):
         base_url="http://localhost:11434",
         allow_unverified=True,
     )
+
+
+def _install_unreachable_openai(monkeypatch):
+    """Replace the openai SDK with a client whose model list fails the way it
+    does when nothing listens at the URL; records how the client was built
+    and the options of the list call."""
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def _refuse():
+        raise ConnectionError("Connection error.")
+
+    class _Client:
+        def __init__(self, **kwargs):
+            calls.append(("client", kwargs))
+
+        def with_options(self, **kwargs):
+            calls.append(("list", kwargs))
+            return types.SimpleNamespace(models=types.SimpleNamespace(list=_refuse))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=_Client))
+    return calls
+
+
+# LM Studio: the local server whose ids are whatever the person loaded. The
+# expected address is written out so a changed default fails here.
+LM_STUDIO_URL = "http://localhost:1234/v1"
+
+
+class TestLMStudio:
+    def test_spec(self):
+        spec = ProviderRegistry().get_spec("lmstudio")
+
+        assert spec.label == "LM Studio"
+        assert spec.default_base_url == LM_STUDIO_URL
+        assert spec.default_api_key_env_var is None
+        assert spec.requires_api_key is False
+        assert spec.requires_base_url is False
+        assert spec.allowed_hosts == ()
+        assert spec.default_model_id == "openai/gpt-oss-20b"
+
+    def test_discovery_reports_the_default_url(self, monkeypatch):
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["openai/gpt-oss-20b"]),
+        )
+
+        [item] = ProviderRegistry().discover_models(provider="lmstudio")
+
+        assert item["label"] == "LM Studio"
+        assert item["default_base_url"] == LM_STUDIO_URL
+        assert item["default_api_key_env_var"] is None
+        assert item["available"] is True
+
+    def test_lmstudio_base_url_moves_discovery(self, monkeypatch):
+        """Like OLLAMA_BASE_URL, the operator's LMSTUDIO_BASE_URL is where
+        discovery looks when the caller names no URL; a caller's URL wins."""
+        seen: list[object] = []
+
+        def _create(**kwargs):
+            seen.append(kwargs["base_url"])
+            return _FakeProvider(["m"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _create)
+        monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://gpu-box:1234/v1")
+        registry = ProviderRegistry()
+
+        registry.discover_models(provider="lmstudio", use_cache=False)
+        registry.discover_models(
+            provider="lmstudio", base_url="http://other:1234/v1", use_cache=False
+        )
+
+        assert seen == ["http://gpu-box:1234/v1", "http://other:1234/v1"]
+
+    def test_any_local_url_is_accepted(self, monkeypatch):
+        captured: dict[str, object] = {}
+
+        def _create(**kwargs):
+            captured.update(kwargs)
+            return _FakeProvider(["m"])
+
+        monkeypatch.setattr("backend.llm.registry.create_provider", _create)
+        result = ProviderRegistry().validate_model_config(
+            provider="lmstudio", model_id="m", base_url="http://192.168.1.20:1234/v1"
+        )
+
+        assert result.warnings == []
+        assert captured["base_url"] == "http://192.168.1.20:1234/v1"
+        assert captured["api_key_env_var"] is None
+
+    def test_an_unreachable_server_warns_on_save(self, monkeypatch):
+        """Nothing answers: the save path (allow_unverified, as every save
+        route sends) keeps the config with a warning, as it does for ollama,
+        after one list call capped at two seconds with no retries."""
+        calls = _install_unreachable_openai(monkeypatch)
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+        registry = ProviderRegistry()
+
+        result = registry.validate_model_config(
+            provider="lmstudio", model_id="qwen/qwen3-8b", allow_unverified=True
+        )
+
+        assert [w.code for w in result.warnings] == ["provider_unverified"]
+        assert result.discovery_error == (
+            "LM Studio list_models failed: Connection error."
+        )
+        assert calls == [
+            ("client", {"api_key": "no-key", "base_url": LM_STUDIO_URL}),
+            ("list", {"timeout": 2.0, "max_retries": 0}),
+        ]
+        with pytest.raises(ValueError, match="LM Studio list_models failed"):
+            registry.validate_model_config(
+                provider="lmstudio", model_id="qwen/qwen3-8b"
+            )
+
+    def test_discovery_reports_an_unreachable_server(self, monkeypatch):
+        _install_unreachable_openai(monkeypatch)
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+
+        [item] = ProviderRegistry().discover_models(provider="lmstudio")
+
+        assert item["available"] is False
+        assert item["models"] == []
+        assert item["error"] == "LM Studio list_models failed: Connection error."
+
+    def test_a_model_the_server_does_not_list_warns_on_save(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["qwen/qwen3-8b"]),
+        )
+        registry = ProviderRegistry()
+
+        allowed = registry.validate_model_config(
+            provider="lmstudio", model_id="typo-model", allow_unverified=True
+        )
+        assert [w.code for w in allowed.warnings] == ["model_not_reported"]
+        assert "qwen/qwen3-8b" in allowed.warnings[0].message
+        with pytest.raises(
+            ValueError, match="not currently reported by provider 'lmstudio'"
+        ):
+            registry.validate_model_config(provider="lmstudio", model_id="typo-model")
+
+    def test_a_token_variable_must_be_listed(self, monkeypatch):
+        """A server with API token auth names its token's variable, which the
+        operator lists like any variable the provider does not own (O-22)."""
+        monkeypatch.setattr(
+            "backend.llm.registry.create_provider",
+            lambda **kwargs: _FakeProvider(["m"]),
+        )
+        monkeypatch.delenv("OPSMENDER_MODEL_KEY_VARS", raising=False)
+        registry = ProviderRegistry()
+        with pytest.raises(ValueError, match="OPSMENDER_MODEL_KEY_VARS"):
+            registry.validate_model_config(
+                provider="lmstudio", model_id="m", api_key_env_var="LM_API_TOKEN"
+            )
+
+        monkeypatch.setenv("OPSMENDER_MODEL_KEY_VARS", "LM_API_TOKEN")
+        registry.validate_model_config(
+            provider="lmstudio", model_id="m", api_key_env_var="LM_API_TOKEN"
+        )
+
+
+def test_discovery_asks_the_providers_at_the_same_time(monkeypatch):
+    """Each probe waits on its own timeout, and on Windows a refused
+    ``localhost`` costs about two seconds per address, so asking LM Studio
+    and Ollama one after the other doubled the Models page wait. The two
+    local probes here only answer while both are waiting at once; the
+    results keep the providers' order."""
+    both_waiting = threading.Barrier(2, timeout=2)
+
+    class _LocalServer:
+        def list_models(self):
+            try:
+                both_waiting.wait()
+            except threading.BrokenBarrierError:
+                raise RuntimeError("the local probes ran one after the other")
+            return ["m"]
+
+    def _create(**kwargs):
+        if kwargs["provider"] in ("lmstudio", "ollama"):
+            return _LocalServer()
+        return _FakeProvider(["m"])
+
+    monkeypatch.setattr("backend.llm.registry.create_provider", _create)
+    registry = ProviderRegistry()
+
+    items = registry.discover_models(use_cache=False)
+
+    assert [item["provider"] for item in items] == [
+        spec.provider for spec in registry.list_specs()
+    ]
+    local = {item["provider"]: item for item in items}
+    for provider in ("lmstudio", "ollama"):
+        assert local[provider]["available"] is True, local[provider]["error"]
+        assert local[provider]["models"] == ["m"]

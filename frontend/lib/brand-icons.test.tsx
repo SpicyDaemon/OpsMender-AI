@@ -24,7 +24,7 @@ const NOTIFICATION_PLATFORMS = [
 
 const MODEL_PROVIDERS = [
   "anthropic", "openai", "azure_openai", "bedrock", "vertex_ai", "ollama",
-  "qwen", "deepseek", "kimi",
+  "lmstudio", "qwen", "deepseek", "kimi",
 ];
 
 function markup(node: ReactNode): string {
@@ -69,6 +69,14 @@ describe("brand icon registry", () => {
     expect(kimi).toContain('fill="currentColor"');
     expect(kimi).toContain('d="M21.765.351');
     expect(kimi).toContain("text-fg-secondary");
+  });
+
+  it("draws the LM Studio mark", () => {
+    const lmstudio = markup(modelProviderIcon("lmstudio", 20));
+    expect(lmstudio).toContain('fill="#7A5CF5"');
+    expect(lmstudio).toContain('d="M5.6 0A5.6 5.6 0 0 0 0 5.6v12.8');
+    expect(lmstudio).toContain('width="20"');
+    expect(lmstudio).toContain('aria-hidden="true"');
   });
 
   it("renders the corrected brand marks", () => {

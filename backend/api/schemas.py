@@ -1025,7 +1025,7 @@ class ModelConfigTestResponse(BaseModel):
 class ModelConfigUpdate(BaseModel):
     name: Optional[str] = None
     provider: str = Field(
-        pattern="^(anthropic|openai|azure_openai|bedrock|vertex_ai|ollama|openai_compatible|qwen|deepseek|kimi)$"
+        pattern="^(anthropic|openai|azure_openai|bedrock|vertex_ai|ollama|lmstudio|openai_compatible|qwen|deepseek|kimi)$"
     )
     model_id: str = Field(..., min_length=1, max_length=200)
     api_key_env_var: Optional[str] = Field(default=None, max_length=100)
@@ -1284,6 +1284,9 @@ class ProviderModelsResponse(BaseModel):
     label: str
     default_model_id: str
     default_api_key_env_var: Optional[str]
+    # The URL the server uses when a config names none (LM Studio's local
+    # address, a vendor's endpoint); the Models page shows it as a hint.
+    default_base_url: Optional[str] = None
     requires_api_key: bool
     requires_base_url: bool
     requires_api_version: bool

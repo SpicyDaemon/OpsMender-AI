@@ -13,6 +13,7 @@ from backend.llm import (
     AnthropicProvider,
     BedrockProvider,
     LLMProvider,
+    LMStudioProvider,
     OllamaProvider,
     OpenAICompatibleProvider,
     OpenAIProvider,
@@ -206,6 +207,50 @@ class TestFactory:
         with pytest.raises(EnvironmentError, match=f"{key} environment variable"):
             create_provider(provider=provider)
         assert built == []
+
+    def test_lmstudio_targets_the_local_server_with_no_key(self, monkeypatch):
+        """LM Studio needs nothing configured: with no base URL, as the
+        session fallbacks call it, the factory connects to LM Studio's
+        default local address and sends no key."""
+        _install_fake_openai(monkeypatch)
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+
+        built = create_provider(provider="lmstudio", model_id="any-id")
+
+        assert isinstance(built, LMStudioProvider)
+        assert isinstance(built, OpenAICompatibleProvider)
+        assert built.model == "any-id"
+        assert built.api_key_env_var is None
+        assert built._client.kwargs == {
+            "api_key": "no-key",
+            "base_url": "http://localhost:1234/v1",
+        }
+        llm = create_llm(provider="lmstudio", model_id="any-id")
+        assert llm.invoke("ping") == "reply:any-id"
+
+    def test_lmstudio_base_url_moves_the_default(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://host.docker.internal:1234/v1")
+
+        moved = create_provider(provider="lmstudio", model_id="any-id")
+        assert moved._client.kwargs["base_url"] == "http://host.docker.internal:1234/v1"
+
+        # A config's own base URL still wins over the variable.
+        own = create_provider(
+            provider="lmstudio", model_id="any-id", base_url="http://10.0.0.5:1234/v1"
+        )
+        assert own._client.kwargs["base_url"] == "http://10.0.0.5:1234/v1"
+
+    def test_lmstudio_reads_a_named_token_variable(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        monkeypatch.delenv("LMSTUDIO_BASE_URL", raising=False)
+        monkeypatch.setenv("LM_API_TOKEN", "lm-token")
+
+        built = create_provider(
+            provider="lmstudio", model_id="m", api_key_env_var="LM_API_TOKEN"
+        )
+
+        assert built._client.kwargs["api_key"] == "lm-token"
 
 
 class TestBackwardCompatibility:
@@ -623,6 +668,33 @@ class TestOpenAICompatibleProvider:
         # patch is what the discovery path sees.
         provider._client.models.list = _raise  # type: ignore[assignment]
         assert provider.list_models() == ["my-custom-model"]
+
+
+class TestLMStudioProvider:
+    def test_list_models_returns_what_the_server_lists(self, monkeypatch):
+        _install_fake_openai(monkeypatch)
+        provider = LMStudioProvider(model="m", base_url="http://localhost:1234/v1")
+        loaded = ["qwen/qwen3-8b", "google/gemma-3-12b"]
+        provider._client.models.list = lambda: types.SimpleNamespace(  # type: ignore[assignment]
+            data=[types.SimpleNamespace(id=model_id) for model_id in loaded]
+        )
+        assert provider.list_models() == loaded
+
+    def test_list_models_reports_a_server_that_does_not_answer(self, monkeypatch):
+        """Unlike a generic endpoint, LM Studio's listing is how discovery
+        tells whether the server runs, so a failure is raised, not hidden
+        behind the configured model."""
+        _install_fake_openai(monkeypatch)
+        provider = LMStudioProvider(model="m", base_url="http://localhost:1234/v1")
+
+        def _refuse():
+            raise ConnectionError("Connection error.")
+
+        provider._client.models.list = _refuse  # type: ignore[assignment]
+        with pytest.raises(
+            RuntimeError, match=r"^LM Studio list_models failed: Connection error\.$"
+        ):
+            provider.list_models()
 
 
 class _FakeURLResponse:

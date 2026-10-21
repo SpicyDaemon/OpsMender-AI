@@ -126,6 +126,7 @@ def resolve_provider_kwargs(config, model_cfg) -> dict[str, Any]:
 
     Per-provider env-only path (when model_cfg is None):
       - ollama             → OLLAMA_BASE_URL
+      - lmstudio           → LMSTUDIO_BASE_URL, else LM Studio's default URL
       - azure_openai       → AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_VERSION
       - openai_compatible  → OPSMENDER_OPENAI_COMPATIBLE_BASE_URL
                              + optional OPSMENDER_OPENAI_COMPATIBLE_API_KEY_ENV_VAR
@@ -151,6 +152,8 @@ def resolve_provider_kwargs(config, model_cfg) -> dict[str, Any]:
     api_version: str | None = None
     if active == "ollama":
         base_url = providers.ollama_base_url
+    elif active == "lmstudio":
+        base_url = providers.lmstudio_base_url
     elif active == "azure_openai":
         base_url = providers.azure_openai_endpoint
         api_version = providers.azure_openai_api_version

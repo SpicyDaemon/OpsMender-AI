@@ -29,6 +29,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   bedrock: "AWS Bedrock",
   ollama: "Ollama",
   anthropic: "Anthropic",
+  qwen: "Qwen",
+  deepseek: "DeepSeek",
+  kimi: "Kimi",
 };
 
 const WORKFLOW_NODE_LABELS: Record<string, string> = {

@@ -731,7 +731,7 @@ class ModelConfig(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # anthropic | openai | azure_openai | ollama
+    )  # a ProviderRegistry name (backend/llm/registry.py), e.g. openai, qwen
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     api_key_env_var: Mapped[str | None] = mapped_column(String(100), nullable=True)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

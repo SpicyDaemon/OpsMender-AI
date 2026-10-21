@@ -24,6 +24,9 @@ describe("display name helpers", () => {
     expect(providerName("openai")).toBe("OpenAI");
     expect(providerName("openai_compatible")).toBe("OpenAI-compatible");
     expect(providerName("bedrock")).toBe("AWS Bedrock");
+    expect(providerName("qwen")).toBe("Qwen");
+    expect(providerName("deepseek")).toBe("DeepSeek");
+    expect(providerName("kimi")).toBe("Kimi");
     expect(providerName("custom_provider")).toBe("Custom Provider");
   });
 

@@ -122,6 +122,91 @@ class TestFactory:
         with pytest.raises(ValueError, match="Unsupported LLM provider"):
             create_provider(provider="unknown")
 
+    @pytest.mark.parametrize(
+        ("provider", "model_id", "key", "default_url"),
+        [
+            (
+                "qwen",
+                "qwen-plus",
+                "DASHSCOPE_API_KEY",
+                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            ),
+            (
+                "deepseek",
+                "deepseek-flash",
+                "DEEPSEEK_API_KEY",
+                "https://api.deepseek.com",
+            ),
+            ("kimi", "kimi-k3", "MOONSHOT_API_KEY", "https://api.moonshot.ai/v1"),
+        ],
+    )
+    def test_named_vendor_uses_its_default_url_and_key(
+        self, monkeypatch, provider, model_id, key, default_url
+    ):
+        """Qwen, DeepSeek and Kimi are OpenAI-compatible clients that need
+        only a key: with no base URL, as the session fallbacks call it, the
+        factory connects to the vendor's URL with the vendor's variable."""
+        _install_fake_openai(monkeypatch)
+        monkeypatch.setenv(key, f"{provider}-key")
+
+        built = create_provider(provider=provider, model_id=model_id)
+
+        assert isinstance(built, OpenAICompatibleProvider)
+        assert built.model == model_id
+        assert built.api_key_env_var == key
+        assert built._client.kwargs == {
+            "api_key": f"{provider}-key",
+            "base_url": default_url,
+        }
+        # The session runner and chat responder build the LLM the same way.
+        llm = create_llm(provider=provider, model_id=model_id)
+        assert llm.invoke("ping") == f"reply:{model_id}"
+
+    @pytest.mark.parametrize(
+        ("provider", "key", "other_url"),
+        [
+            (
+                "qwen",
+                "DASHSCOPE_API_KEY",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
+            ("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com/v1"),
+            ("kimi", "MOONSHOT_API_KEY", "https://api.moonshot.cn/v1"),
+        ],
+    )
+    def test_named_vendor_keeps_a_given_base_url(
+        self, monkeypatch, provider, key, other_url
+    ):
+        _install_fake_openai(monkeypatch)
+        monkeypatch.setenv(key, "k")
+
+        built = create_provider(provider=provider, base_url=other_url)
+
+        assert built._client.kwargs["base_url"] == other_url
+
+    @pytest.mark.parametrize(
+        ("provider", "key"),
+        [
+            ("qwen", "DASHSCOPE_API_KEY"),
+            ("deepseek", "DEEPSEEK_API_KEY"),
+            ("kimi", "MOONSHOT_API_KEY"),
+        ],
+    )
+    def test_named_vendor_without_its_key_raises_before_a_client(
+        self, monkeypatch, provider, key
+    ):
+        built: list[dict[str, object]] = []
+        monkeypatch.setitem(
+            sys.modules,
+            "openai",
+            types.SimpleNamespace(OpenAI=lambda **kwargs: built.append(kwargs)),
+        )
+        monkeypatch.delenv(key, raising=False)
+
+        with pytest.raises(EnvironmentError, match=f"{key} environment variable"):
+            create_provider(provider=provider)
+        assert built == []
+
 
 class TestBackwardCompatibility:
     def test_stub_llm_is_backed_by_provider(self):

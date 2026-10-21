@@ -129,9 +129,10 @@ def resolve_provider_kwargs(config, model_cfg) -> dict[str, Any]:
       - azure_openai       → AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_VERSION
       - openai_compatible  → OPSMENDER_OPENAI_COMPATIBLE_BASE_URL
                              + optional OPSMENDER_OPENAI_COMPATIBLE_API_KEY_ENV_VAR
-      - others (anthropic / openai / bedrock / vertex_ai) → no base_url
-        needed; their credentials/region/project resolve via their own
-        SDK conventions (env API keys, AWS chain, ADC).
+      - others (anthropic / openai / bedrock / vertex_ai / qwen / deepseek /
+        kimi) → no base_url needed; their credentials/region/project
+        resolve via their own SDK conventions (env API keys, AWS chain,
+        ADC), and qwen / deepseek / kimi use their vendor's default URL.
     """
     if model_cfg is not None:
         return {

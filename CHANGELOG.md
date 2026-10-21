@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   QR codes, avatars and PDF reports; certifi carries the trusted root
   certificates. Nothing else changes.
 
+### Added
+
+- Qwen, DeepSeek and Kimi are named model providers. Pick one on the Models
+  page or with `opsmender config model set --provider qwen` (or `deepseek`,
+  `kimi`) and put its key in `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY` or
+  `MOONSHOT_API_KEY`; no base URL is needed. Before this they worked only as
+  an OpenAI compatible endpoint with a typed base URL and a listed key. Each
+  connects only to its vendor's hosts: Qwen to the Model Studio endpoints
+  (`dashscope-intl.aliyuncs.com` by default, the Beijing, Virginia and Hong
+  Kong endpoints, or a workspace endpoint under `maas.aliyuncs.com`),
+  DeepSeek to `api.deepseek.com`, Kimi to `api.moonshot.ai` or
+  `api.moonshot.cn`. The default model ids are `qwen-plus`, `deepseek-flash`
+  and `kimi-k3`, read from the vendors' API docs on 2026-10-20. A provider
+  with a fixed host, Anthropic, OpenAI and Azure OpenAI included, now also
+  refuses a base URL that is not https.
+
 ### Changed
 
 - The hosted PostgreSQL concurrency step may now take twelve minutes instead

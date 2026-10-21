@@ -122,7 +122,7 @@ trusted.
 | Key | Notes |
 |-----|-------|
 | `OPSMENDER_JWT_SECRET` | **Auto-generated on first install** (64-char random) and preserved across `helm upgrade`. Override only if you need to pin a specific value (e.g. mirroring another deployment) or supply one via `existingSecret`. |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY` | Required only for the chosen `OPSMENDER_MODEL_PROVIDER`. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY` / `DASHSCOPE_API_KEY` (Qwen) / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` (Kimi) | Required only for the chosen `OPSMENDER_MODEL_PROVIDER`. |
 
 To use a pre-existing Secret instead of rendering one, set `existingSecret.name=my-secret`. Its keys must match the env var names above.
 

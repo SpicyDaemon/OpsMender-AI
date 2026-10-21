@@ -138,7 +138,10 @@ const marquee = [...platforms, ...sources];
     .story { display: block; }
     .sc { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transition: opacity .6s var(--ease-fade); }
     .sc .urlbar-top { height: 78px; padding-top: 34px; }
-    .sc-page { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top; }
+    .sc-page { display: block; width: 100%; flex: 1; min-height: 0; object-fit: cover; object-position: top center; }
+    /* A browser's bottom bar: with it, the area left for the page has the same shape as the phone capture, so nothing is cropped. */
+    .bottombar { flex: none; height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; background: #0d1221; border-top: 1px solid #1a2540; }
+    .bottombar::before { content: ''; width: 36%; height: 4px; border-radius: 9999px; background: #334155; }
     /* Scene 0 is the lock screen: the chat app's own notification, no buttons, because that is what a phone shows. */
     .sc-lock { background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59,130,246,.35), transparent 70%), linear-gradient(180deg, #0b1020, #07090f); align-items: center; }
     .s0 .sc-lock { opacity: 1; }
@@ -198,7 +201,7 @@ const marquee = [...platforms, ...sources];
     .s2-page .sc-browser .sc-page { transform: none; opacity: 1; }
     .s3 .sc-browser { opacity: 0; }
     .s3 .sc-session { opacity: 1; }
-    .sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 12px 16px; border-radius: 22px 22px 0 0; background: rgba(13,18,33,.97); border-top: 1px solid #1a2540; box-shadow: 0 -20px 50px rgba(0,0,0,.6); transform: translateY(105%); transition: transform .7s var(--ease-fluid); }
+    .sheet { position: absolute; left: 0; right: 0; bottom: 58px; padding: 14px 12px 16px; border-radius: 22px 22px 0 0; background: rgba(13,18,33,.97); border-top: 1px solid #1a2540; box-shadow: 0 -20px 50px rgba(0,0,0,.6); transform: translateY(105%); transition: transform .7s var(--ease-fluid); }
     .s3-ask .sheet { transform: none; }
     .sheet-title { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #64748b; }
     .bubble { max-width: 88%; margin-top: 9px; padding: 8px 11px; border-radius: 14px; font-size: 12.5px; line-height: 1.4; opacity: 0; transform: translateY(8px); transition: opacity .4s var(--ease-fade), transform .4s var(--ease-fade); }
@@ -219,7 +222,7 @@ const marquee = [...platforms, ...sources];
     .approve-on, .s3-approved .approve-off { display: none; }
     .s3-approved .approve-on { display: inline; }
     .s3-approved .approve { background: rgba(52,211,153,.22); color: #6ee7b7; }
-    .tap-approve { left: 30%; bottom: 20px; }
+    .tap-approve { left: 30%; bottom: 78px; }
     .s3-tap .tap-approve { opacity: 1; transform: scale(1); }
     .s3-approved .tap-approve { opacity: 0; transform: scale(1.4); }
     .story-step { border: 1px solid transparent; }
@@ -600,12 +603,14 @@ const marquee = [...platforms, ...sources];
                 <div class="sc sc-browser">
                   <div class="urlbar urlbar-top"><span class="urlpill"><span class="url-text">ops.example.com</span></span></div>
                   <img class="sc-page" src={shot('phone-a-incident.png')} alt="" width="1179" height="1977" loading="eager" decoding="async" />
+                  <div class="bottombar" aria-hidden="true"></div>
                 </div>
 
                 <!-- Scene 3: the live session, a question, an answer, an approval -->
                 <div class="sc sc-session">
                   <div class="urlbar urlbar-top"><span class="urlpill"><span class="url-text">ops.example.com</span></span></div>
                   <img class="sc-page" src={shot('phone-a-session.png')} alt="" width="1179" height="1977" loading="eager" decoding="async" />
+                  <div class="bottombar" aria-hidden="true"></div>
                   <div class="sheet">
                     <p class="sheet-title">Chat with the agent</p>
                     <div class="bubble bubble-you">Why a restart instead of scaling up?</div>

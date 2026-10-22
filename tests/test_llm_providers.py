@@ -6,6 +6,8 @@ import sys
 import types
 import builtins
 
+import httpx
+import openai
 import pytest
 
 from backend.agent.llm import AnthropicLLM, LLM, StubLLM, create_llm, create_provider
@@ -330,6 +332,45 @@ def _install_fake_openai(monkeypatch):
     monkeypatch.setitem(sys.modules, "openai", fake_module)
 
 
+def _install_openai_answering(monkeypatch, handler):
+    """The real openai SDK, with its HTTP client answering from ``handler``
+    (an ``httpx.MockTransport`` handler) so the SDK raises its own error
+    classes; nothing leaves the process."""
+    real_client = openai.OpenAI
+
+    def _client(**kwargs):
+        return real_client(
+            **kwargs,
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+    monkeypatch.setattr(openai, "OpenAI", _client)
+
+
+def _answer(status, body):
+    """A handler answering every request with ``status`` and ``body`` (a
+    dict is sent as JSON, a string as text)."""
+
+    def _handler(request):
+        if isinstance(body, dict):
+            return httpx.Response(status, json=body)
+        return httpx.Response(status, text=body)
+
+    return _handler
+
+
+def _refuse(request):
+    raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+
+
+def _time_out(request):
+    raise httpx.ReadTimeout("timed out", request=request)
+
+
+REJECTED = {"error": {"message": "Invalid API key", "type": "authentication_error"}}
+FAKE_KEY = "sk-test-revoked-0123456789abcdef"
+
+
 def _install_fake_boto3(monkeypatch):
     class _FakeBody:
         def read(self):
@@ -650,24 +691,109 @@ class TestOpenAICompatibleProvider:
         )
         assert provider.list_models() == ["gpt-4o", "gpt-4o-mini"]
 
-    def test_list_models_falls_back_to_configured_model_on_error(self, monkeypatch):
-        # Local endpoints often don't implement /v1/models. The sprint
-        # acceptance criterion says manual model entry must keep working
-        # - so list_models must gracefully fall back instead of raising.
-        _install_fake_openai(monkeypatch)
+    @pytest.mark.parametrize("status", [404, 405, 501])
+    def test_list_models_falls_back_when_the_endpoint_has_no_listing(
+        self, monkeypatch, status
+    ):
+        """A proxy or local runtime without ``/v1/models`` answers 404, 405
+        or 501; the typed model is kept so manual entry works (M1-78)."""
+        _install_openai_answering(monkeypatch, _answer(status, "no such route"))
         provider = OpenAICompatibleProvider(
             model="my-custom-model",
             base_url="http://localhost:1234/v1",
         )
-
-        def _raise():
-            raise RuntimeError("404 Not Found")
-
-        # Patch the underlying client's models.list to raise. The fake
-        # ``_FakeOpenAIClient.with_options`` returns self, so this
-        # patch is what the discovery path sees.
-        provider._client.models.list = _raise  # type: ignore[assignment]
         assert provider.list_models() == ["my-custom-model"]
+
+    def test_list_models_reports_a_rejected_key(self, monkeypatch):
+        """A 401 is an error naming authentication with the vendor's
+        message, not the typed model behind a green dot (M1-78)."""
+        monkeypatch.setenv("GATEWAY_API_KEY", FAKE_KEY)
+        _install_openai_answering(monkeypatch, _answer(401, REJECTED))
+        provider = OpenAICompatibleProvider(
+            model="m",
+            base_url="https://gateway.example.com/v1",
+            api_key_env_var="GATEWAY_API_KEY",
+        )
+        with pytest.raises(RuntimeError) as failed:
+            provider.list_models()
+        assert str(failed.value) == (
+            "OpenAI-compatible endpoint list_models failed: "
+            "authentication failed (HTTP 401): Invalid API key"
+        )
+
+    def test_list_models_reports_a_refused_connection(self, monkeypatch):
+        _install_openai_answering(monkeypatch, _refuse)
+        provider = OpenAICompatibleProvider(model="m", base_url="http://127.0.0.1:9/v1")
+        with pytest.raises(RuntimeError) as failed:
+            provider.list_models()
+        assert str(failed.value) == (
+            "OpenAI-compatible endpoint list_models failed: "
+            "connection error: [Errno 111] Connection refused"
+        )
+
+    def test_list_models_reports_a_timeout(self, monkeypatch):
+        _install_openai_answering(monkeypatch, _time_out)
+        provider = OpenAICompatibleProvider(model="m", base_url="http://127.0.0.1:9/v1")
+        with pytest.raises(RuntimeError) as failed:
+            provider.list_models()
+        assert str(failed.value) == (
+            "OpenAI-compatible endpoint list_models failed: request timed out"
+        )
+
+    def test_list_models_reports_another_status_with_the_vendor_text(self, monkeypatch):
+        _install_openai_answering(monkeypatch, _answer(500, "upstream exploded"))
+        provider = OpenAICompatibleProvider(
+            model="m", base_url="https://gateway.example.com/v1"
+        )
+        with pytest.raises(RuntimeError) as failed:
+            provider.list_models()
+        assert str(failed.value) == (
+            "OpenAI-compatible endpoint list_models failed: HTTP 500: upstream exploded"
+        )
+
+    def test_list_models_never_repeats_the_key(self, monkeypatch):
+        """Even a vendor that echoes the key in its message does not get it
+        onto the Models page."""
+        monkeypatch.setenv("GATEWAY_API_KEY", FAKE_KEY)
+        echoed = {"error": {"message": f"key {FAKE_KEY} was rejected"}}
+        _install_openai_answering(monkeypatch, _answer(401, echoed))
+        provider = OpenAICompatibleProvider(
+            model="m",
+            base_url="https://gateway.example.com/v1",
+            api_key_env_var="GATEWAY_API_KEY",
+        )
+        with pytest.raises(RuntimeError) as failed:
+            provider.list_models()
+        assert FAKE_KEY not in str(failed.value)
+        assert str(failed.value).endswith(
+            "authentication failed (HTTP 401): key [key redacted] was rejected"
+        )
+
+    @pytest.mark.parametrize(
+        "provider,env_name,label",
+        [
+            ("qwen", "DASHSCOPE_API_KEY", "Qwen"),
+            ("deepseek", "DEEPSEEK_API_KEY", "DeepSeek"),
+            ("kimi", "MOONSHOT_API_KEY", "Kimi"),
+        ],
+    )
+    def test_a_named_vendor_reports_a_rejected_key_under_its_own_name(
+        self, monkeypatch, provider, env_name, label
+    ):
+        """The factory gives the named vendors their label, so the error
+        says which provider refused the key."""
+        monkeypatch.setenv(env_name, FAKE_KEY)
+        _install_openai_answering(monkeypatch, _answer(401, REJECTED))
+        built = create_provider(provider=provider, model_id="typed-model")
+        assert isinstance(built, OpenAICompatibleProvider)
+        assert built.label == label
+        with pytest.raises(RuntimeError) as failed:
+            built.list_models()
+        assert str(failed.value) == (
+            f"{label} list_models failed: "
+            "authentication failed (HTTP 401): Invalid API key"
+        )
+        assert FAKE_KEY not in str(failed.value)
 
 
 class TestLMStudioProvider:

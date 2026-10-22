@@ -214,15 +214,20 @@ class OpenAICompatibleProvider:
         ``http://localhost:1234/v1``) accept any string or no key at
         all; we send a placeholder when none is configured so the SDK
         doesn't raise.
-      * ``list_models`` falls back to ``[self.model]`` if the endpoint
-        does not implement ``/v1/models`` - manual model entry must
-        keep working per the sprint acceptance criteria.
+      * ``list_models`` falls back to ``[self.model]`` only when the
+        endpoint has no listing (``/v1/models`` answers 404, 405 or 501),
+        so manual model entry keeps working. Any other failure (a
+        rejected key, a refused connection, a timeout) is raised so
+        discovery reports the endpoint as unavailable with the reason.
+      * ``label`` names the provider in that error ("DeepSeek", "Qwen");
+        the factory sets it for the named vendors built on this class.
     """
 
     model: str
     base_url: str
     max_tokens: int = 4096
     api_key_env_var: str | None = None
+    label: str = "OpenAI-compatible endpoint"
 
     def __post_init__(self) -> None:
         if not self.base_url:
@@ -268,12 +273,36 @@ class OpenAICompatibleProvider:
         yield self.complete(prompt)
 
     def list_models(self) -> list[str]:
-        # If the endpoint doesn't implement /v1/models, fall back to the
-        # configured model so manual entry keeps working.
+        # Only an endpoint without a listing falls back to the typed model
+        # so manual entry keeps working; a rejected key, a refused
+        # connection or a timeout is reported, never hidden behind the id.
         try:
             return self._listed_models()
-        except Exception:
-            return [self.model]
+        except Exception as exc:
+            if _endpoint_has_no_listing(exc):
+                return [self.model]
+            raise RuntimeError(
+                f"{self.label} list_models failed: {self._listing_failure(exc)}"
+            ) from exc
+
+    def _listing_failure(self, exc: Exception) -> str:
+        """Name the failure kind with the vendor's message, never the key."""
+        import openai
+
+        if isinstance(exc, openai.AuthenticationError):
+            detail = f"authentication failed (HTTP 401): {_vendor_message(exc)}"
+        elif isinstance(exc, openai.APIStatusError):
+            detail = f"HTTP {exc.status_code}: {_vendor_message(exc)}"
+        elif isinstance(exc, openai.APITimeoutError):
+            detail = "request timed out"
+        elif isinstance(exc, openai.APIConnectionError):
+            detail = f"connection error: {exc.__cause__ or exc}"
+        else:
+            detail = str(exc)
+        key = os.environ.get(self.api_key_env_var or "")
+        if key and key in detail:
+            detail = detail.replace(key, "[key redacted]")
+        return detail
 
     def _listed_models(self) -> list[str]:
         # 2s discovery cap matches the OpenAI provider - discovery is on
@@ -286,6 +315,30 @@ class OpenAICompatibleProvider:
             if model_id:
                 ids.append(model_id)
         return ids or [self.model]
+
+
+def _endpoint_has_no_listing(exc: Exception) -> bool:
+    """True when the endpoint answered that it has no model listing: 404
+    (``openai.NotFoundError``), 405 or 501."""
+    import openai
+
+    if isinstance(exc, openai.NotFoundError):
+        return True
+    return isinstance(exc, openai.APIStatusError) and exc.status_code in (405, 501)
+
+
+def _vendor_message(exc: Exception) -> str:
+    """The message the vendor sent, when its error body carries one, else
+    the SDK's own text."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            body = error
+        message = body.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    return str(exc)
 
 
 @dataclasses.dataclass

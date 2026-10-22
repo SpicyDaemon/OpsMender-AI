@@ -107,6 +107,8 @@ extension warning, and scheduler sweep intervals are configured with
    classification.
 7. Save. Model discovery is cached for 60 seconds for local/proxy endpoints and 1 hour for cloud catalogs so the page stays snappy.
 
+The Models page shows a provider as unavailable with the vendor's error when its model listing fails: a rejected or mistyped key for Qwen, DeepSeek, Kimi or an `openai_compatible` endpoint reads as an authentication failure, a refused connection or a timeout is named, and only an endpoint with no model listing (`/v1/models` answers 404, 405 or 501) keeps the typed model ID. The config still saves with a warning, so you can fix the key in `.env` afterwards.
+
 ## 4. MCP Servers and Skills
 
 OpsMender uses the Model Context Protocol (MCP) to interact with your infrastructure. MCP servers and Skills are managed separately: MCP servers define the connection, while Skills define the allowed operations for that connection.

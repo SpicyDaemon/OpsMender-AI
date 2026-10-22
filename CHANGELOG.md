@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- A rejected or unreachable OpenAI-shaped endpoint is reported as
+  unavailable. Qwen, DeepSeek, Kimi and `openai_compatible` endpoints showed
+  a green dot on the Models page after an HTTP 401, a refused connection or
+  a timeout, because their model listing fell back to the typed model ID on
+  every failure. The fallback now applies only to an endpoint without a model
+  listing (404, 405 or 501); any other failure is shown with the vendor's
+  message, never the key, and the config still saves with a warning.
 
 ## [1.2.1] - 2026-10-21
 

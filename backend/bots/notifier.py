@@ -527,6 +527,39 @@ async def _try_update_incident_notification(
     return True
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Receipt timestamps are written in UTC; SQLite hands them back naive."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+async def _newer_card_in_channel(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    chat_id: str,
+    incident_id: uuid.UUID,
+    generated_at: datetime,
+) -> bool:
+    """Whether this channel's latest incident card was recorded after the
+    event now being delivered was scheduled. Delivering it anyway would
+    render a state older than the one the channel already shows."""
+    async with factory() as db:
+        latest = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+            external_channel_id=chat_id,
+            lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+        )
+    if latest is None:
+        return False
+    return _as_utc(latest.created_at) > _as_utc(generated_at)
+
+
 async def _deliver(
     factory: async_sessionmaker[AsyncSession],
     *,
@@ -547,8 +580,30 @@ async def _deliver(
     facts: list[tuple[str, str]] | None = None,
     acknowledged_by: str | None = None,
     edit_only: bool = False,
+    generated_at: datetime | None = None,
 ) -> None:
+    """``generated_at`` is the moment the incident event was scheduled. A
+    card delivery that reaches a channel whose card is already newer than
+    that (a delayed escalation after an acknowledgement) is dropped for that
+    channel: no edit, no post, no receipt."""
     if incident_id is not None and lifecycle_event is not None:
+        if generated_at is not None and await _newer_card_in_channel(
+            factory,
+            org_id=org_id,
+            connector=connector,
+            chat_id=chat_id,
+            incident_id=incident_id,
+            generated_at=generated_at,
+        ):
+            log.debug(
+                "incident notification %s skipped: the channel already shows a "
+                "newer card (platform=%s chat=%s incident=%s)",
+                lifecycle_event,
+                connector.platform,
+                chat_id,
+                incident_id,
+            )
+            return
         updated = await _try_update_incident_notification(
             factory,
             org_id=org_id,
@@ -783,6 +838,8 @@ async def deliver_incident_event(
     base_url: str | None = None,
     edit_only: bool = False,
     previous_team_id: uuid.UUID | None = None,
+    previous_team_only: bool = False,
+    generated_at: datetime | None = None,
 ) -> None:
     """Post an incident card/message to every enabled Notification Channel that
     has the ``notifications`` capability.
@@ -806,6 +863,11 @@ async def deliver_incident_event(
     to the new one gets this one edit: the card says the incident moved to
     another team, names no service, team or responder, and has no buttons.
     Later events skip that channel, like any channel scoped to other teams.
+    With ``previous_team_only`` that edit is all this delivery does: the
+    channels of the team that holds the incident now are left to the event
+    scheduled for them (a resolve that moves the incident in the same change).
+
+    ``generated_at`` is when the event was scheduled; see :func:`_deliver`.
     """
     if event_type not in INCIDENT_CHAT_EVENTS:
         return
@@ -836,6 +898,8 @@ async def deliver_incident_event(
             and previous_team_id is not None
             and _connector_matches_team(connector, previous_team_id)
         ):
+            continue
+        if previous_team_only and not moved_away:
             continue
         is_track = _has_lane(connector, "track")
         if is_track and connector.platform not in {
@@ -899,6 +963,7 @@ async def deliver_incident_event(
                     "acknowledged_by_display_name"
                 ),
                 edit_only=edit_only,
+                generated_at=generated_at,
             )
 
 
@@ -912,6 +977,7 @@ def schedule_incident_event(
     task_registry: set[asyncio.Task] | None = None,
     edit_only: bool = False,
     previous_team_id: uuid.UUID | None = None,
+    previous_team_only: bool = False,
 ) -> asyncio.Task:
     task = asyncio.create_task(
         deliver_incident_event(
@@ -922,6 +988,8 @@ def schedule_incident_event(
             base_url=base_url,
             edit_only=edit_only,
             previous_team_id=previous_team_id,
+            previous_team_only=previous_team_only,
+            generated_at=_utcnow(),
         )
     )
     if task_registry is not None:
@@ -945,6 +1013,7 @@ async def deliver_incident_text(
     informational_only: bool = False,
     facts: list[tuple[str, str]] | None = None,
     acknowledged_by: str | None = None,
+    generated_at: datetime | None = None,
 ) -> None:
     """Fan out a *pre-built* incident message to enabled Notification Channels
     with the ``notifications`` capability.
@@ -954,6 +1023,9 @@ async def deliver_incident_text(
     yet) so the background delivery does not have to re-read incident state.
     ``facts`` and ``acknowledged_by`` are pre-built the same way for the
     native cards, which keep their action buttons as on any other event.
+    ``generated_at`` is when they were built; a channel whose card is newer
+    by then is left alone (see :func:`_deliver`), so a delayed escalation
+    never edits an acknowledged card back or posts a stale card after it.
     """
     async with factory() as db:
         connectors = list(
@@ -1043,6 +1115,7 @@ async def deliver_incident_text(
                 team_name=team_name,
                 facts=facts,
                 acknowledged_by=acknowledged_by,
+                generated_at=generated_at,
             )
 
 
@@ -1058,7 +1131,11 @@ def schedule_incident_text(
     task_registry: set[asyncio.Task] | None = None,
     facts: list[tuple[str, str]] | None = None,
     acknowledged_by: str | None = None,
+    generated_at: datetime | None = None,
 ) -> asyncio.Task:
+    """``generated_at`` defaults to now. A caller that built the text and
+    facts earlier (the escalation engine, before its commit) passes the
+    moment it built them."""
     task = asyncio.create_task(
         deliver_incident_text(
             factory,
@@ -1070,6 +1147,7 @@ def schedule_incident_text(
             rendered_status=rendered_status,
             facts=facts,
             acknowledged_by=acknowledged_by,
+            generated_at=generated_at or _utcnow(),
         )
     )
     if task_registry is not None:

@@ -11,7 +11,10 @@ the phone keypad update it as a tap would. Every other ownership change (a
 release, take, assignment, reassignment, handoff, bulk change, service move,
 reopen or session override) edits the card in place and posts nothing new.
 When the incident moves to another team, a channel limited to the team it
-left gets one last edit that names no one and has no buttons, then nothing.
+left gets one last edit that names no one and has no buttons, then nothing;
+one change that resolves the incident and moves it does the same. A delivery
+that runs late (an escalation delivered after a newer acknowledgement) never
+renders a state older than the card the channel already shows.
 Slack answers the person who tapped through the payload's ``response_url``,
 after the request's work is committed. No real workspace is contacted: every outbound HTTP call
 lands in a mock transport.
@@ -87,6 +90,8 @@ SIGNING_SECRET = "chat-card-signing-secret"
 SLACK_CHANNEL = "C123"
 SLACK_TS = "1700000000.000100"
 RESPONSE_URL = "https://hooks.slack.com/actions/T1/1/abc"
+PLATFORM_CHANNEL = "C456"
+PLATFORM_TS = "1700000000.000300"
 DISCORD_CHANNEL = "discord-channel"
 DISCORD_MESSAGE = "discord-message"
 TEAMS_CHAT = "19:chat@thread.v2"
@@ -2174,3 +2179,241 @@ async def test_teams_acknowledge_posts_a_fresh_card(
     ]
     assert receipts[-1].external_message_id == "teams-message-2"
     assert receipts[-1].can_update is False
+
+
+# ---------------------------------------------------------------------------
+# Ordering: a late delivery never renders a state older than the card
+# ---------------------------------------------------------------------------
+
+
+async def _hold_escalation(monkeypatch) -> tuple[list, object]:
+    """Hold the escalation engine's card delivery (scheduled before the
+    request commits) to run it later, as a slow channel would."""
+    held: list[tuple[tuple, dict]] = []
+    original = notifier.schedule_incident_text
+    monkeypatch.setattr(
+        notifier,
+        "schedule_incident_text",
+        lambda *args, **kwargs: held.append((args, kwargs)),
+    )
+    return held, original
+
+
+async def _escalate_then_acknowledge(client, app, card_tasks, held, seeded) -> None:
+    resp = await _tap(client, ACTION_ESCALATE, seeded.incident_id)
+    assert resp.status_code == 200
+    assert len(held) == 1
+    resp = await _tap(
+        client, ACTION_ACK, seeded.incident_id, action_ts="1700000003.000003"
+    )
+    assert resp.status_code == 200
+    await _drain(card_tasks)
+
+
+async def test_delayed_escalation_does_not_undo_the_acknowledged_card(
+    client, app, outbound, card_tasks, monkeypatch
+):
+    """Escalate, then acknowledge as Sam before the escalation's card delivery
+    runs. When it does run, it finds a newer card in the channel and leaves it
+    alone: Sam stays the responder and acknowledger, Acknowledge stays off,
+    nothing is edited or recorded for the escalation."""
+    seeded = await _seed_slack(app)
+    await _seed_chain(app, seeded)
+    held, original = await _hold_escalation(monkeypatch)
+    await _escalate_then_acknowledge(client, app, card_tasks, held, seeded)
+    before = outbound.to("chat.update")[-1][2]["blocks"]
+    assert "*Responder*\nAssigned to Sam Ops" in _fields(before)
+
+    args, kwargs = held[0]
+    assert "Escalated to Bea Two" in kwargs["text"]
+    await original(*args, **kwargs)
+    await _drain(card_tasks)
+
+    assert await _owner(app, seeded.incident_id) == seeded.user_id
+    edits = outbound.to("chat.update")
+    assert len(edits) == 1
+    after = edits[-1][2]["blocks"]
+    assert "*Responder*\nAssigned to Sam Ops" in _fields(after)
+    assert "*Acknowledged by*\nSam Ops" in _fields(after)
+    assert "Bea" not in json.dumps(after)
+    assert _context(after).startswith("Acknowledged by Sam Ops · ")
+    assert ACTION_ACK not in _action_ids(after)
+    assert outbound.to("chat.postMessage") == []
+    receipts = await _receipts(app, seeded.incident_id)
+    assert [r.lifecycle_event for r in receipts] == [
+        "incident.created",
+        "incident.acknowledged",
+    ]
+
+
+async def test_delayed_escalation_posts_no_stale_teams_card(
+    client, app, outbound, card_tasks, monkeypatch
+):
+    """Teams cannot edit, so a late escalation would post a fresh card after
+    the acknowledged one. It posts nothing instead."""
+    seeded = await _seed_slack(app)
+    await _seed_chain(app, seeded)
+    await _add_teams_channel(app, monkeypatch)
+    held, original = await _hold_escalation(monkeypatch)
+    await _escalate_then_acknowledge(client, app, card_tasks, held, seeded)
+    assert _teams_posts(outbound) == 1
+    acknowledged = outbound.to(f"/chats/{TEAMS_CHAT}/messages")[0][2]
+    assert "Acknowledged by" in json.dumps(acknowledged)
+
+    args, kwargs = held[0]
+    await original(*args, **kwargs)
+    await _drain(card_tasks)
+
+    assert _teams_posts(outbound) == 1
+    assert len(outbound.to("chat.update")) == 1
+    assert outbound.to("chat.postMessage") == []
+    receipts = await _receipts(app, seeded.incident_id)
+    assert "incident.escalated" not in [r.lifecycle_event for r in receipts]
+    assert sorted(r.platform for r in receipts) == ["slack", "slack", "teams"]
+
+
+async def _add_platform_slack_channel(app, platform_id, *, prior_card_for=None):
+    """A second Slack channel limited to Platform, holding the card of
+    incident ``prior_card_for`` already when one is given."""
+    async with app.state.session_factory() as db:
+        connector = await BotConnectorRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="slack-platform",
+            platform="slack",
+            config={
+                "default_chat_id": PLATFORM_CHANNEL,
+                "team_scope": "teams",
+                "team_ids": [str(platform_id)],
+            },
+            credentials={"signing_secret": SIGNING_SECRET, "bot_token": "xoxb-plat"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+            native_actions_enabled=True,
+        )
+        connector.callback_status = "verified"
+        if prior_card_for is not None:
+            await IncidentNotificationReceiptRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=prior_card_for,
+                connector_id=connector.id,
+                platform="slack",
+                lifecycle_event="incident.created",
+                external_channel_id=PLATFORM_CHANNEL,
+                external_message_id=PLATFORM_TS,
+                rendered_status="open",
+                can_update=True,
+            )
+        await db.commit()
+        return connector.id
+
+
+async def test_resolve_and_move_edit_the_previous_teams_card_once(
+    client, app, outbound, card_tasks
+):
+    """One PATCH resolves the incident and moves it to Platform's service.
+    The Payments card (acknowledged by Sam) is edited once more to say the
+    incident moved, with no buttons; Platform's channel gets the resolved
+    event as a new post; nothing new is posted to Payments."""
+    seeded = await _seed_slack(app)
+    platform, gateway, _ = await _scope_to_payments_and_add_platform(app, seeded)
+    await _add_platform_slack_channel(app, platform.id)
+    await _tap(client, ACTION_ACK, seeded.incident_id)
+    await _drain(card_tasks)
+    assert len(outbound.to("chat.update")) == 1
+
+    resp = await client.patch(
+        f"/incidents/{seeded.incident_id}",
+        json={
+            "status": "resolved",
+            "service_id": str(gateway.id),
+            "service_id_set": True,
+            "handoff_reason": "Platform owns this",
+        },
+        headers=await _login(client, app, seeded.user_id),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "resolved"
+    await _drain(card_tasks)
+
+    updates = outbound.to("chat.update")
+    assert [update[2]["ts"] for update in updates] == [SLACK_TS] * 2
+    edit = updates[-1][2]
+    assert edit["channel"] == SLACK_CHANNEL
+    assert _fields(edit["blocks"]) == [
+        "*Service*\nmanual",
+        "*Team*\nMoved to another team",
+        "*Org*\nChat Org",
+    ]
+    assert _context(edit["blocks"]) == f"Incident `{seeded.incident_id}`"
+    assert _action_ids(edit["blocks"]) == [ACTION_VIEW]
+    for name in ("Sam", "Platform", "Checkout API", "Edge gateway"):
+        assert name not in json.dumps(edit)
+
+    posts = outbound.to("chat.postMessage")
+    assert [post[2]["channel"] for post in posts] == [PLATFORM_CHANNEL]
+    assert "resolved" in posts[0][2]["text"].lower()
+    assert ACTION_RESOLVE not in _action_ids(posts[0][2]["blocks"])
+
+    receipts = await _receipts(app, seeded.incident_id)
+    by_channel = {}
+    for receipt in receipts:
+        by_channel.setdefault(receipt.external_channel_id, []).append(
+            receipt.lifecycle_event
+        )
+    assert by_channel == {
+        SLACK_CHANNEL: [
+            "incident.created",
+            "incident.acknowledged",
+            "incident.updated",
+        ],
+        PLATFORM_CHANNEL: ["incident.resolved"],
+    }
+
+
+async def test_previous_team_only_edit_leaves_the_current_teams_card_alone(
+    app, outbound
+):
+    """The moved-away edit for the team an incident left, delivered on its
+    own, touches the card in that team's channel and nothing in the channel
+    of the team that holds it now."""
+    seeded = await _seed_slack(app)
+    platform, gateway, _ = await _scope_to_payments_and_add_platform(app, seeded)
+    await _add_platform_slack_channel(
+        app, platform.id, prior_card_for=seeded.incident_id
+    )
+    async with app.state.session_factory() as db:
+        await IncidentRepo.update_fields(
+            db,
+            TEST_ORG_ID,
+            seeded.incident_id,
+            status="resolved",
+            service_id=gateway.id,
+            service_id_set=True,
+        )
+        await db.commit()
+
+    await notifier.deliver_incident_event(
+        app.state.session_factory,
+        org_id=TEST_ORG_ID,
+        incident_id=seeded.incident_id,
+        event_type="incident.updated",
+        edit_only=True,
+        previous_team_id=seeded.team_id,
+        previous_team_only=True,
+    )
+
+    updates = outbound.to("chat.update")
+    assert [(update[2]["channel"], update[2]["ts"]) for update in updates] == [
+        (SLACK_CHANNEL, SLACK_TS)
+    ]
+    assert "*Team*\nMoved to another team" in _fields(updates[0][2]["blocks"])
+    assert outbound.to("chat.postMessage") == []
+    receipts = await _receipts(app, seeded.incident_id)
+    assert [
+        (r.external_channel_id, r.lifecycle_event)
+        for r in receipts
+        if r.lifecycle_event == "incident.updated"
+    ] == [(SLACK_CHANNEL, "incident.updated")]

@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every failure. The fallback now applies only to an endpoint without a model
   listing (404, 405 or 501); any other failure is shown with the vendor's
   message, never the key, and the config still saves with a warning.
+- A chat card delivery that ran late no longer overwrote a newer card. An
+  escalation's card is built before the escalation commits; when its
+  delivery reached a Slack or Discord channel after someone had acknowledged
+  from the card, it edited the card back to "Escalated to", dropped
+  "Acknowledged by" and brought the Acknowledge button back while the
+  incident still belonged to the acknowledger, and on Teams it posted a
+  stale card after the acknowledged one. Every card delivery now carries the
+  moment its event was scheduled and skips a channel whose latest card is
+  newer than that: nothing is edited, posted or recorded there.
+- One change that resolved an incident and moved it to another team's
+  service left the old team's card acknowledged, with its buttons, for good:
+  the resolved event went to the new team's channels and the moved-away edit
+  was skipped because the incident was closed. The old team's card is now
+  edited once more to say the incident moved, with no buttons, and the new
+  team's channels receive only the resolved event.
 
 ## [1.2.1] - 2026-10-21
 

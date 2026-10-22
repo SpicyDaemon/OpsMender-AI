@@ -301,6 +301,9 @@ async def _notify_escalation(
         ):
             return
 
+        # The card below is a snapshot taken from this moment on; the
+        # delivery drops it for any channel whose card is newer than this.
+        generated_at = datetime.now(timezone.utc)
         incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
         if incident is None:
             return
@@ -350,6 +353,7 @@ async def _notify_escalation(
             rendered_status=incident.status,
             facts=incident_card_facts(incident, **card),
             acknowledged_by=responder.get("acknowledged_by_display_name"),
+            generated_at=generated_at,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
         _log.warning("escalation channel notify skipped")

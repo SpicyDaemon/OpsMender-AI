@@ -184,13 +184,17 @@ async def _notify_channels(
     *,
     edit_only: bool = False,
     previous_team_id: uuid.UUID | None = None,
+    previous_team_only: bool = False,
 ) -> None:
     """Best-effort: post an incident card to enabled Notification Channels.
 
     Must be called *after* the incident change is committed so the background
     delivery (which opens its own DB session) sees the new state. With
     ``edit_only`` the cards already posted are edited in place and nothing new
-    is posted (see :func:`_refresh_channel_cards`).
+    is posted (see :func:`_refresh_channel_cards`). With ``previous_team_only``
+    only the channels of the team the incident left (``previous_team_id``) get
+    that edit; the current team's channels are left to the event scheduled
+    for them.
 
     We first check - on the already-committed request session - whether any
     enabled channel even wants notifications. Only then do we spawn the
@@ -218,6 +222,7 @@ async def _notify_channels(
             base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
             edit_only=edit_only,
             previous_team_id=previous_team_id,
+            previous_team_only=previous_team_only,
         )
     except Exception:  # pragma: no cover - delivery is best-effort
         _log.warning("incident channel notify skipped", exc_info=True)
@@ -1074,6 +1079,11 @@ async def update_incident(
     if service_changed and updated.team_id is not None:
         updated.team_id = None
         await db.flush()
+    # Whether the move hands the incident to another team, whose channels
+    # hold its card from now on; a closed incident can move too.
+    team_changed = service_changed and previous_team_id != await _owner_team_id(
+        db, org_id, updated
+    )
     if service_changed:
         note = (body.handoff_reason or "").strip()
         await record_lifecycle_comment(
@@ -1175,6 +1185,19 @@ async def update_incident(
     if owner_released:
         await _refresh_channel_cards(
             db, incident_id, org_id, previous_team_id=previous_team_id
+        )
+    elif team_changed and updated.status in _CLOSED_STATUSES:
+        # Resolved and moved in one change: the team it left still shows a
+        # live card, and the resolved event above reaches only the new team's
+        # channels. Edit the old team's card to say the incident moved.
+        await _notify_channels(
+            db,
+            incident_id,
+            org_id,
+            "incident.updated",
+            edit_only=True,
+            previous_team_id=previous_team_id,
+            previous_team_only=True,
         )
     if body.status is not None and body.status != prior_status:
         from backend.services.ticket_sync import schedule_ticket_status_sync

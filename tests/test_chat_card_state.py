@@ -2417,3 +2417,128 @@ async def test_previous_team_only_edit_leaves_the_current_teams_card_alone(
         for r in receipts
         if r.lifecycle_event == "incident.updated"
     ] == [(SLACK_CHANNEL, "incident.updated")]
+
+
+@pytest.mark.parametrize("order", ["older_first", "newer_first", "overlap"])
+async def test_two_queued_cards_keep_the_newer_owner(
+    client, app, outbound, card_tasks, monkeypatch, order
+):
+    """Both events exist before either provider receipt, including a slow send."""
+    seeded = await _seed_slack(app)
+    await _seed_chain(app, seeded)
+    await _add_teams_channel(app, monkeypatch)
+    held, schedule_text = await _hold_escalation(monkeypatch)
+    response = await _tap(client, ACTION_ESCALATE, seeded.incident_id)
+    assert response.status_code == 200
+    release_ack = asyncio.Event()
+    ack_ready = asyncio.Event()
+    deliver_event = notifier.deliver_incident_event
+
+    async def hold_ack(*args, **kwargs):
+        ack_ready.set()
+        await release_ack.wait()
+        await deliver_event(*args, **kwargs)
+
+    monkeypatch.setattr(notifier, "deliver_incident_event", hold_ack)
+    response = await _tap(
+        client, ACTION_ACK, seeded.incident_id, action_ts="1700000003.000003"
+    )
+    assert response.status_code == 200
+    await asyncio.wait_for(ack_ready.wait(), 5)
+    assert await _owner(app, seeded.incident_id) == seeded.user_id
+    args, kwargs = held[0]
+    slow_send = None
+    release_send = asyncio.Event()
+    try:
+        if order == "newer_first":
+            release_ack.set()
+            await _drain(card_tasks)
+            await schedule_text(*args, **kwargs)
+        elif order == "older_first":
+            await schedule_text(*args, **kwargs)
+        else:
+            send_entered = asyncio.Event()
+            ack_attempted = asyncio.Event()
+            update = SlackAdapter.update_incident_update
+            deliver = notifier._deliver
+
+            async def hold_update(self, *args, **kwargs):
+                if kwargs.get("acknowledged_by") is None:
+                    send_entered.set()
+                    await release_send.wait()
+                return await update(self, *args, **kwargs)
+
+            async def observe_ack(*args, **kwargs):
+                if kwargs.get("lifecycle_event") == "incident.acknowledged":
+                    ack_attempted.set()
+                return await deliver(*args, **kwargs)
+
+            monkeypatch.setattr(SlackAdapter, "update_incident_update", hold_update)
+            monkeypatch.setattr(notifier, "_deliver", observe_ack)
+            slow_send = schedule_text(*args, **kwargs)
+            await asyncio.wait_for(send_entered.wait(), 5)
+            release_ack.set()
+            await asyncio.wait_for(ack_attempted.wait(), 5)
+            # The acknowledgement has reached delivery while escalation is in flight.
+            release_send.set()
+            await slow_send
+    finally:
+        release_send.set()
+        release_ack.set()
+        if slow_send is not None:
+            await slow_send
+        await _drain(card_tasks)
+
+    edits = outbound.to("chat.update")
+    blocks = edits[-1][2]["blocks"]
+    assert "*Responder*\nAssigned to Sam Ops" in _fields(blocks)
+    assert ACTION_ACK not in _action_ids(blocks)
+    assert await _owner(app, seeded.incident_id) == seeded.user_id
+    assert len(edits) == (1 if order == "newer_first" else 2)
+    teams = outbound.to(f"/chats/{TEAMS_CHAT}/messages")
+    assert "Acknowledged by" in json.dumps(teams[-1][2])
+    receipts = await _receipts(app, seeded.incident_id)
+    slack = [r for r in receipts if r.platform == "slack"]
+    assert slack[0].event_generated_at is None  # Legacy receipt is preserved.
+    assert slack[-1].lifecycle_event == "incident.acknowledged"
+    assert all(r.event_generated_at is not None for r in slack[1:])
+    if order != "newer_first":
+        assert slack[-1].event_generated_at > slack[-2].event_generated_at
+        assert slack[-1].event_generated_at < slack[-2].created_at
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_failed_card_send_releases_turn_without_advancing_event(
+    client, app, outbound, card_tasks, monkeypatch, cancel
+):
+    seeded = await _seed_slack(app)
+    await _seed_chain(app, seeded)
+    held, schedule_text = await _hold_escalation(monkeypatch)
+    response = await _tap(client, ACTION_ESCALATE, seeded.incident_id)
+    assert response.status_code == 200
+    entered = asyncio.Event()
+    update = SlackAdapter.update_incident_update
+
+    async def fail_update(*args, **kwargs):
+        entered.set()
+        if cancel:
+            await asyncio.Event().wait()
+        raise RuntimeError("controlled provider failure")
+
+    monkeypatch.setattr(SlackAdapter, "update_incident_update", fail_update)
+    args, kwargs = held[0]
+    task = schedule_text(*args, **kwargs)
+    await asyncio.wait_for(entered.wait(), 5)
+    if cancel:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError if cancel else RuntimeError):
+        await task
+    assert len(await _receipts(app, seeded.incident_id)) == 1
+    monkeypatch.setattr(SlackAdapter, "update_incident_update", update)
+    response = await _tap(
+        client, ACTION_ACK, seeded.incident_id, action_ts="1700000003.000003"
+    )
+    assert response.status_code == 200
+    await asyncio.wait_for(_drain(card_tasks), 5)
+    _assert_held_by(outbound, seeded.incident_id, "Sam Ops", edits=1)
+    assert await _owner(app, seeded.incident_id) == seeded.user_id

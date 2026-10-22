@@ -4480,6 +4480,7 @@ class IncidentNotificationReceiptRepo:
         delivery_status: str = "delivered",
         update_failed_reason: str | None = None,
         last_updated_at: datetime | None = None,
+        event_generated_at: datetime | None = None,
     ) -> IncidentNotificationReceipt:
         row = IncidentNotificationReceipt(
             org_id=org_id,
@@ -4496,6 +4497,7 @@ class IncidentNotificationReceiptRepo:
             delivery_status=delivery_status,
             update_failed_reason=update_failed_reason,
             last_updated_at=last_updated_at,
+            event_generated_at=event_generated_at,
         )
         db.add(row)
         await db.flush()

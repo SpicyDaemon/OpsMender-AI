@@ -134,9 +134,9 @@ def _detect_placeholder_creds(
 
     Targets providers whose ``list_models()`` does NOT round-trip
     credentials (Anthropic returns the configured model; Azure
-    deployment returns the configured model; Qwen, DeepSeek and Kimi
-    fall back to the configured model when the listing fails), which
-    would otherwise show a misleading green dot in the dashboard.
+    deployment returns the configured model), which would otherwise
+    show a misleading green dot in the dashboard. Qwen, DeepSeek and Kimi
+    report a rejected key through the listing itself since M1-78.
     """
     if (
         provider in {"anthropic", "openai", "azure_openai", "qwen", "deepseek", "kimi"}

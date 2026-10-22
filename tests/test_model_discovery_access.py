@@ -15,6 +15,8 @@ import threading
 import time
 import uuid
 
+import httpx
+import openai
 import pytest
 
 from backend.llm.registry import ProviderRegistry
@@ -462,6 +464,92 @@ async def test_lmstudio_with_nothing_listening_is_unavailable_and_still_saves(
     # Nothing stored for the address or a key: LMSTUDIO_BASE_URL, else the
     # default, applies each time the config is used.
     assert row.base_url is None
+    assert row.api_key_env_var is None
+    ProviderRegistry.clear_discovery_cache()
+
+
+FAKE_KEY = "sk-test-revoked-0123456789abcdef"
+
+
+def _install_rejecting_openai(monkeypatch):
+    """The real openai SDK, with its HTTP client answering 401 to everything,
+    so the SDK raises its own authentication error; nothing leaves the
+    process."""
+    real_client = openai.OpenAI
+
+    def _reject(request):
+        return httpx.Response(
+            401,
+            json={
+                "error": {"message": "Invalid API key", "type": "authentication_error"}
+            },
+        )
+
+    def _client(**kwargs):
+        return real_client(
+            **kwargs,
+            http_client=httpx.Client(transport=httpx.MockTransport(_reject)),
+        )
+
+    monkeypatch.setattr(openai, "OpenAI", _client)
+
+
+@pytest.mark.parametrize(
+    "provider,env_name,label",
+    [
+        ("qwen", "DASHSCOPE_API_KEY", "Qwen"),
+        ("deepseek", "DEEPSEEK_API_KEY", "DeepSeek"),
+        ("kimi", "MOONSHOT_API_KEY", "Kimi"),
+    ],
+)
+async def test_a_rejected_vendor_key_is_unavailable_and_still_saves(
+    client, monkeypatch, provider, env_name, label
+):
+    """With a revoked or mistyped key, the Models page shows the vendor as
+    unavailable with its authentication error (M1-78), and an admin can
+    still save the config, which comes back with a warning. Neither answer
+    repeats the key."""
+    from backend.api.deps import get_current_session_factory
+    from backend.db.repos import ModelConfigRepo
+
+    monkeypatch.setenv(env_name, FAKE_KEY)
+    _install_rejecting_openai(monkeypatch)
+    ProviderRegistry.clear_discovery_cache()
+    h = await _headers(client)
+    error = (
+        f"{label} list_models failed: authentication failed (HTTP 401): Invalid API key"
+    )
+
+    listed = await client.get(
+        "/models", headers=h["viewer"], params={"provider": provider}
+    )
+    assert listed.status_code == 200, listed.text
+    [item] = listed.json()["items"]
+    assert item["available"] is False
+    assert item["models"] == []
+    assert item["error"] == error
+    assert FAKE_KEY not in listed.text
+
+    saved = await client.post(
+        "/models/configs",
+        headers=h["admin"],
+        json={
+            "name": f"{provider}-primary",
+            "provider": provider,
+            "model_id": "typed-model",
+        },
+    )
+    assert saved.status_code == 201, saved.text
+    [warning] = saved.json()["warnings"]
+    assert warning["code"] == "provider_unverified"
+    assert error in warning["message"]
+    assert FAKE_KEY not in saved.text
+
+    me = (await client.get("/auth/me", headers=h["admin"])).json()
+    async with get_current_session_factory()() as db:
+        [row] = await ModelConfigRepo.list_all(db, uuid.UUID(me["primary_org_id"]))
+    assert row.provider == provider
+    assert row.model_id == "typed-model"
     assert row.api_key_env_var is None
     ProviderRegistry.clear_discovery_cache()
 

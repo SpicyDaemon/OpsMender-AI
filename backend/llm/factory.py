@@ -55,6 +55,7 @@ def create_provider(
             base_url=base_url or "",
             max_tokens=max_tokens,
             api_key_env_var=api_key_env_var or spec.default_api_key_env_var,
+            label=spec.label,
         )
     if provider == "anthropic":
         return AnthropicProvider(

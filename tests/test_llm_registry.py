@@ -6,6 +6,8 @@ import sys
 import threading
 import types
 
+import httpx
+import openai
 import pytest
 
 from backend.llm.registry import ProviderRegistry
@@ -843,6 +845,162 @@ class TestLMStudio:
         registry.validate_model_config(
             provider="lmstudio", model_id="m", api_key_env_var="LM_API_TOKEN"
         )
+
+
+def _install_openai_answering(monkeypatch, handler):
+    """The real openai SDK, with its HTTP client answering from ``handler``
+    (an ``httpx.MockTransport`` handler) so the SDK raises its own error
+    classes; nothing leaves the process."""
+    real_client = openai.OpenAI
+
+    def _client(**kwargs):
+        return real_client(
+            **kwargs,
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+    monkeypatch.setattr(openai, "OpenAI", _client)
+
+
+def _answer(status, body):
+    def _handler(request):
+        if isinstance(body, dict):
+            return httpx.Response(status, json=body)
+        return httpx.Response(status, text=body)
+
+    return _handler
+
+
+def _refuse(request):
+    raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+
+
+def _time_out(request):
+    raise httpx.ReadTimeout("timed out", request=request)
+
+
+REJECTED = {"error": {"message": "Invalid API key", "type": "authentication_error"}}
+FAKE_KEY = "sk-test-revoked-0123456789abcdef"
+
+# The providers built on the OpenAI-shaped client whose listing used to fall
+# back to the typed id on every failure (M1-78): the key variable each reads
+# and its label, plus the settings discovery needs for the generic endpoint.
+LISTING_PROVIDERS = {
+    "qwen": ("DASHSCOPE_API_KEY", "Qwen", {}),
+    "deepseek": ("DEEPSEEK_API_KEY", "DeepSeek", {}),
+    "kimi": ("MOONSHOT_API_KEY", "Kimi", {}),
+    "openai_compatible": (
+        "GATEWAY_API_KEY",
+        "OpenAI-compatible endpoint",
+        {
+            "base_url": "https://gateway.example.com/v1",
+            "api_key_env_var": "GATEWAY_API_KEY",
+        },
+    ),
+}
+
+
+@pytest.fixture(params=sorted(LISTING_PROVIDERS))
+def listing_provider(request, monkeypatch):
+    """The provider name, with its fake key in the environment and the
+    generic endpoint's key variable listed for the operator."""
+    env_name, _label, _settings = LISTING_PROVIDERS[request.param]
+    monkeypatch.setenv(env_name, FAKE_KEY)
+    monkeypatch.setenv("OPSMENDER_MODEL_KEY_VARS", "GATEWAY_API_KEY")
+    return request.param
+
+
+class TestListingFailures:
+    """M1-78: a rejected key, a refused connection or a timeout makes the
+    provider unavailable with the reason; only an endpoint without a listing
+    keeps the typed id; the save path still succeeds with a warning."""
+
+    def test_a_rejected_key_is_unavailable(self, monkeypatch, listing_provider):
+        _env_name, label, settings = LISTING_PROVIDERS[listing_provider]
+        _install_openai_answering(monkeypatch, _answer(401, REJECTED))
+
+        [item] = ProviderRegistry().discover_models(
+            provider=listing_provider, use_cache=False, **settings
+        )
+
+        assert item["available"] is False, item
+        assert item["models"] == []
+        assert item["error"] == (
+            f"{label} list_models failed: "
+            "authentication failed (HTTP 401): Invalid API key"
+        )
+        assert FAKE_KEY not in item["error"]
+
+    def test_an_endpoint_without_a_listing_keeps_the_typed_id(
+        self, monkeypatch, listing_provider
+    ):
+        _env_name, _label, settings = LISTING_PROVIDERS[listing_provider]
+        _install_openai_answering(monkeypatch, _answer(404, "Not Found"))
+
+        [item] = ProviderRegistry().discover_models(
+            provider=listing_provider,
+            model_id="typed-model",
+            use_cache=False,
+            **settings,
+        )
+
+        assert item["available"] is True, item
+        assert item["models"] == ["typed-model"]
+        assert item["error"] is None
+
+    @pytest.mark.parametrize(
+        "handler,named",
+        [
+            (_refuse, "connection error: [Errno 111] Connection refused"),
+            (_time_out, "request timed out"),
+        ],
+        ids=["refused", "timeout"],
+    )
+    def test_a_refused_connection_or_a_timeout_is_unavailable(
+        self, monkeypatch, listing_provider, handler, named
+    ):
+        _env_name, label, settings = LISTING_PROVIDERS[listing_provider]
+        _install_openai_answering(monkeypatch, handler)
+
+        [item] = ProviderRegistry().discover_models(
+            provider=listing_provider, use_cache=False, **settings
+        )
+
+        assert item["available"] is False, item
+        assert item["models"] == []
+        assert item["error"] == f"{label} list_models failed: {named}"
+
+    def test_a_rejected_key_still_saves_with_a_warning(
+        self, monkeypatch, listing_provider
+    ):
+        """The save routes send allow_unverified, so the config is kept with
+        the provider_unverified warning carrying the error; a strict
+        validation refuses it with the same text."""
+        _env_name, label, settings = LISTING_PROVIDERS[listing_provider]
+        _install_openai_answering(monkeypatch, _answer(401, REJECTED))
+        registry = ProviderRegistry()
+        error = (
+            f"{label} list_models failed: "
+            "authentication failed (HTTP 401): Invalid API key"
+        )
+
+        result = registry.validate_model_config(
+            provider=listing_provider,
+            model_id="typed-model",
+            allow_unverified=True,
+            **settings,
+        )
+
+        assert [w.code for w in result.warnings] == ["provider_unverified"]
+        assert error in result.warnings[0].message
+        assert result.discovery_error == error
+        assert result.discovered_models == []
+        assert FAKE_KEY not in result.warnings[0].message
+        with pytest.raises(ValueError) as refused:
+            registry.validate_model_config(
+                provider=listing_provider, model_id="typed-model", **settings
+            )
+        assert str(refused.value) == error
 
 
 def test_discovery_asks_the_providers_at_the_same_time(monkeypatch):

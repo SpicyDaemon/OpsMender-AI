@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import test_chat_card_state as cards
+from tests import test_chat_card_state as cards
 
 card_tasks = cards.card_tasks
 client = cards.client

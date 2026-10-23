@@ -6,7 +6,9 @@ import asyncio
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from weakref import WeakValueDictionary
 from typing import Iterable
 
 import sqlalchemy
@@ -40,6 +42,7 @@ from backend.db.repos import (
     SessionRepo,
     TeamRepo,
     UserRepo,
+    take_turns,
 )
 
 
@@ -358,6 +361,7 @@ async def _record_delivery(
     delivery_status: str = "delivered",
     last_updated_at: datetime | None = None,
     delivery_lane: str = "respond",
+    generated_at: datetime | None = None,
 ) -> None:
     await BotActionAuditRepo.create(
         db,
@@ -408,11 +412,12 @@ async def _record_delivery(
             session_id=session_id,
             delivery_status=delivery_status,
             last_updated_at=last_updated_at,
+            event_generated_at=generated_at,
         )
 
 
 async def _try_update_incident_notification(
-    factory: async_sessionmaker[AsyncSession],
+    db: AsyncSession,
     *,
     org_id: uuid.UUID,
     connector: BotConnector,
@@ -426,6 +431,7 @@ async def _try_update_incident_notification(
     incident=None,
     native_actions_ready: bool = False,
     delivery_lane: str = "respond",
+    generated_at: datetime | None = None,
     facts: list[tuple[str, str]] | None = None,
     acknowledged_by: str | None = None,
 ) -> bool:
@@ -447,25 +453,24 @@ async def _try_update_incident_notification(
     if adapter is None or not hasattr(adapter, "update_incident_update"):
         return False
 
-    async with factory() as db:
-        if delivery_lane == "track":
-            prior = await IncidentTrackPostRepo.get(
-                db,
-                org_id,
-                incident_id=incident_id,
-                connector_id=connector.id,
-            )
-        else:
-            # The incident card, never a session message posted after it.
-            prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
-                db,
-                org_id,
-                incident_id=incident_id,
-                connector_id=connector.id,
-                external_channel_id=chat_id,
-                updateable_only=True,
-                lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
-            )
+    if delivery_lane == "track":
+        prior = await IncidentTrackPostRepo.get(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+        )
+    else:
+        # The incident card, never a session message posted after it.
+        prior = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+            external_channel_id=chat_id,
+            updateable_only=True,
+            lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+        )
     if prior is None or prior.external_message_id is None:
         return False
 
@@ -507,23 +512,22 @@ async def _try_update_incident_notification(
         external_channel_id=chat_id,
         can_update=True,
     )
-    async with factory() as db:
-        await _record_delivery(
-            db,
-            org_id=org_id,
-            connector=connector,
-            chat_id=chat_id,
-            command_label=command_label,
-            session_id=session_id,
-            receipt=receipt,
-            incident_id=incident_id,
-            lifecycle_event=lifecycle_event,
-            rendered_status=rendered_status,
-            delivery_status="updated",
-            last_updated_at=_utcnow(),
-            delivery_lane=delivery_lane,
-        )
-        await db.commit()
+    await _record_delivery(
+        db,
+        org_id=org_id,
+        connector=connector,
+        chat_id=chat_id,
+        command_label=command_label,
+        session_id=session_id,
+        receipt=receipt,
+        incident_id=incident_id,
+        lifecycle_event=lifecycle_event,
+        rendered_status=rendered_status,
+        delivery_status="updated",
+        last_updated_at=_utcnow(),
+        delivery_lane=delivery_lane,
+        generated_at=generated_at,
+    )
     return True
 
 
@@ -534,8 +538,30 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+# Weak values retain a lock while held or awaited, without retaining idle channels.
+_card_turns: WeakValueDictionary = WeakValueDictionary()
+
+
+@asynccontextmanager
+async def _delivery_turn(factory, key: str | None):
+    # Acquire the process turn before checking out a connection. PostgreSQL's
+    # transaction turn also serializes deliveries from other processes.
+    lock_key = (asyncio.get_running_loop(), key)
+    lock = (
+        _card_turns.setdefault(lock_key, asyncio.Lock())
+        if key is not None
+        else asyncio.Lock()
+    )
+    async with lock:
+        async with factory() as db:
+            if key is not None:
+                await take_turns(db, key)
+            yield db
+            await db.commit()
+
+
 async def _newer_card_in_channel(
-    factory: async_sessionmaker[AsyncSession],
+    db: AsyncSession,
     *,
     org_id: uuid.UUID,
     connector: BotConnector,
@@ -543,21 +569,18 @@ async def _newer_card_in_channel(
     incident_id: uuid.UUID,
     generated_at: datetime,
 ) -> bool:
-    """Whether this channel's latest incident card was recorded after the
-    event now being delivered was scheduled. Delivering it anyway would
-    render a state older than the one the channel already shows."""
-    async with factory() as db:
-        latest = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
-            db,
-            org_id,
-            incident_id=incident_id,
-            connector_id=connector.id,
-            external_channel_id=chat_id,
-            lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
-        )
-    if latest is None:
+    """Compare the represented event, never the time the provider replied."""
+    latest = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+        db,
+        org_id,
+        incident_id=incident_id,
+        connector_id=connector.id,
+        external_channel_id=chat_id,
+        lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+    )
+    if latest is None or latest.event_generated_at is None:
         return False
-    return _as_utc(latest.created_at) > _as_utc(generated_at)
+    return _as_utc(latest.event_generated_at) > _as_utc(generated_at)
 
 
 async def _deliver(
@@ -582,79 +605,83 @@ async def _deliver(
     edit_only: bool = False,
     generated_at: datetime | None = None,
 ) -> None:
-    """``generated_at`` is the moment the incident event was scheduled. A
-    card delivery that reaches a channel whose card is already newer than
-    that (a delayed escalation after an acknowledgement) is dropped for that
-    channel: no edit, no post, no receipt."""
-    if incident_id is not None and lifecycle_event is not None:
-        if generated_at is not None and await _newer_card_in_channel(
-            factory,
-            org_id=org_id,
-            connector=connector,
-            chat_id=chat_id,
-            incident_id=incident_id,
-            generated_at=generated_at,
-        ):
-            log.debug(
-                "incident notification %s skipped: the channel already shows a "
-                "newer card (platform=%s chat=%s incident=%s)",
-                lifecycle_event,
-                connector.platform,
-                chat_id,
-                incident_id,
+    """Serialize a card's stale check, provider send and receipt commit."""
+    card_event = incident_id is not None and lifecycle_event in INCIDENT_CHAT_EVENTS
+    key = (
+        f"incident-card:{org_id}:{incident_id}:{connector.id}:{chat_id}"
+        if card_event
+        else None
+    )
+    async with _delivery_turn(factory, key) as db:
+        if card_event:
+            if generated_at is not None and await _newer_card_in_channel(
+                db,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                incident_id=incident_id,
+                generated_at=generated_at,
+            ):
+                log.debug(
+                    "incident notification %s skipped: the channel already shows a "
+                    "newer card (platform=%s chat=%s incident=%s)",
+                    lifecycle_event,
+                    connector.platform,
+                    chat_id,
+                    incident_id,
+                )
+                return
+            updated = await _try_update_incident_notification(
+                db,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                text=text,
+                command_label=command_label,
+                session_id=session_id,
+                incident_id=incident_id,
+                lifecycle_event=lifecycle_event,
+                rendered_status=rendered_status,
+                incident=incident,
+                native_actions_ready=native_actions_ready,
+                delivery_lane=delivery_lane,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
+                generated_at=generated_at,
             )
+            if updated:
+                return
+        if edit_only:
+            # Nothing to edit here: an edit-only refresh never posts a new message.
             return
-        updated = await _try_update_incident_notification(
-            factory,
-            org_id=org_id,
-            connector=connector,
-            chat_id=chat_id,
-            text=text,
-            command_label=command_label,
-            session_id=session_id,
-            incident_id=incident_id,
-            lifecycle_event=lifecycle_event,
-            rendered_status=rendered_status,
-            incident=incident,
-            native_actions_ready=native_actions_ready,
-            delivery_lane=delivery_lane,
-            facts=facts,
-            acknowledged_by=acknowledged_by,
-        )
-        if updated:
-            return
-    if edit_only:
-        # Nothing to edit here: an edit-only refresh never posts a new message.
-        return
 
-    if connector.platform == "telegram":
-        receipt = await _deliver_to_telegram(
-            factory,
-            org_id=org_id,
-            connector=connector,
-            chat_id=chat_id,
-            text=text,
-            command_label=command_label,
-            session_id=session_id,
-        )
-    else:
-        receipt = await _deliver_via_adapter(
-            factory,
-            org_id=org_id,
-            connector=connector,
-            chat_id=chat_id,
-            text=text,
-            command_label=command_label,
-            session_id=session_id,
-            incident=incident,
-            native_actions_ready=native_actions_ready,
-            service_name=service_name,
-            team_name=team_name,
-            delivery_lane=delivery_lane,
-            facts=facts,
-            acknowledged_by=acknowledged_by,
-        )
-    async with factory() as db:
+        if connector.platform == "telegram":
+            receipt = await _deliver_to_telegram(
+                factory,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                text=text,
+                command_label=command_label,
+                session_id=session_id,
+            )
+        else:
+            receipt = await _deliver_via_adapter(
+                factory,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                text=text,
+                command_label=command_label,
+                session_id=session_id,
+                incident=incident,
+                native_actions_ready=native_actions_ready,
+                service_name=service_name,
+                team_name=team_name,
+                delivery_lane=delivery_lane,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
+            )
         await _record_delivery(
             db,
             org_id=org_id,
@@ -667,8 +694,8 @@ async def _deliver(
             lifecycle_event=lifecycle_event,
             rendered_status=rendered_status,
             delivery_lane=delivery_lane,
+            generated_at=generated_at,
         )
-        await db.commit()
 
 
 async def deliver_session_chat_event(
@@ -869,6 +896,7 @@ async def deliver_incident_event(
 
     ``generated_at`` is when the event was scheduled; see :func:`_deliver`.
     """
+    generated_at = generated_at or _utcnow()
     if event_type not in INCIDENT_CHAT_EVENTS:
         return
 
@@ -1027,6 +1055,7 @@ async def deliver_incident_text(
     by then is left alone (see :func:`_deliver`), so a delayed escalation
     never edits an acknowledged card back or posts a stale card after it.
     """
+    generated_at = generated_at or _utcnow()
     async with factory() as db:
         connectors = list(
             await BotConnectorRepo.list_all(db, org_id, enabled_only=True)

@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was skipped because the incident was closed. The old team's card is now
   edited once more to say the incident moved, with no buttons, and the new
   team's channels receive only the resolved event.
+- A card from an older event that was delivered late could still hide a
+  newer one: the check compared when the earlier card was recorded, not
+  which state it showed, so an escalation recorded after an acknowledgement
+  was decided made the acknowledgement's card edit skip. Each card receipt
+  now remembers the moment of the state it shows and only a card showing a
+  newer state holds a delivery back; cards already in the database keep
+  their timestamps and never hold anything back. Deliveries to one channel
+  for one incident run one at a time (a database lock on PostgreSQL, a
+  process lock on SQLite), so two overlapping sends cannot cross, and a
+  failed or cancelled send leaves no receipt behind.
 
 ## [1.2.1] - 2026-10-21
 

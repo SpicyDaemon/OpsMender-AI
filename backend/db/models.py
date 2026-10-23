@@ -1830,6 +1830,9 @@ class IncidentNotificationReceipt(Base):
     external_thread_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     lifecycle_event: Mapped[str] = mapped_column(String(80), nullable=False)
     rendered_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    event_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     can_update: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     delivery_status: Mapped[str] = mapped_column(
         String(30), default="delivered", nullable=False

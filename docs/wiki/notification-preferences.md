@@ -40,7 +40,10 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > leaves the card as it is. An older render never replaces a newer card: each
 > update carries the moment it was decided, and a channel whose card is already
 > newer than that (an escalation delivered late, after someone acknowledged)
-> is left as it is, with nothing edited or posted there. These updates only
+> is left as it is, with nothing edited or posted there. What counts is the
+> state a card shows, not when it was delivered: a card from an older event
+> that merely finished later never hides a newer one, and deliveries to one
+> channel for one incident run one at a time. These updates only
 > touch Notification Channels and never page anyone. Slack shows the person
 > who tapped the result in a message only they can see.
 > Other chat platforms still use the link fallback, and message

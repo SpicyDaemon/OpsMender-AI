@@ -33,6 +33,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from weakref import WeakValueDictionary
 
 import httpx
 import pytest
@@ -332,6 +333,42 @@ def card_tasks(monkeypatch):
 
 async def _drain(tasks: list[asyncio.Task]) -> None:
     await asyncio.gather(*tasks)
+
+
+class _ObservedLock(asyncio.Lock):
+    """A channel turn that reports when a delivery has to wait for it."""
+
+    def __init__(self, waited: asyncio.Event):
+        super().__init__()
+        self._waited = waited
+
+    async def acquire(self) -> bool:
+        if self.locked():
+            self._waited.set()
+        return await super().acquire()
+
+
+class _ObservedTurns(WeakValueDictionary):
+    """The notifier's per-channel turns, handing out observed locks."""
+
+    def __init__(self, waited: asyncio.Event):
+        super().__init__()
+        self._waited = waited
+
+    def setdefault(self, key, default=None):
+        return super().setdefault(key, _ObservedLock(self._waited))
+
+
+async def _first(*events: asyncio.Event) -> None:
+    """Return once any of the events is set, within the test's five seconds."""
+    waits = [asyncio.create_task(event.wait()) for event in events]
+    try:
+        await asyncio.wait_for(
+            asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED), 5
+        )
+    finally:
+        for wait in waits:
+            wait.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -2459,6 +2496,8 @@ async def test_two_queued_cards_keep_the_newer_owner(
         else:
             send_entered = asyncio.Event()
             ack_attempted = asyncio.Event()
+            ack_sent = asyncio.Event()
+            turn_waited = asyncio.Event()
             update = SlackAdapter.update_incident_update
             deliver = notifier._deliver
 
@@ -2466,6 +2505,8 @@ async def test_two_queued_cards_keep_the_newer_owner(
                 if kwargs.get("acknowledged_by") is None:
                     send_entered.set()
                     await release_send.wait()
+                else:
+                    ack_sent.set()
                 return await update(self, *args, **kwargs)
 
             async def observe_ack(*args, **kwargs):
@@ -2475,11 +2516,15 @@ async def test_two_queued_cards_keep_the_newer_owner(
 
             monkeypatch.setattr(SlackAdapter, "update_incident_update", hold_update)
             monkeypatch.setattr(notifier, "_deliver", observe_ack)
+            monkeypatch.setattr(notifier, "_card_turns", _ObservedTurns(turn_waited))
             slow_send = schedule_text(*args, **kwargs)
             await asyncio.wait_for(send_entered.wait(), 5)
             release_ack.set()
             await asyncio.wait_for(ack_attempted.wait(), 5)
-            # The acknowledgement has reached delivery while escalation is in flight.
+            # The acknowledgement has reached delivery while the escalation is
+            # in flight: it waits for the channel's turn instead of sending.
+            await _first(turn_waited, ack_sent)
+            assert turn_waited.is_set() and not ack_sent.is_set()
             release_send.set()
             await slow_send
     finally:

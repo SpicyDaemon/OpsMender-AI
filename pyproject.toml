@@ -88,7 +88,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pylint",
-    "black",
+    "black>=26.10.1",
     "mypy",
     "aiosqlite",
     "httpx",

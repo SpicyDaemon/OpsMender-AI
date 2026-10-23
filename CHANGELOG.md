@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- black moves to 26.10.1: one advisory on 26.5.1 (CVE-2026-114134) was
+  published after the v1.2.1 release, and the dependency audit caught it on
+  the first pull request checked after that. black is a development
+  formatter only; it is not part of the shipped image. Nothing else changes.
+
 ### Fixed
 
 - A rejected or unreachable OpenAI-shaped endpoint is reported as

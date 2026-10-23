@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.2.2] - 2026-10-23
+
 ### Security
 
 - black moves to 26.10.1: one advisory on 26.5.1 (CVE-2026-114134) was
@@ -21,8 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a green dot on the Models page after an HTTP 401, a refused connection or
   a timeout, because their model listing fell back to the typed model ID on
   every failure. The fallback now applies only to an endpoint without a model
-  listing (404, 405 or 501); any other failure is shown with the vendor's
-  message, never the key, and the config still saves with a warning.
+  listing (404, 405 or 501); any other failure is shown with its reason (the
+  vendor's message for a rejected key or another HTTP error, a timeout or a
+  refused connection), never the key, and the config still saves with a
+  warning.
 - A chat card delivery that ran late no longer overwrote a newer card. An
   escalation's card is built before the escalation commits; when its
   delivery reached a Slack or Discord channel after someone had acknowledged
@@ -30,24 +36,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Acknowledged by" and brought the Acknowledge button back while the
   incident still belonged to the acknowledger, and on Teams it posted a
   stale card after the acknowledged one. Every card delivery now carries the
-  moment its event was scheduled and skips a channel whose latest card is
-  newer than that: nothing is edited, posted or recorded there.
+  moment its event was decided, and a channel whose latest card shows a
+  newer state is left alone: nothing is edited, posted or recorded there.
 - One change that resolved an incident and moved it to another team's
-  service left the old team's card acknowledged, with its buttons, for good:
-  the resolved event went to the new team's channels and the moved-away edit
-  was skipped because the incident was closed. The old team's card is now
-  edited once more to say the incident moved, with no buttons, and the new
-  team's channels receive only the resolved event.
-- A card from an older event that was delivered late could still hide a
-  newer one: the check compared when the earlier card was recorded, not
-  which state it showed, so an escalation recorded after an acknowledgement
-  was decided made the acknowledgement's card edit skip. Each card receipt
-  now remembers the moment of the state it shows and only a card showing a
-  newer state holds a delivery back; cards already in the database keep
-  their timestamps and never hold anything back. Deliveries to one channel
-  for one incident run one at a time (a database lock on PostgreSQL, a
-  process lock on SQLite), so two overlapping sends cannot cross, and a
-  failed or cancelled send leaves no receipt behind.
+  service left the old team's card as it was, still naming its owner and
+  offering its buttons, for good: the resolved event went to the new team's
+  channels and the moved-away edit was skipped because the incident was
+  closed. Where the platform can edit a posted message (Slack, Discord,
+  Google Chat), the old team's card is now edited once more to say the
+  incident moved, with no buttons; a Teams card there is left as it was.
+  The new team's channels receive only the resolved event.
+- Deliveries of one incident's card to one channel run one at a time (a
+  database lock on PostgreSQL, a process lock on SQLite), so two overlapping
+  sends cannot cross. What holds a late delivery back is the state the
+  channel's card shows, not when that card was delivered: each card receipt
+  remembers the moment of the state it shows, so a card from an older event
+  that merely finished later never hides a newer one, and a failed or
+  cancelled send leaves no receipt behind. Cards posted before this release
+  keep their timestamps and never hold anything back. Upgrading runs one
+  migration (`d3e4f5a6b7c8`), which adds a column to the card receipts table
+  and changes no saved data.
+
+The chat card fixes are covered by product tests that answer every Slack,
+Teams and Discord request in process. They have not been exercised against
+a live Slack or Telegram workspace; that acceptance pass waits for real test
+destinations and is not claimed by this release.
 
 ## [1.2.1] - 2026-10-21
 
@@ -3027,7 +3040,8 @@ Archived draft release notes from the earlier Sprints 1-23 milestone planning. K
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
 - Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
-[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.1...v1.1.2

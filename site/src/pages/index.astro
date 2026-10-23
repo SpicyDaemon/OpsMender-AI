@@ -61,10 +61,10 @@ const gatePoints = [
 ];
 
 const whatsNew = [
-  ['Qwen, DeepSeek and Kimi by name',   'Pick them on the Models page and put the key in .env. There is no base URL to type, and each one connects only to its vendor\'s hosts.'],
-  ['LM Studio as a local provider',     'Pick LM Studio by name. It needs no key and connects to its default local address unless you name another. The new model form shows the default URL for LM Studio, Qwen, DeepSeek and Kimi, so you type one only when yours differs.'],
-  ['Cards that say who holds it',       'Slack, Teams and Discord cards name the responder and who acknowledged. After an acknowledge or resolve from chat, Slack and Discord edit the card in place and drop Acknowledge, and Teams, which cannot edit a posted card, posts a fresh one without it.'],
-  ['Slack answers who pressed',         'Press a Slack button and the result comes back in a message only you can see, once the action is saved. Slack never showed the old reply.'],
+  ['A late card never undoes a newer one', 'An escalation card that arrives after someone acknowledged leaves the acknowledged card alone: what counts is the state a card shows, not when it was delivered. Deliveries to one channel for one incident run one at a time, and a failed send records nothing.'],
+  ['Moved while resolved',                 'Resolving an incident while moving it to another team\'s service now edits the old team\'s card to say it moved, with no buttons, where the platform can edit a posted message. The new team\'s channels get only the resolved event.'],
+  ['Honest provider status',               'A rejected key, a refused connection or a timeout from Qwen, DeepSeek, Kimi or an OpenAI compatible endpoint shows the provider as unavailable with the reason, never the key. Only an endpoint with no model listing keeps the typed model.'],
+  ['Current foundations',                  'black moves to 26.10.1, closing the advisory the dependency audit found after 1.2.1. It is a development formatter and not part of the shipped image.'],
 ];
 
 const shots = [
@@ -474,13 +474,13 @@ const marquee = [...platforms, ...sources];
           </div>
         ))}
       </div>
-      <p class="rise mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-muted">v1.2.1 <span class="mx-2">·</span> MIT license <span class="mx-2">·</span> <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="underline decoration-ops-border underline-offset-4 hover:text-slate-200 focus-ring">changelog</a></p>
+      <p class="rise mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ops-muted">v1.2.2 <span class="mx-2">·</span> MIT license <span class="mx-2">·</span> <a href={CHANGELOG_URL} target="_blank" rel="noopener noreferrer" class="underline decoration-ops-border underline-offset-4 hover:text-slate-200 focus-ring">changelog</a></p>
     </section>
 
     <!-- WHAT'S NEW -->
     <section id="new" class="mx-auto max-w-7xl scroll-mt-28 px-5 pt-32 sm:px-8 sm:pt-44">
       <div class="text-center">
-        <p class="label rise">Version 1.2.1</p>
+        <p class="label rise">Version 1.2.2</p>
         <h2 class="headline rise mx-auto mt-5 max-w-2xl text-4xl text-slate-50 sm:text-5xl" style="--i:1">What's new</h2>
       </div>
       <ol class="mt-14 grid gap-5 md:grid-cols-2">

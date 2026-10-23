@@ -21,7 +21,11 @@ pytestmark = pytest.mark.integration
 async def app(tmp_path, monkeypatch):
     url = os.environ.get("PART4_PG_URL", "")
     database = make_url(url).database if url else None
-    assert database and database.startswith("qa_") and database != "testdb"
+    # Hosted verification owns a fresh PostgreSQL service for this job.
+    assert database and database != "testdb"
+    assert database.startswith("qa_") or (
+        os.environ.get("GITHUB_ACTIONS") == "true" and database == "opsmender"
+    ), "Use a disposable qa_ database locally"
     engine = create_async_engine(url)
     async with engine.begin() as connection:
         assert await connection.scalar(text("SELECT current_database()")) == database

@@ -27,6 +27,12 @@ from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
 from backend.agent.writing_style import PLAIN_WRITING
 from backend.approvals import ApprovalService
+from backend.agent.grounding import (
+    GROUNDING_RULE,
+    NO_ACTION_VERIFICATION,
+    facts_block,
+    facts_from_state,
+)
 from backend.agent.hygiene import UNTRUSTED_RULE, redact_value, untrusted
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
@@ -52,7 +58,9 @@ Based on this description, provide a structured summary of:
 3. What initial observations can be made
 4. What information would be useful to gather next
 
-Be concise and actionable.  Focus on facts, not speculation.
+Be concise and actionable.  Focus on facts, not speculation.  Do not assume a
+probe, monitor or scheduled check produced this incident unless the description
+says so.
 """
     + PLAIN_WRITING
 )
@@ -74,7 +82,9 @@ Based on these observations, provide:
 3. Severity assessment (critical / high / medium / low)
 4. Confidence level in the diagnosis (high / medium / low)
 
-Be concise and structured.
+Be concise and structured.  If the observations do not establish a cause, say
+the cause is unknown.  Do not invent probes, monitors, alerts, telemetry or
+history that the observations do not contain.
 """
     + PLAIN_WRITING
 )
@@ -148,22 +158,38 @@ Incident description:
 {incident_description}
 Diagnosis: {diagnosis}
 Verification: {verification}
-Actions taken: {tool_call_count}
-Blocked actions: {blocked_count}
+
+{facts}
 
 {untrusted_rule}
 
-Write a concise incident summary covering:
-1. What happened
-2. Root cause
-3. Actions taken
-4. Current status
-5. Follow-up items (if any)
+{grounding_rule}
+
+{sections}
 
 Keep it under 200 words.
 """
     + PLAIN_WRITING
 )
+
+# The sections the summary covers when actions ran, and when none did. A
+# session without actions has no root cause to prove, nothing it did and no
+# status change of its own, so it is asked for what is and is not known instead
+# (M1-82).
+SUMMARY_SECTIONS_WITH_ACTIONS = """\
+Write a concise incident summary covering:
+1. What happened
+2. Root cause (say "unknown" when the evidence does not establish it)
+3. Actions taken (only the tool calls listed above)
+4. Current status (repeat the stored incident state)
+5. Follow-up items (if any)"""
+
+SUMMARY_SECTIONS_WITHOUT_ACTIONS = """\
+No actions were executed in this session.  Write a concise note covering:
+1. What is known from the incident description and the diagnosis
+2. What is not known
+3. Suggested next checks for a person (do not say they were done)
+4. Current status (repeat the stored incident state)"""
 
 
 SKILL_INSTRUCTIONS_BLOCK = """\
@@ -276,7 +302,9 @@ Based on this description, provide a structured summary of:
 3. What initial observations can be made
 4. What information would be useful to gather next
 
-Be concise and actionable.  Focus on facts, not speculation.
+Be concise and actionable.  Focus on facts, not speculation.  Do not assume a
+probe, monitor or scheduled check produced this incident unless the description
+says so.
 """
     + PLAIN_WRITING
 )
@@ -772,6 +800,11 @@ def _build_verify(
         """Verify the results of executed actions."""
         diagnosis = state.get("diagnosis", "")
         tool_calls = state.get("tool_calls", [])
+        if not tool_calls:
+            # Nothing ran, so there is nothing for a model to judge; asking it
+            # whether the incident is resolved is how "resolved" got invented
+            # (M1-82).
+            return {"verification": NO_ACTION_VERIFICATION}
         results = (
             "\n".join(
                 f"- {tc.get('tool_name', '?')}: "
@@ -816,15 +849,21 @@ def _build_summarize(
 
     def summarize(state: IncidentState) -> dict:
         """Produce a final incident summary."""
+        facts = facts_from_state(dict(state))
         prompt = SUMMARIZE_PROMPT.format(
             incident_description=untrusted(
                 "INCIDENT", state.get("incident_description", "")
             ),
             diagnosis=state.get("diagnosis", ""),
             verification=state.get("verification", ""),
-            tool_call_count=len(state.get("tool_calls", [])),
-            blocked_count=len(state.get("blocked_actions", [])),
+            facts=facts_block(facts),
             untrusted_rule=UNTRUSTED_RULE,
+            grounding_rule=GROUNDING_RULE,
+            sections=(
+                SUMMARY_SECTIONS_WITH_ACTIONS
+                if facts.executed
+                else SUMMARY_SECTIONS_WITHOUT_ACTIONS
+            ),
         )
         summary = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         status = state.get("status")

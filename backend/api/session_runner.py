@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.graph import build_graph
+from backend.agent.grounding import facts_from_state, ground_summary
 from backend.agent.service_context import format_service_context
 from backend.agent.timeouts import Tier0TimeConfig, ainvoke_with_session_timeout
 from backend.api.routes.ws import publish
@@ -36,12 +37,14 @@ from backend.db.models import Session as SessionModel
 from backend.db.repos import (
     ApprovalRequestRepo,
     AuditEntryRepo,
+    IncidentAssignmentRepo,
     IncidentRepo,
     ModelConfigRepo,
     SessionMessageRepo,
     SessionRepo,
     SkillRepo,
     ServiceRepo,
+    UserRepo,
     WorkflowProfileRepo,
 )
 from backend.llm.base import LLM
@@ -509,13 +512,16 @@ def _build_incident_description(
     return "\n".join(line for line in lines if line is not None).strip()
 
 
-def _incident_payload(incident) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+def _incident_payload(  # type: ignore[no-untyped-def]
+    incident, owner_name: str | None = None
+) -> dict[str, Any]:
     if incident is None:
         return {
             "title": "",
             "description": "",
             "status": "open",
             "severity": None,
+            "owner": None,
         }
     return {
         "id": str(incident.id),
@@ -523,7 +529,50 @@ def _incident_payload(incident) -> dict[str, Any]:  # type: ignore[no-untyped-de
         "description": incident.description,
         "status": incident.status,
         "severity": incident.severity,
+        "owner": owner_name,
     }
+
+
+async def _incident_owner_name(factory, org_id: uuid.UUID, incident) -> str | None:  # type: ignore[no-untyped-def]
+    """Who holds the incident right now, by name, or None when nobody does."""
+    if incident is None:
+        return None
+    async with factory() as db:
+        active = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
+        if active is None:
+            return None
+        user = await UserRepo.get_by_id(db, active.assigned_to)
+    if user is None or getattr(user, "deleted_at", None) is not None:
+        return None
+    full = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    return full or user.username or str(active.assigned_to)
+
+
+async def _grounded_summary(  # type: ignore[no-untyped-def]
+    factory, org_id: uuid.UUID, session, result: dict[str, Any]
+) -> str | None:
+    """The model's summary with the stored incident state first and any
+    contradiction answered (M1-82). The incident is read again here, after the
+    graph, so the state is the one the session ends on."""
+    summary = result.get("summary")
+    if session.incident_id is None or not summary:
+        return summary
+    async with factory() as db:
+        incident = await IncidentRepo.get_by_id(db, org_id, session.incident_id)
+    if incident is None:
+        return summary
+    owner_name = await _incident_owner_name(factory, org_id, incident)
+    facts = facts_from_state(
+        result, incident_status=incident.status, owner_name=owner_name or ""
+    )
+    grounded, corrections = ground_summary(summary, facts)
+    if corrections:
+        log.info(
+            "session %s summary corrected against the record: %s",
+            session.id,
+            "; ".join(corrections),
+        )
+    return grounded
 
 
 async def _allowed_mcp_ids_for_incident(
@@ -849,7 +898,9 @@ async def _run_session_workflow_inner(
             "session_id": str(session_id),
             "tier": effective_tier,
             "incident_description": incident_description,
-            "incident": _incident_payload(incident),
+            "incident": _incident_payload(
+                incident, await _incident_owner_name(factory, org_id, incident)
+            ),
             "preferred_mcp_servers": allowed_mcp_server_names,
             "message_history": [
                 {
@@ -1010,6 +1061,7 @@ async def _run_session_workflow_inner(
             if rollback_summary is not None:
                 result["rollback"] = rollback_summary
 
+        result["summary"] = await _grounded_summary(factory, org_id, session, result)
         await _set_session_terminal_state(
             app,
             factory,

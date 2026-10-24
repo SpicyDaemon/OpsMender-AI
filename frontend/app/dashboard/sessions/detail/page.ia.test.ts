@@ -16,6 +16,13 @@ describe("session detail model picker", () => {
   });
 });
 
+describe("session detail model summary", () => {
+  it("labels the closing text as the model's summary, not a record", () => {
+    expect(sessionDetailSource).toContain("Model summary");
+    expect(sessionDetailSource).toContain("the record, not the prose, says what happened");
+  });
+});
+
 describe("session detail activity layout", () => {
   it("keeps the event and chat work area visible when context panels grow", () => {
     expect(sessionDetailSource).toContain("min-h-[32rem]");

@@ -1250,7 +1250,11 @@ function SessionPageContent() {
           {session.summary && (
             <div className="border-t border-status-low-border bg-status-low-bg/40 px-4 py-3">
               <p className="text-[10px] font-semibold text-status-low uppercase tracking-wide mb-1.5">
-                Summary
+                Model summary
+              </p>
+              <p className="text-xs text-fg-muted mb-1.5">
+                Written by the model from this session&apos;s record. The stored incident state
+                comes first; the record, not the prose, says what happened.
               </p>
               <p className="text-sm text-status-low whitespace-pre-wrap leading-relaxed">
                 {session.summary}

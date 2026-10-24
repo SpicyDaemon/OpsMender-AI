@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session runner and the doctor asked the server pool for its list without
   naming the workspace, and the pool then answered with the environment
   fallback only, so a service's allowed servers matched nothing and every
-  session ran advisory-only. Both now ask for the workspace.
+  session ran advisory-only; and once a server was found, the runner opened
+  its connection without the workspace too. All three calls now name the
+  workspace.
 - Slack keeps `/status` and `/snooze` for its own built-in commands, so a
   workspace could not register them for OpsMender, and the two names it
   could register were answered with "Unknown command". `/opsmender-status`

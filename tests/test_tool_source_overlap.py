@@ -800,7 +800,9 @@ class _FakePool:
         return object()
 
     @asynccontextmanager
-    async def connect(self, name):
+    async def connect(self, org_id, name):
+        # The real pool connects for a workspace (M1-86).
+        assert org_id == TEST_ORG_ID
         assert name == self._server_name
         yield self._session
 

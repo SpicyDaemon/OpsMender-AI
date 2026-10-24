@@ -601,6 +601,82 @@ class TestSlackSlashCommandEndpoint:
         assert resp.status_code == 200
         assert "Unknown command" in resp.json()["text"]
 
+    async def test_unknown_command_names_both_spellings(self, client, app):
+        # Slack keeps /status and /snooze for itself, so the reply tells the
+        # person the alias a workspace registers instead (M1-83).
+        await _seed_slack_connector(app)
+        body = _slash_body(command="/nope", text="", user_id="U1")
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        text = resp.json()["text"]
+        assert "/status (or /opsmender-status)" in text
+        assert "/snooze (or /snooze-escalation)" in text
+
+    async def test_opsmender_status_alias_reports_like_status(self, client, app):
+        connector = await _seed_slack_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id, slack_user_id="U_AS")
+        body = _slash_body(command="/opsmender-status", text="", user_id="U_AS")
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "No active escalation chains" in resp.json()["text"]
+
+    async def test_snooze_escalation_alias_pauses_like_snooze(self, client, app):
+        connector = await _seed_slack_connector(app)
+        await _seed_user_and_link(app, connector_id=connector.id, slack_user_id="U_AZ")
+        incident = await _seed_incident(app, title="snz-alias")
+        async with app.state.session_factory() as db:
+            from backend.db.repos import (
+                EscalationChainRepo,
+                IncidentChainStateRepo,
+                TeamRepo,
+            )
+
+            team = await TeamRepo.create(
+                db, TEST_ORG_ID, name="t-az", slug=f"taz-{uuid.uuid4().hex[:8]}"
+            )
+            chain = await EscalationChainRepo.create(
+                db,
+                TEST_ORG_ID,
+                team_id=team.id,
+                name="c-az",
+                description=None,
+            )
+            state = await IncidentChainStateRepo.create(
+                db,
+                TEST_ORG_ID,
+                incident_id=incident.id,
+                chain_id=chain.id,
+            )
+            await db.commit()
+            state_id = state.id
+        body = _slash_body(
+            command="/snooze-escalation", text=f"{incident.id} 30m", user_id="U_AZ"
+        )
+        resp = await client.post(
+            "/bot/slack/commands",
+            content=body,
+            headers=_slack_sign(body),
+        )
+        assert resp.status_code == 200
+        assert "Snoozed" in resp.json()["text"]
+        async with app.state.session_factory() as db:
+            from backend.db.models import IncidentChainState
+            from sqlalchemy import select
+
+            row = (
+                await db.execute(
+                    select(IncidentChainState).where(IncidentChainState.id == state_id)
+                )
+            ).scalar_one()
+            assert row.status == "paused"
+
     async def test_unlinked_user_friendly(self, client, app):
         await _seed_slack_connector(app)
         incident = await _seed_incident(app)

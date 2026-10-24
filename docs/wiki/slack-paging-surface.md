@@ -52,7 +52,7 @@ update the card a second time.
 
 ## 3. The slash commands
 
-Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/commands`) expose six verbs:
+Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/commands`) expose six verbs. Slack keeps `/status` and `/snooze` for its own built-in commands, so register those two as `/opsmender-status` and `/snooze-escalation`; OpsMender accepts both spellings.
 
 | Command | Behavior |
 |---------|----------|
@@ -60,8 +60,8 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 | `/take [incident-id]` | Take an unowned incident, or ask the owner to hand it over (they have five minutes to confirm). An incident without an Escalation Chain (P2/P3 notify) can't hold that request: ask the owner to release it, or use Force take in OpsMender with a reason. |
 | `/release [incident-id]` | Release the incident. Only the owner or an admin can. If the owner held it under an acknowledgement, the next level is paged straight away. |
 | `/resolve [incident-id]` | Cancel chain and mark the incident resolved. Only admins and operators on the team handling the incident can. |
-| `/snooze [duration] [incident-id]` | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
-| `/status [incident-id]` | With an id, prints the chain status, step index and next check time, and whether the incident has an owner (an owner is written as a mention of their OpsMender user id, which Slack cannot turn into a name). Without an id, it reports on your most recently paged incident whose chain is still live, or, if there is none, lists up to ten of the org's running and snoozed chains. |
+| `/snooze [duration] [incident-id]` (registered as `/snooze-escalation`) | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
+| `/status [incident-id]` (registered as `/opsmender-status`) | With an id, prints the chain status, step index and next check time, and whether the incident has an owner (an owner is written as a mention of their OpsMender user id, which Slack cannot turn into a name). Without an id, it reports on your most recently paged incident whose chain is still live, or, if there is none, lists up to ten of the org's running and snoozed chains. |
 
 A paged operator can usually just type `/ack` after receiving the DM: the implicit fallback to "your most recently paged incident" works in 95% of cases.
 
@@ -98,7 +98,7 @@ In your Slack app's settings:
 1. **Bot Token Scopes** → add `chat:write`, `users:read`, plus the channels scope above if you opt into per-incident mirroring.
 2. **Event Subscriptions** → if you already wired up the bot connector for chat, leave it alone; the paging surface reuses the same connector.
 3. **Interactivity & Shortcuts** → enable Interactivity, **Request URL** = `https://<your-opsmender-host>/bot/slack/interactions`.
-4. **Slash Commands** → create one entry per command (`/ack`, `/take`, `/release`, `/resolve`, `/snooze`, `/status`), each pointing at `https://<your-opsmender-host>/bot/slack/commands`. The handler dispatches on the `command` field, so a single Request URL handles all six.
+4. **Slash Commands** → create one entry per command (`/ack`, `/take`, `/release`, `/resolve`, `/snooze-escalation`, `/opsmender-status`), each pointing at `https://<your-opsmender-host>/bot/slack/commands`. Slack refuses `/status` and `/snooze` because they are its own built-in commands; OpsMender treats the two alias names exactly like the plain ones. The handler dispatches on the `command` field, so a single Request URL handles all six.
 5. **Install** the app to the workspace. Take note of the Bot User OAuth Token and the Signing Secret.
 
 In OpsMender:
@@ -131,7 +131,7 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 | A click works but you see no confirmation | The answer goes to the interaction's `response_url`. OpsMender logs `Slack response_url answer failed` when it cannot reach `hooks.slack.com` (an outbound firewall, for example). The action itself is already applied. |
 | **View in OpsMender** opens the wrong host | `OPSMENDER_PUBLIC_URL` is unset or points at an internal address. Set it to the address your responders open. |
 | 403 `invalid_signature` in OpsMender logs | The Slack `signing_secret` on the `bot_connectors` row doesn't match the app's signing secret. |
-| Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs. |
+| Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs or their two aliases (`/opsmender-status`, `/snooze-escalation`); the reply lists both spellings. |
 | Buttons + cards show up but per-incident channels don't | `slack_incident_channels_enabled` is off on the org, or the Slack app is missing `channels:manage`. The OpsMender logs will say `slack channel mirror create failed: missing_scope`. |
 | Snoozed incident never re-fires | A snooze set before v1.1.1 has no end time and stays paused. Acknowledge and release the incident, or use Escalate now, to resume it. Snoozes set since then resume on their own. |
 

@@ -115,6 +115,10 @@ python_version = "3.12"
 check_untyped_defs = true
 ignore_missing_imports = true
 
+[tool.uv]
+# Advisory floors for packages the project does not depend on directly (M1-85).
+constraint-dependencies = ["filelock>=4.2.1"]
+
 [tool.black]
 line-length = 88
 target-version = ["py312"]

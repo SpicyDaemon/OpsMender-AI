@@ -1,6 +1,6 @@
-"""M1-72 and M1-81: the lock stays at or above the releases that closed the
-advisories the dependency audit found after v1.2.0 (Pillow 13.0.0, certifi
-2026.10.19) and after v1.2.1 (black 26.10.1)."""
+"""M1-72, M1-81 and M1-85: the lock stays at or above the releases that closed
+the advisories the dependency audit found after v1.2.0 (Pillow 13.0.0, certifi
+2026.10.19), after v1.2.1 (black 26.10.1) and after v1.2.2 (filelock 4.2.1)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Package -> the first release without the advisories; raise, never lower.
-FLOORS = {"pillow": (13, 0, 0), "certifi": (2026, 10, 19), "black": (26, 10, 1)}
+FLOORS = {
+    "pillow": (13, 0, 0),
+    "certifi": (2026, 10, 19),
+    "black": (26, 10, 1),
+    "filelock": (4, 2, 1),
+}
 
 
 def _locked_version(name: str) -> tuple[int, ...]:
@@ -33,3 +38,8 @@ def test_the_pillow_floor_is_declared_in_pyproject():
 def test_the_black_floor_is_declared_in_pyproject():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert re.search(r'"black>=26\.10\.1"', pyproject)
+
+
+def test_the_filelock_floor_is_declared_in_pyproject():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'constraint-dependencies = \["filelock>=4\.2\.1"\]', pyproject)

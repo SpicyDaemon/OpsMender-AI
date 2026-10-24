@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- filelock moves to 4.2.4: four advisories on 4.2.0 (CVE-2026-112913,
+  CVE-2026-112914, CVE-2026-112937 and CVE-2026-112940) were published after
+  the v1.2.2 release and the dependency audit caught them on the next pull
+  request. filelock reaches the lock only through the audit tool itself; it
+  is not part of the shipped image. Nothing else changes.
 
 ## [1.2.2] - 2026-10-23
 

@@ -792,14 +792,17 @@ class _FakePool:
         self._session = session
         self._server_name = server_name
 
-    async def list_servers(self, active_only: bool = True):
+    async def list_servers(self, org_id=None, *, active_only: bool = True):
+        # The real pool is asked for the workspace (M1-86).
         return [SimpleNamespace(name=self._server_name, transport="stdio")]
 
     async def get_server(self, *args, **kwargs):
         return object()
 
     @asynccontextmanager
-    async def connect(self, name):
+    async def connect(self, org_id, name):
+        # The real pool connects for a workspace (M1-86).
+        assert org_id == TEST_ORG_ID
         assert name == self._server_name
         yield self._session
 

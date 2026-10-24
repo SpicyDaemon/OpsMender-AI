@@ -57,14 +57,14 @@ reproduce all 13 images, including the Tier 1 approval view.
 
 **AI autonomy tiers**: the tier gate is enforced in code. Set the default per workspace and override it per session.
 
-| Tier 0 · Autonomous | Tier 1 · Approval Required | Tier 2 · Advisory (default) |
+| Tier 0 · Autonomous | Tier 1 · Approval Required (default for a new session) | Tier 2 · Advisory (workspace default) |
 | --- | --- | --- |
 | ![Tier 0 session after autonomously restarting a deployment and verifying recovery](site/public/screenshots/tier-0.png) | ![Tier 1 approval inbox with a proposed rollout restart awaiting an operator](site/public/screenshots/tier-1.png) | ![Tier 2 session completing read-only database analysis with recommendations](site/public/screenshots/tier-2.png) |
 | **Executed autonomously:** restarted the unhealthy deployment, verified recovery, and recorded its compensating inverse. | **Paused for approval:** completed diagnosis, proposed a reversible write, and ran nothing until an operator decides. | **Advised only:** ran read-only diagnostics and delivered a change-window plan without altering infrastructure. |
 
 ## Features
 
-- **Three-tier AI autonomy**: Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required, Tier 2 Advisory-Only (default).
+- **Three-tier AI autonomy**: Tier 0 Autonomous (sandbox + time limits + auto-rollback), Tier 1 Approval-Required (the default for a new session), Tier 2 Advisory-Only (the workspace default).
 - **Programmatic tier gate**: enforced in code before any tool runs; not prompt-bypassable.
 - **MCP-first + native integrations**: operator-provided MCP servers remain the
   general execution path; encrypted connectors add capability-scoped tools for

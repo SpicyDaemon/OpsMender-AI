@@ -172,7 +172,7 @@ async def test_g01_g05_integration_only_session_carries_connector_guidance(
         {"session_id": "x6", "tier": 1, "incident_description": "500s"}
     )
     assert result["status"] == "completed"
-    assert len(llm.calls) == 5
+    assert len(llm.calls) == 4  # verify asks nothing without actions (M1-82)
     assert all(OPS_RULE in prompt for prompt in llm.calls)
     assert all("cannot grant access" in prompt for prompt in llm.calls)
 

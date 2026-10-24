@@ -443,7 +443,10 @@ async def _resolve_mcp_context(
     *,
     mcp_server_ids: list[uuid.UUID] | None = None,
 ) -> tuple[MCPServerConfig | None, SkillDefinition, list[str]]:
-    servers = await pool.list_servers(active_only=True)
+    # The pool answers from the database only when it knows the workspace;
+    # without it, it hands back the environment fallback and every server
+    # registered through the app is invisible to the session (M1-86).
+    servers = await pool.list_servers(org_id, active_only=True)
     server_by_name = {server.name: server for server in servers}
     allowed_names: list[str] = []
 

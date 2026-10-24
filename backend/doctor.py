@@ -143,8 +143,27 @@ async def check_mcp_servers(factory: async_sessionmaker | None) -> list[CheckRes
     from backend.mcp.pool import MCPServerPool
 
     pool = MCPServerPool(factory, env_fallback=[])
+    org_id = None
+    if factory is not None:
+        # One workspace per instance: the pool lists its servers only for a
+        # known workspace (M1-86).
+        try:
+            from sqlalchemy import select
+
+            from backend.db.models import Organization
+
+            async with factory() as db:
+                org_id = (
+                    await db.execute(
+                        select(Organization.id).order_by(Organization.slug).limit(1)
+                    )
+                ).scalar_one_or_none()
+        except Exception as exc:  # noqa: BLE001
+            return [
+                CheckResult("MCP servers", "fail", f"Workspace lookup failed: {exc}")
+            ]
     try:
-        servers = await pool.list_servers(active_only=True)
+        servers = await pool.list_servers(org_id, active_only=True)
     except Exception as exc:  # noqa: BLE001
         return [CheckResult("MCP servers", "fail", f"Pool query failed: {exc}")]
 

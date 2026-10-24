@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request. filelock reaches the lock only through the audit tool itself; it
   is not part of the shipped image. Nothing else changes.
 
+### Changed
+
+- The Start Session dialog now opens on Tier 1 (Approval Required), so a
+  person approves each action by default; Tier 0 and Tier 2 stay selectable
+  and the workspace tier setting is unchanged.
+
 ### Fixed
 
 - Slack keeps `/status` and `/snooze` for its own built-in commands, so a

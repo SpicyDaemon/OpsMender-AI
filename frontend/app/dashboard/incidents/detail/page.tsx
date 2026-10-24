@@ -724,7 +724,7 @@ function StartSessionModal({
   const [providers, setProviders] = useState<ProviderModelsResponse[]>([]);
   const [form, setForm] = useState<SessionCreate>({
     incident_id: incidentId,
-    tier: 2,
+    tier: 1,
     model_provider: undefined,
     model_id: undefined,
     initial_briefing: "",
@@ -789,7 +789,7 @@ function StartSessionModal({
           </Select>
           <p className="mt-1.5 text-xs text-fg-muted">
             How much autonomy the AI has this session. It&apos;s separate from incident
-            priority and your role. Tier 2 (Advisory) is the default.
+            priority and your role. Tier 1 (Approval Required) is the default.
           </p>
           {form.tier === 0 && (
             <p className="mt-1.5 text-xs font-medium text-status-critical">

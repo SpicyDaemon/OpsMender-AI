@@ -24,10 +24,12 @@ incident session. It is **separate** from:
 | Tier | Name | Behaviour |
 |------|------|-----------|
 | **0** | **Autonomous** | May execute remediation automatically (incl. rollbacks, restarts, failovers, and destructive ops) **but only within MCP Skill policy, deny lists, MCP permissions, and backend guardrails.** Most autonomous; **not** unlimited. Selecting Tier 0 shows a red warning. |
-| **1** | **Approval Required** | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; a generic command tool always asks for **operator approval** whatever its T1 policy says, unless `allow_generic: true`; deny-listed actions never run. |
-| **2** | **Advisory Only** *(default)* | Analysis, recommendations, runbooks, read-only observation. **No write/remediation actions execute.** |
+| **1** | **Approval Required** *(default for a new session)* | Investigates and proposes. Each operation's explicit policy chooses autonomous execution, **operator approval**, or blocking; a generic command tool always asks for **operator approval** whatever its T1 policy says, unless `allow_generic: true`; deny-listed actions never run. |
+| **2** | **Advisory Only** *(workspace default)* | Analysis, recommendations, runbooks, read-only observation. **No write/remediation actions execute.** |
 
-- **Default** for new installs and new sessions is **Tier 2: Advisory Only**.
+- **Default** for new installs (the workspace tier setting) is **Tier 2: Advisory Only**.
+  The **Start Session** dialog opens on **Tier 1: Approval Required**, so a person
+  approves each action unless they choose another tier (owner decision O-26).
 - Operators may **override** the tier at session start (admin approval is not
   required to choose Tier 0). The selected tier is recorded on the session and
   in the audit/activity log.

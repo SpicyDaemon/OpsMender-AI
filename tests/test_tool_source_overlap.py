@@ -792,7 +792,8 @@ class _FakePool:
         self._session = session
         self._server_name = server_name
 
-    async def list_servers(self, active_only: bool = True):
+    async def list_servers(self, org_id=None, *, active_only: bool = True):
+        # The real pool is asked for the workspace (M1-86).
         return [SimpleNamespace(name=self._server_name, transport="stdio")]
 
     async def get_server(self, *args, **kwargs):

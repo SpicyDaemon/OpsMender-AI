@@ -182,6 +182,32 @@ class TestMCPServerCheck:
         assert results[0].name == "Infrastructure tools"
         assert "1 active integration connector" in results[0].detail
 
+    async def test_registered_server_is_probed(self, factory):
+        """A server registered through the app is listed and probed (M1-86):
+        the pool is asked for the workspace, not for the environment fallback."""
+        import uuid
+
+        from backend.db.models import Organization
+        from backend.db.repos import MCPServerRepo
+
+        org_id = uuid.uuid4()
+        async with factory() as db:
+            db.add(Organization(id=org_id, name="Doctor", slug="doctor"))
+            await db.flush()
+            await MCPServerRepo.create(
+                db,
+                org_id,
+                name="registered-lab",
+                transport="http",
+                url="http://127.0.0.1:9/mcp",
+            )
+            await db.commit()
+
+        results = await doctor.check_mcp_servers(factory)
+        assert len(results) == 1
+        assert "registered-lab" in results[0].name
+        assert "No active MCP servers" not in results[0].detail
+
 
 class TestPagingChainAge:
     async def test_empty_passes(self, factory):

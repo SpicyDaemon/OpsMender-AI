@@ -876,7 +876,8 @@ class TestPagingAPI:
         assert allowed_ids == [second.id, first.id]
 
         class _Pool:
-            async def list_servers(self, active_only=True):
+            async def list_servers(self, org_id=None, *, active_only=True):
+                assert org_id == TEST_ORG_ID  # the real pool needs it (M1-86)
                 return [
                     MCPServerConfig(
                         name="aws-prod",
@@ -2915,3 +2916,37 @@ class TestRosterOverrideTeamScoping(TestRosterMemberTeamScoping):
         )
         assert listed.status_code == 200
         assert listed.json()["total"] == 1
+
+
+async def test_session_sees_servers_registered_in_the_database(app):
+    """A server registered through the app reaches the session (M1-86).
+
+    The pool answers from the database only when it is asked for a
+    workspace; listed without one, it returned the environment fallback and
+    every registered server was invisible, so the service's allowlist matched
+    nothing and the session ran advisory-only.
+    """
+    from backend.db.repos import MCPServerRepo
+    from backend.mcp.pool import MCPServerPool
+
+    async with app.state.session_factory() as db:
+        server = await MCPServerRepo.create(
+            db,
+            TEST_ORG_ID,
+            name="db-registered-lab",
+            transport="http",
+            url="http://127.0.0.1:9/mcp",
+        )
+        await db.commit()
+        server_id = server.id
+
+    pool = MCPServerPool(app.state.session_factory, env_fallback=[])
+    selected, _skill, allowed = await _resolve_mcp_context(
+        app.state.session_factory,
+        TEST_ORG_ID,
+        pool,
+        app.state.config,
+        mcp_server_ids=[server_id],
+    )
+    assert allowed == ["db-registered-lab"]
+    assert selected is not None and selected.name == "db-registered-lab"

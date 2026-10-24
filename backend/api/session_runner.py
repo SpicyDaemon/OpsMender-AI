@@ -443,7 +443,10 @@ async def _resolve_mcp_context(
     *,
     mcp_server_ids: list[uuid.UUID] | None = None,
 ) -> tuple[MCPServerConfig | None, SkillDefinition, list[str]]:
-    servers = await pool.list_servers(active_only=True)
+    # The pool answers from the database only when it knows the workspace;
+    # without it, it hands back the environment fallback and every server
+    # registered through the app is invisible to the session (M1-86).
+    servers = await pool.list_servers(org_id, active_only=True)
     server_by_name = {server.name: server for server in servers}
     allowed_names: list[str] = []
 
@@ -741,7 +744,7 @@ async def _auto_rollback_tier0(
     if not tool_calls:
         return None
 
-    async with pool.connect(server_name) as mcp_session:
+    async with pool.connect(org_id, server_name) as mcp_session:
         sandbox = await build_sandbox_for_session(mcp_session, skill_def)
         report = await replay_compensating_inverses(
             session_id=str(session_id),
@@ -963,7 +966,9 @@ async def _run_session_workflow_inner(
             )
 
         if selected_server is not None:
-            async with pool.connect(selected_server.name) as mcp_session:
+            # The pool resolves the server for the workspace it belongs to
+            # (M1-86); without the workspace the call cannot even be made.
+            async with pool.connect(org_id, selected_server.name) as mcp_session:
                 server_name = selected_server.name
                 mcp_tools = await mcp_list_tools(mcp_session)
                 mcp_tool_names = [tool.name for tool in mcp_tools]

@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Slack keeps `/status` and `/snooze` for its own built-in commands, so a
+  workspace could not register them for OpsMender, and the two names it
+  could register were answered with "Unknown command". `/opsmender-status`
+  and `/snooze-escalation` are now accepted as the same commands, and the
+  unknown-command reply lists both spellings.
 - A session's closing summary could describe probes, checks and resolutions
   that never happened: the model saw only the incident text and two earlier
   model texts and was asked for a root cause, the actions taken and the

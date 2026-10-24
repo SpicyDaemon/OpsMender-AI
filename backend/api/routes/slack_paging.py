@@ -7,7 +7,9 @@ mapping, active-user checks, and Admin/Operator RBAC:
   clicks from the page card built by :mod:`backend.paging.slack_cards`.
 * ``POST /bot/slack/commands`` - receives slash command invocations
   (``/ack``, ``/take``, ``/release``, ``/resolve``, ``/snooze``,
-  ``/status``).
+  ``/status``; Slack keeps ``/status`` and ``/snooze`` for itself, so a
+  workspace registers ``/opsmender-status`` and ``/snooze-escalation``, which
+  map onto the same handlers).
 
 Both routes verify the Slack v0 HMAC against every enabled Slack
 connector's ``signing_secret`` (5-minute replay window) and require the
@@ -287,6 +289,25 @@ SLASH_COMMANDS = {
     "/snooze",
     "/status",
 }
+
+# Slack keeps /status (and refused /snooze) for its own built-in commands, so
+# a workspace registers these spellings instead; each maps onto the handler of
+# the plain name (M1-83). The alias is resolved after the signature check.
+SLASH_COMMAND_ALIASES = {
+    "/opsmender-status": "/status",
+    "/snooze-escalation": "/snooze",
+}
+
+
+def _supported_commands() -> str:
+    """The supported names, each with the alias a workspace may register."""
+    names = []
+    for name in sorted(SLASH_COMMANDS):
+        aliases = sorted(
+            alias for alias, target in SLASH_COMMAND_ALIASES.items() if target == name
+        )
+        names.append(f"{name} (or {', '.join(aliases)})" if aliases else name)
+    return ", ".join(names)
 
 
 _UUID_RE = re.compile(
@@ -641,6 +662,7 @@ async def slack_commands(
 
     form = await request.form()
     command = (form.get("command") or "").strip()
+    command = SLASH_COMMAND_ALIASES.get(command, command)
     text = (form.get("text") or "").strip()
     slack_user_id = (form.get("user_id") or "").strip()
 
@@ -648,8 +670,7 @@ async def slack_commands(
         return _ephemeral("Missing command.")
     if command not in SLASH_COMMANDS:
         return _ephemeral(
-            f"Unknown command `{command}`. "
-            f"Supported: {', '.join(sorted(SLASH_COMMANDS))}."
+            f"Unknown command `{command}`. Supported: {_supported_commands()}."
         )
     if not slack_user_id:
         return _ephemeral("Slack didn't tell us who ran the command.")

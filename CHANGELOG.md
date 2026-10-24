@@ -15,6 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request. filelock reaches the lock only through the audit tool itself; it
   is not part of the shipped image. Nothing else changes.
 
+### Fixed
+
+- A session's closing summary could describe probes, checks and resolutions
+  that never happened: the model saw only the incident text and two earlier
+  model texts and was asked for a root cause, the actions taken and the
+  current status whatever had happened, and with no action it was still asked
+  whether the incident was resolved. The summary is now written from the
+  record (the stored incident status and owner, the tool calls that ran, what
+  was blocked) with a rule to describe only that; with no action nothing is
+  verified and the summary says what is known, unknown and worth checking
+  next; the stored state is printed first and a correction is appended when
+  the text still claims a resolution, an acknowledgement or actions the
+  record does not show. The session page labels it "Model summary".
+
 ## [1.2.2] - 2026-10-23
 
 ### Security

@@ -22,6 +22,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.agent.graph import build_graph, validate_workflow_node_order
+from backend.agent.grounding import NO_ACTION_VERIFICATION
 from backend.agent.llm import LLM, StubLLM
 from backend.agent.nodes import (
     _build_diagnose,
@@ -332,7 +333,10 @@ class TestCustomInstructionsAcrossWorkflow:
             (_build_diagnose, _base_state(observations="test")),
             (
                 _build_verify,
-                _base_state(diagnosis="test", tool_calls=[]),
+                _base_state(
+                    diagnosis="test",
+                    tool_calls=[{"tool_name": "get_pods", "error": None}],
+                ),
             ),
             (
                 _build_summarize,
@@ -372,11 +376,13 @@ class TestVerifyWithLLM:
         assert result["verification"] == "incident resolved"
 
     def test_no_tool_calls(self):
+        # Nothing ran, so the model is not asked whether the incident is
+        # resolved (M1-82): the verification is a fixed statement.
         llm = StubLLM(response="no actions taken")
         node = _build_verify(llm)
         result = node(_base_state(diagnosis="test", tool_calls=[]))
-        assert result["verification"] == "no actions taken"
-        assert "no actions executed" in llm.calls[0]
+        assert result["verification"] == NO_ACTION_VERIFICATION
+        assert llm.calls == []
 
 
 class TestSummarizeWithLLM:
@@ -834,8 +840,9 @@ class TestFullGraphWithLLM:
             }
         )
         assert result["status"] == "completed"
-        # LLM was called for: observe, diagnose, plan, verify, summarize = 5
-        assert len(llm.calls) == 5
+        # LLM was called for: observe, diagnose, plan, summarize = 4. With no
+        # action to check, verify records a fixed statement instead (M1-82).
+        assert len(llm.calls) == 4
 
     def test_active_tier_custom_instructions_reach_every_llm_stage(self):
         llm = StubLLM(response="[]")
@@ -853,7 +860,7 @@ class TestFullGraphWithLLM:
         )
 
         assert result["status"] == "completed"
-        assert len(llm.calls) == 5
+        assert len(llm.calls) == 4  # verify asks nothing without actions (M1-82)
         assert all("ADVISORY-GUIDANCE" in prompt for prompt in llm.calls)
         assert all("AUTONOMOUS-GUIDANCE" not in prompt for prompt in llm.calls)
         assert all("APPROVAL-GUIDANCE" not in prompt for prompt in llm.calls)

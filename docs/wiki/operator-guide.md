@@ -81,6 +81,28 @@ sessions stay in the queue, and a session waiting for an approval keeps its
 hold until the hold expires. Start a new session if the incident still needs
 one. This applies to the single-process (monolith) deployment.
 
+### The model summary at the end of a session
+
+When a session ends, the model writes a short summary. It is a narrative, not
+a record. The record is the session's events and tool calls and the incident
+itself, and the summary is held to it:
+
+- The summary is written from a facts block: the stored incident status, who
+  holds the incident, the tool calls that ran with their results, and what was
+  blocked. The model is told to describe only that, to call an unknown cause
+  unknown, and never to say the incident is resolved, closed or acknowledged
+  unless the stored state says so.
+- When no action ran, nothing is verified and the summary says what is known,
+  what is not known and what a person could check next, instead of a root
+  cause and actions taken.
+- The stored incident state is printed first, read again when the session
+  ends. If the text still claims a resolution, an acknowledgement or actions
+  the record does not show, a correction is appended that names what the record
+  says. The model's words are never rewritten.
+
+The session page labels this text "Model summary". Judge an incident by its
+status, its owner and the tool activity, never by the prose.
+
 ## 4. Approvals (Tier 1 is interactive)
 
 At **Tier 1**, the AI pauses on **every** state-mutating action it proposes (not just destructive ones); read-only investigation runs freely, and deny-listed actions are never offered. (For MCP Skills that declare an explicit per-operation Tier 1 policy, that policy decides.)

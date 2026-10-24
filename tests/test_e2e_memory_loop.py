@@ -179,7 +179,7 @@ class TestEndToEndMemoryLoop:
         #             should_remember accepts the session)
         #   diagnose: free-form diagnosis text
         #   plan    : empty action list (Tier 2 advisory path; no execute)
-        #   verify  : verification text
+        #   verify  : no LLM call without actions (M1-82)
         #   summarize: summary text
         #   remember: strict JSON matching MemoryDraft
         llm1 = _SequenceLLM(
@@ -187,7 +187,6 @@ class TestEndToEndMemoryLoop:
                 "Checkout endpoint returning 500s. Upstream timeouts visible in logs.",
                 "Root cause likely the payments service dropping idle connections.",
                 "[]",  # plan output - empty action list
-                "Verification confirms the diagnosis.",
                 "Resolved by enabling keepalive on the upstream proxy.",
                 _VALID_REMEMBER_JSON,
             ]
@@ -228,7 +227,6 @@ class TestEndToEndMemoryLoop:
                 "Checkout 500s again. Looks like the same fault.",
                 "Diagnosis: same as last time.",
                 "[]",
-                "Verified.",
                 "Same fix applied.",
                 "not-json-at-all",  # remember can't parse → no second memory
             ]
@@ -291,8 +289,7 @@ class TestEndToEndMemoryLoop:
                 "x",  # observe - trivial
                 "x",  # diagnose - trivial
                 "[]",  # plan
-                "x",  # verify
-                "x",  # summarize - trivial
+                "x",  # summarize - trivial (verify asks nothing without actions)
                 _VALID_REMEMBER_JSON,  # remember should NOT call this
             ]
         )
@@ -316,7 +313,7 @@ class TestEndToEndMemoryLoop:
             assert rows == []
         # The remember LLM call was skipped by should_remember, so the
         # remember response in the queue was never consumed.
-        assert len(llm.calls) == 5  # observe + diagnose + plan + verify + summarize
+        assert len(llm.calls) == 4  # observe + diagnose + plan + summarize
 
     async def test_operator_authored_memory_surfaces_via_recall(self, factory):
         """Memories created through the REST API path (no LLM involved)
@@ -348,7 +345,6 @@ class TestEndToEndMemoryLoop:
                 "Observations from a fresh run.",
                 "Diagnosis still pending.",
                 "[]",
-                "Verified.",
                 "Wrap-up.",
                 json.dumps(
                     {

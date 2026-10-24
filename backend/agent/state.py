@@ -43,6 +43,7 @@ class IncidentContext(TypedDict, total=False):
     description: str
     status: str  # open | in_progress | resolved
     severity: str | None  # critical | high | medium | low | None
+    owner: str | None  # who held the incident at session start (M1-82)
 
 
 class ChatMessage(TypedDict, total=False):

@@ -131,7 +131,7 @@ def _parse_llm_json(text: str) -> dict[str, str] | None:
 def _resolve_model_kwargs(config: AppConfig, model_cfg) -> dict[str, Any]:
     # Delegate to the canonical resolver so env-driven openai_compatible
     # base_url (and any future provider additions) stay in one place.
-    from backend.auditor._helpers import resolve_provider_kwargs
+    from backend.llm.provider_settings import resolve_provider_kwargs
 
     return resolve_provider_kwargs(config, model_cfg)
 

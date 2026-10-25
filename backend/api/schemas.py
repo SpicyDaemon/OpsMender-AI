@@ -1108,7 +1108,6 @@ class SkillResponse(BaseModel):
     integration_connector_id: Optional[uuid.UUID]
     assignment: str = "global"
     content_md: str
-    focus_areas: list[str] = Field(default_factory=list)
     conversion_notice: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -2355,128 +2354,6 @@ class WSMessage(BaseModel):
 
     type: str  # node_transition | tool_call | approval_requested | approval_resolved | chat_message_user | chat_message_assistant | error | session_end
     data: dict[str, Any] = Field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# Auditor (Sprint 32)
-# ---------------------------------------------------------------------------
-
-
-class AuditAnalyzerResponse(BaseModel):
-    key: str
-    label: str
-    description: str
-
-
-class AuditAnalyzerListResponse(BaseModel):
-    items: list[AuditAnalyzerResponse]
-    total: int
-
-
-class AuditRunCreate(BaseModel):
-    analyzers: list[str] = Field(..., min_length=1)
-    analyzer_params: Optional[dict[str, dict[str, Any]]] = None
-    execute: bool = True
-
-
-class AuditRunResponse(BaseModel):
-    id: uuid.UUID
-    status: str
-    analyzers: list[str] = Field(default_factory=list)
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
-    finding_count: int
-    error: Optional[str] = None
-    created_by: Optional[uuid.UUID]
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AuditRunListResponse(BaseModel):
-    items: list[AuditRunResponse]
-    total: int
-
-
-class AuditFindingResponse(BaseModel):
-    id: uuid.UUID
-    run_id: uuid.UUID
-    analyzer: str
-    severity: str
-    category: Optional[str]
-    resource: Optional[str]
-    message: str
-    suggested_fix: Optional[str]
-    status: str
-    dismiss_reason: Optional[str] = None
-    session_id: Optional[uuid.UUID]
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AuditFindingListResponse(BaseModel):
-    items: list[AuditFindingResponse]
-    total: int
-
-
-class AuditRunDetailResponse(BaseModel):
-    run: AuditRunResponse
-    findings: list[AuditFindingResponse]
-
-
-class AuditFindingDismissRequest(BaseModel):
-    reason: Optional[str] = Field(None, max_length=2000)
-
-
-class AuditScheduleCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    analyzers: list[str] = Field(..., min_length=1)
-    mcp_server_name: Optional[str] = Field(None, max_length=200)
-    focus_areas: list[str] = Field(default_factory=list)
-    interval_minutes: int = Field(..., ge=15, le=43200)  # 15 min .. 30 days
-    is_active: bool = True
-
-
-class AuditScheduleUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
-    analyzers: Optional[list[str]] = Field(None, min_length=1)
-    mcp_server_name: Optional[str] = Field(None, max_length=200)
-    focus_areas: Optional[list[str]] = None
-    interval_minutes: Optional[int] = Field(None, ge=15, le=43200)
-    is_active: Optional[bool] = None
-
-
-class AuditScheduleResponse(BaseModel):
-    id: uuid.UUID
-    org_id: uuid.UUID
-    name: str
-    description: Optional[str] = None
-    analyzers: list[str]
-    mcp_server_name: Optional[str] = None
-    focus_areas: list[str] = Field(default_factory=list)
-    interval_minutes: int
-    is_active: bool
-    last_run_at: Optional[datetime] = None
-    next_run_at: datetime
-    created_by: Optional[uuid.UUID] = None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AuditScheduleListResponse(BaseModel):
-    items: list[AuditScheduleResponse]
-    total: int
-
-
-class AuditFindingRemediateResponse(BaseModel):
-    finding_id: uuid.UUID
-    session_id: uuid.UUID
-    status: str
 
 
 # ---------------------------------------------------------------------------

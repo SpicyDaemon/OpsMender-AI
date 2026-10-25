@@ -214,7 +214,6 @@ COMPOSITES: list[dict] = [
             ),
             ("31_integ_webhooks.png", "Webhook Triggers (/dashboard/webhooks)"),
             ("32_integ_ingest_tokens.png", "Ingest Tokens (/dashboard/ingest-tokens)"),
-            ("40_observe_scans.png", "Environment Scans (/dashboard/scans)"),
             ("41_observe_reliability.png", "Reliability (/dashboard/reliability)"),
             ("42_observe_activity.png", "Activity (/dashboard/activity)"),
         ],

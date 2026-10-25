@@ -353,10 +353,6 @@ operations:
       T2:
         enabled: false
         mode: blocked
-
-focus_areas:
-  - Kubernetes workload health
-  - deployment rollback safety
 ---
 # Skill Guidance
 
@@ -401,10 +397,8 @@ classification, whether approval is required, and whether the action is denied.
   decision is logged.
 
 Every MCP tool call flows through one chokepoint (`audited_tool_call` →
-`tier_check`); the live-rollback path is gated by the Tier 0 sandbox allowlist;
-and **Environment Scans (the auditor) run read-only**: an analyzer may invoke
-only tools the applicable skill classifies `safe`, never writes/remediation,
-generic command tools, or deny-listed tools.
+`tier_check`), and the live-rollback path is gated by the Tier 0 sandbox
+allowlist.
 
 ## Generate from tools (Skill Studio)
 

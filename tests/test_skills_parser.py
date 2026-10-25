@@ -92,40 +92,24 @@ class TestLoad:
         assert sd.environment == "kubernetes-production"
         assert len(sd.operations) > 10
 
-    def test_focus_areas_parsed_when_present(self, tmp_path):
+    def test_an_older_skill_with_focus_areas_still_loads(self):
+        """focus_areas belonged to the removed environment scan audits (M1-93);
+        a skill file that still carries it, as a list or a string, loads and
+        the key is ignored."""
         from backend.skills.parser import loads
 
-        md = (
-            "---\n"
-            "version: 1\n"
-            "environment: ecs-prod\n"
-            "focus_areas:\n"
-            "  - tasks stuck in PROVISIONING\n"
-            "  - services below desired count\n"
-            "operations: []\n"
-            "---\n"
-        )
-        sd = loads(md, fmt="md")
-        assert sd.focus_areas == [
-            "tasks stuck in PROVISIONING",
-            "services below desired count",
-        ]
-
-    def test_focus_areas_default_empty(self, skill_md):
-        sd = load(skill_md)
-        assert sd.focus_areas == []
-
-    def test_focus_areas_comma_string(self):
-        md = (
-            "---\n"
-            "version: 1\n"
-            "environment: t\n"
-            "focus_areas: a, b , c\n"
-            "operations: []\n"
-            "---\n"
-        )
-        sd = loads(md, fmt="md")
-        assert sd.focus_areas == ["a", "b", "c"]
+        for value in ("\n  - tasks stuck in PROVISIONING", " a, b , c"):
+            md = (
+                "---\n"
+                "version: 1\n"
+                "environment: ecs-prod\n"
+                f"focus_areas:{value}\n"
+                "operations: []\n"
+                "---\n"
+            )
+            sd = loads(md, fmt="md")
+            assert sd.environment == "ecs-prod"
+            assert not hasattr(sd, "focus_areas")
 
     def test_custom_instructions_preserve_markdown_by_tier(self):
         sd = loads(

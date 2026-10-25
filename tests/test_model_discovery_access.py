@@ -650,10 +650,10 @@ def _lmstudio_env_config(tmp_path, monkeypatch, address: str):
 
 
 def test_lmstudio_base_url_reaches_the_env_fallback(tmp_path, monkeypatch):
-    """With no saved config, the auditor, Skill Studio and intake build their
+    """With no saved config, Skill Studio and intake build their
     model from the env (OPSMENDER_MODEL_PROVIDER=lmstudio); LMSTUDIO_BASE_URL
     is the address they get, as OLLAMA_BASE_URL is for Ollama."""
-    from backend.auditor._helpers import resolve_provider_kwargs
+    from backend.llm.provider_settings import resolve_provider_kwargs
 
     cfg = _lmstudio_env_config(tmp_path, monkeypatch, "http://gpu-box.internal:1234/v1")
 

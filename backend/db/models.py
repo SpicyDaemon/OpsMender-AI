@@ -1964,128 +1964,6 @@ class NativeActionInvocation(Base):
 
 
 # ---------------------------------------------------------------------------
-# Auditor (Sprint 32) - read-only environment scans producing findings reports.
-# Distinct from incidents: audits run on demand or on schedule, produce a
-# triageable list of findings, and never auto-page humans.
-# ---------------------------------------------------------------------------
-
-
-class AuditRun(Base):
-    """One audit run - a set of analyzers executed against an environment."""
-
-    __tablename__ = "audit_runs"
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="queued"
-    )  # queued | running | completed | failed
-    analyzers: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    finding_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
-    )
-
-    findings: Mapped[list["AuditFinding"]] = relationship(
-        back_populates="run", cascade="all, delete-orphan"
-    )
-
-
-class AuditSchedule(Base):
-    """Sprint 39 step 2 - scheduled audit runs.
-
-    Background scheduler polls this table; rows with ``is_active`` and a
-    past ``next_run_at`` get a new ``audit_runs`` row queued, then their
-    ``last_run_at`` / ``next_run_at`` advance by ``interval_minutes``.
-    """
-
-    __tablename__ = "audit_schedules"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    analyzers: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    mcp_server_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    focus_areas: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    last_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    next_run_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    # When a scheduler process claimed the due run; the claim lasts one
-    # interval, so a crashed claimant's run happens once more, not twice (M1-68).
-    claimed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
-    )
-
-
-class AuditFinding(Base):
-    """One finding produced by an analyzer during an audit run."""
-
-    __tablename__ = "audit_findings"
-
-    org_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("audit_runs.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    analyzer: Mapped[str] = mapped_column(String(100), nullable=False)
-    severity: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="info"
-    )  # critical | high | medium | low | info
-    category: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    message: Mapped[str] = mapped_column(Text, nullable=False)
-    suggested_fix: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="open"
-    )  # open | remediating | resolved | dismissed
-    dismiss_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    session_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
-    )
-
-    run: Mapped[AuditRun] = relationship(back_populates="findings")
-
-
-# ---------------------------------------------------------------------------
 # Paging (Sprint 33) - teams, services, rosters, priority rules, assignments.
 # Full data model lives in docs/PROMPT_CONTEXT.md (D-021 - Paging Model).
 # ---------------------------------------------------------------------------
@@ -2870,7 +2748,6 @@ class RetentionConfig(Base):
 # ---------------------------------------------------------------------------
 
 Index("ix_audit_entries_session_id", AuditEntry.session_id)
-Index("ix_audit_schedules_due", AuditSchedule.is_active, AuditSchedule.next_run_at)
 Index(
     "ix_incidents_external_fingerprint", Incident.external_source, Incident.external_id
 )

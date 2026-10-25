@@ -36,7 +36,7 @@ Through the API a Viewer also reads an incident's paging panel, chain,
 postmortem, merged incidents and integration links (the commits, pull requests
 and merge requests linked to it), and the lists of Escalation Chains, Rosters,
 teams, services, priority rules, memories, SLA targets and SLOs, Maintenance
-Windows, audit runs, findings and schedules, approval requests, skills, MCP
+Windows, approval requests, skills, MCP
 servers and model configs, the setup checklist, and the provider model list
 (model discovery with the server's own settings; only admins can send
 connection settings). Incident timelines and comments, reports, analytics, an

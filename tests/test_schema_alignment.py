@@ -30,7 +30,6 @@ JSONB_COLUMNS = [
 
 INDEXES = {
     "ix_audit_entries_session_id": ("audit_entries", ["session_id"], False),
-    "ix_audit_schedules_due": ("audit_schedules", ["is_active", "next_run_at"], False),
     "ix_incidents_external_fingerprint": (
         "incidents",
         ["external_source", "external_id"],

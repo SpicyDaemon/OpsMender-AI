@@ -79,7 +79,7 @@ async def _ai_complete(
     cannot be reached - the Skill Studio falls back to the heuristic path.
     Isolated so tests can monkeypatch the model call.
     """
-    from backend.auditor._helpers import resolve_provider_kwargs
+    from backend.llm.provider_settings import resolve_provider_kwargs
     from backend.llm.factory import create_provider
 
     config = request.app.state.config
@@ -101,19 +101,6 @@ async def _ai_complete(
         )
 
 
-def _extract_focus_areas(content_md: str) -> list[str]:
-    """Best-effort parse of focus_areas from a Skill's YAML frontmatter."""
-
-    if not content_md:
-        return []
-    try:
-        from backend.skills.parser import loads as _parse
-
-        return list(_parse(content_md, fmt="md").focus_areas or [])
-    except Exception:  # noqa: BLE001
-        return []
-
-
 def _to_response(
     skill: Skill, *, conversion_notice: str | None = None
 ) -> SkillResponse:
@@ -125,7 +112,6 @@ def _to_response(
         integration_connector_id=skill.integration_connector_id,
         assignment=getattr(skill, "assignment", "global") or "global",
         content_md=skill.content_md,
-        focus_areas=_extract_focus_areas(skill.content_md),
         conversion_notice=conversion_notice,
         created_at=skill.created_at,
         updated_at=skill.updated_at,

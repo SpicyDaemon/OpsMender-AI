@@ -176,17 +176,6 @@ async def _lifespan(app: FastAPI):
         await escalation_scheduler.start()
         scheduler_stoppers.append(escalation_scheduler.stop)
 
-        from backend.auditor.scheduler import AuditScheduler
-
-        audit_scheduler = AuditScheduler(
-            factory,
-            pool=app.state.mcp_pool,
-            config=app.state.config,
-        )
-        app.state.audit_scheduler = audit_scheduler
-        await audit_scheduler.start()
-        scheduler_stoppers.append(audit_scheduler.stop)
-
         from backend.services.audit_archiver import AuditArchiveScheduler
 
         audit_archive_scheduler = AuditArchiveScheduler(factory, config.audit)
@@ -428,7 +417,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     )
     from backend.api.routes.sso import router as sso_router
     from backend.api.routes.saml import router as saml_router
-    from backend.api.routes.audits import router as audits_router
     from backend.api.routes.analytics import router as analytics_router
     from backend.api.routes.api_tokens import router as api_tokens_router
     from backend.api.routes.paging import router as paging_router
@@ -471,7 +459,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         tenant_router,
         sso_router,
         saml_router,
-        audits_router,
         analytics_router,
         api_tokens_router,
         paging_router,

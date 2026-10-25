@@ -105,7 +105,6 @@ def build_skill_from_tools(
         or "your-environment",
         "default_tier": "T2",
         "operations": norm,
-        "focus_areas": [],
     }
     fm_yaml = yaml.safe_dump(front, sort_keys=False, default_flow_style=False).strip()
 
@@ -318,7 +317,6 @@ operations:
       T2:
         enabled: false
         mode: blocked
-focus_areas: []
 ---
 
 # {name}

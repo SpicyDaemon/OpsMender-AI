@@ -162,11 +162,6 @@ class SkillDefinition:
     # Optional session-tier default used after explicit request and
     # service-specific policy, but before the organization default.
     default_tier: Optional[int] = None
-    # Optional free-form list of areas the operator wants Environment Scans
-    # to weight (e.g. "crashlooping containers", "tasks stuck in PROVISIONING",
-    # "high systemd restart counts"). Platform-agnostic by design - the LLM
-    # decides what each phrase means given the MCP server's tools.
-    focus_areas: List[str] = dataclasses.field(default_factory=list)
     # Optional ordered remediation workflow parsed from ``## Workflow``.
     workflow: List[WorkflowStep] = dataclasses.field(default_factory=list)
     # Operator-authored Markdown guidance from each tier's
@@ -580,14 +575,8 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
             )
         )
 
-    raw_focus = data.get("focus_areas") or []
-    focus_areas: list[str] = []
-    if isinstance(raw_focus, list):
-        focus_areas = [str(item).strip() for item in raw_focus if str(item).strip()]
-    elif isinstance(raw_focus, str):
-        # Allow a single comma-separated string for convenience.
-        focus_areas = [s.strip() for s in raw_focus.split(",") if s.strip()]
-
+    # `focus_areas` belonged to the removed environment scan audits (M1-93);
+    # older skill files may still carry it and it is ignored.
     return SkillDefinition(
         version=str(data.get("version", "1")),
         environment=data.get("environment", "default"),
@@ -597,7 +586,6 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
             if data.get("default_tier") is None
             else _parse_tier(data.get("default_tier"), field="default_tier")
         ),
-        focus_areas=focus_areas,
         workflow=_parse_workflow(raw_workflow),
         custom_instructions=custom_instructions,
     )

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The environment scan audits: audit runs, their findings, audit schedules,
+  the `/audits` API, the audit scheduler and the `detectors-migrate` CLI
+  command. A scan made one read-only tool call and asked the model once, so
+  its findings were guesses with nothing to check them against; its screen
+  had already been removed, and a defect made every scan end in an error.
+  Upgrading drops the `audit_runs`, `audit_findings` and `audit_schedules`
+  tables and any rows in them; the database migration's downgrade recreates
+  the tables empty. The audit log of tool calls and admin changes is a
+  different feature and is unchanged.
+
 ### Security
 
 - filelock moves to 4.2.4: four advisories on 4.2.0 (CVE-2026-112913,

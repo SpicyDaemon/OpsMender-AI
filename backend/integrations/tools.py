@@ -209,7 +209,6 @@ def merge_integration_skill(
         environment=base.environment,
         operations=[*base_operations, *integration_operations],
         default_tier=base.default_tier,
-        focus_areas=list(base.focus_areas),
         workflow=list(base.workflow),
         custom_instructions=_merge_instructions(
             base.custom_instructions, connector_instructions or []

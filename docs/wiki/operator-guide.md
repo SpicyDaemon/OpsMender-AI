@@ -155,7 +155,7 @@ Once an incident reaches its final `resolved` status, the Incident Command Strip
 Press **Cmd+K** (Mac) / **Ctrl+K** (everywhere else) to open the **Command Palette** from anywhere in the dashboard. The palette has two categories:
 
 - **Navigate**: every sidebar route (Dashboard, Incidents, Approvals, Paging surfaces, AI Agent surfaces, Admin, etc.) with fuzzy keyword matching (e.g. type "audit log" to land on Activity, "schedule" for Rosters).
-- **Actions**: New incident · Fire test incident · Open pending approvals · Show who's on-call · Run environment scan.
+- **Actions**: New incident · Fire test incident · Open pending approvals · Show who's on-call.
 
 Keyboard model: `↑` / `↓` move the highlight, `Enter` executes, `Esc` closes. The shortcut is reserved. It works even when an input is focused, which is the point. The existing `?` overlay (keyboard shortcut help) lists `Cmd K` for discovery.
 

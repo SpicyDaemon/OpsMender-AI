@@ -303,7 +303,6 @@ async def test_g07_source_skills_and_workflow_are_not_modified(integration_db):
         _empty_base(),
         custom_instructions={1: "BASE-RULE"},
         workflow=["base step"],
-        focus_areas=["base area"],
     )
     before = dataclasses.replace(base)
     connector_before = [dataclasses.replace(c) for c in runtime.connector_instructions]
@@ -315,7 +314,6 @@ async def test_g07_source_skills_and_workflow_are_not_modified(integration_db):
     assert base == before
     assert runtime.connector_instructions == connector_before
     assert merged.workflow == ["base step"]
-    assert merged.focus_areas == ["base area"]
     assert loads(skill_md).instructions_for_tier(1) == "CONNECTOR-RULE"
     async with factory() as db:
         stored = await SkillRepo.get_for_integration_connector(db, org_id, jira)

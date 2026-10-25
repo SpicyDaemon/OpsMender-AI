@@ -1615,24 +1615,6 @@ export default function SkillsPage() {
         },
       },
       {
-        id: "focus_areas",
-        label: "Focus areas",
-        accessor: (skill) => skill.focus_areas.join(" "),
-        cell: (skill) =>
-          skill.focus_areas.length > 0 ? (
-            <div className="flex max-w-sm flex-wrap gap-1">
-              {skill.focus_areas.map((area) => (
-                <Badge key={area} variant="default">
-                  {area}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <span className="text-fg-muted">None</span>
-          ),
-        searchable: true,
-      },
-      {
         id: "updated_at",
         label: "Updated",
         accessor: (skill) => skill.updated_at,
@@ -1710,7 +1692,7 @@ export default function SkillsPage() {
           rowKey={(skill) => skill.id}
           storageKey="opsmender:skills-table"
           filterBar
-          searchPlaceholder="Search skill, description, focus area, or server…"
+          searchPlaceholder="Search skill, description, or server…"
           toolbarRight={
             <span className="text-sm text-fg-secondary">
               {skills.length} skill{skills.length === 1 ? "" : "s"}

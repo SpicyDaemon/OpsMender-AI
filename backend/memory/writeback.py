@@ -32,6 +32,7 @@ per ``remember`` invocation.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -277,7 +278,8 @@ async def remember_for_session(
     )
 
     try:
-        raw = llm.invoke(prompt)
+        # In a worker thread: the model call must not hold the event loop (M1-87).
+        raw = await asyncio.to_thread(llm.invoke, prompt)
     except Exception:
         logger.exception("memory writeback LLM call failed; skipping")
         return None
@@ -478,7 +480,8 @@ async def _llm_compact(
     )
     prompt = COMPACTION_PROMPT.format(max_ops=MAX_COMPACTION_OPS, candidates=candidates)
     try:
-        raw = llm.invoke(prompt)
+        # In a worker thread: the model call must not hold the event loop (M1-87).
+        raw = await asyncio.to_thread(llm.invoke, prompt)
     except Exception:
         logger.exception("compaction LLM call failed")
         return 0

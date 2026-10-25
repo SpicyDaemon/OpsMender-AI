@@ -46,7 +46,7 @@ port 8001. Both share Postgres and Redis. Existing installations using
 monoliths.
 
 Any number of app instances behind a load balancer, or scheduler replicas in
-distributed mode, may run at once: due audit schedules, SLA polls, Escalation
+distributed mode, may run at once: SLA polls, Escalation
 Chains, personal notification steps, report schedules and the session queue
 are each claimed per row before they run, and a claim lasts one interval, so
 every job runs once across all processes and a process that dies mid-run

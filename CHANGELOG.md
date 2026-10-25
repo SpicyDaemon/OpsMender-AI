@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- While a Tier 1 or Tier 2 AI session waited on its model, the whole API
+  stopped answering: health checks, logins, pages and Slack or Telegram
+  actions all waited until the model replied, which with a slow local model
+  meant minutes per session. The node event wrapper every session uses called
+  the synchronous model steps directly on the server's event loop, and the
+  memory writeback called the model inside async code at every tier. Model
+  steps now run in a worker thread, as Tier 0's time-limit wrapper already
+  did; nothing else about a session changes.
 - An AI session never saw the MCP servers registered through the app: the
   session runner and the doctor asked the server pool for its list without
   naming the workspace, and the pool then answered with the environment

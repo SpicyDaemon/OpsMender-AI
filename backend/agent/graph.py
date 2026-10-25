@@ -30,6 +30,7 @@ Usage (full mode, with LLM and MCP)::
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 
 from langgraph.graph import StateGraph, START, END
@@ -123,10 +124,19 @@ def _make_redirect_router(*, next_node: str):
 
 
 def _wrap_node_with_events(fn, *, node_name: str, publisher):
+    # The wrapper is async, so LangGraph runs it on the event loop. A
+    # synchronous node (the model nodes call ``LLM.invoke``) therefore runs in
+    # a worker thread here; calling it inline would hold the event loop, and
+    # with it every API request, for the length of each model call (M1-87).
+    run_in_thread = not inspect.iscoroutinefunction(fn)
+
     async def _run(state):
         await publisher(node_name, "started", state)
         try:
-            result = fn(state)
+            if run_in_thread:
+                result = await asyncio.to_thread(fn, state)
+            else:
+                result = fn(state)
             if inspect.isawaitable(result):
                 result = await result
         except Exception:

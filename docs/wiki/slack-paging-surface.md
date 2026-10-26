@@ -56,14 +56,14 @@ Slack apps configured with the Sprint 36 slash command Request URL (`/bot/slack/
 
 | Command | Behavior |
 |---------|----------|
-| `/ack [incident-id]` | Acknowledge. With no id, OpsMender resolves your most recently paged active incident. |
+| `/ack [incident-id]` | Acknowledge. With no id, OpsMender uses your most recently paged incident that is still open, whether its chain is running, snoozed, held or has run out of levels. A resolved or merged incident is never picked. |
 | `/take [incident-id]` | Take an unowned incident, or ask the owner to hand it over (they have five minutes to confirm). An incident without an Escalation Chain (P2/P3 notify) can't hold that request: ask the owner to release it, or use Force take in OpsMender with a reason. |
 | `/release [incident-id]` | Release the incident. Only the owner or an admin can. If the owner held it under an acknowledgement, the next level is paged straight away. |
 | `/resolve [incident-id]` | Cancel chain and mark the incident resolved. Only admins and operators on the team handling the incident can. |
 | `/snooze [duration] [incident-id]` (registered as `/snooze-escalation`) | Pause escalation for the duration (`30m`, `2h`, `1d`; up to `7d`; `30m` when omitted). Unowned: the next level is paged when it ends. Owned: the owner keeps it at least that long. |
-| `/status [incident-id]` (registered as `/opsmender-status`) | With an id, prints the chain status, step index and next check time, and whether the incident has an owner (an owner is written as a mention of their OpsMender user id, which Slack cannot turn into a name). Without an id, it reports on your most recently paged incident whose chain is still live, or, if there is none, lists up to ten of the org's running and snoozed chains. |
+| `/status [incident-id]` (registered as `/opsmender-status`) | With an id, prints the chain status, step index and next check time, and whether the incident has an owner (an owner is written as a mention of their OpsMender user id, which Slack cannot turn into a name). Without an id, it reports on your most recently paged incident that is still open (the same rule as `/ack`), or, if there is none, lists up to ten of the org's running and snoozed chains. |
 
-A paged operator can usually just type `/ack` after receiving the DM: the implicit fallback to "your most recently paged incident" works in 95% of cases.
+A paged operator can usually just type `/ack` after receiving the DM, also after the chain has paged every level. Give the id when you were paged for more than one open incident.
 
 ---
 

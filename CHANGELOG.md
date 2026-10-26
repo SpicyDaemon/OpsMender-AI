@@ -74,6 +74,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "The model's plan could not be read, so no action was taken." and the
   summary is written from that fact. `[]` is still a readable empty plan. A
   session with no model configured does not get this line.
+- Slack's `/ack`, `/take`, `/release`, `/resolve`, `/snooze-escalation` and
+  `/opsmender-status` without an incident id answered "no active page found"
+  once the Escalation Chain had paged every level, though the incident was
+  still open. They now use your most recently paged incident that is still
+  open and whose chain is running, snoozed, held or has paged every level;
+  a resolved or merged incident is never picked.
 - An AI session's plan now shows each MCP tool's arguments (names, types and
   which are required) from the tool's own schema, and the model is told to use
   only those names. In the 2026-10-24 live round about half the tool calls

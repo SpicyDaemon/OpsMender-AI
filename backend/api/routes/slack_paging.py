@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
@@ -353,9 +353,14 @@ def _extract_incident_id(text: str) -> uuid.UUID | None:
 async def _latest_user_incident_id(
     db: AsyncSession, *, org_id: uuid.UUID, user_id: uuid.UUID
 ) -> uuid.UUID | None:
-    """Find the most recently paged incident for ``user_id`` whose chain is
-    still ``running`` or ``paused``. Used when a slash command is invoked
-    without an explicit incident id."""
+    """Find the most recently paged incident for ``user_id`` whose chain can
+    still page (running, paused or under an acknowledgement lock), or whose
+    chain is exhausted while the incident is still open. Used when a slash
+    command is invoked without an explicit incident id.
+
+    M1-95: in the 2026-10-24 live round ``/ack`` answered "no active page
+    found" once a one-level chain was exhausted, though the incident was open
+    and held. A resolved or merged incident never qualifies."""
 
     stmt = (
         select(IncidentPage.incident_id)
@@ -363,10 +368,15 @@ async def _latest_user_incident_id(
             IncidentChainState,
             IncidentChainState.incident_id == IncidentPage.incident_id,
         )
+        .join(Incident, Incident.id == IncidentPage.incident_id)
         .where(
             IncidentPage.org_id == org_id,
             IncidentPage.user_id == user_id,
-            IncidentChainState.status.in_(("running", "paused", "acked")),
+            Incident.status.not_in(_esc.CLOSED_INCIDENT_STATUSES),
+            or_(
+                IncidentChainState.status.in_(("running", "paused", "acked")),
+                IncidentChainState.status == "exhausted",
+            ),
         )
         .order_by(IncidentPage.sent_at.desc())
         .limit(1)

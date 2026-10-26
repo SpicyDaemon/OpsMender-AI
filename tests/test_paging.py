@@ -705,6 +705,36 @@ class TestPagingAPI:
         for entry in body["results"]:
             assert entry["status"] in {"sent", "skipped", "failed"}
 
+    async def test_notification_preferences_test_reports_teams_as_being_rebuilt(
+        self, client: AsyncClient, auth_headers
+    ):
+        """M1-96: a saved Teams DM stage is skipped with the same reason a real
+        page records, not reported as an unconfigured channel."""
+        await client.put(
+            "/users/me/notification-preferences",
+            json={
+                "channels": {
+                    "teams_dm": "19:chat@thread.v2",
+                    "teams_dm_graph": "19:other@thread.v2",
+                },
+                "routing": {"P0": ["teams_dm", {"channel_id": "teams_dm_graph"}]},
+            },
+            headers=auth_headers,
+        )
+        resp = await client.post(
+            "/users/me/notification-preferences/test", headers=auth_headers
+        )
+        assert resp.status_code == 200, resp.text
+        teams = {
+            entry["channel"]: (entry["status"], entry["detail"])
+            for entry in resp.json()["results"]
+            if entry["channel"].startswith("teams")
+        }
+        assert teams == {
+            "teams_dm": ("skipped", "teams_rebuilding"),
+            "teams_dm_graph": ("skipped", "teams_rebuilding"),
+        }
+
     async def test_service_requires_existing_team(
         self, client: AsyncClient, auth_headers
     ):

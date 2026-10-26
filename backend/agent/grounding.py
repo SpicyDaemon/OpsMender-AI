@@ -32,6 +32,8 @@ GROUNDING_RULE = (
     "evidence does not establish the cause, say the cause is unknown."
 )
 
+UNREADABLE_PLAN = "The model's plan could not be read, so no action was taken."
+
 NO_ACTION_VERIFICATION = (
     "No actions were executed in this session, so there is nothing to verify. "
     "The incident state is unchanged by this session."
@@ -94,6 +96,7 @@ class SessionFacts:
     tool_calls: tuple[dict[str, Any], ...] = ()
     blocked_count: int = 0
     approval_count: int = 0
+    plan_unreadable: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -140,6 +143,7 @@ def facts_from_state(
         tool_calls=tuple(state.get("tool_calls") or ()),
         blocked_count=len(state.get("blocked_actions") or ()),
         approval_count=len(state.get("approval_requests") or ()),
+        plan_unreadable=bool(state.get("plan_unreadable")),
     )
 
 
@@ -162,6 +166,8 @@ def state_line(facts: SessionFacts) -> str:
 def facts_block(facts: SessionFacts) -> str:
     """The facts as the summarize prompt sees them."""
     lines = [state_line(facts)]
+    if facts.plan_unreadable:
+        lines.append(UNREADABLE_PLAN)
     if facts.tool_calls:
         lines.append("Tool calls in this session (the only actions that happened):")
         for call in facts.tool_calls:

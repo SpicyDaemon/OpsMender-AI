@@ -87,6 +87,7 @@ class IncidentState(TypedDict, total=False):
     observations: str  # output of the observe node
     diagnosis: str  # output of the diagnose node
     plan: list[dict[str, Any]]  # proposed actions from the plan node
+    plan_unreadable: bool  # the model's plan answer could not be read (M1-92)
     workflow_result: dict[str, Any]  # Skill-defined workflow execution summary
 
     # -- tier gate -----------------------------------------------------------

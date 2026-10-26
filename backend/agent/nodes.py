@@ -21,7 +21,9 @@ Design rules
 from __future__ import annotations
 
 import inspect
+import json
 import math
+import re
 import uuid
 from typing import Any
 
@@ -413,6 +415,40 @@ def _format_operator_guidance(state: IncidentState) -> str:
     return "\n".join(f"- {item}" for item in guidance)
 
 
+_FENCE = re.compile(r"```[\w-]*[ \t]*\n?(.*?)```", re.DOTALL)
+
+
+def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
+    """The actions in the model's plan answer, or ``None`` when it cannot be
+    read (M1-92).
+
+    The prompt asks for a bare JSON array, but models also answer with the
+    array inside a Markdown code fence (a local model in the 2026-10-24 live
+    round planned eight reads that way and none ran) or after a sentence. The
+    first array of objects in the answer, or in its first code fence, is the
+    plan; ``[]`` is a readable empty plan."""
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    fenced = _FENCE.search(text)
+    if fenced:
+        text = fenced.group(1).strip()
+    decoder = json.JSONDecoder()
+    first = start = text.find("[")
+    while start != -1:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            value = None
+        # An empty array is the plan only when it is the answer's first array,
+        # not one nested inside an answer that is otherwise broken.
+        if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+            if value or start == first:
+                return value
+        start = text.find("[", start + 1)
+    return None
+
+
 def _build_plan(
     llm: LLM,
     tier: int,
@@ -422,8 +458,6 @@ def _build_plan(
 
     def plan(state: IncidentState) -> dict:
         """Propose a list of remediation actions."""
-        import json
-
         diagnosis = state.get("diagnosis", "")
         tools_list = "\n".join(
             f"- {op.tool} ({op.classification})" for op in skill_def.operations
@@ -440,17 +474,8 @@ def _build_plan(
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
 
-        # Parse the LLM response as JSON - fall back to empty plan on failure
-        try:
-            actions = json.loads(raw)
-            if not isinstance(actions, list):
-                actions = []
-        except (json.JSONDecodeError, TypeError):
-            actions = []
-
-        return {
-            "plan": actions,
-        }
+        actions = parse_plan(raw)
+        return {"plan": actions or [], "plan_unreadable": actions is None}
 
     return plan
 
@@ -465,8 +490,6 @@ def _build_plan_with_tool_names(
     """Return a plan node that only exposes the supplied concrete tools."""
 
     def plan(state: IncidentState) -> dict:
-        import json
-
         diagnosis = state.get("diagnosis", "")
         if tool_names:
             tools_list = "\n".join(
@@ -492,16 +515,8 @@ def _build_plan_with_tool_names(
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
 
-        try:
-            actions = json.loads(raw)
-            if not isinstance(actions, list):
-                actions = []
-        except (json.JSONDecodeError, TypeError):
-            actions = []
-
-        return {
-            "plan": actions,
-        }
+        actions = parse_plan(raw)
+        return {"plan": actions or [], "plan_unreadable": actions is None}
 
     return plan
 

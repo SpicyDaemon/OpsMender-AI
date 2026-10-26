@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.graph import build_graph
-from backend.agent.grounding import facts_from_state, ground_summary
+from backend.agent.grounding import UNREADABLE_PLAN, facts_from_state, ground_summary
 from backend.agent.service_context import format_service_context
 from backend.agent.timeouts import Tier0TimeConfig, ainvoke_with_session_timeout
 from backend.api.routes.ws import publish
@@ -656,10 +656,27 @@ async def _record_advisory_only_status(
     session_id: uuid.UUID,
 ) -> dict[str, Any]:
     """Persist a non-error transcript line for a service with no tool sources."""
-    content = (
-        "No MCP servers and no integration tools are available for this service, "
-        "so the session runs advisory-only."
+    return await _record_status_line(
+        factory,
+        org_id,
+        session_id,
+        content=(
+            "No MCP servers and no integration tools are available for this service, "
+            "so the session runs advisory-only."
+        ),
+        node_context="tool_availability",
     )
+
+
+async def _record_status_line(
+    factory,
+    org_id: uuid.UUID,
+    session_id: uuid.UUID,
+    *,
+    content: str,
+    node_context: str,
+) -> dict[str, Any]:
+    """Persist a non-error assistant line in the session transcript."""
     async with factory() as db:
         message = await SessionMessageRepo.create(
             db,
@@ -668,7 +685,7 @@ async def _record_advisory_only_status(
             role="assistant",
             content=content,
             consumed_by_workflow=True,
-            node_context="tool_availability",
+            node_context=node_context,
         )
         await db.commit()
         await db.refresh(message)
@@ -1051,6 +1068,21 @@ async def _run_session_workflow_inner(
                     initial_state,
                     {"recursion_limit": _INTERACTIVE_RECURSION_LIMIT},
                 )
+
+        if result.get("plan_unreadable"):
+            # M1-92: an answer the plan step could not read used to leave an
+            # empty plan and no trace; the transcript now says so.
+            status_message = await _record_status_line(
+                factory,
+                org_id,
+                session_id,
+                content=UNREADABLE_PLAN,
+                node_context="plan",
+            )
+            await publish(
+                session_id,
+                WSMessage(type="chat_message_assistant", data=status_message),
+            )
 
         rollback_summary = None
         final_status = result.get("status", "completed")

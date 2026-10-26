@@ -41,3 +41,10 @@ This guide covers common issues you might encounter while deploying, configuring
 - OpsMender uses WebSockets for real-time chat updates. Ensure your reverse proxy (e.g., Nginx, Traefik) or Load Balancer is configured to support WebSocket upgrades.
 - Check the browser's developer console for `WebSocket connection failed` errors.
 - If running locally via Docker Compose, ensure port mapping is correct and no local firewall is blocking the WS protocol.
+
+## 6. A Session Ran No Tool Although the Model Proposed Some
+
+**Symptom:** The session transcript says "The model's plan could not be read, so no action was taken." and Tool Activity is empty.
+**Resolution:**
+- The plan step asks the model for a JSON array of actions. OpsMender reads the array when it is bare, inside a Markdown code fence or after a sentence; it could not find one in this answer, so nothing ran and the summary says so.
+- Small local models drift from the format more often. Try a larger model for the service, or check the model profile's maximum tokens: a cut-off answer cannot be read.

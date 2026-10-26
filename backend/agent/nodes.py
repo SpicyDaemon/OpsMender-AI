@@ -421,10 +421,12 @@ def _format_operator_guidance(state: IncidentState) -> str:
 NO_MODEL_ANSWER = "[workflow offline: no model configured]"
 
 
-# The whole answer as one Markdown code fence, with an optional language tag.
-_FENCED = re.compile(r"```[^\n`]*\n(.*?)\n?```", re.DOTALL)
-# Some model servers put the model's reasoning into the answer, closed by this.
-_THINK_END = "</think>"
+# The whole answer as one Markdown code fence. The opening line holds at most a
+# one-word language tag, so a label such as "DO NOT RUN" makes it no fence.
+_FENCED = re.compile(r"```[\w.+-]*[ \t]*\r?\n(.*?)\n?```", re.DOTALL)
+# Some model servers put the model's reasoning into the answer: it opens the
+# answer with <think> and ends at the first </think>.
+_THINK_START, _THINK_END = "<think>", "</think>"
 
 
 def _is_action(item: Any) -> bool:
@@ -439,16 +441,19 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     array of actions, or one action object on its own, either bare or as the
     one Markdown code fence that is the whole answer. Every action needs a
     text ``tool_name``; ``[]`` is a readable empty plan. Reasoning that a model
-    server writes into the answer before a closing ``</think>`` is not part of
-    the answer and is dropped. Anything else gives ``None`` and nothing runs:
+    server writes into the answer, opening it with ``<think>`` and ending at the
+    first ``</think>``, is not part of the answer and is dropped. Anything else
+    gives ``None`` and nothing runs:
     prose can quote, offer or withdraw an action, so an answer with prose
     around the plan, a second value, or a cut-off or broken value is never
     read as a plan."""
     if not isinstance(raw, str):
         return None
     text = raw.strip()
-    if _THINK_END in text:
-        text = text[text.rindex(_THINK_END) + len(_THINK_END) :].strip()
+    if text.startswith(_THINK_START):
+        if _THINK_END not in text:
+            return None
+        text = text[text.index(_THINK_END) + len(_THINK_END) :].strip()
     fenced = _FENCED.fullmatch(text)
     body = fenced.group(1).strip() if fenced else text
     try:

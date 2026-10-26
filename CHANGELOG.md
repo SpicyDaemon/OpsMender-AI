@@ -66,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the plan when the answer is nothing but the plan: the JSON array of
   actions (each with a `tool_name`), or one such action on its own, bare or
   as the one Markdown code fence that is the whole answer. Reasoning a model
-  server writes into the answer before a closing `</think>` is ignored. Any
+  server writes into the answer, opening it with `<think>` and ending at the
+  first `</think>`, is ignored. Any
   other answer runs nothing: prose can quote, offer or withdraw an action, so
   an answer with prose around the plan, a second value, or a cut-off or
   broken value is never read as a plan. The session transcript then says

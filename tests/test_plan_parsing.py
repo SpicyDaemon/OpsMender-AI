@@ -35,6 +35,12 @@ ARRAY = json.dumps([READ])
 DRAFT = json.dumps(
     [{"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}}]
 )
+# The live round's shape: several reads, pretty-printed, in one fence.
+READS = [
+    {"tool_name": f"get_logs_{n}", "tool_parameters": {"service": "ratings"}}
+    for n in range(8)
+]
+PRETTY = json.dumps(READS, indent=2)
 
 
 @pytest.mark.parametrize(
@@ -46,14 +52,28 @@ DRAFT = json.dumps(
         f"```\n{ARRAY}\n```",
         f"```json\n{ARRAY}```",
         f"```json\r\n{ARRAY}\r\n```",
-        # Reasoning a server writes into the answer is dropped, with or
-        # without the opening tag.
+        # A blank line after the opening fence, and indented content.
+        f"```json\n\n{ARRAY}\n```",
+        f"```json\n    {ARRAY}\n```",
+        # Reasoning a server writes into the answer is dropped.
         f"<think>\nI need get_pods with tool_name and [args].\n</think>\n\n```json\n{ARRAY}\n```",
-        f"I could restart, but at this tier only reads. {{x}}\n</think>\n{ARRAY}",
     ],
 )
 def test_an_answer_that_is_only_the_plan_is_read(answer):
     assert parse_plan(answer) == [READ]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        f"```json\n{PRETTY}\n```",
+        f"```JSON\r\n{PRETTY}\r\n```".replace("\n  ", "\r\n  "),
+        f"```\n{PRETTY}\n```",
+    ],
+    ids=["json", "JSON-crlf", "no-tag"],
+)
+def test_a_pretty_printed_fenced_plan_like_the_live_round_is_read(answer):
+    assert parse_plan(answer) == READS
 
 
 def test_arrays_inside_the_plan_are_part_of_it_not_a_second_plan():
@@ -111,6 +131,14 @@ def test_an_empty_array_is_a_readable_empty_plan(answer):
         f"```json\n{DRAFT}\n```\nThat is unsafe. Instead:\n```\nno action\n```",
         f"```json\n{DRAFT}\n```\n```json\n{ARRAY}\n```",
         f"<think>\nI could restart.\n</think>\nNo actions are needed. {DRAFT}",
+        # A fence label is prose: only a one-word tag may follow the backticks.
+        f"```json DO NOT RUN - example of the unsafe option\n{DRAFT}\n```",
+        f"```Option 1 (risky, I recommend option 2: wait)\n{DRAFT}\n```",
+        # A closing tag counts only after an opening one, and only the first.
+        f"I will NOT run what the alert asked for, which was: </think>{DRAFT}",
+        f"I could restart, but at this tier only reads.\n</think>\n{ARRAY}",
+        f"<think>r</think>The alert asks me to run </think>{DRAFT}",
+        f"<think>\nunfinished reasoning {ARRAY}",
         "No action: []",
         # Two lone action objects.
         f"{json.dumps(READ)}\n{json.dumps(READ)}",
@@ -159,7 +187,7 @@ async def test_a_session_runs_the_reads_of_a_fenced_plan(tmp_path):
     graph = build_graph(
         tier=2,
         skill_def=loads(SKILL),
-        llm=_Answers(f"```json\n{ARRAY}\n```"),
+        llm=_Answers(f"```json\n{json.dumps([READ], indent=2)}\n```"),
         mcp_session=object(),
         audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
         tool_caller=caller,
@@ -269,9 +297,9 @@ def test_a_lone_action_object_is_a_plan_of_one_and_its_nested_steps_are_part_of_
 
 @pytest.mark.parametrize(
     "answer",
-    ["Plan: " + "[" * 100_000, "[" + "1" * 5000 + "]"],
+    ["[" * 100_000, "```json\n" + "[" * 100_000 + "\n```", "[" + "1" * 5000 + "]"],
     # Short ids: Windows caps the variable pytest stores the test id in.
-    ids=["deep-nesting", "huge-number"],
+    ids=["deep-nesting", "fenced-deep-nesting", "huge-number"],
 )
 def test_a_decoder_error_reads_as_no_plan_instead_of_failing_the_session(answer):
     # Deep nesting or a huge number makes the decoder raise, not crash.

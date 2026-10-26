@@ -937,6 +937,9 @@ async def _run_session_workflow_inner(
             "skill_def": skill_def,
             "llm": llm,
             "approval_service": approval_service,
+            # M1-89: the tier gate writes the actions it blocks to the audit
+            # log, also when no tool source is attached.
+            "audit_logger": audit_logger,
             "node_event_publisher": lambda node_name, status, _payload=None: (
                 _publish_node_event(session_id, node_name, status)
             ),

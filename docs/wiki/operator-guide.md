@@ -134,6 +134,10 @@ deleting the owning incident deletes the session, but its audit entries stay,
 alongside an entry recording the deletion.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
+- Every action the tier gate refuses is recorded too, with the tool, the
+  parameters the AI proposed, the tier and the reason: a write blocked at
+  Tier 2, an action that needed an approval nobody gave, a rejected approval.
+  The session's Tool Activity and the incident timeline show these as blocked.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - Workspace activity also shows configuration changes, approval decisions, and
   session tier overrides. Configuration entries identify the actor, route,

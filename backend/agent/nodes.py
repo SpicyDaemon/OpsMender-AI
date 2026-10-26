@@ -20,6 +20,8 @@ Design rules
 
 from __future__ import annotations
 
+import inspect
+import math
 import uuid
 from typing import Any
 
@@ -543,19 +545,95 @@ def _tier_block_reason(status: str) -> str:
     return "Action blocked by tier policy"
 
 
+def _checked_name(action: dict[str, Any]) -> str:
+    """The tool name the tier check sees. The model writes it, so a name that
+    is not text is checked as no name, which the check refuses as unknown."""
+    name = action.get("tool_name")
+    return name if isinstance(name, str) else ""
+
+
+def _storable(value: Any) -> Any:
+    """``value`` with what PostgreSQL text and JSONB refuse taken out: NUL
+    characters are dropped and NaN or infinite numbers become text. The model
+    writes these values, and a refused insert would fail the session."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {_storable(str(key)): _storable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_storable(item) for item in value]
+    return value
+
+
+def _blocked_auditor(audit_logger, tier: int):
+    """Return an async function that writes one ``tool_call_blocked`` audit
+    entry for a blocked action (M1-89), or ``None`` without a logger.
+
+    Before, only the executor wrote that entry, and blocked plan actions never
+    reach the executor: a session whose actions were all blocked left nothing
+    in the audit log or in Tool Activity. The tool name and parameters come
+    from the model, so they are shaped to fit the row: a name is text of at
+    most 200 characters, parameters that are not an object are kept under
+    ``value``, and both lose what PostgreSQL refuses (see ``_storable``)."""
+    if audit_logger is None:
+        return None
+
+    async def audit(session_id: str, action: dict[str, Any]) -> None:
+        name = action.get("tool_name")
+        params = action.get("tool_parameters")
+        if params is None:
+            params = {}
+        elif not isinstance(params, dict):
+            params = {"value": params}
+        reason = action.get("block_reason")
+        pending = audit_logger.log_tool_call_blocked(
+            session_id,
+            tier,
+            (_storable(str(name)) if name else "unknown")[:200] or "unknown",
+            tool_parameters=_storable(params),
+            block_reason=None if reason is None else _storable(str(reason)),
+            classification=action.get("classification"),
+        )
+        if inspect.isawaitable(pending):
+            await pending
+
+    return audit
+
+
+def _with_blocked_audit(gate, audit):
+    """Wrap a gate that never waits (no approval service) so it audits each
+    action it blocked. A gate that waits on approvals audits each block as it
+    happens instead, so a redirect or a stop during a later wait loses none."""
+    if audit is None:
+        return gate
+
+    async def tier_gate(state: IncidentState) -> dict:
+        update = gate(state)
+        for action in update.get("blocked_actions") or []:
+            await audit(state["session_id"], action)
+        return update
+
+    return tier_gate
+
+
 def _build_tier_gate(
     tier: int,
     skill_def: SkillDefinition,
     approval_service: ApprovalService | None = None,
+    audit_logger=None,
 ):
     """Return a tier_gate node function closed over *tier* and *skill_def*.
 
     The tier gate is deterministic: it reads the proposed actions from
     ``state["plan"]``, classifies each via the skill definition, and
-    splits them into ``approved_actions`` and ``blocked_actions``.
+    splits them into ``approved_actions`` and ``blocked_actions``. With an
+    ``audit_logger``, each blocked action is written to the audit log.
 
     This function is **never** delegated to an LLM.
     """
+    audit = _blocked_auditor(audit_logger, tier)
 
     if approval_service is None:
 
@@ -565,7 +643,7 @@ def _build_tier_gate(
             blocked: list[dict[str, Any]] = []
 
             for action in proposed:
-                tool_name = action.get("tool_name", "")
+                tool_name = _checked_name(action)
                 enforcement = tier_check(tool_name, tier, skill_def)
                 if enforcement.requires_approval:
                     blocked.append(
@@ -597,7 +675,7 @@ def _build_tier_gate(
                 "approval_requests": [],
             }
 
-        return tier_gate
+        return _with_blocked_audit(tier_gate, audit)
 
     async def tier_gate(state: IncidentState) -> dict:
         proposed = state.get("plan", [])
@@ -610,7 +688,7 @@ def _build_tier_gate(
         redirect_count = int(state.get("redirect_count", 0) or 0)
 
         for action in proposed:
-            tool_name = action.get("tool_name", "")
+            tool_name = _checked_name(action)
             enforcement = tier_check(tool_name, tier, skill_def)
 
             if enforcement.requires_approval:
@@ -675,6 +753,8 @@ def _build_tier_gate(
                             "approval_request_id": str(resolution.request.id),
                         }
                     )
+                    if audit is not None:
+                        await audit(str(session_id), blocked[-1])
                     if req_status == "expired":
                         status = "timed_out"
                         error = resolution.block_reason
@@ -690,6 +770,8 @@ def _build_tier_gate(
                         "classification": enforcement.classification,
                     }
                 )
+                if audit is not None:
+                    await audit(str(session_id), blocked[-1])
 
         return {
             "approved_actions": approved,

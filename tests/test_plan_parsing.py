@@ -102,9 +102,6 @@ def test_an_empty_array_is_a_readable_empty_plan(answer):
         '[{"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}',
         # An array with comments does not decode, so nothing inside it runs.
         '[\n  // step 1\n  {"tool_name": "get_pods", "tool_parameters": {}}\n]',
-        # Deep nesting or a huge number makes the decoder raise, not crash.
-        "Plan: " + "[" * 100_000,
-        "[" + "1" * 5000 + "]",
         # "tool_name" in the answer: an empty [] beside it is not an empty plan.
         "I would call tool_name restart_deployment here, so the plan is []",
         # Two action arrays: a draft must never run beside the final plan.
@@ -271,3 +268,14 @@ def test_a_lone_action_object_is_a_plan_of_one_and_its_nested_steps_are_part_of_
     assert parse_plan(json.dumps(action) + "\n" + json.dumps(step)) is None
     # Prose braces are not JSON and do not break a plan.
     assert parse_plan("Restart {service} later. " + ARRAY) == [READ]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["Plan: " + "[" * 100_000, "[" + "1" * 5000 + "]"],
+    # Short ids: Windows caps the variable pytest stores the test id in.
+    ids=["deep-nesting", "huge-number"],
+)
+def test_a_decoder_error_reads_as_no_plan_instead_of_failing_the_session(answer):
+    # Deep nesting or a huge number makes the decoder raise, not crash.
+    assert parse_plan(answer) is None

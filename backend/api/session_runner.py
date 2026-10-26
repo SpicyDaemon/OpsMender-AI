@@ -52,6 +52,7 @@ from backend.llm.factory import create_llm
 from backend.mcp.pool import MCPServerPool
 from backend.mcp.client import call_tool as mcp_call_tool
 from backend.mcp.client import list_tools as mcp_list_tools
+from backend.mcp.client import tool_plan_description
 from backend.skills.parser import (
     SkillDefinition,
     load as load_skill_def,
@@ -973,9 +974,7 @@ async def _run_session_workflow_inner(
                 mcp_tools = await mcp_list_tools(mcp_session)
                 mcp_tool_names = [tool.name for tool in mcp_tools]
                 mcp_descriptions = {
-                    tool.name: tool.description
-                    for tool in mcp_tools
-                    if tool.description
+                    tool.name: tool_plan_description(tool) for tool in mcp_tools
                 }
                 integration_tool_names = [
                     descriptor.name for descriptor in integration_runtime.descriptors

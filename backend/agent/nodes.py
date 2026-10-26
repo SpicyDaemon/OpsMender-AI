@@ -120,8 +120,8 @@ Return your plan as a JSON array of objects.  Example:
   {{"tool_name": "get_pods", "tool_parameters": {{"namespace": "default"}}, "justification": "Check pod status"}}
 ]
 
-Only propose actions using available tools.  Be conservative: prefer
-safe read operations before any writes.
+Only propose actions using available tools, and pass only the argument names
+each tool lists.  Be conservative: prefer safe read operations before any writes.
 """
     + PLAIN_WRITING
 )

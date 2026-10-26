@@ -161,10 +161,23 @@ async def audited_tool_call(
         if inspect.isawaitable(pending_log):
             await pending_log
 
+        # A server that answers with isError rejected the call (a wrong
+        # argument, a missing resource); it did not run (M1-91).
+        error = None
+        if result_dict.get("isError"):
+            texts = [
+                str(item.get("text") or "")
+                for item in result_dict.get("content") or []
+                if isinstance(item, dict)
+            ]
+            detail = " ".join(text.strip() for text in texts if text.strip())[:500]
+            error = "the tool reported an error" + (f": {detail}" if detail else "")
+
         return AuditedToolResult(
             permitted=True,
             enforcement=enforcement,
             result=result_dict,
+            error=error,
             duration_ms=elapsed_ms,
         )
 

@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An AI session's plan now shows each MCP tool's arguments (names, types and
+  which are required) from the tool's own schema, and the model is told to use
+  only those names. In the 2026-10-24 live round about half the tool calls
+  were rejected because the model had to guess argument names.
+- A tool call the MCP server rejects (`isError`) is now recorded as failed
+  with the server's message, not as executed: the summary's first line counts
+  it under "failed", the summary model sees it as failed, and a Skill
+  workflow step whose tool reports an error fails and follows its
+  `on_failure` setting. A session with a failed call is not written to
+  memory, as for any errored call.
 - While a Tier 1 or Tier 2 AI session waited on its model, the whole API
   stopped answering: health checks, logins, pages and Slack or Telegram
   actions all waited until the model replied, which with a slow local model

@@ -352,6 +352,30 @@ async def connect(server: MCPServerConfig) -> AsyncIterator[ClientSession]:
         raise MCPClientError(f"Unknown transport: {server.transport}")
 
 
+def tool_plan_description(tool: Tool, *, max_arguments: int = 20) -> str:
+    """The tool's description followed by its arguments, as the plan prompt
+    shows them (M1-91). Without the argument names the model guessed them, and
+    the server rejected the call."""
+    description = (tool.description or "").strip()
+    schema = tool.inputSchema if isinstance(tool.inputSchema, dict) else {}
+    properties = schema.get("properties")
+    properties = properties if isinstance(properties, dict) else {}
+    required = set(schema.get("required") or [])
+    parts = []
+    for name, spec in list(properties.items())[:max_arguments]:
+        kind = spec.get("type") if isinstance(spec, dict) else None
+        if isinstance(kind, list):
+            kind = "/".join(str(item) for item in kind)
+        flags = [str(kind or "any")]
+        if name in required:
+            flags.append("required")
+        parts.append(f"{name} ({', '.join(flags)})")
+    if len(properties) > max_arguments:
+        parts.append(f"and {len(properties) - max_arguments} more")
+    arguments = "Arguments: " + (", ".join(parts) if parts else "none") + "."
+    return f"{description} {arguments}".strip()
+
+
 async def list_tools(session: ClientSession) -> list[Tool]:
     """Return the list of tools exposed by the connected MCP server."""
     result = await session.list_tools()

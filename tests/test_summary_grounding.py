@@ -75,9 +75,10 @@ def test_facts_block_lists_each_tool_call_and_its_outcome():
     )
     block = facts_block(facts)
     assert "- get_pods: ok" in block
-    assert "- restart_pod: error=timeout" in block
+    assert "- restart_pod: failed, no result: timeout" in block
     assert "- delete_ns: blocked by the tier policy, did not run" in block
-    assert len(facts.executed) == 2
+    # The timed-out call ran and returned nothing: failed, not executed (M1-91).
+    assert len(facts.executed) == 1 and len(facts.failed) == 1
 
 
 def test_facts_block_without_calls_says_nothing_ran():

@@ -125,20 +125,59 @@ operations:
         )
 
 
-@pytest.mark.parametrize("mode", ["autonomous", "approval"])
-def test_parser_rejects_executable_t2_modes(mode):
+@pytest.mark.parametrize(
+    ("classification", "mode"),
+    [
+        ("safe", "approval"),
+        ("caution", "autonomous"),
+        ("caution", "approval"),
+        ("destructive", "autonomous"),
+    ],
+)
+def test_parser_rejects_executable_t2_modes(classification, mode):
+    """Tier 2 never asks for approval, and only a safe read may run there (M1-94)."""
+    t0 = (
+        "{enabled: true, mode: autonomous}"
+        if classification == "safe"
+        else "{enabled: false, mode: blocked}"
+    )
+    t1 = (
+        "{enabled: true, mode: autonomous}"
+        if classification == "safe"
+        else "{enabled: true, mode: approval}"
+    )
     raw = f"""---
+operations:
+  - tool: get_status
+    classification: {classification}
+    tiers:
+      T0: {t0}
+      T1: {t1}
+      T2: {{enabled: true, mode: {mode}}}
+---
+"""
+    with pytest.raises(
+        ValueError, match="T2 mode must be advisory or blocked, or autonomous"
+    ):
+        loads(raw)
+
+
+def test_parser_accepts_a_safe_read_at_t2():
+    """A read the skill classifies safe may run at Tier 2 (M1-94)."""
+    skill = loads(
+        """---
 operations:
   - tool: get_status
     classification: safe
     tiers:
-      T0: {{enabled: true, mode: autonomous}}
-      T1: {{enabled: true, mode: autonomous}}
-      T2: {{enabled: true, mode: {mode}}}
+      T0: {enabled: true, mode: autonomous}
+      T1: {enabled: true, mode: autonomous}
+      T2: {enabled: true, mode: autonomous}
 ---
 """
-    with pytest.raises(ValueError, match="T2 mode must be advisory or blocked"):
-        loads(raw)
+    )
+    policy = skill.tier_policy("get_status", 2)
+    assert policy is not None and policy.enabled and policy.mode == "autonomous"
 
 
 def test_parser_rejects_incoherent_enabled_and_mode_pairs():

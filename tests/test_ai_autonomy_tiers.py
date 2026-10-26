@@ -82,7 +82,7 @@ def test_template_parses_and_classifies():
     assert "Tier 0: Autonomous" in md
     assert "Tier 1: Approval Required" in md
     assert "Tier 2: Advisory Only" in md
-    assert "No actions allowed. Advisory mode only." in md
+    assert "Advisory mode: reads only." in md
 
 
 # ---------------------------------------------------------------------------

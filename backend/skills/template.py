@@ -55,7 +55,7 @@ def _normalize_operation(op: dict[str, Any]) -> dict[str, Any]:
             entry["tiers"] = {
                 "T0": {"enabled": True, "mode": "autonomous"},
                 "T1": {"enabled": True, "mode": "autonomous"},
-                "T2": {"enabled": True, "mode": "advisory"},
+                "T2": {"enabled": True, "mode": "autonomous"},
             }
         else:
             tier0_enabled = bool(
@@ -270,7 +270,7 @@ operations:
         mode: autonomous
       T2:
         enabled: true
-        mode: advisory
+        mode: autonomous
   - tool: restart_deployment
     classification: caution
     reversible: true
@@ -445,12 +445,13 @@ _Freeform guidance for approval-gated response._
 
 ## Tier 2: Advisory Only
 
-**No actions allowed. Advisory mode only.**
+**Advisory mode: reads only.**
 
-The AI provides analysis, recommendations, and runbooks. It may perform
-read-only observation, but **no write/remediation actions execute**: no
-restarts, rollbacks, failovers, deletes, or changes to infrastructure, apps, or
-config. Tier 2 is the **default** for new sessions.
+The AI provides analysis, recommendations, and runbooks. It may run the
+operations this skill classifies `safe` and marks autonomous at T2 (health,
+logs, metrics), but **no write/remediation actions execute**: no restarts,
+rollbacks, failovers, deletes, or changes to infrastructure, apps, or config.
+Tier 2 is the workspace default.
 
 ### Custom Instructions
 

@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Tier 2 (Advisory Only) sessions can now read before they advise. A skill
+  may mark an operation it classifies `safe` as autonomous at T2, and the
+  skill template, generated skills and read-only integration tools do so by
+  default; writes stay blocked, approval never applies at Tier 2 and generic
+  command tools stay blocked. Before, a Tier 2 session ran no tool at all and
+  its advice rested on the alert text. Stored skills keep their T2 policies
+  until edited. The tier check itself is unchanged.
 - The Start Session dialog now opens on Tier 1 (Approval Required), so a
   person approves each action by default; Tier 0 and Tier 2 stay selectable
   and the workspace tier setting is unchanged.

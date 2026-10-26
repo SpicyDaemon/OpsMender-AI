@@ -101,7 +101,9 @@ itself, and the summary is held to it:
 - The stored incident state is printed first, read again when the session
   ends. If the text still claims a resolution, an acknowledgement or actions
   the record does not show, a correction is appended that names what the record
-  says. The model's words are never rewritten.
+  says. Only what the text asserts counts: a next check to run, a question, a
+  condition ("whether the pod restarted") or a circuit breaker being closed
+  draws no correction. The model's words are never rewritten.
 
 The session page labels this text "Model summary". Judge an incident by its
 status, its owner and the tool activity, never by the prose.

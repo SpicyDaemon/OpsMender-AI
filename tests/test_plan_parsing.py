@@ -97,9 +97,16 @@ def test_an_empty_array_is_a_readable_empty_plan(answer):
         # A trailing comma breaks the array the same way.
         '[{"tool_name": "get_events", "tool_parameters": '
         '{"selectors": [{"key": "app"}]}},]',
-        # One action object, not an array: its nested list is not a plan.
-        '{"tool_name": "kubectl_apply", '
-        '"tool_parameters": {"items": [{"kind": "Pod"}]}}',
+        # An action object cut off: its nested steps must not run as the plan.
+        '{"tool_name": "run_steps", "tool_parameters": {"steps": '
+        '[{"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}',
+        # An array with comments does not decode, so nothing inside it runs.
+        '[\n  // step 1\n  {"tool_name": "get_pods", "tool_parameters": {}}\n]',
+        # Deep nesting or a huge number makes the decoder raise, not crash.
+        "Plan: " + "[" * 100_000,
+        "[" + "1" * 5000 + "]",
+        # "tool_name" in the answer: an empty [] beside it is not an empty plan.
+        "I would call tool_name restart_deployment here, so the plan is []",
         # Two action arrays: a draft must never run beside the final plan.
         f"Draft: {DRAFT}\nThat is unsafe. Final plan:\n```json\n{ARRAY}\n```",
         # A draft beside a final empty plan: the withdrawn draft must not run.
@@ -251,3 +258,16 @@ async def test_the_runner_records_an_unreadable_plan_in_the_transcript(
         assert notes[0].role == "assistant"
     else:
         assert notes == []
+
+
+def test_a_lone_action_object_is_a_plan_of_one_and_its_nested_steps_are_part_of_it():
+    step = {"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}}
+    action = {"tool_name": "run_steps", "tool_parameters": {"steps": [step]}}
+    assert parse_plan(json.dumps(action)) == [action]
+    assert parse_plan(f"Here is the action:\n```json\n{json.dumps(action)}\n```") == [
+        action
+    ]
+    # Two lone objects are two plans, so nothing runs.
+    assert parse_plan(json.dumps(action) + "\n" + json.dumps(step)) is None
+    # Prose braces are not JSON and do not break a plan.
+    assert parse_plan("Restart {service} later. " + ARRAY) == [READ]

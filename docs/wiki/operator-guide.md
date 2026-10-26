@@ -88,8 +88,11 @@ a record. The record is the session's events and tool calls and the incident
 itself, and the summary is held to it:
 
 - The summary is written from a facts block: the stored incident status, who
-  holds the incident, the tool calls that ran with their results, and what was
-  blocked. The model is told to describe only that, to call an unknown cause
+  holds the incident, the tool calls that ran with their results, the calls that
+  failed (an error, or a server that rejected the call), and what was blocked.
+  Its first line counts them: "Actions executed in this session: N; failed: N;
+  blocked: N; approval requests: N", where executed means the call returned a
+  result. The model is told to describe only that, to call an unknown cause
   unknown, and never to say the incident is resolved, closed or acknowledged
   unless the stored state says so.
 - When no action ran, nothing is verified and the summary says what is known,

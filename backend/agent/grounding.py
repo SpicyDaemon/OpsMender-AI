@@ -77,7 +77,21 @@ class SessionFacts:
 
     @property
     def executed(self) -> list[dict[str, Any]]:
-        return [call for call in self.tool_calls if call.get("permitted", True)]
+        """Calls that ran and returned a result."""
+        return [
+            call
+            for call in self.tool_calls
+            if call.get("permitted", True) and not call.get("error")
+        ]
+
+    @property
+    def failed(self) -> list[dict[str, Any]]:
+        """Calls the tier allowed that failed or that the server rejected."""
+        return [
+            call
+            for call in self.tool_calls
+            if call.get("permitted", True) and call.get("error")
+        ]
 
 
 def facts_from_state(
@@ -111,7 +125,8 @@ def state_line(facts: SessionFacts) -> str:
     return (
         f"Stored incident state: status {status}; {holder}. "
         f"Actions executed in this session: {len(facts.executed)}; "
-        f"blocked: {facts.blocked_count}; approval requests: {facts.approval_count}."
+        f"failed: {len(facts.failed)}; blocked: {facts.blocked_count}; "
+        f"approval requests: {facts.approval_count}."
     )
 
 
@@ -125,7 +140,7 @@ def facts_block(facts: SessionFacts) -> str:
             if not call.get("permitted", True):
                 outcome = "blocked by the tier policy, did not run"
             elif call.get("error"):
-                outcome = f"error={call['error']}"
+                outcome = f"failed, no result: {call['error']}"
             else:
                 outcome = "ok"
             lines.append(f"- {name}: {outcome}")
@@ -167,7 +182,11 @@ def contradictions(summary: str, facts: SessionFacts) -> list[str]:
     if facts.acknowledged and _NOT_ACKNOWLEDGED.search(summary.lower()):
         found.append(f"{facts.owner_name} holds the incident")
     if not facts.executed and _claims(summary, _ACTION):
-        found.append("no actions, probes or checks ran in this session")
+        found.append(
+            "every tool call in this session failed; none returned a result"
+            if facts.failed
+            else "no actions, probes or checks ran in this session"
+        )
     return found
 
 

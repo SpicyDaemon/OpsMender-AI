@@ -938,3 +938,14 @@ async def test_tier0_session_still_routes_mcp_calls_through_the_sandbox(
     assert fake_session.calls == []
     await caller(fake_session, "jira_search", {"query": "DOT"})
     assert fake_session.calls == ["jira_search"]
+
+
+async def test_the_plan_sees_each_mcp_tools_arguments(app, monkeypatch):
+    """The runner hands the plan each MCP tool's description followed by its
+    arguments from the tool's schema (M1-91), not the bare description."""
+    captured, _fake_session, _connector_id = await _run_overlap_session(
+        app, monkeypatch, tier=1
+    )
+    descriptions = captured["plan_tool_descriptions"]
+    assert descriptions["jira_search"] == "Search Jira Arguments: none."
+    assert descriptions["jira_create_issue"] == "Create a Jira issue Arguments: none."

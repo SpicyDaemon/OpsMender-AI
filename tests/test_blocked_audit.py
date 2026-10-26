@@ -190,6 +190,40 @@ async def test_model_written_values_are_shaped_to_fit_the_audit_row(
     ]
 
 
+async def test_nul_characters_and_non_finite_numbers_never_reach_the_row(tmp_path):
+    # PostgreSQL refuses NUL in text and JSONB and NaN in JSONB; a refused
+    # audit insert would fail the session, so the auditor stores neither.
+    log = tmp_path / "audit.jsonl"
+    gate = _build_tier_gate(1, loads(SKILL), audit_logger=AuditLogger(log))
+    await gate(
+        {
+            "session_id": str(uuid.uuid4()),
+            "plan": [
+                {
+                    "tool_name": "restart\x00pod",
+                    "tool_parameters": {
+                        "replicas": float("nan"),
+                        "limit": float("inf"),
+                        "note\x00": ["a\x00b", {"deep": "x\x00"}],
+                    },
+                },
+                {"tool_name": "\x00", "tool_parameters": {}},
+            ],
+        }
+    )
+
+    first, second = _blocked(log)
+    assert first["tool_name"] == "restartpod"
+    assert first["tool_parameters"] == {
+        "replicas": "nan",
+        "limit": "inf",
+        "note": ["ab", {"deep": "x"}],
+    }
+    assert second["tool_name"] == "unknown"
+    assert "\x00" not in log.read_text(encoding="utf-8")
+    assert "NaN" not in log.read_text(encoding="utf-8")
+
+
 async def test_a_rejected_approval_is_audited_as_blocked_with_its_reason(tmp_path):
     log = tmp_path / "audit.jsonl"
     gate = _build_tier_gate(

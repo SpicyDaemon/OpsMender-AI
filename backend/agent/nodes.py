@@ -21,6 +21,7 @@ Design rules
 from __future__ import annotations
 
 import inspect
+import math
 import uuid
 from typing import Any
 
@@ -551,6 +552,21 @@ def _checked_name(action: dict[str, Any]) -> str:
     return name if isinstance(name, str) else ""
 
 
+def _storable(value: Any) -> Any:
+    """``value`` with what PostgreSQL text and JSONB refuse taken out: NUL
+    characters are dropped and NaN or infinite numbers become text. The model
+    writes these values, and a refused insert would fail the session."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {_storable(str(key)): _storable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_storable(item) for item in value]
+    return value
+
+
 def _blocked_auditor(audit_logger, tier: int):
     """Return an async function that writes one ``tool_call_blocked`` audit
     entry for a blocked action (M1-89), or ``None`` without a logger.
@@ -559,8 +575,8 @@ def _blocked_auditor(audit_logger, tier: int):
     reach the executor: a session whose actions were all blocked left nothing
     in the audit log or in Tool Activity. The tool name and parameters come
     from the model, so they are shaped to fit the row: a name is text of at
-    most 200 characters, and parameters that are not an object are kept under
-    ``value``."""
+    most 200 characters, parameters that are not an object are kept under
+    ``value``, and both lose what PostgreSQL refuses (see ``_storable``)."""
     if audit_logger is None:
         return None
 
@@ -575,9 +591,9 @@ def _blocked_auditor(audit_logger, tier: int):
         pending = audit_logger.log_tool_call_blocked(
             session_id,
             tier,
-            (str(name) if name else "unknown")[:200],
-            tool_parameters=params,
-            block_reason=None if reason is None else str(reason),
+            (_storable(str(name)) if name else "unknown")[:200] or "unknown",
+            tool_parameters=_storable(params),
+            block_reason=None if reason is None else _storable(str(reason)),
             classification=action.get("classification"),
         )
         if inspect.isawaitable(pending):

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 from backend.agent.graph import build_graph
 from backend.agent.grounding import UNREADABLE_PLAN, facts_from_state, ground_summary
+from backend.agent.nodes import NO_MODEL_ANSWER
 from backend.agent.service_context import format_service_context
 from backend.agent.timeouts import Tier0TimeConfig, ainvoke_with_session_timeout
 from backend.api.routes.ws import publish
@@ -388,7 +389,7 @@ async def _resolve_llm(factory, session) -> LLM:  # type: ignore[no-untyped-def]
                 return _llm_from_config(default_cfg)
             return create_llm(
                 provider="stub",
-                response="[workflow offline: no model configured]",
+                response=NO_MODEL_ANSWER,
             )
 
         # The session persists only provider + model_id, so recover the full

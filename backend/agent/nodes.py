@@ -23,6 +23,7 @@ from __future__ import annotations
 import inspect
 import json
 import math
+import re
 import uuid
 from typing import Any
 
@@ -414,32 +415,74 @@ def _format_operator_guidance(state: IncidentState) -> str:
     return "\n".join(f"- {item}" for item in guidance)
 
 
+# What the stand-in client answers to every prompt when no model is
+# configured (``session_runner._resolve_llm``). No model wrote it, so the plan
+# step does not report it as an unreadable plan.
+NO_MODEL_ANSWER = "[workflow offline: no model configured]"
+
+
+_CHECKBOX_LEAD = re.compile(r"\s*(?:[-*+]|\d+[.)])\s*")
+
+
+def _is_checkbox(text: str, start: int, end: int) -> bool:
+    """Whether the ``[ ]`` at ``start``..``end`` is a Markdown task-list box:
+    only a list marker before it on its line, and text after it."""
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    after = text[end : len(text) if line_end == -1 else line_end]
+    return bool(_CHECKBOX_LEAD.fullmatch(text[line_start:start])) and bool(
+        after.strip()
+    )
+
+
 def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     """The actions in the model's plan answer, or ``None`` when it cannot be
     read (M1-92).
 
-    The prompt asks for a bare JSON array, but models also answer with the
-    array inside a Markdown code fence (a local model in the 2026-10-24 live
-    round planned eight reads that way and none ran) or after a sentence. The
-    first array of objects in the answer, fenced or not, is the plan; ``[]`` is
-    a readable empty plan."""
+    Models write the array bare, inside a Markdown code fence or after a
+    sentence, so every JSON array in the answer is decoded; arrays inside a
+    decoded array are part of it. An action array holds only objects that each
+    have a text ``tool_name``; an empty ``[]`` is an empty plan, except a
+    Markdown checkbox. The answer is read only when it holds exactly one plan:
+    one action array and no empty plan, or one or more empty plans and no
+    ``tool_name`` anywhere. Two plans (a draft beside the final one), an array
+    of objects that does not decode (cut off or broken), or nothing at all give
+    ``None``, so nothing runs."""
     if not isinstance(raw, str):
         return None
-    text = raw.strip()
     decoder = json.JSONDecoder()
-    first = start = text.find("[")
+    plans: list[list[dict[str, Any]]] = []
+    empty_plans = 0
+    start = raw.find("[")
     while start != -1:
         try:
-            value, _ = decoder.raw_decode(text, start)
+            value, end = decoder.raw_decode(raw, start)
         except json.JSONDecodeError:
-            value = None
-        # An empty array is the plan only when it is the answer's first array,
-        # not one nested inside an answer that is otherwise broken.
-        if isinstance(value, list) and all(isinstance(item, dict) for item in value):
-            if value or start == first:
-                return value
-        start = text.find("[", start + 1)
+            if raw[start + 1 :].lstrip().startswith("{"):
+                return None
+            start = raw.find("[", start + 1)
+            continue
+        if not value:
+            if not _is_checkbox(raw, start, end):
+                empty_plans += 1
+        elif all(
+            isinstance(item, dict) and isinstance(item.get("tool_name"), str)
+            for item in value
+        ):
+            plans.append(value)
+        start = raw.find("[", end)
+    if len(plans) == 1 and not empty_plans:
+        return plans[0]
+    if not plans and empty_plans and "tool_name" not in raw:
+        return []
     return None
+
+
+def _plan_update(raw: Any) -> dict[str, Any]:
+    """The plan node's state update for the model's answer ``raw``."""
+    actions = parse_plan(raw)
+    unreadable = actions is None and raw != NO_MODEL_ANSWER
+    return {"plan": actions or [], "plan_unreadable": unreadable}
 
 
 def _build_plan(
@@ -466,9 +509,7 @@ def _build_plan(
             tier=tier,
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
-
-        actions = parse_plan(raw)
-        return {"plan": actions or [], "plan_unreadable": actions is None}
+        return _plan_update(raw)
 
     return plan
 
@@ -507,9 +548,7 @@ def _build_plan_with_tool_names(
             tier=tier,
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
-
-        actions = parse_plan(raw)
-        return {"plan": actions or [], "plan_unreadable": actions is None}
+        return _plan_update(raw)
 
     return plan
 

@@ -17,7 +17,12 @@ from mcp.types import CallToolResult, TextContent
 
 from backend.agent.graph import build_graph
 from backend.agent.grounding import UNREADABLE_PLAN, facts_block, facts_from_state
-from backend.agent.nodes import _build_plan, _build_plan_with_tool_names, parse_plan
+from backend.agent.nodes import (
+    NO_MODEL_ANSWER,
+    _build_plan,
+    _build_plan_with_tool_names,
+    parse_plan,
+)
 from backend.api import session_runner
 from backend.audit.logger import AuditLogger
 from backend.db.repos import IncidentRepo, SessionMessageRepo, SessionRepo
@@ -27,6 +32,9 @@ from tests.test_tool_source_overlap import TEST_ORG_ID, app  # noqa: F401
 
 READ = {"tool_name": "get_pods", "tool_parameters": {"namespace": "shop"}}
 ARRAY = json.dumps([READ])
+DRAFT = json.dumps(
+    [{"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}}]
+)
 
 
 @pytest.mark.parametrize(
@@ -39,13 +47,36 @@ ARRAY = json.dumps([READ])
         f"{ARRAY}\nThese reads are safe at this tier.",
         f"Plan [JSON]: {ARRAY}",
         ARRAY,
+        # A Markdown checkbox decodes to [] but is not the plan.
+        f"Plan:\n- [ ] check logs\n\n```json\n{ARRAY}\n```",
+        # A quoted list of objects without tool_name is not a plan.
+        f'The alert lists [{{"pod": "web-1"}}]. Plan:\n```json\n{ARRAY}\n```',
     ],
 )
 def test_a_plan_in_a_fence_or_in_prose_is_read(answer):
     assert parse_plan(answer) == [READ]
 
 
-@pytest.mark.parametrize("answer", ["[]", "```json\n[]\n```", "No action: []"])
+def test_arrays_inside_the_plan_are_part_of_it_not_a_second_plan():
+    plan = [
+        {
+            "tool_name": "run_steps",
+            "tool_parameters": {"steps": [{"tool_name": "get_pods"}]},
+        }
+    ]
+    assert parse_plan(f"```json\n{json.dumps(plan)}\n```") == plan
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "[]",
+        "```json\n[]\n```",
+        "No action: []",
+        "Plan [JSON]: []",
+        "Per the [runbook](https://wiki/x), nothing to do: []",
+    ],
+)
 def test_an_empty_array_is_a_readable_empty_plan(answer):
     assert parse_plan(answer) == []
 
@@ -59,6 +90,27 @@ def test_an_empty_array_is_a_readable_empty_plan(answer):
         '[{"tool_name": "get_pods", "tool_parameters": {"ids": []}',
         '[{"tool_name": "get_pods", "tool_parameters": {"ids": [1, 2]}',
         "[1, 2, 3]",
+        # Cut off: the nested array of objects must not become the plan.
+        '[{"tool_name": "kubectl_patch", "tool_parameters": {"patch": '
+        '[{"op": "replace", "path": "/spec/replicas", "value": 3}]}}, '
+        '{"tool_name": "get_pods", "tool_para',
+        # A trailing comma breaks the array the same way.
+        '[{"tool_name": "get_events", "tool_parameters": '
+        '{"selectors": [{"key": "app"}]}},]',
+        # One action object, not an array: its nested list is not a plan.
+        '{"tool_name": "kubectl_apply", '
+        '"tool_parameters": {"items": [{"kind": "Pod"}]}}',
+        # Two action arrays: a draft must never run beside the final plan.
+        f"Draft: {DRAFT}\nThat is unsafe. Final plan:\n```json\n{ARRAY}\n```",
+        # A draft beside a final empty plan: the withdrawn draft must not run.
+        f"Draft: {DRAFT}\nOn reflection that is unsafe. Final plan:\n```json\n[]\n```",
+        # Cut off: an action-shaped array inside the parameters is not the plan.
+        '[{"tool_name": "run_steps", "tool_parameters": {"steps": '
+        '[{"tool_name": "get_pods"}]}',
+        # A Markdown checkbox alone is not an empty plan.
+        "- [ ] check the ratings logs",
+        '[{"pod": "web-1", "restarts": 12}]',
+        '[{"tool_name": 7, "tool_parameters": {}}]',
     ],
 )
 def test_an_answer_without_a_plan_cannot_be_read(answer):
@@ -133,6 +185,22 @@ async def test_an_unreadable_plan_reaches_the_summary_facts(tmp_path):
     assert UNREADABLE_PLAN in facts_block(facts_from_state(result))
     summary_prompts = [p for p in llm.prompts if "writing an incident summary" in p]
     assert summary_prompts and UNREADABLE_PLAN in summary_prompts[-1]
+
+
+async def test_a_session_without_a_model_is_not_told_its_plan_was_unreadable(
+    app,  # noqa: F811
+):
+    # With no model configured the runner gives the graph a stand-in client
+    # that answers every prompt with NO_MODEL_ANSWER. No model wrote a plan,
+    # so the facts and the transcript must not say one could not be read.
+    no_model = SimpleNamespace(
+        org_id=TEST_ORG_ID, model_config_id=None, model_provider=None, model_id=None
+    )
+    llm = await session_runner._resolve_llm(app.state.session_factory, no_model)
+    assert llm.invoke("Propose a list of remediation actions") == NO_MODEL_ANSWER
+    update = _build_plan(llm, 2, loads(SKILL))({"diagnosis": "d"})
+    assert update == {"plan": [], "plan_unreadable": False}
+    assert UNREADABLE_PLAN not in facts_block(facts_from_state(update))
 
 
 def test_a_readable_plan_adds_nothing_to_the_facts():

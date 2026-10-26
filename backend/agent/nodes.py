@@ -421,8 +421,10 @@ def _format_operator_guidance(state: IncidentState) -> str:
 NO_MODEL_ANSWER = "[workflow offline: no model configured]"
 
 
-# One Markdown code fence: an optional language tag on the opening line.
-_FENCE = re.compile(r"```[^\n`]*\n(.*?)```", re.DOTALL)
+# The whole answer as one Markdown code fence, with an optional language tag.
+_FENCED = re.compile(r"```[^\n`]*\n(.*?)\n?```", re.DOTALL)
+# Some model servers put the model's reasoning into the answer, closed by this.
+_THINK_END = "</think>"
 
 
 def _is_action(item: Any) -> bool:
@@ -433,32 +435,22 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     """The actions in the model's plan answer, or ``None`` when it cannot be
     read (M1-92).
 
-    The plan is read only when the answer is the plan: the JSON array (or one
-    action object on its own) bare, after a sentence with nothing after it, or
-    inside a Markdown code fence with no other bracket, brace or
-    ``tool_name`` in the text around the fence. Every action needs a text
-    ``tool_name``; ``[]`` is a readable empty plan. Anything else gives
-    ``None`` and nothing runs, so an action the model drafted, quoted, listed
-    as an option or withdrew in words can never run as the plan; a cut-off or
-    broken value gives ``None`` too."""
+    The plan is read only when the answer is nothing but the plan: the JSON
+    array of actions, or one action object on its own, either bare or as the
+    one Markdown code fence that is the whole answer. Every action needs a
+    text ``tool_name``; ``[]`` is a readable empty plan. Reasoning that a model
+    server writes into the answer before a closing ``</think>`` is not part of
+    the answer and is dropped. Anything else gives ``None`` and nothing runs:
+    prose can quote, offer or withdraw an action, so an answer with prose
+    around the plan, a second value, or a cut-off or broken value is never
+    read as a plan."""
     if not isinstance(raw, str):
         return None
     text = raw.strip()
-    fence = _FENCE.search(text)
-    if fence:
-        # A second fence that holds JSON puts brackets outside this one.
-        outside = text[: fence.start()] + text[fence.end() :]
-        if "[" in outside or "{" in outside or "tool_name" in outside:
-            return None
-        body = fence.group(1).strip()
-    else:
-        starts = [i for i in (text.find("["), text.find("{")) if i != -1]
-        if not starts:
-            return None
-        lead = text[: min(starts)]
-        if "tool_name" in lead:
-            return None
-        body = text[min(starts) :]
+    if _THINK_END in text:
+        text = text[text.rindex(_THINK_END) + len(_THINK_END) :].strip()
+    fenced = _FENCED.fullmatch(text)
+    body = fenced.group(1).strip() if fenced else text
     try:
         value, end = json.JSONDecoder().raw_decode(body)
     except (ValueError, RecursionError):

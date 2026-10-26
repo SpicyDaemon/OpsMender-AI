@@ -40,15 +40,19 @@ DRAFT = json.dumps(
 @pytest.mark.parametrize(
     "answer",
     [
+        ARRAY,
+        f"  {ARRAY}\n",
         f"```json\n{ARRAY}\n```",
         f"```\n{ARRAY}\n```",
-        f"Here is the plan:\n```json\n{ARRAY}\n```\nI will wait for the results.",
-        f"Here is the plan: {ARRAY}",
-        f"  {ARRAY}  ",
-        ARRAY,
+        f"```json\n{ARRAY}```",
+        f"```json\r\n{ARRAY}\r\n```",
+        # Reasoning a server writes into the answer is dropped, with or
+        # without the opening tag.
+        f"<think>\nI need get_pods with tool_name and [args].\n</think>\n\n```json\n{ARRAY}\n```",
+        f"I could restart, but at this tier only reads. {{x}}\n</think>\n{ARRAY}",
     ],
 )
-def test_a_plan_that_is_the_answer_is_read(answer):
+def test_an_answer_that_is_only_the_plan_is_read(answer):
     assert parse_plan(answer) == [READ]
 
 
@@ -62,10 +66,7 @@ def test_arrays_inside_the_plan_are_part_of_it_not_a_second_plan():
     assert parse_plan(f"```json\n{json.dumps(plan)}\n```") == plan
 
 
-@pytest.mark.parametrize(
-    "answer",
-    ["[]", "```json\n[]\n```", "No action: []", "Nothing to do.\n```\n[]\n```"],
-)
+@pytest.mark.parametrize("answer", ["[]", "```json\n[]\n```", "```\n[]\n```", " [] "])
 def test_an_empty_array_is_a_readable_empty_plan(answer):
     assert parse_plan(answer) == []
 
@@ -79,35 +80,43 @@ def test_an_empty_array_is_a_readable_empty_plan(answer):
         "[1, 2, 3]",
         '[{"pod": "web-1", "restarts": 12}]',
         '[{"tool_name": 7, "tool_parameters": {}}]',
+        # Every item must be an action.
+        '[{"tool_name": "get_pods", "tool_parameters": {}}, 1]',
+        '[{"tool_name": "get_pods"}, {"pod": "web-1"}]',
         '{"plan": []}',
+        # A fence that holds no list or action.
+        "```\n0\n```",
+        "```json\nfalse\n```",
+        "```\nnull\n```",
+        "```\n42\n```",
         # Cut off or broken: nothing inside it runs.
         '[{"tool_name": "get_pods", "tool_parameters": {"ids": []}',
-        '[{"tool_name": "run_steps", "tool_parameters": {"steps": '
-        '[{"tool_name": "get_pods"}]}',
         '{"tool_name": "run_steps", "tool_parameters": {"steps": '
         '[{"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}',
         '[{"tool_name": "get_events", "tool_parameters": {}},]',
         '[\n  // step 1\n  {"tool_name": "get_pods", "tool_parameters": {}}\n]',
         f"```json\n[\n  # {DRAFT}  removed: unsafe\n]\n```",
-        # A draft or a quoted action never runs, whatever the final answer is.
-        f"Draft: {DRAFT}\nThat is unsafe. Final plan:\n```json\n{ARRAY}\n```",
-        f"Draft: {DRAFT}\nOn reflection that is unsafe. Final plan:\n```json\n[]\n```",
-        f'Draft: {DRAFT}\nFinal answer:\n```json\n{{"plan": []}}\n```',
-        f"Draft: {DRAFT}\nOn reflection that is unsafe, so I propose no actions.",
-        f"The previous session ran `{DRAFT}`, which did not help. No further action.",
-        f"Options:\n1. {DRAFT} restart web (risky)\n2. [] wait and watch",
-        f"Draft: {DRAFT}\nThat is unsafe. Final plan:\n```json\n[",
+        f"```json\n{ARRAY}",
+        # Prose around the plan: it can quote, offer or withdraw an action.
+        f"Here is the plan: {ARRAY}",
+        f"Here is the plan:\n```json\n{ARRAY}\n```",
+        f"```json\n{ARRAY}\n```\nI will wait for the results.",
         f"{ARRAY}\nThese reads are safe at this tier.",
-        # Two fences, or brackets or tool_name around the one fence.
+        f"The previous session ran:\n```json\n{DRAFT}\n```\nIt did not help. No further action.",
+        f"Draft:\n```json\n{DRAFT}\n```\nOn reflection that is unsafe, so I propose no actions.",
+        f"Option 1 (risky):\n```json\n{DRAFT}\n```\nOption 2: wait and watch. I recommend option 2.",
+        f"Draft:\n```json\n{DRAFT}\n```\nThat is unsafe. Final plan:\n```json\n",
+        f"Draft: {DRAFT}\nOn reflection that is unsafe, so I propose no actions.",
+        f'```json\n{DRAFT}\n```\nOn reflection that is unsafe; answer {{"action": "none"}} instead.',
+        f"```json\n{DRAFT}\n```\nThat is unsafe. Instead:\n```\nno action\n```",
         f"```json\n{DRAFT}\n```\n```json\n{ARRAY}\n```",
-        f"Plan:\n- [ ] check logs\n\n```json\n{ARRAY}\n```",
-        f"Use tool_name get_pods:\n```json\n{ARRAY}\n```",
-        "I would call tool_name restart_deployment here, so the plan is []",
+        f"<think>\nI could restart.\n</think>\nNo actions are needed. {DRAFT}",
+        "No action: []",
         # Two lone action objects.
         f"{json.dumps(READ)}\n{json.dumps(READ)}",
     ],
 )
-def test_an_answer_that_is_not_one_plan_cannot_be_read(answer):
+def test_an_answer_that_is_not_only_the_plan_cannot_be_read(answer):
     assert parse_plan(answer) is None
 
 
@@ -251,9 +260,11 @@ def test_a_lone_action_object_is_a_plan_of_one_and_its_nested_steps_are_part_of_
     step = {"tool_name": "restart_deployment", "tool_parameters": {"name": "web"}}
     action = {"tool_name": "run_steps", "tool_parameters": {"steps": [step]}}
     assert parse_plan(json.dumps(action)) == [action]
-    assert parse_plan(f"Here is the action:\n```json\n{json.dumps(action)}\n```") == [
-        action
-    ]
+    assert parse_plan(f"```json\n{json.dumps(action)}\n```") == [action]
+    # With prose around it, it is not read.
+    assert (
+        parse_plan(f"Here is the action:\n```json\n{json.dumps(action)}\n```") is None
+    )
 
 
 @pytest.mark.parametrize(

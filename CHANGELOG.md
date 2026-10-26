@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The correction under a session's summary answered words, not claims. In the
+  2026-10-24 live round it was added to correct summaries for sentences such
+  as "verify that the circuit breakers remain closed", "whether the pod has
+  restarted", "next checks (to be performed by a person)" and the facts line
+  the model repeated. A closure, action or acknowledgement word now counts
+  only where the summary asserts it: not after a condition, a hedge, the
+  future or an instruction in its clause, not in a question, and a closure
+  word about a circuit breaker, port, connection, ticket or window is not
+  about the incident. An invented probe, an open incident called resolved
+  or closed, and an acknowledgement nobody made are still corrected.
 - An AI session's plan now shows each MCP tool's arguments (names, types and
   which are required) from the tool's own schema, and the model is told to use
   only those names. In the 2026-10-24 live round about half the tool calls

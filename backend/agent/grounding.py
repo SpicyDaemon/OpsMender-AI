@@ -54,6 +54,35 @@ _ACTION = re.compile(
     r"confirmed|reconfigured|disabled|enabled|patched|redeployed)\b"
 )
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
+# M1-88: a word is a claim only where the summary asserts it. After a
+# condition, a hedge or the future in its clause ("whether it restarted", "if a
+# breaker is closed", "to be performed by a person", "suggested next checks")
+# it is not.
+_CONDITION = re.compile(
+    r"\b(whether|if|unless|until|should|would|could|might|may|will|to be|"
+    r"next (?:steps?|checks?|actions?))\b"
+)
+# Nor after an instruction: an imperative at the start of the clause ("Verify
+# that the breakers remain closed", "Monitor the error rate") or after "to",
+# "please", "then", "and", "or", "I", "we" or "you" ("then confirm it is
+# restored"). A noun ("the health check confirmed ...") is still a claim.
+_DIRECTIVE = re.compile(
+    r"(?:^|\b(?:to|please|then|and|or|i|we|you)\s+)"
+    r"(verify|check|ensure|confirm|consider|recommend(?:ed)?|suggest(?:ed)?|"
+    r"proposed?|continue|try|monitor|probe)\b"
+)
+# Markdown and numbering in front of a clause ("- ", "* ", "1. ", "**").
+_LEAD = re.compile(r"^[\s>#*_`-]*(?:\d+[.)]\s+)?[\s*_`]*")
+# Things other than the incident that close or come back: "the circuit
+# breakers are closed" and "the connection was restored" say nothing about the
+# incident, unless the clause names the incident after them.
+_OTHER_THING = re.compile(
+    r"\b(circuit|breakers?|ports?|connections?|sockets?|tickets?|pull requests?|"
+    r"windows?)\b"
+)
+_INCIDENT = re.compile(r"\b(incidents?|alerts?|outages?|issues?|problems?)\b")
+# The facts line's own count, repeated by the model: it says nothing ran.
+_NOTHING_EXECUTED = re.compile(r"\bactions executed in this session:\s*0\b")
 
 
 @dataclass(frozen=True)
@@ -156,23 +185,58 @@ def _sentences(text: str) -> list[str]:
     return [part.strip() for part in _SENTENCE.split(text) if part.strip()]
 
 
-def _claims(text: str, pattern: re.Pattern[str]) -> bool:
-    """True when ``pattern`` appears as an affirmative claim: a match whose
-    preceding few words carry no negation ("not resolved", "nothing was
-    restarted", "nobody has acknowledged"). A negation elsewhere in the
-    sentence ("resolved with no customer impact") does not cancel it."""
+def _clauses(text: str) -> list[str]:
+    """The clauses that can carry a claim (M1-88): sentences split at
+    semicolons, without their markdown lead. Questions are left out."""
+    clauses: list[str] = []
     for sentence in _sentences(text.lower()):
-        for match in pattern.finditer(sentence):
-            before = sentence[: match.start()].split()[-4:]
-            if not _NEGATION.search(" ".join(before)):
-                return True
+        if sentence.rstrip("*_) ").endswith("?"):
+            continue
+        for part in sentence.split(";"):
+            clause = _LEAD.sub("", part.strip())
+            if clause and not _NOTHING_EXECUTED.search(clause):
+                clauses.append(clause)
+    return clauses
+
+
+def _asserted(clause: str, match: re.Match[str]) -> bool:
+    """Whether the clause asserts the matched word: no negation in the few
+    words before it ("not resolved", "nothing was restarted"), and no
+    condition, hedge, future or instruction before it in the clause. A negation
+    further back ("resolved with no customer impact") does not cancel it."""
+    before = clause[: match.start()]
+    if _NEGATION.search(" ".join(before.split()[-4:])):
+        return False
+    return not (_CONDITION.search(before) or _DIRECTIVE.search(clause[: match.end()]))
+
+
+def _about_something_else(before: str) -> bool:
+    """Whether a closure word follows a breaker, port, connection or ticket
+    with no incident named between them."""
+    things = list(_OTHER_THING.finditer(before))
+    return bool(things) and not _INCIDENT.search(before[things[-1].end() :])
+
+
+def _claims(
+    text: str, pattern: re.Pattern[str], *, about_the_incident: bool = False
+) -> bool:
+    """True when the summary asserts ``pattern`` somewhere. With
+    ``about_the_incident``, a closure word about another thing that closes or
+    comes back (a circuit breaker, a port, a connection) is not a claim."""
+    for clause in _clauses(text):
+        for match in pattern.finditer(clause):
+            if not _asserted(clause, match):
+                continue
+            if about_the_incident and _about_something_else(clause[: match.start()]):
+                continue
+            return True
     return False
 
 
 def contradictions(summary: str, facts: SessionFacts) -> list[str]:
     """What the summary claims that the record does not show."""
     found: list[str] = []
-    if not facts.closed and _claims(summary, _CLOSURE):
+    if not facts.closed and _claims(summary, _CLOSURE, about_the_incident=True):
         found.append(
             f"the stored incident status is {facts.incident_status or 'unknown'}, "
             "not resolved or closed"

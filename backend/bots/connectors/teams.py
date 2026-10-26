@@ -1,27 +1,21 @@
 """Microsoft Teams connector adapter.
 
-For v1 we use **app-only** auth - the operator registers an Azure AD
-app, grants application permissions in the Azure portal, and pastes
-``tenant_id`` / ``client_id`` / ``client_secret`` here. No browser
-redirect. The :mod:`backend.auth.graph_oauth` helper acquires + caches
-Graph tokens from those credentials.
-
-Notification delivery uses Microsoft Graph app-only authentication. Verified
-native actions arrive through the Bot Framework activity endpoint.
+Teams delivery is being rebuilt (M1-96). Microsoft Graph lets an app post
+chat messages with app-only auth only during a migration, and Graph cards allow
+link buttons only, so this adapter sends nothing and its connection test fails
+with the reason. Stored connectors keep their credentials for the Teams
+Workflows connector and bot that replace this path.
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any, Mapping
 
 from fastapi import HTTPException, status
-import httpx
 
-from backend.auth.graph_oauth import GraphOAuthError, acquire_app_only_token
+from backend.bots.capabilities import TEAMS_REBUILDING
 from backend.bots.delivery import DeliveryReceipt
 from backend.db.models import BotConnector
-from backend.paging.teams_cards import build_graph_chat_message
 from .base import FieldSpec, InboundMessage
 
 
@@ -111,17 +105,8 @@ class TeamsAdapter:
         chat_id: str,
         text: str,
     ) -> tuple[bool, str | None]:
-        receipt = await self._post_graph_message(
-            connector,
-            chat_id=chat_id,
-            payload={
-                "body": {
-                    "contentType": "text",
-                    "content": text,
-                }
-            },
-        )
-        return receipt.ok, receipt.error
+        """Send nothing (M1-96): Teams delivery is being rebuilt."""
+        return False, TEAMS_REBUILDING
 
     async def send_incident_update(
         self,
@@ -135,98 +120,13 @@ class TeamsAdapter:
         facts: list[tuple[str, str]] | None = None,
         acknowledged_by: str | None = None,
     ) -> DeliveryReceipt:
-        payload = (
-            build_graph_chat_message(
-                incident,
-                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
-                include_native_actions=native_actions_ready,
-                status_update=status_update,
-                facts=facts,
-                acknowledged_by=acknowledged_by,
-            )
-            if incident is not None
-            else {
-                "body": {
-                    "contentType": "text",
-                    "content": text,
-                }
-            }
-        )
-        return await self._post_graph_message(
-            connector,
-            chat_id=chat_id,
-            payload=payload,
-        )
-
-    async def _post_graph_message(
-        self,
-        connector: BotConnector,
-        *,
-        chat_id: str,
-        payload: dict[str, Any],
-    ) -> DeliveryReceipt:
-        credentials = connector.credentials or {}
-        try:
-            token = await acquire_app_only_token(
-                tenant_id=str(credentials.get("tenant_id") or ""),
-                client_id=str(credentials.get("client_id") or ""),
-                client_secret=str(credentials.get("client_secret") or ""),
-            )
-        except GraphOAuthError as exc:
-            return DeliveryReceipt(ok=False, error=f"graph_oauth: {exc}")
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
-                    headers={
-                        "Authorization": (f"{token.token_type} {token.access_token}"),
-                        "Content-Type": "application/json; charset=utf-8",
-                    },
-                    json=payload,
-                )
-        except httpx.HTTPError as exc:
-            return DeliveryReceipt(ok=False, error=f"network: {exc}")
-
-        if response.status_code not in {200, 201}:
-            try:
-                error = (response.json().get("error") or {}).get("code")
-            except ValueError:
-                error = None
-            return DeliveryReceipt(
-                ok=False,
-                error=f"graph: {error or f'http {response.status_code}'}",
-            )
-        try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        return DeliveryReceipt(
-            ok=True,
-            external_channel_id=chat_id,
-            external_message_id=str(data.get("id")) if data.get("id") else None,
-            can_update=False,
-        )
+        """Send nothing (M1-96): Teams delivery is being rebuilt."""
+        return DeliveryReceipt(ok=False, error=TEAMS_REBUILDING)
 
     async def test_connection(
         self,
         connector: BotConnector,
     ) -> tuple[bool, str | None]:
-        """Verify the configured Graph credentials by acquiring a token.
-
-        Called by the existing ``POST /bot-connectors/{id}/test`` route.
-        Returns ``(True, None)`` on success, ``(False, error)`` on
-        failure. Never raises.
-        """
-
-        creds = connector.credentials or {}
-        try:
-            await acquire_app_only_token(
-                tenant_id=creds.get("tenant_id") or "",
-                client_id=creds.get("client_id") or "",
-                client_secret=creds.get("client_secret") or "",
-                force_refresh=True,
-            )
-        except GraphOAuthError as exc:
-            return False, str(exc)
-        return True, None
+        """Fail with the reason, without a network call (M1-96). Fetching a
+        Graph token used to pass here although no message could be sent."""
+        return False, TEAMS_REBUILDING

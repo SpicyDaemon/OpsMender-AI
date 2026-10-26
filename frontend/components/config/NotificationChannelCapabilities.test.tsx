@@ -6,6 +6,9 @@
  * "Interactive actions" chip, while a chat-capable channel (Slack) shows
  * "Incident updates".
  * Platform names render in their friendly form, including "Twilio (SMS)".
+ * A platform the API marks as sending nothing (M1-96: Microsoft Teams is being
+ * rebuilt) shows a "Being rebuilt" note with the API's reason instead of chips,
+ * and cannot be added from the picker. Saved Teams channels stay editable.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -20,7 +23,59 @@ function pickPlatform(value: string) {
   fireEvent.click(option);
 }
 
+// The reason comes from the API; the UI renders whatever text it is given.
+const TEAMS_REASON = vi.hoisted(
+  () =>
+    "Microsoft Teams delivery is being rebuilt. OpsMender sends nothing to Teams until its Teams Workflows connector and bot are ready.",
+);
+
 const platformSchemas = vi.hoisted(() => [
+  {
+    platform: "teams",
+    label: "Microsoft Teams",
+    oauth_enabled: false,
+    capabilities: {
+      platform: "teams",
+      display_name: "Microsoft Teams",
+      delivery: false,
+      incident_card: false,
+      incident_updates: false,
+      interactive_actions: false,
+      direct_message: false,
+      shared_channel: false,
+      ai_session_link: false,
+      message_update: false,
+      interaction_route: null,
+      delivery_only: true,
+      unavailable_reason: TEAMS_REASON,
+    },
+    fields: [
+      {
+        name: "tenant_id",
+        label: "Azure AD tenant ID",
+        kind: "text",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "bot_app_id",
+        label: "Bot framework app ID",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+    ],
+  },
   {
     platform: "discord",
     label: "Discord",
@@ -236,11 +291,13 @@ const platformSchemas = vi.hoisted(() => [
 // The component pulls in the whole config API surface; only listBotPlatformSchemas
 // runs on mount. Stub the module so the import graph resolves.
 const testBotConnectorMock = vi.hoisted(() => vi.fn());
+const createBotConnectorMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", () => ({
   listBotPlatformSchemas: () =>
     Promise.resolve({ items: platformSchemas, total: platformSchemas.length }),
   testBotConnector: testBotConnectorMock,
+  createBotConnector: createBotConnectorMock,
   listTeams: () =>
     Promise.resolve({
       items: [
@@ -336,18 +393,26 @@ const sms = connector({
   }),
 });
 
-const teamsNative = connector({
+// A Teams channel saved before M1-96, as the API returns it now: Teams sends
+// nothing, claims no capability and carries the reason. Its stale stored
+// native-action state must not bring back any action or callback copy.
+const teamsSaved = connector({
   id: "c-teams",
   name: "Teams incident room",
   platform: "teams",
   platform_label: "Microsoft Teams",
+  lanes: ["respond", "track"],
+  allowed_capabilities: ["notifications", "approvals"],
+  has_credentials: true,
+  credential_keys: ["tenant_id", "client_id", "client_secret"],
   platform_capabilities: caps({
     platform: "teams",
     display_name: "Microsoft Teams",
-    incident_card: true,
-    interactive_actions: true,
-    shared_channel: true,
-    delivery_only: false,
+    delivery: false,
+    incident_updates: false,
+    ai_session_link: false,
+    delivery_only: true,
+    unavailable_reason: TEAMS_REASON,
   }),
   native_actions_enabled: true,
   callback_status: "configured",
@@ -411,18 +476,115 @@ describe("Notification Channels capability rendering", () => {
     expect(within(row).getByText("Interactive actions")).toBeTruthy();
   });
 
-  it("shows configured Teams native actions when the channel opts in", () => {
+  it("shows a saved Teams channel as being rebuilt, with no chips or callback status", () => {
     render(
       <BotConnectorSection
-        connectors={[teamsNative]}
+        connectors={[teamsSaved]}
         onReload={async () => {}}
         canEdit
       />,
     );
     const row = screen.getByText("Teams incident room").closest("tr")!;
-    expect(within(row).getByText("Interactive actions")).toBeTruthy();
-    expect(within(row).getByText(/Teams callbacks:/)).toBeTruthy();
-    expect(within(row).getByText("configured")).toBeTruthy();
+    const note = within(row).getByRole("note");
+    expect(within(note).getByText("Being rebuilt")).toBeTruthy();
+    expect(within(note).getByText(TEAMS_REASON)).toBeTruthy();
+    for (const chip of [
+      "Incident updates",
+      "Message updates",
+      "Interactive actions",
+      "Delivery-only",
+      "DM",
+      "Channel post",
+    ]) {
+      expect(within(row).queryByText(chip)).toBeNull();
+    }
+    expect(within(row).queryByText(/callbacks:/)).toBeNull();
+    expect(within(row).queryByText(/Enabled:/)).toBeNull();
+    // The saved row stays visible, editable and deletable.
+    expect(within(row).getByRole("button", { name: /^Edit$/i })).toBeTruthy();
+    expect(
+      within(row).getByRole("button", {
+        name: "Delete notification channel Teams incident room",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps a saved Teams channel editable without verified actions, Track or a live send", async () => {
+    render(
+      <BotConnectorSection
+        connectors={[teamsSaved]}
+        onReload={async () => {}}
+        canEdit
+      />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("note")).toBeTruthy();
+    expect(within(dialog).getByText(TEAMS_REASON)).toBeTruthy();
+    expect(within(dialog).queryByText(/can:/)).toBeNull();
+    expect(within(dialog).queryByText(/Enable verified/i)).toBeNull();
+    expect(within(dialog).queryByText(/Bot Framework verifies/i)).toBeNull();
+    expect(within(dialog).queryByText(/Waiting for a Bot Framework/i)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Track/)).toBeNull();
+    expect(within(dialog).queryByText(/cannot be added/i)).toBeNull();
+    expect(
+      within(dialog).queryByRole("button", { name: /Send live test/i }),
+    ).toBeNull();
+    expect(
+      within(dialog).getByRole("button", { name: /Check configuration/i }),
+    ).toBeTruthy();
+    const save = within(dialog).getByRole("button", {
+      name: /Save Changes/i,
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+  });
+
+  it("labels Teams as being rebuilt in the picker and does not let you create it", async () => {
+    createBotConnectorMock.mockReset();
+    render(
+      <BotConnectorSection connectors={[]} onReload={async () => {}} canEdit />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
+    fireEvent.click(screen.getByLabelText("Platform"));
+    const option = document.querySelector(
+      '[role="option"][data-value="teams"]',
+    );
+    expect(option?.textContent).toBe("Microsoft Teams (being rebuilt)");
+    fireEvent.click(option!);
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(TEAMS_REASON)).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        /New Microsoft Teams channels cannot be added while it is being rebuilt\./,
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/can:/)).toBeNull();
+    expect(within(dialog).queryByText(/Enable verified/i)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Track/)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Azure AD tenant ID/i)).toBeNull();
+    const create = within(dialog).getByRole("button", {
+      name: /Create Connector/i,
+    }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+
+    // A forced submit is refused before any request is made.
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "teams-ops" },
+    });
+    fireEvent.submit(create.closest("form")!);
+    expect(
+      (
+        await screen.findAllByText(
+          "Microsoft Teams is being rebuilt, so a new channel cannot be added.",
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(createBotConnectorMock).not.toHaveBeenCalled();
   });
 
   it("shows team scope and defaults old channels to workspace-wide", () => {

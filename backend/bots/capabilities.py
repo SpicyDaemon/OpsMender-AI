@@ -43,12 +43,29 @@ Capability flags
 ``delivery_only`` is *derived*: a channel is delivery-only when it can neither
 render an incident card nor host interactive actions. Such channels still get
 a useful incident message (title/severity/status + authenticated link).
+
+``unavailable_reason``
+    Set when OpsMender cannot deliver to the platform at all. The platform
+    claims no capability, nothing is sent to it, and the settings page shows
+    the reason instead of capability chips (M1-96: Microsoft Teams).
 """
 
 from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
+
+# M1-96: Microsoft Graph lets an app post chat messages with app-only auth only
+# during a migration, Graph cards allow link buttons only, and the Office 365
+# connector webhooks are retired. Teams sends nothing until its Workflows
+# connector and bot are built.
+TEAMS_REBUILDING = (
+    "Microsoft Teams delivery is being rebuilt. Microsoft lets an app post Teams "
+    "chat messages through Microsoft Graph only during a migration, and Teams card "
+    "buttons need a bot, so OpsMender sends nothing to Teams until its Teams "
+    "Workflows connector and bot are ready. Use Slack, email or another channel "
+    "meanwhile."
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +87,7 @@ class PlatformCapabilities:
     # for telephony providers (e.g. Twilio); chat bots cannot place calls. Gates
     # whether Voice Call is offered as a personal-routing delivery medium.
     voice_call: bool = False
+    unavailable_reason: str | None = None
 
     @property
     def delivery_only(self) -> bool:
@@ -92,6 +110,7 @@ class PlatformCapabilities:
             "interaction_route": self.interaction_route,
             "voice_call": self.voice_call,
             "delivery_only": self.delivery_only,
+            "unavailable_reason": self.unavailable_reason,
         }
 
 
@@ -137,18 +156,16 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         # follow-up path covers edit-window/permission errors.
         message_update=True,
     ),
-    "teams": _cap(
-        "teams",
-        "Microsoft Teams",
-        incident_card=True,
-        interactive_actions=True,
-        interaction_route="/bot/teams/activity",
-        direct_message=True,
-        shared_channel=True,
-        # NOT message_update: Microsoft Graph app-only auth cannot edit the
-        # content of an already-posted chat message (only policyViolation is
-        # patchable). Teams therefore posts an honest follow-up message for each
-        # lifecycle change rather than claiming an unsupported edit path.
+    # Being rebuilt (M1-96): nothing is claimed and nothing is sent. Stored Teams
+    # connectors and contact methods are kept for the Workflows connector and
+    # the bot that replace this path.
+    "teams": PlatformCapabilities(
+        platform="teams",
+        display_name="Microsoft Teams",
+        delivery=False,
+        incident_updates=False,
+        ai_session_link=False,
+        unavailable_reason=TEAMS_REBUILDING,
     ),
     "discord": _cap(
         "discord",
@@ -228,6 +245,12 @@ def display_name(platform: str) -> str:
     if caps is not None:
         return caps.display_name
     return platform.replace("_", " ").title()
+
+
+def platform_delivers(platform: str) -> bool:
+    """Whether OpsMender sends anything to ``platform`` (M1-96: not Teams)."""
+    caps = PLATFORM_CAPABILITIES.get(platform)
+    return caps is None or caps.delivery
 
 
 def supports_incident_card(platform: str) -> bool:

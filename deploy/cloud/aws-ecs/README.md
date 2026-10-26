@@ -107,7 +107,7 @@ aws route53 change-resource-record-sets --hosted-zone-id $ZONE \
   }'
 ```
 
-Once DNS resolves, set `OPSMENDER_PUBLIC_URL=https://opsmender.example.com` in `extra_environment` (so deep-link buttons in Slack/Teams cards point at the right host) and re-apply.
+Once DNS resolves, set `OPSMENDER_PUBLIC_URL=https://opsmender.example.com` in `extra_environment` (so deep-link buttons in Slack cards point at the right host) and re-apply.
 
 ### Rolling a new image tag
 

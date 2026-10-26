@@ -104,7 +104,7 @@ gcloud run services add-iam-policy-binding "$SERVICE" \
   --role roles/run.invoker
 ```
 
-Cloud Run terminates HTTPS automatically on the default `*.run.app` URL. After the service is healthy, add `OPSMENDER_PUBLIC_URL=<status.url>` to `service.local.yaml` and replace the service again so Slack/Teams deep links point at the right host.
+Cloud Run terminates HTTPS automatically on the default `*.run.app` URL. After the service is healthy, add `OPSMENDER_PUBLIC_URL=<status.url>` to `service.local.yaml` and replace the service again so Slack deep links point at the right host.
 
 ## Verification recipe
 

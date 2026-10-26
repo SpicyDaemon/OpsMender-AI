@@ -2666,7 +2666,7 @@ type BotConnectorFormState = {
   configValues: Record<string, string>;
   credentialValues: Record<string, string>;
   // Advanced JSON fallback for platforms whose schema we don't have
-  // (e.g. "custom", "teams"). When `schema` is null, the form falls
+  // (e.g. "custom"). When `schema` is null, the form falls
   // back to the legacy two-textarea UI and these strings are used.
   configText: string;
   credentialsText: string;
@@ -2825,7 +2825,7 @@ function buildBotConnectorPayload(
       credentialsObj = credentialEntries;
     }
   } else {
-    // Free-form JSON fallback for platforms without a schema (custom, teams).
+    // Free-form JSON fallback for platforms without a schema (custom).
     const cfg = parseJsonObject(form.configText, "Config");
     if (cfg.error) return { error: cfg.error };
     configObj = cfg.value ?? null;
@@ -2923,12 +2923,45 @@ function toggleTeamId(teamIds: string[], teamId: string): string[] {
     : [...teamIds, teamId];
 }
 
+// Shown when the API marks a platform as sending nothing but gives no reason.
+const PLATFORM_UNAVAILABLE_FALLBACK =
+  "OpsMender sends nothing to this platform yet.";
+
+// Why OpsMender sends nothing to a platform, or null when it delivers. The
+// reason text comes from the API (M1-96: Microsoft Teams is being rebuilt).
+function platformUnavailableReason(
+  caps: PlatformCapabilities | null | undefined,
+): string | null {
+  if (!caps) return null;
+  if (caps.unavailable_reason) return caps.unavailable_reason;
+  return caps.delivery === false ? PLATFORM_UNAVAILABLE_FALLBACK : null;
+}
+
+// Platforms that can hold the Track lane (one-way shared incident status).
+const TRACK_LANE_PLATFORMS: BotConnectorPlatform[] = [
+  "slack",
+  "discord",
+  "google_chat",
+  "eventbridge",
+];
+
+function offersTrackLane(
+  platform: BotConnectorPlatform,
+  caps: PlatformCapabilities | null | undefined,
+): boolean {
+  return (
+    TRACK_LANE_PLATFORMS.includes(platform) && !platformUnavailableReason(caps)
+  );
+}
+
 // Honest capability chips derived from the platform capability model. The UI
-// never advertises an action/update path a platform can't securely support.
+// never advertises an action/update path a platform can't securely support,
+// and a platform that sends nothing gets no chips at all.
 function platformCapabilityLabels(
   caps: PlatformCapabilities | null | undefined,
 ): string[] {
   if (!caps) return ["Delivery-only"];
+  if (platformUnavailableReason(caps)) return [];
   const out: string[] = [];
   if (caps.incident_updates || caps.incident_card) out.push("Incident updates");
   if (caps.message_update) out.push("Message updates");
@@ -2955,16 +2988,36 @@ function connectorPlatformCapabilities(
 
 function nativeActionVerifierCopy(platform: BotConnectorPlatform): string {
   if (platform === "slack") return "Slack signs";
-  if (platform === "teams") return "Microsoft Bot Framework verifies";
   if (platform === "discord") return "Discord verifies with Ed25519";
   return "the platform verifies";
 }
 
 function nativeActionWaitingCopy(platform: BotConnectorPlatform): string {
   if (platform === "slack") return "Waiting for a signing secret";
-  if (platform === "teams") return "Waiting for a Bot Framework app ID";
   if (platform === "discord") return "Waiting for an application public key";
   return "Waiting for callback verification credentials";
+}
+
+// Shown in place of capability chips for a platform that sends nothing.
+function PlatformUnavailableNote({
+  reason,
+  className = "",
+  children,
+}: {
+  reason: string;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      role="note"
+      className={`rounded-md border border-status-medium-border bg-status-medium-bg px-3 py-2.5 text-xs text-fg-secondary ${className}`}
+    >
+      <p className="font-semibold text-status-medium">Being rebuilt</p>
+      <p className="mt-1">{reason}</p>
+      {children}
+    </div>
+  );
 }
 
 function DynamicFieldInput({
@@ -3241,6 +3294,18 @@ function BotConnectorModal({
   }, [open]);
 
   const schema = schemas[form.platform] ?? null;
+  // A saved channel carries its own capabilities if the schemas did not load.
+  const platformCaps =
+    schema?.capabilities ??
+    (initialConnector?.platform === form.platform
+      ? initialConnector.platform_capabilities
+      : null);
+  const unavailableReason = platformUnavailableReason(platformCaps);
+  // A platform that sends nothing cannot be picked for a new channel or for a
+  // saved channel of another platform. Saved channels of it stay editable.
+  const blockedPlatform =
+    Boolean(unavailableReason) &&
+    initialConnector?.platform !== form.platform;
 
   function setField<K extends keyof BotConnectorFormState>(
     key: K,
@@ -3269,13 +3334,7 @@ function BotConnectorModal({
           nextSchema?.capabilities?.interactive_actions && sameAsInitial
             ? Boolean(initialConnector?.native_actions_enabled)
             : false,
-        lanes: [
-          "slack",
-          "teams",
-          "discord",
-          "google_chat",
-          "eventbridge",
-        ].includes(next)
+        lanes: offersTrackLane(next, nextSchema?.capabilities)
           ? current.lanes
           : current.lanes.filter((lane) => lane !== "track"),
       };
@@ -3414,14 +3473,16 @@ function BotConnectorModal({
                 .filter((p) => p !== "smtp")
                 .map((p) => ({
                   value: p,
-                  label: PLATFORM_LABELS[p],
+                  label: platformUnavailableReason(schemas[p]?.capabilities)
+                    ? `${PLATFORM_LABELS[p]} (being rebuilt)`
+                    : PLATFORM_LABELS[p],
                   icon: notificationPlatformIcon(p),
                 }))}
             />
           </div>
         </div>
 
-        {schema?.capabilities?.interactive_actions && (
+        {schema?.capabilities?.interactive_actions && !unavailableReason && (
           <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-3">
             <label className="flex items-start gap-2 text-sm text-fg-primary">
               <input
@@ -3460,18 +3521,29 @@ function BotConnectorModal({
           </div>
         )}
 
-        <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-xs text-fg-secondary">
-          <span className="font-medium text-fg-primary">
-            {schema?.label ?? PLATFORM_LABELS[form.platform]} can:
-          </span>{" "}
-          {platformCapabilityLabels(schema?.capabilities).join(" · ")}
-          <span className="mt-1 block text-fg-muted">
-            OpsMender posts incident updates with authenticated links. Native
-            message updates or in-chat actions appear only when the platform has
-            a verified callback/update path; otherwise responders act after
-            signing in to OpsMender.
-          </span>
-        </div>
+        {unavailableReason ? (
+          <PlatformUnavailableNote reason={unavailableReason}>
+            {blockedPlatform && (
+              <p className="mt-1 font-medium text-fg-primary">
+                New {schema?.label ?? PLATFORM_LABELS[form.platform]} channels
+                cannot be added while it is being rebuilt.
+              </p>
+            )}
+          </PlatformUnavailableNote>
+        ) : (
+          <div className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-xs text-fg-secondary">
+            <span className="font-medium text-fg-primary">
+              {schema?.label ?? PLATFORM_LABELS[form.platform]} can:
+            </span>{" "}
+            {platformCapabilityLabels(schema?.capabilities).join(" · ")}
+            <span className="mt-1 block text-fg-muted">
+              OpsMender posts incident updates with authenticated links. Native
+              message updates or in-chat actions appear only when the platform
+              has a verified callback/update path; otherwise responders act
+              after signing in to OpsMender.
+            </span>
+          </div>
+        )}
 
         <fieldset className="space-y-3">
           <legend className="text-xs font-semibold uppercase tracking-wide text-fg-secondary">
@@ -3492,13 +3564,7 @@ function BotConnectorModal({
                 </span>
               </span>
             </label>
-            {[
-              "slack",
-              "teams",
-              "discord",
-              "google_chat",
-              "eventbridge",
-            ].includes(form.platform) && (
+            {offersTrackLane(form.platform, platformCaps) && (
               <label className="flex items-start gap-2 rounded-md border border-border-subtle bg-bg-elevated px-3 py-2 text-sm text-fg-primary">
                 <input
                   type="checkbox"
@@ -3573,7 +3639,7 @@ function BotConnectorModal({
           )}
         </fieldset>
 
-        {schema ? (
+        {blockedPlatform ? null : schema ? (
           <DynamicConnectorForm
             schema={schema}
             form={form}
@@ -3805,17 +3871,23 @@ function BotConnectorModal({
               >
                 <Plug size={13} /> Check configuration
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => handleTestConnection(true)}
-                loading={testState.status === "running"}
-              >
-                <Send size={13} /> Send live test
-              </Button>
+              {!unavailableReason && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => handleTestConnection(true)}
+                  loading={testState.status === "running"}
+                >
+                  <Send size={13} /> Send live test
+                </Button>
+              )}
             </>
           )}
-          <Button type="submit" loading={saving} disabled={!fillable}>
+          <Button
+            type="submit"
+            loading={saving}
+            disabled={!fillable || blockedPlatform}
+          >
             <Save size={13} />{" "}
             {initialConnector ? "Save Changes" : "Create Connector"}
           </Button>
@@ -4173,6 +4245,15 @@ export function BotConnectorSection({
 
   async function handleSubmit(form: BotConnectorFormState) {
     const schema = schemas[form.platform] ?? null;
+    if (
+      platformUnavailableReason(schema?.capabilities) &&
+      editing?.platform !== form.platform
+    ) {
+      setError(
+        `${schema?.label ?? PLATFORM_LABELS[form.platform]} is being rebuilt, so a new channel cannot be added.`,
+      );
+      return;
+    }
     const { payload, error: buildError } = buildBotConnectorPayload(
       form,
       schema,
@@ -4260,7 +4341,7 @@ export function BotConnectorSection({
   return (
     <Section
       title="Notification Channels"
-      description="Configure workspace-level communication channels such as Slack, Teams, Discord, Email, SMS, Telegram, WhatsApp, Signal, and custom adapters."
+      description="Configure workspace-level communication channels such as Slack, Discord, Email, SMS, Telegram, WhatsApp, Signal, and custom adapters."
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -4284,8 +4365,8 @@ export function BotConnectorSection({
 
       {connectors.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle bg-bg-elevated px-4 py-6 text-sm text-fg-secondary">
-          No notification channels yet. Add one to prepare Slack, Teams,
-          Discord, Email, SMS, Telegram, WhatsApp, Signal, or a custom adapter.
+          No notification channels yet. Add one to prepare Slack, Discord,
+          Email, SMS, Telegram, WhatsApp, Signal, or a custom adapter.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border-subtle">
@@ -4306,6 +4387,9 @@ export function BotConnectorSection({
                 const testState = testStates[connector.id] ?? {
                   status: "idle",
                 };
+                const unavailableReason = platformUnavailableReason(
+                  connector.platform_capabilities,
+                );
                 return (
                   <tr
                     key={connector.id}
@@ -4345,6 +4429,12 @@ export function BotConnectorSection({
                       </div>
                     </td>
                     <td className="px-4 py-3 align-top">
+                      {unavailableReason && (
+                        <PlatformUnavailableNote
+                          reason={unavailableReason}
+                          className="max-w-xs"
+                        />
+                      )}
                       <div className="flex max-w-xs flex-wrap gap-1.5">
                         {platformCapabilityLabels(
                           connectorPlatformCapabilities(connector),
@@ -4359,15 +4449,17 @@ export function BotConnectorSection({
                           </Badge>
                         ))}
                       </div>
-                      {connector.allowed_capabilities.length > 0 && (
-                        <p className="mt-1.5 text-xs text-fg-muted">
-                          Enabled:{" "}
-                          {connector.allowed_capabilities
-                            .map((c) => c.replace(/_/g, " "))
-                            .join(", ")}
-                        </p>
-                      )}
-                      {connector.platform_capabilities?.interactive_actions &&
+                      {!unavailableReason &&
+                        connector.allowed_capabilities.length > 0 && (
+                          <p className="mt-1.5 text-xs text-fg-muted">
+                            Enabled:{" "}
+                            {connector.allowed_capabilities
+                              .map((c) => c.replace(/_/g, " "))
+                              .join(", ")}
+                          </p>
+                        )}
+                      {!unavailableReason &&
+                        connector.platform_capabilities?.interactive_actions &&
                         connector.native_actions_enabled && (
                           <p className="mt-1.5 text-xs text-fg-muted">
                             {connector.platform_label ??
@@ -5226,7 +5318,7 @@ const RETENTION_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   incident_memory_recall_log:
     "One row per (memory, session) surfacing event. Tiny rows but volume grows with traffic.",
   bot_action_audit:
-    "Inbound bot commands (Slack/Teams ack/take/resolve). Default 90-day TTL.",
+    "Inbound chat bot commands and card actions (ack/take/resolve). Default 90-day TTL.",
   incident_memories:
     "Operator- and agent-curated lessons. Never auto-deleted; manage them from /dashboard/memories.",
 };

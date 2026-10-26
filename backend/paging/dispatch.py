@@ -46,6 +46,7 @@ from backend.db.repos import (
     UserNotificationPrefRepo,
 )
 from backend.paging.maintenance import window_matches
+from backend.paging.routing import TEAMS_CHANNEL_KEYS, TEAMS_SKIP_REASON
 
 
 CHANNEL_KEYS: tuple[str, ...] = (
@@ -409,7 +410,10 @@ async def dispatch_page(
             continue
 
         recipient = addresses.get(key)
-        if not recipient:
+        if key in TEAMS_CHANNEL_KEYS:
+            # M1-96: Teams delivery is being rebuilt; never recorded as sent.
+            attempt = DeliveryAttempt(key, "skipped", TEAMS_SKIP_REASON)
+        elif not recipient:
             attempt = DeliveryAttempt(key, "skipped", "no_recipient")
         else:
             channel = await _resolve_channel(db, org_id, key, channel_factory)
@@ -423,21 +427,6 @@ async def dispatch_page(
                         base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
                         org_name=org_name,
                     )
-                elif key == "teams_dm_graph":
-                    from backend.paging.teams_cards import (
-                        build_page_card_adaptive,
-                        wrap_card_as_attachment,
-                    )
-
-                    blocks = [
-                        wrap_card_as_attachment(
-                            build_page_card_adaptive(
-                                incident,
-                                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
-                                org_name=org_name,
-                            )
-                        )
-                    ]
                 # Voice pages speak a concise summary (severity + service +
                 # title) and offer a keypad menu (1 ack / 2 escalate / 3 resolve / * repeat).
                 # The signed ack URL is the call's <Gather> action target.

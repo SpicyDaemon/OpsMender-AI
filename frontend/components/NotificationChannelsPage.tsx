@@ -37,8 +37,8 @@ export function NotificationChannelsPage({ embedded = false }: { embedded?: bool
         </h1>
         <p className="mt-1 text-sm text-fg-secondary">
           Configure workspace-level channels OpsMender can use to reach people:
-          Slack, Teams, Discord, Email, SMS, Telegram, WhatsApp, Signal, and
-          custom adapters. Personal routing now lives in Paging & On-call →
+          Slack, Discord, Email, SMS, Telegram, WhatsApp, Signal, and custom
+          adapters. Personal routing now lives in Paging & On-call →
           Notifications.
         </p>
         </div>

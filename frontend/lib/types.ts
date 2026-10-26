@@ -930,6 +930,9 @@ export interface PlatformCapabilities {
   message_update: boolean;
   interaction_route: string | null;
   delivery_only: boolean;
+  /** Set when OpsMender sends nothing to the platform at all (M1-96:
+   *  Microsoft Teams is being rebuilt). Null or absent for every other one. */
+  unavailable_reason?: string | null;
 }
 
 export interface BotConnectorResponse {

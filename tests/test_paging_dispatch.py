@@ -34,7 +34,6 @@ from backend.paging.channels import (
     EmailChannel,
     SlackDMChannel,
     SMSChannel,
-    TeamsDMChannel,
 )
 from backend.paging.dispatch import (
     DeliveryAttempt,
@@ -700,34 +699,6 @@ class TestSlackDMChannel:
         attempt = await channel.send(recipient="U1", subject="x", body="y")
         assert attempt.status == "failed"
         assert "500" in (attempt.error or "")
-
-
-class TestTeamsDMChannel:
-    async def test_sent_on_2xx(self):
-        captured = {}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured["url"] = str(request.url)
-            return httpx.Response(200, text="ok")
-
-        channel = TeamsDMChannel(
-            webhook_url="https://outlook.office.com/webhook/abc",
-            http_client_factory=_mock_factory(handler),
-        )
-        attempt = await channel.send(recipient="alice@test", subject="s", body="b")
-        assert attempt.status == "sent"
-        assert captured["url"].startswith("https://outlook.office.com/")
-
-    async def test_failed_on_4xx(self):
-        def handler(request):
-            return httpx.Response(400, text="bad webhook")
-
-        channel = TeamsDMChannel(
-            webhook_url="https://example.com/hook",
-            http_client_factory=_mock_factory(handler),
-        )
-        attempt = await channel.send(recipient="x", subject="s", body="b")
-        assert attempt.status == "failed"
 
 
 class TestSMSChannel:

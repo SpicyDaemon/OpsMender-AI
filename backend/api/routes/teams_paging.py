@@ -18,6 +18,7 @@ from backend.auth.bot_framework import (
     verify_bot_framework_token,
 )
 from backend.bots.actions import ExternalActorIdentity, IncidentActionError
+from backend.bots.capabilities import TEAMS_REBUILDING, supports_interactive_actions
 from backend.bots.native_callbacks import (
     NormalizedNativeCallback,
     callback_error_message,
@@ -124,6 +125,10 @@ async def teams_activity(
     action_id = value.get("action") or wrapped_value.get("action")
     if action_id == ACTION_VIEW:
         return _reply("Opening OpsMender...")
+    if not supports_interactive_actions(connector.platform):
+        # M1-96: Teams actions wait for the bot that replaces this path. A
+        # button on a card posted before then gets the reason, not a code.
+        return _reply(TEAMS_REBUILDING)
 
     from_field = payload.get("from") or {}
     teams_user_id = from_field.get("aadObjectId") or from_field.get("id")

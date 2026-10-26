@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters
 from backend.bots.capabilities import (
+    platform_delivers,
     supports_interactive_actions,
     supports_message_update,
 )
@@ -606,6 +607,10 @@ async def _deliver(
     generated_at: datetime | None = None,
 ) -> None:
     """Serialize a card's stale check, provider send and receipt commit."""
+    if not platform_delivers(connector.platform):
+        # M1-96: a platform being rebuilt (Teams) receives nothing, and is not
+        # marked failed on every incident event either.
+        return
     card_event = incident_id is not None and lifecycle_event in INCIDENT_CHAT_EVENTS
     key = (
         f"incident-card:{org_id}:{incident_id}:{connector.id}:{chat_id}"

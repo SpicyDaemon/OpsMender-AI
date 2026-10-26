@@ -34,6 +34,11 @@ from typing import Any
 LEGACY_CHANNEL_KEYS: frozenset[str] = frozenset(
     {"slack_dm", "teams_dm", "teams_dm_graph", "email", "sms", "voice"}
 )
+# Stored contact methods that point at Teams (M1-96): kept, but every page to
+# them is skipped with this reason until the Teams Workflows connector and bot
+# are built.
+TEAMS_CHANNEL_KEYS: frozenset[str] = frozenset({"teams_dm", "teams_dm_graph"})
+TEAMS_SKIP_REASON = "teams_rebuilding"
 
 MAX_STAGES = 3
 # O-02: a stage saved without a wait waits 3 minutes, as in My Routing.

@@ -339,6 +339,10 @@ def _connector_config_checks(
         return checks
     checks.append(_check("enabled", "pass", "Connector is enabled."))
 
+    platform_caps = get_platform_capabilities(connector.platform)
+    if platform_caps is not None and platform_caps.unavailable_reason:
+        checks.append(_check("platform", "fail", platform_caps.unavailable_reason))
+
     credentials = connector.credentials or {}
     required_keys = REQUIRED_CREDENTIAL_KEYS.get(connector.platform, ())
     missing = [key for key in required_keys if not credentials.get(key)]

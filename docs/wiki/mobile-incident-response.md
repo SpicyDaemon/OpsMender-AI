@@ -1,16 +1,18 @@
 # Responding to an incident from your phone
 
-Sprint 38 makes the OpsMender web UI usable on a phone for the most time-sensitive operations: opening the incident detail page from a Slack or Teams push, approving a Tier-1 action, and acknowledging a page from the web. This page is the operator-side guide for that flow.
+Sprint 38 makes the OpsMender web UI usable on a phone for the most time-sensitive operations: opening the incident detail page from a Slack or Discord push, approving a Tier-1 action, and acknowledging a page from the web. This page is the operator-side guide for that flow.
 
-> Sprint 38 doesn't add native push. The web UI relies on Slack's and Teams's native push to deliver the deep link; once you tap "View in OpsMender" the page loads in your phone's browser and the mobile-optimized layout takes over from there.
+> Sprint 38 doesn't add native push. The web UI relies on Slack's and Discord's native push to deliver the deep link; once you tap "View in OpsMender" the page loads in your phone's browser and the mobile-optimized layout takes over from there.
+>
+> Microsoft Teams sends nothing while its delivery is being rebuilt, so it is not a push path today. See [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 ---
 
 ## 1. The flow
 
-1. Your phone gets a push from Slack, Teams or Discord: a DM page from OpsMender, or the incident card in your team's Notification Channel.
+1. Your phone gets a push from Slack or Discord: a DM page from OpsMender, or the incident card in your team's Notification Channel.
 2. The channel card says what broke and who holds it: Service, Team, Responder (who it is waiting on) and, once someone acknowledges, Acknowledged by.
-3. You tap **Acknowledge** on the card. You get a short confirmation (on Slack and Discord only you can see it), and the card updates for everyone: it names you as the acknowledger and the Acknowledge button is gone, while Resolve, Escalate and Start AI Session stay. Slack and Discord edit the card in place; Teams posts a fresh card in the new state. If you release the incident later, Slack and Discord edit the card again so it offers **Acknowledge** to the next person. Or tap **View in OpsMender** to open the web UI.
+3. You tap **Acknowledge** on the card. You get a short confirmation (on Slack and Discord only you can see it), and the card updates for everyone: it names you as the acknowledger and the Acknowledge button is gone, while Resolve, Escalate and Start AI Session stay. Slack and Discord edit the card in place. If you release the incident later, Slack and Discord edit the card again so it offers **Acknowledge** to the next person. Or tap **View in OpsMender** to open the web UI.
 4. The incident detail page loads in your mobile browser with a vertical layout: the sticky command strip stays reachable near the top, the incident timeline stacks below the header card, and the context rail collapses cleanly into the same column.
 5. If the AI agent needs a Tier-1 approval, the pending-approval card on the session detail page shows the action context above the **Approve** / **Reject** buttons (instead of beside them on desktop) so one-tap decisions stay easy.
 
@@ -32,7 +34,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 
 For mobile-first responders we recommend:
 
-1. **Enable Slack DM or Teams DM** in `Paging → Notifications`. Each surface ships push to your phone: `Push notifications` already work without any extra OpsMender wiring.
+1. **Enable Slack DM** in `Paging → Notifications`. Slack ships push to your phone: `Push notifications` already work without any extra OpsMender wiring. Teams DM sends nothing while Teams delivery is being rebuilt.
 2. **Set quiet hours with a P0 breakthrough**. Page yourself only at night for true sev-0 pages so phone fatigue doesn't burn you out.
 3. **Use the chat surface for ack / take / resolve**. The web UI is for the long-tail tasks: reading logs, approving a Tier-1 action that needs more context, marking the post-mortem owner.
 
@@ -69,5 +71,5 @@ These will land iteratively. The Sprint 38 goal was the **respond-to-a-page** pa
 See also:
 
 - [Slack as your paging surface](slack-paging-surface.md): push delivery + button actions in Slack.
-- [Teams as your paging surface](teams-paging-surface.md): push delivery + adaptive cards in Teams.
+- [Microsoft Teams: being rebuilt](teams-paging-surface.md): why OpsMender sends nothing to Teams today, and what to use meanwhile.
 - [Notification Preferences](notification-preferences.md): channels, per-priority routing, quiet hours.

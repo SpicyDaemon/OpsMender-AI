@@ -63,7 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A plan the model wrote inside a Markdown code fence was dropped without a
   trace. In the 2026-10-24 live round a local model planned eight reads that
   way and the session completed with no tool call. The plan step now reads
-  an array of actions, each with a `tool_name`, when it is bare, fenced or
+  an array of actions, each with a `tool_name` (or one such action on its
+  own), when it is bare, fenced or
   after a sentence. It runs a plan only when the answer holds exactly one
   such array. An answer with two (a draft beside the final plan) or none (a
   cut-off or broken array) runs nothing. The session transcript then says

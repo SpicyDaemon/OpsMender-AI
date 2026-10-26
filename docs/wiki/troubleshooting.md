@@ -46,5 +46,5 @@ This guide covers common issues you might encounter while deploying, configuring
 
 **Symptom:** The session's Co-pilot panel says "The model's plan could not be read, so no action was taken." and the Event Stream shows no tool call.
 **Resolution:**
-- The plan step asks the model for a JSON array of actions, each with a `tool_name`. OpsMender reads that array when it is bare, inside a Markdown code fence or after a sentence. It runs the plan only when the answer holds exactly one such array. An answer with two (for example a draft and a final plan) or with none (for example a cut-off or broken array) runs nothing, and the summary says so.
+- The plan step asks the model for a JSON array of actions, each with a `tool_name`. OpsMender reads that array, or one such action on its own, when it is bare, inside a Markdown code fence or after a sentence. It runs the plan only when the answer holds exactly one such array. An answer with two (for example a draft and a final plan) or with none (for example a cut-off or broken array) runs nothing, and the summary says so.
 - Small local models drift from the format more often. Try a larger model. Or open **Models**, click **Edit** on the model config the session uses and raise **Max Tokens**. An answer cut off at that limit holds no complete plan.

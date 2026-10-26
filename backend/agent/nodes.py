@@ -421,24 +421,8 @@ def _format_operator_guidance(state: IncidentState) -> str:
 NO_MODEL_ANSWER = "[workflow offline: no model configured]"
 
 
-_CHECKBOX_LEAD = re.compile(r"\s*(?:[-*+]|\d+[.)])\s*")
-# Where a JSON value may start: an array, or an object whose first key is
-# quoted (so prose braces such as "{service}" are not tried).
-_VALUE_START = re.compile(r'\[|\{\s*"')
-# An array whose content looks like JSON (an object, array, string, number,
-# literal or comment), as opposed to prose brackets such as "[JSON]".
-_JSON_LIKE_ARRAY = re.compile(r'\[\s*(?:[{\["\d\-\]]|/[/*]|true\b|false\b|null\b)')
-
-
-def _is_checkbox(text: str, start: int, end: int) -> bool:
-    """Whether the ``[ ]`` at ``start``..``end`` is a Markdown task-list box:
-    only a list marker before it on its line, and text after it."""
-    line_start = text.rfind("\n", 0, start) + 1
-    line_end = text.find("\n", end)
-    after = text[end : len(text) if line_end == -1 else line_end]
-    return bool(_CHECKBOX_LEAD.fullmatch(text[line_start:start])) and bool(
-        after.strip()
-    )
+# One Markdown code fence: an optional language tag on the opening line.
+_FENCE = re.compile(r"```[^\n`]*\n(.*?)```", re.DOTALL)
 
 
 def _is_action(item: Any) -> bool:
@@ -449,46 +433,46 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     """The actions in the model's plan answer, or ``None`` when it cannot be
     read (M1-92).
 
-    Models write the array bare, inside a Markdown code fence or after a
-    sentence, so every JSON array or object in the answer is decoded; values
-    inside a decoded value are part of it. A plan is an array of objects that
-    each have a text ``tool_name``, or one such object on its own; an empty
-    ``[]`` is an empty plan, except a Markdown checkbox. The answer is read
-    only when it holds exactly one plan: one action plan and no empty plan, or
-    one or more empty plans and no ``tool_name`` anywhere. Two plans (a draft
-    beside the final one), a JSON-like value that does not decode (cut off or
-    broken), or nothing at all give ``None``, so nothing runs."""
+    The plan is read only when the answer is the plan: the JSON array (or one
+    action object on its own) bare, after a sentence with nothing after it, or
+    inside exactly one Markdown code fence with no other bracket, brace or
+    ``tool_name`` in the text around the fence. Every action needs a text
+    ``tool_name``; ``[]`` is a readable empty plan. Anything else gives
+    ``None`` and nothing runs, so an action the model drafted, quoted, listed
+    as an option or withdrew in words can never run as the plan; a cut-off or
+    broken value gives ``None`` too."""
     if not isinstance(raw, str):
         return None
-    decoder = json.JSONDecoder()
-    plans: list[list[dict[str, Any]]] = []
-    empty_plans = 0
-    match = _VALUE_START.search(raw)
-    while match is not None:
-        start = match.start()
-        try:
-            value, end = decoder.raw_decode(raw, start)
-        except (ValueError, RecursionError):
-            # A broken object, or an array that looks like JSON, means the
-            # plan itself is broken; prose brackets are skipped.
-            if raw[start] == "{" or _JSON_LIKE_ARRAY.match(raw, start):
-                return None
-            match = _VALUE_START.search(raw, start + 1)
-            continue
-        if isinstance(value, dict):
-            if _is_action(value):
-                plans.append([value])
-        elif not value:
-            if not _is_checkbox(raw, start, end):
-                empty_plans += 1
-        elif all(_is_action(item) for item in value):
-            plans.append(value)
-        match = _VALUE_START.search(raw, end)
-    if len(plans) == 1 and not empty_plans:
-        return plans[0]
-    if not plans and empty_plans and "tool_name" not in raw:
+    text = raw.strip()
+    fences = list(_FENCE.finditer(text))
+    if len(fences) > 1:
+        return None
+    if fences:
+        outside = text[: fences[0].start()] + text[fences[0].end() :]
+        if "[" in outside or "{" in outside or "tool_name" in outside:
+            return None
+        body = fences[0].group(1).strip()
+    else:
+        starts = [i for i in (text.find("["), text.find("{")) if i != -1]
+        if not starts:
+            return None
+        lead = text[: min(starts)]
+        if "tool_name" in lead:
+            return None
+        body = text[min(starts) :]
+    try:
+        value, end = json.JSONDecoder().raw_decode(body)
+    except (ValueError, RecursionError):
+        return None
+    if body[end:].strip():
+        return None
+    if isinstance(value, dict):
+        return [value] if _is_action(value) else None
+    if not isinstance(value, list):
+        return None
+    if not value:
         return []
-    return None
+    return value if all(_is_action(item) for item in value) else None
 
 
 def _plan_update(raw: Any) -> dict[str, Any]:

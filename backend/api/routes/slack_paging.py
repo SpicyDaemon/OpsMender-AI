@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
@@ -350,18 +350,28 @@ def _extract_incident_id(text: str) -> uuid.UUID | None:
         return None
 
 
+# An exhausted chain stays exhausted until someone closes the incident, so a
+# command without an id takes one only while the user's page on it is this
+# recent. Older, a bare /resolve or /release could act on a forgotten incident.
+EXHAUSTED_PAGE_WINDOW = timedelta(hours=24)
+
+
 async def _latest_user_incident_id(
     db: AsyncSession, *, org_id: uuid.UUID, user_id: uuid.UUID
 ) -> uuid.UUID | None:
-    """Find the most recently paged incident for ``user_id`` whose chain can
-    still page (running, paused or under an acknowledgement lock), or whose
-    chain is exhausted while the incident is still open. Used when a slash
-    command is invoked without an explicit incident id.
+    """Find the most recently paged incident for ``user_id`` that a slash
+    command without an explicit incident id should act on.
+
+    The incident must be open. Its chain must still be able to page (running,
+    paused or under an acknowledgement lock), at any age. Or its chain is
+    exhausted and this page was sent within ``EXHAUSTED_PAGE_WINDOW``. An
+    incident with no chain state, or a cancelled chain, never qualifies.
 
     M1-95: in the 2026-10-24 live round ``/ack`` answered "no active page
     found" once a one-level chain was exhausted, though the incident was open
-    and held. A resolved or merged incident never qualifies."""
+    and held."""
 
+    exhausted_since = datetime.now(timezone.utc) - EXHAUSTED_PAGE_WINDOW
     stmt = (
         select(IncidentPage.incident_id)
         .join(
@@ -375,7 +385,10 @@ async def _latest_user_incident_id(
             Incident.status.not_in(_esc.CLOSED_INCIDENT_STATUSES),
             or_(
                 IncidentChainState.status.in_(("running", "paused", "acked")),
-                IncidentChainState.status == "exhausted",
+                and_(
+                    IncidentChainState.status == "exhausted",
+                    IncidentPage.sent_at >= exhausted_since,
+                ),
             ),
         )
         .order_by(IncidentPage.sent_at.desc())

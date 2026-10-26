@@ -15,6 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
 from mcp.types import CallToolResult, TextContent
 
 from backend.agent.graph import build_graph
@@ -133,6 +134,62 @@ class _Approvals:
         )
 
 
+# An action no skill names is refused at every tier.
+UNKNOWN = {"tool_name": "drop_database", "tool_parameters": {"name": "shop"}}
+
+
+async def test_a_redirect_still_audits_what_the_gate_blocked_before_it(tmp_path):
+    # The redirect drops this pass's lists from the state, but the action the
+    # gate refused before the approval wait is already in the audit log.
+    log = tmp_path / "audit.jsonl"
+    gate = _build_tier_gate(
+        1, loads(SKILL), _Approvals("redirected"), audit_logger=AuditLogger(log)
+    )
+    update = await gate({"session_id": str(uuid.uuid4()), "plan": [UNKNOWN, PLAN[1]]})
+
+    assert update["redirect_requested"] is True and update["blocked_actions"] == []
+    assert [e["tool_name"] for e in _blocked(log)] == ["drop_database"]
+
+
+async def test_a_block_is_audited_before_a_later_approval_wait_ends(tmp_path):
+    # A stop or override while the gate waits on a later approval must not
+    # lose what it already refused.
+    class _Stopped:
+        async def request_and_wait(self, **kwargs):
+            raise RuntimeError("session stopped while waiting")
+
+    log = tmp_path / "audit.jsonl"
+    gate = _build_tier_gate(1, loads(SKILL), _Stopped(), audit_logger=AuditLogger(log))
+    with pytest.raises(RuntimeError):
+        await gate({"session_id": str(uuid.uuid4()), "plan": [UNKNOWN, PLAN[1]]})
+
+    assert [e["tool_name"] for e in _blocked(log)] == ["drop_database"]
+
+
+@pytest.mark.parametrize("approvals", [None, "rejected"])
+async def test_model_written_values_are_shaped_to_fit_the_audit_row(
+    tmp_path, approvals
+):
+    odd = [
+        {"tool_name": "x" * 300, "tool_parameters": ["a", "b"]},
+        {"tool_name": 42, "tool_parameters": "restart everything"},
+        {"tool_parameters": None},
+    ]
+    log = tmp_path / "audit.jsonl"
+    service = _Approvals(approvals) if approvals else None
+    gate = _build_tier_gate(1, loads(SKILL), service, audit_logger=AuditLogger(log))
+    await gate({"session_id": str(uuid.uuid4()), "plan": odd})
+
+    entries = _blocked(log)
+    assert [len(e["tool_name"]) for e in entries] == [200, 2, 7]
+    assert [e["tool_name"][:2] for e in entries] == ["xx", "42", "un"]
+    assert [e["tool_parameters"] for e in entries] == [
+        {"value": ["a", "b"]},
+        {"value": "restart everything"},
+        {},
+    ]
+
+
 async def test_a_rejected_approval_is_audited_as_blocked_with_its_reason(tmp_path):
     log = tmp_path / "audit.jsonl"
     gate = _build_tier_gate(
@@ -196,7 +253,7 @@ async def test_the_runner_gives_the_gate_its_audit_logger_without_a_tool_source(
     captured: dict = {}
 
     class _FakeGraph:
-        async def ainvoke(self, state):
+        async def ainvoke(self, state, *args, **kwargs):
             return {"status": "completed", "summary": "ok"}
 
     def _capture_graph(**kwargs):
@@ -211,3 +268,6 @@ async def test_the_runner_gives_the_gate_its_audit_logger_without_a_tool_source(
 
     assert "mcp_session" not in captured
     assert isinstance(captured["audit_logger"], session_runner.LiveAuditLogger)
+    async with app.state.session_factory() as db:
+        stored = await SessionRepo.get_by_id(db, TEST_ORG_ID, session_id)
+    assert stored.status == "completed", stored.status

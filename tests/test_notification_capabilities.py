@@ -60,7 +60,7 @@ def test_only_verified_callback_platforms_advertise_interactive_actions():
 
 def test_supported_platforms_advertise_message_updates():
     # Slack, Discord, and Google Chat all retain provider message IDs and expose
-    # verified edit paths. Teams remains follow-up-only.
+    # verified edit paths. Teams claims none while it is being rebuilt.
     for platform, caps in PLATFORM_CAPABILITIES.items():
         expected = platform in {"slack", "discord", "google_chat"}
         assert caps.message_update is expected, platform
@@ -94,6 +94,10 @@ def test_teams_claims_nothing_while_it_is_rebuilt():
         )
     )
     assert caps.interaction_route is None
+    # A platform that receives nothing is not "delivery only" either.
+    assert caps.delivery_only is False
+    assert is_delivery_only("teams") is False
+    assert caps.as_dict()["delivery_only"] is False
     assert caps.as_dict()["unavailable_reason"] == TEAMS_REBUILDING
     assert platform_delivers("teams") is False
     assert platform_delivers("slack") is True

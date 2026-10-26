@@ -5560,13 +5560,28 @@ class TestBotConnectorsAPI:
         assert checked.status_code == 200
         result = checked.json()
         assert result["success"] is False
-        platform = [c for c in result["checks"] if c["name"] == "platform"]
-        assert platform and platform[0]["level"] == "fail"
-        assert platform[0]["detail"] == TEAMS_REBUILDING
-        # A failed configuration never reaches the live connection or send.
-        assert not [
-            c for c in result["checks"] if c["name"] in {"connection", "delivery"}
+        # Only the enabled check and the reason: no credential, destination or
+        # native-action row that reads as if the channel could post. A failed
+        # configuration never reaches the live connection or send either.
+        assert [(c["name"], c["level"]) for c in result["checks"]] == [
+            ("enabled", "pass"),
+            ("platform", "fail"),
         ]
+        assert result["checks"][1]["detail"] == TEAMS_REBUILDING
+
+        # Teams gets no Track lane.
+        track = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "teams-track",
+                "platform": "teams",
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["track"],
+            },
+            headers=auth_headers,
+        )
+        assert track.status_code == 400
+        assert "Teams" not in track.json()["detail"]
 
     async def test_discord_native_actions_require_public_key_readiness(
         self, client: AsyncClient, auth_headers

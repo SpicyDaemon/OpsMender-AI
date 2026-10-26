@@ -2,7 +2,9 @@
 
 Takes a recorded ``incident_pages`` row (created by the escalation engine in
 Sprint 34) and fans the page out to a user across configured delivery
-channels (Slack DM, Teams DM, email, SMS).
+channels (Slack DM, email, SMS, voice). A page to a saved Teams contact method
+(``teams_dm`` or ``teams_dm_graph``) is recorded as skipped with the reason
+``teams_rebuilding``: Teams delivery is being rebuilt (M1-96).
 
 Pipeline per page:
 

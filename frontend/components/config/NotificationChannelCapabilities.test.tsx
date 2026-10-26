@@ -46,7 +46,7 @@ const platformSchemas = vi.hoisted(() => [
       ai_session_link: false,
       message_update: false,
       interaction_route: null,
-      delivery_only: true,
+      delivery_only: false,
       unavailable_reason: TEAMS_REASON,
     },
     fields: [
@@ -292,12 +292,14 @@ const platformSchemas = vi.hoisted(() => [
 // runs on mount. Stub the module so the import graph resolves.
 const testBotConnectorMock = vi.hoisted(() => vi.fn());
 const createBotConnectorMock = vi.hoisted(() => vi.fn());
+const updateBotConnectorMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", () => ({
   listBotPlatformSchemas: () =>
     Promise.resolve({ items: platformSchemas, total: platformSchemas.length }),
   testBotConnector: testBotConnectorMock,
   createBotConnector: createBotConnectorMock,
+  updateBotConnector: updateBotConnectorMock,
   listTeams: () =>
     Promise.resolve({
       items: [
@@ -411,11 +413,14 @@ const teamsSaved = connector({
     delivery: false,
     incident_updates: false,
     ai_session_link: false,
-    delivery_only: true,
+    delivery_only: false,
     unavailable_reason: TEAMS_REASON,
   }),
   native_actions_enabled: true,
   callback_status: "configured",
+  // Left by a check that passed before M1-96. It must not show as current.
+  status: "healthy",
+  last_error: "graph: Forbidden",
 });
 
 describe("Notification Channels capability rendering", () => {
@@ -500,6 +505,10 @@ describe("Notification Channels capability rendering", () => {
     }
     expect(within(row).queryByText(/callbacks:/)).toBeNull();
     expect(within(row).queryByText(/Enabled:/)).toBeNull();
+    // The Health column says it is being rebuilt, not the stale status.
+    expect(within(row).getByText("being rebuilt")).toBeTruthy();
+    expect(within(row).queryByText("healthy")).toBeNull();
+    expect(within(row).queryByText("graph: Forbidden")).toBeNull();
     // The saved row stays visible, editable and deletable.
     expect(within(row).getByRole("button", { name: /^Edit$/i })).toBeTruthy();
     expect(
@@ -539,6 +548,32 @@ describe("Notification Channels capability rendering", () => {
       name: /Save Changes/i,
     }) as HTMLButtonElement;
     expect(save.disabled).toBe(false);
+  });
+
+  it("saves a Teams channel saved with Track without the Track lane", async () => {
+    updateBotConnectorMock.mockReset();
+    updateBotConnectorMock.mockResolvedValue(teamsSaved);
+    render(
+      <BotConnectorSection
+        connectors={[teamsSaved]}
+        onReload={async () => {}}
+        canEdit
+      />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /^Edit$/i }));
+    const dialog = await screen.findByRole("dialog");
+    const save = within(dialog).getByRole("button", {
+      name: /Save Changes/i,
+    }) as HTMLButtonElement;
+    fireEvent.submit(save.closest("form")!);
+
+    // The API refuses Track for Teams, so the saved Track lane is dropped.
+    await waitFor(() => expect(updateBotConnectorMock).toHaveBeenCalled());
+    const [id, payload] = updateBotConnectorMock.mock.calls[0];
+    expect(id).toBe("c-teams");
+    expect(payload.lanes).toEqual(["respond"]);
   });
 
   it("labels Teams as being rebuilt in the picker and does not let you create it", async () => {

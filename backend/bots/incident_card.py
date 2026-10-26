@@ -10,16 +10,17 @@ actions (Acknowledge / Resolve / Escalate / Start AI Session) happen *inside*
 OpsMender behind login + RBAC. The card therefore carries an **authenticated
 incident link** that opens the incident detail page; the recipient signs in
 and acts there. This is the secure, universally-supported fallback the product
-spec mandates for platforms without verified interactive callbacks. Slack,
-Teams and Discord can replace that fallback hint with native actions when the
-channel opts in and its platform verifier is configured.
+spec mandates for platforms without verified interactive callbacks. Slack and
+Discord can replace that fallback hint with native actions when the channel
+opts in and its platform verifier is configured. Microsoft Teams receives
+nothing while its delivery is being rebuilt (M1-96).
 
 ``build_incident_message`` is deliberately platform-neutral: it returns a
 single markdown-ish string that every adapter's ``send_message`` already knows
 how to deliver. Whether a platform *renders* it as a rich card or a plain line
 is governed by :mod:`backend.bots.capabilities`; the content is the same useful
 information either way. ``incident_card_facts`` is the one list of facts the
-text and the native Slack, Teams and Discord cards all show.
+text and the native Slack and Discord cards all show.
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ def incident_card_facts(
 ) -> list[tuple[str, str]]:
     """The ordered facts every incident card shows, as ``(label, value)``.
 
-    One source for the text message and the Slack, Teams and Discord cards,
+    One source for the text message and the Slack and Discord cards,
     so they cannot drift: Service, Team and Org (when set), then who holds
     the incident (Responder, Acknowledged by when set, Escalation level when
     above 0). ``responder`` is the snapshot the notifier resolves; without it
@@ -134,7 +135,7 @@ def build_incident_message(
     ``None`` when unavailable.
 
     ``supports_actions`` reflects channel-level readiness, not just the broad
-    platform capability. Slack and Teams set it only when native actions are
+    platform capability. Slack and Discord set it only when native actions are
     enabled and callback verification is configured; other platforms keep the
     OpsMender link fallback.
     """

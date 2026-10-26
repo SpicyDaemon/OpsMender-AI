@@ -173,8 +173,9 @@ async def refresh_incident_card(
 
     The same delivery the web path runs after the same change: commit, then
     the incident event, so the background delivery (its own session) reads
-    the new state. Slack and Discord cards are edited in place; Teams cannot
-    edit, so it gets a fresh card. Notification Channels only: nobody is
+    the new state. Slack and Discord cards are edited in place. Teams gets
+    nothing while its delivery is being rebuilt (M1-96), and its old card
+    buttons never reach here. Notification Channels only: nobody is
     paged. A deduplicated replay changed nothing and is skipped, so a retried
     callback never posts a second card.
     """

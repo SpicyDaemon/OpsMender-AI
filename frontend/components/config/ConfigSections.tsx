@@ -2713,6 +2713,22 @@ function defaultValues(
   );
 }
 
+// A saved channel keeps only the lanes its platform still offers. A Teams
+// channel saved with Track before M1-96 can then be saved again, since the API
+// refuses Track for Teams.
+function savedConnectorLanes(
+  current: BotConnectorResponse | null | undefined,
+  schema: BotConnectorPlatformSchema | null,
+): BotConnectorLane[] {
+  if (!current?.lanes?.length) return ["respond"];
+  const caps = schema?.capabilities ?? current.platform_capabilities;
+  if (offersTrackLane(current.platform, caps)) return current.lanes;
+  // A Track lane this platform no longer offers is dropped on save; a channel
+  // left with no lane keeps Respond, so it can still be saved.
+  const lanes = current.lanes.filter((lane) => lane !== "track");
+  return lanes.length ? lanes : ["respond"];
+}
+
 function createBotConnectorFormState(
   current: BotConnectorResponse | null | undefined,
   schema: BotConnectorPlatformSchema | null,
@@ -2732,7 +2748,7 @@ function createBotConnectorFormState(
       "session_status",
       "notifications",
     ],
-    lanes: current?.lanes?.length ? current.lanes : ["respond"],
+    lanes: savedConnectorLanes(current, schema),
     team_scope: current?.team_scope ?? "workspace",
     team_ids: current?.team_ids ?? [],
     status: current?.status ?? "not_configured",
@@ -4504,15 +4520,24 @@ export function BotConnectorSection({
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex flex-col gap-1.5">
-                        <Badge variant={BOT_STATUS_VARIANTS[connector.status]}>
-                          {connector.status.replace(/_/g, " ")}
-                        </Badge>
+                        {/* A platform that sends nothing (M1-96: Teams) keeps
+                            the status its last check left, so it shows that it
+                            is being rebuilt instead. */}
+                        {unavailableReason ? (
+                          <Badge variant="medium">being rebuilt</Badge>
+                        ) : (
+                          <Badge
+                            variant={BOT_STATUS_VARIANTS[connector.status]}
+                          >
+                            {connector.status.replace(/_/g, " ")}
+                          </Badge>
+                        )}
                         <BotConnectorTestPill state={testState} />
                         <p className="text-xs text-fg-muted">
                           Last checked:{" "}
                           {formatRelativeTimestamp(connector.last_checked_at)}
                         </p>
-                        {connector.last_error && (
+                        {!unavailableReason && connector.last_error && (
                           <p
                             className="line-clamp-2 text-xs text-status-critical"
                             title={connector.last_error}

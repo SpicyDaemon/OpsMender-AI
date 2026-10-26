@@ -162,9 +162,11 @@ Workspace-level notification channels are managed under **Paging & On-call** > *
    provider connection and post a real test message to the channel's
    destination.
 
-Microsoft Teams (`teams`) delivery is being rebuilt. You can still save a
-Teams channel, and saved ones are kept, but it sends nothing, its native
-actions stay off, and **Check configuration** fails with the reason. See
+Microsoft Teams (`teams`) delivery is being rebuilt. The settings page does
+not add new Teams channels. Saved ones are kept and stay editable, but they
+send nothing on any lane, their native actions stay off, a saved Track lane is
+dropped the next time you save, there is no **Send live test**, and **Check
+configuration** fails with the reason. See
 [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 Telegram webhook URL:

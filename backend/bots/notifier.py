@@ -879,9 +879,10 @@ async def deliver_incident_event(
     Honest delivery: each platform receives the same useful incident message
     with an authenticated incident link. Interactive action controls are only
     rendered when the platform supports interactive callbacks and the channel
-    has native actions enabled with a configured verifier. Slack and Teams
+    has native actions enabled with a configured verifier. Slack and Discord
     verify every callback before the shared action coordinator permits a
-    mutation.
+    mutation. A platform that is being rebuilt (M1-96: Microsoft Teams)
+    receives nothing; :func:`_deliver` skips it.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
 
@@ -937,7 +938,6 @@ async def deliver_incident_event(
         is_track = _has_lane(connector, "track")
         if is_track and connector.platform not in {
             "slack",
-            "teams",
             "discord",
             "google_chat",
             "eventbridge",
@@ -1092,7 +1092,6 @@ async def deliver_incident_text(
             continue
         if is_track and connector.platform not in {
             "slack",
-            "teams",
             "discord",
             "google_chat",
             "eventbridge",

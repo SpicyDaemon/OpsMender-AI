@@ -527,9 +527,11 @@ retired. Teams support will come back as a Teams Workflows connector, with
 cards whose buttons open OpsMender to confirm the action, and then a Teams
 bot.
 
-Until then you can still save a Teams Notification Channel, and saved ones are
-kept, but **Check configuration** fails with the reason, no card or message is
-posted, and native actions stay off. A button on an old Teams card answers
+Until then the settings page does not add new Teams Notification Channels.
+Saved ones are kept and stay editable, but **Check configuration** fails with
+the reason, there is no **Send live test**, a saved Track lane is dropped the
+next time you save, no card or message is posted on any lane, and native
+actions stay off. A button on an old Teams card answers
 with the reason and changes nothing. Use Slack, email, SMS or voice, or
 another chat channel meanwhile. See
 [Microsoft Teams: being rebuilt](teams-paging-surface.md).

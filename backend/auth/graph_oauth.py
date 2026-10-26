@@ -1,6 +1,8 @@
 """Microsoft Graph app-only OAuth helper (Sprint 37 step 1).
 
-Sprint 37 brings Teams to parity with Slack. For v1 we use **app-only**
+Nothing in OpsMender calls this today (M1-96): Teams delivery is being rebuilt
+as a Workflows connector and a bot, and the Teams adapter makes no Graph call.
+It is kept, with its tests, for that rebuild. It used **app-only**
 (client-credentials) authentication, not user-delegated OAuth: the
 operator registers an Azure AD app, grants application permissions in
 the Azure portal (admin consent flow), and pastes the resulting
@@ -10,7 +12,7 @@ server-side POST to the token endpoint.
 
 This module exposes one entry point - :func:`acquire_app_only_token` -
 plus a small in-process cache keyed by ``(tenant_id, client_id)`` so we
-don't hammer Microsoft for every Teams DM. Tokens are valid for ~1
+don't hammer Microsoft for every request. Tokens are valid for ~1
 hour; the cache evicts them 60 seconds before expiry to give callers a
 safety margin.
 
@@ -149,8 +151,8 @@ async def verify_graph_credentials(
     http_client_factory: HttpClientFactory | None = None,
 ) -> tuple[bool, str | None]:
     """Acquire a token AND hit ``GET /v1.0/organization`` to confirm the
-    Azure AD app actually has Graph access. Used by the Teams connector
-    "Test connection" button.
+    Azure AD app actually has Graph access. Not called today (M1-96); the
+    Teams connector test fails with the being-rebuilt reason instead.
 
     Returns ``(True, None)`` on success or ``(False, error_message)``
     when either the token exchange or the Graph call fails. Never

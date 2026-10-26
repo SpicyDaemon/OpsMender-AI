@@ -27,17 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cards, status updates or AI session posts. A page routed to a saved Teams
   contact method (`teams_dm` or `teams_dm_graph`), or a routing stage that
   uses a Teams Notification Channel, is recorded as skipped with the reason
-  `teams_rebuilding`, and the next stage still fires after its wait. Check
-  configuration on a Teams Notification Channel fails with a `platform` check
-  that gives the reason, and no live test is sent. The Teams platform
-  capabilities report `delivery: false` and an `unavailable_reason`. A button
-  on an old Teams card answers with the reason and changes nothing.
+  `teams_rebuilding`, and the next stage still fires after its wait. The
+  incident timeline says Teams delivery is being rebuilt. Check configuration
+  on a Teams Notification Channel shows only the `enabled` check and a failing
+  `platform` check that gives the reason, and no live test is sent. The Track
+  lane is refused for Teams. The Teams platform capabilities report
+  `delivery: false`, `delivery_only: false` and an `unavailable_reason`. A
+  button on an old Teams card answers with the reason and changes nothing.
   OpsMender no longer reads `OPSMENDER_TEAMS_WEBHOOK_URL`,
   `OPSMENDER_TEAMS_GRAPH_TENANT_ID`, `OPSMENDER_TEAMS_GRAPH_CLIENT_ID` or
   `OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET`. Saved Teams Notification Channels and
-  contact methods are kept. The settings page marks Teams as being rebuilt and
-  does not add new Teams channels. Move any routing stage that points at
-  Teams to Slack, email or another channel.
+  contact methods are kept, and their Health column shows that Teams is being
+  rebuilt instead of a stale status. The settings page marks Teams as being
+  rebuilt and does not add new Teams channels. Move any routing stage that
+  points at Teams to Slack, email or another channel.
 
 ### Security
 

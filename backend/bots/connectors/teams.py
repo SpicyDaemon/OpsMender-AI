@@ -20,7 +20,11 @@ from .base import FieldSpec, InboundMessage
 
 
 class TeamsAdapter:
-    """Adapter for Microsoft Teams via Microsoft Graph (app-only auth)."""
+    """Microsoft Teams adapter while Teams delivery is being rebuilt (M1-96).
+
+    It sends nothing. Its form keeps the values a saved Teams channel holds
+    for the Teams Workflows connector and bot that replace this channel.
+    """
 
     platform = "teams"
 
@@ -33,8 +37,11 @@ class TeamsAdapter:
                 kind="text",
                 group="credentials",
                 required=True,
-                helper="Directory (tenant) ID for your Azure AD app, found on the app's Overview page.",
-                doc_url="https://learn.microsoft.com/azure/active-directory/develop/howto-create-service-principal-portal",
+                helper=(
+                    "Directory (tenant) ID of your Azure AD app. Kept for the "
+                    "Teams Workflows connector and bot that replace this channel. "
+                    "Nothing is sent to Teams today."
+                ),
                 placeholder="00000000-0000-0000-0000-000000000000",
             ),
             FieldSpec(
@@ -43,7 +50,10 @@ class TeamsAdapter:
                 kind="text",
                 group="credentials",
                 required=True,
-                helper="Application (client) ID for the Azure AD app registration.",
+                helper=(
+                    "Application (client) ID of your Azure AD app. Kept for the "
+                    "Teams Workflows connector and bot."
+                ),
                 placeholder="00000000-0000-0000-0000-000000000000",
             ),
             FieldSpec(
@@ -52,8 +62,10 @@ class TeamsAdapter:
                 kind="secret",
                 group="credentials",
                 required=True,
-                helper="Client secret value (not the secret ID). Create one under Certificates & secrets.",
-                doc_url="https://learn.microsoft.com/azure/active-directory/develop/howto-create-service-principal-portal#option-3-create-a-new-client-secret",
+                helper=(
+                    "Client secret value (not the secret ID). Kept for the Teams "
+                    "Workflows connector and bot."
+                ),
             ),
             FieldSpec(
                 name="bot_app_id",
@@ -61,7 +73,10 @@ class TeamsAdapter:
                 kind="text",
                 group="config",
                 required=False,
-                helper="App ID of the Teams bot registration. Required for verified native actions.",
+                helper=(
+                    "App ID of the Teams bot registration. Kept for the Teams bot "
+                    "that will add card actions. Teams has no actions today."
+                ),
             ),
             FieldSpec(
                 name="default_chat_id",
@@ -69,7 +84,10 @@ class TeamsAdapter:
                 kind="text",
                 group="config",
                 required=False,
-                helper="Optional. Teams chat ID used for outbound notifications when no per-user chat is resolved.",
+                helper=(
+                    "Optional. Teams chat ID. Kept for the Teams Workflows "
+                    "connector and bot. Nothing is sent to it today."
+                ),
             ),
         ]
 

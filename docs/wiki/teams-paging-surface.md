@@ -26,16 +26,22 @@ sends nothing to Teams until the new path is ready, and says so.
 
 - **Nothing is sent to Teams.** No pages, incident cards, status updates or AI
   session posts.
-- **Check configuration fails.** On a Teams Notification Channel, **Check
-  configuration** shows a failing `platform` check that gives the reason.
-  **Send live test** stops at that check, so no test message is posted.
+- **Check configuration fails.** On a saved Teams Notification Channel,
+  **Check configuration** shows only the `enabled` check and a failing
+  `platform` check that gives the reason. Teams channels have no **Send live
+  test**, so no test message is posted.
 - **Pages are recorded as skipped, never as sent.** A page routed to a saved
   Teams contact method (`teams_dm` or `teams_dm_graph`), or a My Routing stage
   that uses a Teams Notification Channel, is recorded as skipped with the
   reason `teams_rebuilding`. The next stage still fires after its wait.
 - **Your setup is kept.** Saved Teams Notification Channels and Teams contact
-  methods are not deleted. You can still create a Teams Notification Channel,
-  but its native actions stay off and it sends nothing.
+  methods are not deleted. You can still edit or delete a saved Teams channel,
+  but its native actions stay off and it sends nothing on any lane. A Track
+  lane it had is dropped the next time you save it.
+  Its Health column shows that it is being rebuilt.
+- **No new Teams channels.** The settings page does not add a new Teams
+  Notification Channel. Microsoft Teams shows as being rebuilt in the
+  platform list, and **Create Connector** stays off.
 - **Buttons on old Teams cards change nothing.** On a Teams card posted
   earlier, Acknowledge, Resolve, Escalate and Start AI Session answer with the
   reason and leave the incident as it is. Act in OpsMender or another channel

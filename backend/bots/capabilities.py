@@ -10,7 +10,8 @@ Capability flags
 ----------------
 ``delivery``
     The platform can receive an outbound incident message at all. True for
-    every supported platform - this is the floor.
+    every platform OpsMender delivers to today. False only for a platform that
+    is being rebuilt (see ``unavailable_reason``), which receives nothing.
 ``incident_card``
     The platform/adapter can render a structured, multi-field incident card
     (rich formatting / blocks) rather than a single plain-text line.
@@ -40,9 +41,10 @@ Capability flags
     place using a stored provider message id. Enabled only when the adapter has
     a verified provider edit path.
 
-``delivery_only`` is *derived*: a channel is delivery-only when it can neither
-render an incident card nor host interactive actions. Such channels still get
-a useful incident message (title/severity/status + authenticated link).
+``delivery_only`` is *derived*: a channel is delivery-only when it receives
+messages but can neither render an incident card nor host interactive actions.
+Such channels still get a useful incident message (title/severity/status +
+authenticated link). A platform that receives nothing is not delivery-only.
 
 ``unavailable_reason``
     Set when OpsMender cannot deliver to the platform at all. The platform
@@ -91,9 +93,10 @@ class PlatformCapabilities:
 
     @property
     def delivery_only(self) -> bool:
-        """A channel is delivery-only when it can neither render an incident
-        card nor host secure interactive actions."""
-        return not self.incident_card and not self.interactive_actions
+        """A channel is delivery-only when it receives messages but can neither
+        render an incident card nor host secure interactive actions. A platform
+        that receives nothing (M1-96: Teams) is not delivery-only."""
+        return self.delivery and not self.incident_card and not self.interactive_actions
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -308,7 +311,8 @@ def is_delivery_only(platform: str) -> bool:
     """True when the platform can only receive a plain delivery message.
 
     Unknown platforms are treated as delivery-only - the safe default that
-    never over-promises rich/interactive support.
+    never over-promises rich/interactive support. A platform that receives
+    nothing (M1-96: Teams) is not delivery-only.
     """
     caps = PLATFORM_CAPABILITIES.get(platform)
     if caps is None:

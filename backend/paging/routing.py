@@ -22,7 +22,9 @@ single-channel routing becomes Stage 1."
 ``channel_id`` is either a configured Notification Channel id (a
 ``BotConnector`` UUID, as a string) or a legacy delivery key
 (``slack_dm`` / ``teams_dm`` / ``teams_dm_graph`` / ``email`` / ``sms`` / ``voice``).
-The dispatcher resolves both.
+The dispatcher resolves both. A stage on a Teams key or a Teams Notification
+Channel is skipped with ``teams_rebuilding`` while Teams delivery is being
+rebuilt (M1-96).
 """
 
 from __future__ import annotations

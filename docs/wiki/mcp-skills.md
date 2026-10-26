@@ -381,6 +381,12 @@ guardrail applies, then the operation's explicit active-tier policy, followed by
 the Tier 0 reversible floor. Unknown or underspecified operations are denied,
 except a generic command tool at Tier 1, which asks for approval.
 
+The model is told the active tier's contract when it plans: at Tier 0 what the
+skill allows runs at once and the rest is blocked; at Tier 1 reads run and each
+write it lists becomes an approval request (listing it is the only way to ask);
+at Tier 2 only the reads the skill allows at T2 run. The text guides the model;
+the tier gate below decides what runs.
+
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's
 classification, whether approval is required, and whether the action is denied.

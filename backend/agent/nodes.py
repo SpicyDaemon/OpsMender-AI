@@ -40,6 +40,7 @@ from backend.agent.grounding import (
 from backend.agent.hygiene import UNTRUSTED_RULE, redact_value, untrusted
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
+from backend.tiers.enforcement import normalize_tier
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ Allowed MCP servers for this incident:
 Operator guidance (the operator redirected your previous plan; follow this):
 {operator_guidance}
 
-Current tier: {tier} (determines what actions are allowed)
+{tier_contract}
 
 Propose a list of remediation actions.  For each action, provide:
 - tool_name: the MCP tool to call
@@ -129,6 +130,40 @@ each tool lists.  Be conservative: prefer safe read operations before any writes
 """
     + PLAIN_WRITING
 )
+
+
+# What each tier lets the plan do, in the model's terms (M1-90). Without it the
+# prompt said only "Current tier: N", and at Tier 1 the model never proposed a
+# write, so no approval request was ever created. The tier gate, not this text,
+# decides what runs.
+TIER_CONTRACTS = {
+    0: (
+        "Current tier: 0 (Autonomous). Every action the skill allows at Tier 0 runs "
+        "at once, without a person: reads and the reversible fixes it permits. "
+        "Anything else you propose is blocked and recorded. Propose the reads you "
+        "need and, when the evidence supports it, the reversible fix."
+    ),
+    1: (
+        "Current tier: 1 (Approval Required). Reads the skill allows run at once. "
+        "Each write or remediation you list becomes an approval request that an "
+        "operator approves or rejects before it runs; listing it here is the only "
+        "way to ask, so do not describe a write in prose instead of proposing it. "
+        "Propose the reads you need and, when the incident needs a change, the "
+        "smallest write that fixes it, naming the service and how to undo it in "
+        "its justification."
+    ),
+    2: (
+        "Current tier: 2 (Advisory Only). Only the reads the skill allows at Tier 2 "
+        "run; nothing that changes anything runs and nothing can be approved. "
+        "Propose the reads you need, and put any fix in a justification for a "
+        "person to carry out."
+    ),
+}
+
+
+def tier_contract(tier: int) -> str:
+    """The plan prompt's statement of what the active tier allows."""
+    return TIER_CONTRACTS[normalize_tier(tier)]
 
 
 VERIFY_PROMPT = (
@@ -499,7 +534,7 @@ def _build_plan(
             )
             or "(none configured)",
             operator_guidance=_format_operator_guidance(state),
-            tier=tier,
+            tier_contract=tier_contract(tier),
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return _plan_update(raw)
@@ -538,7 +573,7 @@ def _build_plan_with_tool_names(
             )
             or "(none configured)",
             operator_guidance=_format_operator_guidance(state),
-            tier=tier,
+            tier_contract=tier_contract(tier),
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return _plan_update(raw)

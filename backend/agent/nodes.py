@@ -20,6 +20,7 @@ Design rules
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from typing import Any
 
@@ -543,16 +544,46 @@ def _tier_block_reason(status: str) -> str:
     return "Action blocked by tier policy"
 
 
+def _with_blocked_audit(gate, audit_logger, tier: int):
+    """Write one ``tool_call_blocked`` audit entry per action the gate blocked
+    (M1-89). Before, only the executor wrote that entry, and blocked plan
+    actions never reach the executor: a session whose actions were all
+    blocked left nothing in the audit log or in Tool Activity."""
+    if audit_logger is None:
+        return gate
+
+    async def tier_gate(state: IncidentState) -> dict:
+        update = gate(state)
+        if inspect.isawaitable(update):
+            update = await update
+        for action in update.get("blocked_actions") or []:
+            pending = audit_logger.log_tool_call_blocked(
+                state["session_id"],
+                tier,
+                action.get("tool_name") or "unknown",
+                tool_parameters=action.get("tool_parameters") or {},
+                block_reason=action.get("block_reason"),
+                classification=action.get("classification"),
+            )
+            if inspect.isawaitable(pending):
+                await pending
+        return update
+
+    return tier_gate
+
+
 def _build_tier_gate(
     tier: int,
     skill_def: SkillDefinition,
     approval_service: ApprovalService | None = None,
+    audit_logger=None,
 ):
     """Return a tier_gate node function closed over *tier* and *skill_def*.
 
     The tier gate is deterministic: it reads the proposed actions from
     ``state["plan"]``, classifies each via the skill definition, and
-    splits them into ``approved_actions`` and ``blocked_actions``.
+    splits them into ``approved_actions`` and ``blocked_actions``. With an
+    ``audit_logger``, each blocked action is written to the audit log.
 
     This function is **never** delegated to an LLM.
     """
@@ -597,7 +628,7 @@ def _build_tier_gate(
                 "approval_requests": [],
             }
 
-        return tier_gate
+        return _with_blocked_audit(tier_gate, audit_logger, tier)
 
     async def tier_gate(state: IncidentState) -> dict:
         proposed = state.get("plan", [])
@@ -701,7 +732,7 @@ def _build_tier_gate(
             "error": error,
         }
 
-    return tier_gate
+    return _with_blocked_audit(tier_gate, audit_logger, tier)
 
 
 # ---------------------------------------------------------------------------

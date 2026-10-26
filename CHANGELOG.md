@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   word about a circuit breaker, port, connection, ticket or window is not
   about the incident. An invented probe, an open incident called resolved
   or closed, and an acknowledgement nobody made are still corrected.
+- Actions the tier gate refused left no trace but a count. In the 2026-10-24
+  live round a Tier 2 session with five blocked actions had only its start
+  and end in the audit log, and Tool Activity was empty, because only the
+  tool executor wrote a blocked entry and blocked actions never reach it.
+  The gate now writes one audit entry per blocked action with the tool, the
+  proposed parameters, the tier and the reason (a write blocked at the tier,
+  an approval nobody gave or someone rejected), also for sessions with no
+  tool source, so Tool Activity and the incident timeline show them.
 - An AI session's plan now shows each MCP tool's arguments (names, types and
   which are required) from the tool's own schema, and the model is told to use
   only those names. In the 2026-10-24 live round about half the tool calls

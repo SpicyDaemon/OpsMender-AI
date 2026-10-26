@@ -266,7 +266,9 @@ def build_graph(
     else:
         remember_fn = remember
 
-    tier_gate_fn = _build_tier_gate(tier, skill_def, approval_service)
+    tier_gate_fn = _build_tier_gate(
+        tier, skill_def, approval_service, audit_logger=audit_logger
+    )
 
     # -- Tier 0 per-node timeouts -------------------------------------------
     # When a Tier 0 time config is supplied, every node is wrapped with a

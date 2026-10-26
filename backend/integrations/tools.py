@@ -69,7 +69,14 @@ def _operation_for(
                 else "autonomous"
             ),
         ),
-        2: OperationTierPolicy(enabled=False, mode="advisory"),
+        # A read-only, safe capability may run at Tier 2 (M1-94).
+        2: (
+            OperationTierPolicy(enabled=True, mode="autonomous")
+            if not capability.mutating
+            and not capability.always_requires_approval
+            and capability.classification == "safe"
+            else OperationTierPolicy(enabled=False, mode="advisory")
+        ),
     }
     return OperationClassification(
         tool=descriptor.name,

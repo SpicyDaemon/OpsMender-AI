@@ -66,7 +66,7 @@ operations:
     tiers:
       T0: { enabled: true, mode: autonomous }
       T1: { enabled: true, mode: autonomous }
-      T2: { enabled: true, mode: advisory }
+      T2: { enabled: true, mode: autonomous }
   - tool: restart_deployment
     classification: caution
     reversible: true

@@ -341,11 +341,20 @@ def _parse_bool(raw: object, *, field: str) -> bool:
     return raw
 
 
-def _validate_tier_policy(*, tool: str, tier: int, policy: OperationTierPolicy) -> None:
-    if tier == 2 and policy.mode not in {"advisory", "blocked"}:
+def _validate_tier_policy(
+    *, tool: str, tier: int, policy: OperationTierPolicy, classification: str
+) -> None:
+    # Tier 2 is advisory: nothing that changes anything runs. A read the skill
+    # classifies safe may run autonomously so the advice rests on real health,
+    # logs and metrics (M1-94); approval never applies at Tier 2.
+    allowed_t2 = {"advisory", "blocked"} | (
+        {"autonomous"} if classification == "safe" else set()
+    )
+    if tier == 2 and policy.mode not in allowed_t2:
         raise ValueError(
-            f"Operation '{tool}' T2 mode must be advisory or blocked, "
-            f"got '{policy.mode}'"
+            f"Operation '{tool}' T2 mode must be advisory or blocked, or autonomous "
+            f"for an operation classified safe; got '{policy.mode}' for a "
+            f"{classification} operation"
         )
     if not policy.enabled and policy.mode not in {"blocked", "advisory"}:
         raise ValueError(
@@ -556,7 +565,12 @@ def loads(raw: str, *, fmt: str = "md") -> SkillDefinition:
                         )
                     ),
                 )
-                _validate_tier_policy(tool=tool, tier=tier, policy=policy)
+                _validate_tier_policy(
+                    tool=tool,
+                    tier=tier,
+                    policy=policy,
+                    classification=str(entry.get("classification", "unknown")),
+                )
                 tiers[tier] = policy
             missing = sorted({0, 1, 2} - set(tiers))
             if missing:

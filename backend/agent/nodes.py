@@ -435,7 +435,7 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
 
     The plan is read only when the answer is the plan: the JSON array (or one
     action object on its own) bare, after a sentence with nothing after it, or
-    inside exactly one Markdown code fence with no other bracket, brace or
+    inside a Markdown code fence with no other bracket, brace or
     ``tool_name`` in the text around the fence. Every action needs a text
     ``tool_name``; ``[]`` is a readable empty plan. Anything else gives
     ``None`` and nothing runs, so an action the model drafted, quoted, listed
@@ -444,14 +444,13 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     if not isinstance(raw, str):
         return None
     text = raw.strip()
-    fences = list(_FENCE.finditer(text))
-    if len(fences) > 1:
-        return None
-    if fences:
-        outside = text[: fences[0].start()] + text[fences[0].end() :]
+    fence = _FENCE.search(text)
+    if fence:
+        # A second fence that holds JSON puts brackets outside this one.
+        outside = text[: fence.start()] + text[fence.end() :]
         if "[" in outside or "{" in outside or "tool_name" in outside:
             return None
-        body = fences[0].group(1).strip()
+        body = fence.group(1).strip()
     else:
         starts = [i for i in (text.find("["), text.find("{")) if i != -1]
         if not starts:

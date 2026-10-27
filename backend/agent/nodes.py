@@ -40,6 +40,7 @@ from backend.agent.grounding import (
 from backend.agent.hygiene import UNTRUSTED_RULE, redact_value, untrusted
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
+from backend.tiers.enforcement import normalize_tier
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +113,7 @@ Allowed MCP servers for this incident:
 Operator guidance (the operator redirected your previous plan; follow this):
 {operator_guidance}
 
-Current tier: {tier} (determines what actions are allowed)
+{plan_rules}
 
 Propose a list of remediation actions.  For each action, provide:
 - tool_name: the MCP tool to call
@@ -120,15 +121,120 @@ Propose a list of remediation actions.  For each action, provide:
 - justification: why this action is needed
 
 Return your plan as a JSON array of objects.  Example:
-[
-  {{"tool_name": "get_pods", "tool_parameters": {{"namespace": "default"}}, "justification": "Check pod status"}}
-]
+{plan_example}
 
 Only propose actions using available tools, and pass only the argument names
 each tool lists.  Be conservative: prefer safe read operations before any writes.
 """
     + PLAIN_WRITING
 )
+
+
+# What the plan is told about the active tier (M1-90). Each listed tool carries
+# the outcome the tier gate's own check gives it, so the prompt follows each
+# skill's policy for that tool instead of restating a policy per tier, and the
+# rules explain only the marks shown. The rules describe how the gate, the
+# executor and the Tier 0 node clock behave, so a change to those changes them
+# too (tests/test_tier_contract.py holds the marks and the rules to what the
+# session does). The tier gate, not this text, decides what runs.
+RUNS = "runs without a person"
+NEEDS_APPROVAL = "waits for operator approval"
+BLOCKED = "blocked"
+TIER_NAMES = {0: "Autonomous", 1: "Approval Required", 2: "Advisory Only"}
+NO_TOOL_LIST = "(none)"
+NO_TOOL_RULE = "No tool is offered in this session, so return an empty plan: []."
+MARKS_HEADER = (
+    "Next to its class, each tool above shows what the tier gate does with it at "
+    "this tier."
+)
+APPROVAL_RULE = (
+    'A tool marked "waits for operator approval" runs only if an operator '
+    "approves it; listing it is the only way to ask, and describing a change in "
+    "words asks no one. Each approval request carries your justification, so put "
+    "in it the evidence you already have and, for a change, how to undo it. "
+    "Nothing in this plan runs until every approval request in it is answered or "
+    "expires{clock}. An operator may also redirect a request, up to {redirects} "
+    "times: then nothing in this plan runs, the actions listed after that request "
+    "are dropped, and you plan again."
+)
+APPROVAL_CLOCK = (
+    ", and if the answers take more than {seconds} seconds in all, the whole plan "
+    "is dropped and nothing in it runs"
+)
+BLOCKED_RULE = (
+    'A tool marked "blocked" does not run at this tier. If you list it anyway, '
+    "its tool and parameters, but not its justification, are recorded for a "
+    "person to see, so to recommend a change that cannot run here, list it with "
+    "the parameters you recommend."
+)
+PLAN_EXAMPLE = (
+    "[\n"
+    '  {"tool_name": "get_pods", "tool_parameters": {"namespace": "default"}, '
+    '"justification": "Check pod status"}\n'
+    "]"
+)
+
+
+def gate_mark(
+    tool_name: str, tier: int, skill_def: SkillDefinition, *, can_ask: bool = True
+) -> tuple[str, str]:
+    """The class and the mark the plan prompt shows for ``tool_name``.
+
+    Both come from one call to the tier check the gate runs. The mark reads
+    ``permitted`` and ``requires_approval``, not the result's ``decision``: a
+    Tier 0 approval entry below the reversible floor has the decision
+    "approval", but the executor refuses it even after an approval. Without an
+    approval service (``can_ask`` false) the gate blocks what needs one.
+    """
+    result = tier_check(tool_name, tier, skill_def)
+    if not result.permitted or (result.requires_approval and not can_ask):
+        return result.classification, BLOCKED
+    if result.requires_approval:
+        return result.classification, NEEDS_APPROVAL
+    return result.classification, RUNS
+
+
+def plan_rules(tier: int, marks: set[str], *, wait_limit: int | None = None) -> str:
+    """The plan prompt's tier line and the rules for the marks it shows.
+
+    ``wait_limit`` is the Tier 0 node clock in seconds, when the graph has one.
+    """
+    tier = normalize_tier(tier)
+    first = f"Active tier: {tier} ({TIER_NAMES[tier]})."
+    if not marks:
+        return f"{first} {NO_TOOL_RULE}"
+    lines = [f"{first} {MARKS_HEADER}"]
+    if NEEDS_APPROVAL in marks:
+        clock = "" if wait_limit is None else APPROVAL_CLOCK.format(seconds=wait_limit)
+        lines.append(APPROVAL_RULE.format(clock=clock, redirects=MAX_TIER1_REDIRECTS))
+    if BLOCKED in marks:
+        lines.append(BLOCKED_RULE)
+    return "\n".join(lines)
+
+
+def _plan_tool_lines(
+    tool_names: list[str],
+    tier: int,
+    skill_def: SkillDefinition,
+    descriptions: dict[str, str] | None,
+    *,
+    can_ask: bool,
+) -> tuple[list[str], set[str]]:
+    """Each tool's line in the plan prompt, and the marks the lines show."""
+    lines: list[str] = []
+    marks: set[str] = set()
+    for name in tool_names:
+        # A name with whitespace or a control character is not a valid MCP tool
+        # name and could start a line of its own, so it is not offered.
+        if not name or any(ch.isspace() or not ch.isprintable() for ch in name):
+            continue
+        classification, mark = gate_mark(name, tier, skill_def, can_ask=can_ask)
+        marks.add(mark)
+        line = f"- {name} ({classification}, {mark})"
+        # One line per tool, so a server's description cannot start a line.
+        description = " ".join(((descriptions or {}).get(name) or "").split())
+        lines.append(f"{line}: {description}" if description else line)
+    return lines, marks
 
 
 VERIFY_PROMPT = (
@@ -482,29 +588,28 @@ def _build_plan(
     llm: LLM,
     tier: int,
     skill_def: SkillDefinition,
+    *,
+    can_ask: bool = True,
+    can_run: bool = True,
+    wait_limit: int | None = None,
 ):
-    """Return a plan node function closed over the LLM, tier, and skill def."""
-
-    def plan(state: IncidentState) -> dict:
-        """Propose a list of remediation actions."""
-        diagnosis = state.get("diagnosis", "")
-        tools_list = "\n".join(
-            f"- {op.tool} ({op.classification})" for op in skill_def.operations
-        )
-        prompt = PLAN_PROMPT.format(
-            diagnosis=diagnosis,
-            available_tools=tools_list,
-            preferred_mcp_servers="\n".join(
-                f"- {name}" for name in state.get("preferred_mcp_servers", [])
-            )
-            or "(none configured)",
-            operator_guidance=_format_operator_guidance(state),
-            tier=tier,
-        )
-        raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
-        return _plan_update(raw)
-
-    return plan
+    """Return a plan node for a graph given no tool list: the CLI at Tiers 2
+    and 3 with a server, and sessions without a tool source. It offers the
+    skill's operations; a glob entry is not a tool name, and a tool it matches
+    may get another mark, so it is left out, as the Tier 0 sandbox does."""
+    return _build_plan_with_tool_names(
+        llm,
+        tier,
+        skill_def,
+        [
+            op.tool
+            for op in skill_def.operations
+            if "*" not in op.tool and "?" not in op.tool
+        ],
+        can_ask=can_ask,
+        can_run=can_run,
+        wait_limit=wait_limit,
+    )
 
 
 def _build_plan_with_tool_names(
@@ -513,23 +618,31 @@ def _build_plan_with_tool_names(
     skill_def: SkillDefinition,
     tool_names: list[str],
     tool_descriptions: dict[str, str] | None = None,
+    *,
+    can_ask: bool = True,
+    can_run: bool = True,
+    wait_limit: int | None = None,
 ):
-    """Return a plan node that only exposes the supplied concrete tools."""
+    """Return a plan node that only exposes the supplied concrete tools.
+
+    Each tool is marked with what the tier gate does with it at ``tier``
+    (``gate_mark``). ``build_graph`` passes whether an approval service
+    answers (``can_ask``), whether anything the plan proposes can run
+    (``can_run``) and the Tier 0 node clock (``wait_limit``)."""
+    lines, marks = _plan_tool_lines(
+        list(tool_names) if can_run else [],
+        tier,
+        skill_def,
+        tool_descriptions,
+        can_ask=can_ask,
+    )
+    tools_list = "\n".join(lines) if lines else NO_TOOL_LIST
+    rules = plan_rules(tier, marks, wait_limit=wait_limit)
+    example = PLAN_EXAMPLE if lines else "[]"
 
     def plan(state: IncidentState) -> dict:
+        """Propose a list of remediation actions."""
         diagnosis = state.get("diagnosis", "")
-        if tool_names:
-            tools_list = "\n".join(
-                (
-                    f"- {tool_name} ({skill_def.classify(tool_name)}): "
-                    f"{tool_descriptions[tool_name]}"
-                    if tool_descriptions and tool_name in tool_descriptions
-                    else f"- {tool_name} ({skill_def.classify(tool_name)})"
-                )
-                for tool_name in tool_names
-            )
-        else:
-            tools_list = "(none available)"
         prompt = PLAN_PROMPT.format(
             diagnosis=diagnosis,
             available_tools=tools_list,
@@ -538,7 +651,8 @@ def _build_plan_with_tool_names(
             )
             or "(none configured)",
             operator_guidance=_format_operator_guidance(state),
-            tier=tier,
+            plan_rules=rules,
+            plan_example=example,
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
         return _plan_update(raw)

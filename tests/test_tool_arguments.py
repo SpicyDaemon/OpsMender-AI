@@ -63,8 +63,8 @@ def test_the_plan_prompt_shows_the_arguments_and_asks_for_those_names():
     plan({"diagnosis": "productpage returns 500s"})
     prompt = llm.calls[-1]
     assert (
-        "- get_logs (safe): Read a service's recent log lines. Arguments: service (string, required)"
-        in prompt
+        "- get_logs (safe, waits for operator approval): Read a service's recent log "
+        "lines. Arguments: service (string, required)" in prompt
     )
     assert "pass only the argument names" in prompt
 

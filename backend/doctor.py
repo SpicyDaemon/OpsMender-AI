@@ -317,37 +317,29 @@ async def check_slack_socket_mode(
     factory: async_sessionmaker | None, *, probe=None
 ) -> list[CheckResult]:
     """For each enabled Slack connector in Socket Mode (M1-97): the app-level
-    token is in its variable, Slack accepts it, and which process holds the
-    socket. Nothing is reported when no connector uses Socket Mode."""
+    token is in its variable and no other Socket Mode channel uses it, Slack
+    accepts it, and which process holds the socket. A holder that cannot keep
+    its socket connected gives it up within about a minute, so a fresh holder
+    means a socket that is connected or still connecting. Nothing is reported
+    when no connector uses Socket Mode."""
     if factory is None:
         return []
     from backend.bots.slack_socket import (
         LEASE_SECONDS,
+        SocketModeError,
         app_token,
         app_token_env,
         lease_key,
         open_socket_url,
-        uses_socket_mode,
+        socket_connectors,
+        token_conflicts,
     )
-    from backend.db.models import BotConnector
     from backend.db.repos import RuntimeConfigRepo
 
     probe = probe or open_socket_url
     try:
         async with factory() as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(BotConnector).where(
-                            BotConnector.platform == "slack",
-                            BotConnector.is_enabled.is_(True),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            connectors = [c for c in rows if uses_socket_mode(c)]
+            connectors = await socket_connectors(session)
             holders = {
                 c.id: await RuntimeConfigRepo.lease_holder(session, lease_key(c.id))
                 for c in connectors
@@ -357,6 +349,7 @@ async def check_slack_socket_mode(
 
     results: list[CheckResult] = []
     now = datetime.now(timezone.utc)
+    conflicts = token_conflicts(connectors)
     for connector in connectors:
         name = f"Slack Socket Mode: {connector.name}"
         token = app_token(connector)
@@ -369,11 +362,29 @@ async def check_slack_socket_mode(
                 )
             )
             continue
+        if connector.id in conflicts:
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"{app_token_env(connector)} holds the same app-level token as "
+                    f"{', '.join(conflicts[connector.id])}; each Socket Mode channel "
+                    "needs its own Slack app, so none of them gets a socket.",
+                )
+            )
+            continue
         try:
             await probe(token)
-        except Exception as exc:  # noqa: BLE001 - Slack's error code or the network
+        except SocketModeError as exc:
             results.append(
                 CheckResult(name, "fail", f"Slack refused the app-level token: {exc}")
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001 - the network, not Slack's answer
+            results.append(
+                CheckResult(
+                    name, "fail", f"Could not reach Slack: {type(exc).__name__}"
+                )
             )
             continue
         held = holders.get(connector.id)

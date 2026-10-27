@@ -3,12 +3,19 @@ opens to Slack, so no public URL is needed (M1-97).
 
 A Slack connector whose ``config.inbound_mode`` is ``socket`` names the
 environment variable that holds its app-level token (``xapp-``); the token is
-never stored. One app process holds each such connector's socket at a time:
-the holder keeps a lease row in ``runtime_config`` and renews it, and another
-process takes over when the renewals stop. Every envelope is acknowledged at
-once and then handled by the same code as the HTTP endpoints; the outcome is
-posted to the payload's ``response_url``, so slow work never misses Slack's
-three seconds.
+never stored. Each Socket Mode connector needs its own Slack app: Slack hands
+each envelope to one of an app's open sockets, so two connectors on one token
+would each see a random share of the clicks. Connectors that share a token get
+no socket, and Check configuration and the doctor say why.
+
+One app process holds each connector's socket at a time. The holder keeps a
+lease row in ``runtime_config`` and renews it while its socket is connected or
+still connecting. A holder that cannot renew closes its sockets before the
+lease can pass to another process, and a holder that cannot connect gives the
+lease up, so another process can try. Every envelope is acknowledged at once
+and then handled by the same code as the HTTP endpoints; the outcome is posted
+to the payload's ``response_url``, so slow work never misses Slack's three
+seconds.
 """
 
 from __future__ import annotations
@@ -19,9 +26,12 @@ import logging
 import os
 import random
 import socket
+import time
+import traceback
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -43,10 +53,26 @@ LEASE_PREFIX = "slack.socket_lease."
 # LEASE_SECONDS pass without a renewal.
 LEASE_SECONDS = 60
 RENEW_SECONDS = 20
+# A holder that has not renewed for FENCE_SECONDS closes its socket, so it is
+# gone before another process can take the lease.
+FENCE_SECONDS = LEASE_SECONDS - RENEW_SECONDS
+# A socket that has not been connected for CONNECT_GRACE_SECONDS gives its
+# lease up, and this process waits as long before taking it again.
+CONNECT_GRACE_SECONDS = LEASE_SECONDS
+# On shutdown, envelopes being handled get this long to finish.
+DRAIN_SECONDS = 10.0
+# Closing an old socket never holds up the next one for long.
+CLOSE_TIMEOUT = 2.0
+# When Slack asks for a new socket the next one opens at once, but not more
+# often than this, so a server that keeps asking cannot spin the client.
+QUICK_RECONNECT_GAP = 30.0
 BACKOFF_FIRST = 1.0
 BACKOFF_MAX = 60.0
 # The envelope types this module handles; others are acknowledged and dropped.
 HANDLED = ("interactive", "slash_commands")
+FAILURE_TEXT = (
+    "OpsMender could not finish that. Try again, or use the OpsMender web app."
+)
 
 Handler = Callable[[str, dict[str, Any]], Awaitable[None]]
 
@@ -72,6 +98,41 @@ def app_token(
     or does not hold an app-level token."""
     value = str(env.get(app_token_env(connector)) or "").strip()
     return value if value.startswith(APP_TOKEN_PREFIX) else None
+
+
+def token_conflicts(
+    connectors: Iterable[BotConnector], env: Mapping[str, str] = os.environ
+) -> dict[uuid.UUID, list[str]]:
+    """For each Socket Mode connector whose app-level token another of the
+    given connectors also uses, the names of those others."""
+    by_token: dict[str, list[BotConnector]] = {}
+    for connector in connectors:
+        token = app_token(connector, env) if uses_socket_mode(connector) else None
+        if token is not None:
+            by_token.setdefault(token, []).append(connector)
+    return {
+        connector.id: sorted(other.name for other in group if other is not connector)
+        for group in by_token.values()
+        if len(group) > 1
+        for connector in group
+    }
+
+
+async def socket_connectors(db) -> list[BotConnector]:
+    """The enabled Slack connectors in Socket Mode."""
+    rows = (
+        (
+            await db.execute(
+                select(BotConnector).where(
+                    BotConnector.platform == "slack",
+                    BotConnector.is_enabled.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [connector for connector in rows if uses_socket_mode(connector)]
 
 
 def lease_key(connector_id: uuid.UUID) -> str:
@@ -100,6 +161,10 @@ async def open_socket_url(token: str) -> str:
     return url
 
 
+def _connect(url: str):
+    return websockets.connect(url, close_timeout=CLOSE_TIMEOUT)
+
+
 class SocketModeClient:
     """One connector's socket: open it, acknowledge every envelope, hand the
     ones OpsMender handles to ``handle``, and reconnect when it closes."""
@@ -110,9 +175,10 @@ class SocketModeClient:
         handle: Handler,
         *,
         open_url: Callable[[str], Awaitable[str]] = open_socket_url,
-        connect: Callable[[str], Any] = websockets.connect,
+        connect: Callable[[str], Any] = _connect,
         backoff_first: float = BACKOFF_FIRST,
         backoff_max: float = BACKOFF_MAX,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._token = token
         self._handle = handle
@@ -120,33 +186,50 @@ class SocketModeClient:
         self._connect = connect
         self._first = backoff_first
         self._max = backoff_max
-        self._tasks: set[asyncio.Task] = set()
+        self._sleep = sleep or asyncio.sleep
+        # Envelopes being handled, kept so they are not garbage collected.
+        self.tasks: set[asyncio.Task] = set()
+        # True while a socket that said hello is open.
+        self.connected = False
+        self._greeted = False
+        self._last_quick = float("-inf")
 
     async def run(self) -> None:
-        """Serve sockets until cancelled. A socket that said hello resets the
-        wait before the next one; a failure doubles it, up to the maximum."""
+        """Serve sockets until cancelled. When Slack asks for a new socket the
+        next one opens at once. After any other close of a socket that said
+        hello the wait goes back to the first one; a failure before hello
+        doubles it, up to the maximum."""
         delay = self._first
         while True:
-            healthy = False
+            self._greeted = False
+            asked_to_reconnect = False
             try:
                 url = await self._open_url(self._token)
                 async with self._connect(url) as ws:
-                    healthy = await self._serve(ws)
+                    asked_to_reconnect = await self._serve(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - logged, then retried
                 logger.warning("slack socket mode: %s", _describe(exc))
-            if healthy:
+            finally:
+                self.connected = False
+            if self._greeted:
                 delay = self._first
+                quick = time.monotonic()
+                if (
+                    asked_to_reconnect
+                    and quick - self._last_quick >= QUICK_RECONNECT_GAP
+                ):
+                    self._last_quick = quick
+                    continue
             # Jitter keeps several processes from reconnecting in step.
-            await asyncio.sleep(delay * (0.5 + random.random() / 2))
-            if not healthy:
+            await self._sleep(delay * (0.5 + random.random() / 2))
+            if not self._greeted:
                 delay = min(delay * 2, self._max)
 
     async def _serve(self, ws) -> bool:
         """Serve one socket until Slack closes it or asks for a new one.
-        Returns whether it said hello."""
-        greeted = False
+        Returns whether Slack asked for a new one."""
         async for raw in ws:
             try:
                 message = json.loads(raw)
@@ -156,10 +239,10 @@ class SocketModeClient:
                 continue
             kind = message.get("type")
             if kind == "hello":
-                greeted = True
+                self._greeted = self.connected = True
                 continue
             if kind == "disconnect":
-                return greeted
+                return True
             envelope_id = message.get("envelope_id")
             if envelope_id:
                 # Acknowledge first: Slack retries an envelope it does not
@@ -168,9 +251,9 @@ class SocketModeClient:
             payload = message.get("payload")
             if kind in HANDLED and isinstance(payload, dict):
                 task = asyncio.create_task(self._handle(kind, payload))
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.discard)
-        return greeted
+                self.tasks.add(task)
+                task.add_done_callback(self.tasks.discard)
+        return False
 
 
 def _describe(exc: Exception) -> str:
@@ -222,6 +305,32 @@ async def handle_envelope(
                 await _post_answer(response_url, text)
 
 
+async def _report_failure(payload: dict[str, Any]) -> None:
+    """Tell the person an acknowledged envelope failed; Slack shows nothing
+    otherwise."""
+    from backend.api.routes.slack_paging import _post_answer
+
+    response_url = payload.get("response_url")
+    if not (isinstance(response_url, str) and response_url):
+        return
+    try:
+        await _post_answer(response_url, FAILURE_TEXT)
+    except Exception as exc:  # noqa: BLE001 - best effort
+        logger.warning(
+            "slack socket mode: failure reply not sent: %s", type(exc).__name__
+        )
+
+
+@dataclass
+class _Socket:
+    client: SocketModeClient
+    task: asyncio.Task
+    token: str
+    renewed: datetime
+    # The last tick that found the socket connected, or when it started.
+    seen_connected: datetime
+
+
 class SlackSocketManager:
     """Run the sockets of the Slack connectors in Socket Mode whose lease
     this process holds; one process holds each connector's socket."""
@@ -244,9 +353,15 @@ class SlackSocketManager:
         )
         self._lease = lease_seconds
         self._renew = renew_seconds
+        self._fence = timedelta(seconds=lease_seconds - renew_seconds)
+        self._grace = timedelta(seconds=lease_seconds)
         self._env = env
         self._client_factory = client_factory
-        self._clients: dict[uuid.UUID, asyncio.Task] = {}
+        self._sockets: dict[uuid.UUID, _Socket] = {}
+        # Connectors whose socket gave up, and until when not to take them.
+        self._resting: dict[uuid.UUID, datetime] = {}
+        self._inflight: set[asyncio.Task] = set()
+        self._conflicts: dict[uuid.UUID, list[str]] = {}
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -256,20 +371,32 @@ class SlackSocketManager:
             )
 
     async def stop(self) -> None:
-        """Close every socket and give up the leases, so another process can
-        take them over at once."""
-        tasks = [t for t in (self._task, *self._clients.values()) if t is not None]
+        """Stop reading envelopes, let the ones being handled finish for a
+        moment, then give up the leases so another process can take the
+        sockets at once."""
+        sockets = list(self._sockets.items())
+        self._sockets.clear()
+        tasks = [s.task for _, s in sockets]
+        if self._task is not None:
+            tasks.append(self._task)
+            self._task = None
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        held = list(self._clients)
-        self._task = None
-        self._clients.clear()
-        if not held:
+        # Handlers register when they start; one created just now has not yet.
+        inflight = set(self._inflight).union(
+            *(getattr(s.client, "tasks", ()) for _, s in sockets)
+        )
+        if inflight:
+            _, late = await asyncio.wait(inflight, timeout=DRAIN_SECONDS)
+            for task in late:
+                task.cancel()
+            await asyncio.gather(*late, return_exceptions=True)
+        if not sockets:
             return
         try:
             async with self._factory() as db:
-                for connector_id in held:
+                for connector_id, _ in sockets:
                     await RuntimeConfigRepo.release_lease(
                         db, lease_key(connector_id), self.holder
                     )
@@ -281,35 +408,73 @@ class SlackSocketManager:
 
     async def _loop(self) -> None:
         while True:
+            started = time.monotonic()
             try:
-                await self.tick()
+                # A tick that hangs on the database counts as a failed renewal.
+                await asyncio.wait_for(self.tick(), timeout=self._renew)
             except Exception as exc:  # noqa: BLE001 - logged, retried next tick
                 logger.warning("slack socket mode: tick failed: %s", _describe(exc))
-            await asyncio.sleep(self._renew)
+                self.fence()
+            await asyncio.sleep(max(0.0, self._renew - (time.monotonic() - started)))
+
+    def fence(self, now: datetime | None = None) -> set[uuid.UUID]:
+        """Close every socket whose lease has not been renewed for
+        ``lease_seconds - renew_seconds``: another process may take the lease
+        soon, and two sockets for one app split its clicks. Returns them."""
+        now = now or datetime.now(timezone.utc)
+        closed = {
+            connector_id
+            for connector_id, held in self._sockets.items()
+            if now - held.renewed >= self._fence
+        }
+        for connector_id in closed:
+            self._sockets.pop(connector_id).task.cancel()
+            logger.warning(
+                "slack socket mode: closed the socket of %s, its lease could "
+                "not be renewed",
+                connector_id,
+            )
+        return closed
 
     async def tick(self, now: datetime | None = None) -> set[uuid.UUID]:
         """Take or renew each lease, run a socket for each one held and close
         the others. Returns the connectors this process holds."""
         now = now or datetime.now(timezone.utc)
-        held: dict[uuid.UUID, str] = {}
+        for connector_id, held in self._sockets.items():
+            if getattr(held.client, "connected", False):
+                held.seen_connected = now
+        # Holding a lease without a connection would keep out a process that
+        # can connect: give it up, and rest before taking it again.
+        given_up = {
+            connector_id
+            for connector_id, held in self._sockets.items()
+            if now - held.seen_connected >= self._grace
+        }
+        for connector_id in given_up:
+            self._resting[connector_id] = now + self._grace
+        held_tokens: dict[uuid.UUID, str] = {}
         async with self._factory() as db:
-            rows = (
-                (
-                    await db.execute(
-                        select(BotConnector).where(
-                            BotConnector.platform == "slack",
-                            BotConnector.is_enabled.is_(True),
-                        )
+            connectors = await socket_connectors(db)
+            conflicts = token_conflicts(connectors, self._env)
+            if conflicts != self._conflicts:
+                for connector_id, others in conflicts.items():
+                    logger.warning(
+                        "slack socket mode: %s shares its app-level token with %s; "
+                        "neither gets a socket",
+                        connector_id,
+                        ", ".join(others),
                     )
-                )
-                .scalars()
-                .all()
-            )
-            for connector in rows:
-                if not uses_socket_mode(connector):
-                    continue
+                self._conflicts = conflicts
+            for connector in connectors:
                 token = app_token(connector, self._env)
-                if token is None:
+                if token is None or connector.id in conflicts:
+                    continue
+                resting_until = self._resting.get(connector.id)
+                if resting_until is not None:
+                    if resting_until > now:
+                        continue
+                    del self._resting[connector.id]
+                if connector.id in given_up:
                     continue
                 if await RuntimeConfigRepo.take_lease(
                     db,
@@ -319,32 +484,56 @@ class SlackSocketManager:
                     now=now,
                     seconds=self._lease,
                 ):
-                    held[connector.id] = token
+                    held_tokens[connector.id] = token
+            for connector_id in self._sockets:
+                if connector_id not in held_tokens:
+                    await RuntimeConfigRepo.release_lease(
+                        db, lease_key(connector_id), self.holder
+                    )
             await db.commit()
-        for connector_id in list(self._clients):
-            task = self._clients[connector_id]
-            if connector_id not in held or task.done():
-                task.cancel()
-                del self._clients[connector_id]
-        for connector_id, token in held.items():
-            if connector_id not in self._clients:
+        for connector_id in list(self._sockets):
+            held = self._sockets[connector_id]
+            token = held_tokens.get(connector_id)
+            if token is None or held.task.done() or held.token != token:
+                held.task.cancel()
+                del self._sockets[connector_id]
+            else:
+                held.renewed = now
+        for connector_id, token in held_tokens.items():
+            if connector_id not in self._sockets:
                 client = self._client_factory(token, self._handler(connector_id))
-                self._clients[connector_id] = asyncio.create_task(
-                    client.run(), name=f"opsmender-slack-socket-{connector_id}"
+                self._sockets[connector_id] = _Socket(
+                    client=client,
+                    task=asyncio.create_task(
+                        client.run(), name=f"opsmender-slack-socket-{connector_id}"
+                    ),
+                    token=token,
+                    renewed=now,
+                    seen_connected=now,
                 )
-        return set(held)
+        return set(held_tokens)
 
     def _handler(self, connector_id: uuid.UUID) -> Handler:
         async def handle(kind: str, payload: dict[str, Any]) -> None:
+            task = asyncio.current_task()
+            if task is not None:
+                self._inflight.add(task)
             try:
                 await handle_envelope(
                     self._app, self._factory, connector_id, kind, payload
                 )
             except Exception as exc:  # noqa: BLE001 - one envelope, logged
+                # The location, not the message: a message can carry the
+                # payload's response URL.
                 logger.warning(
-                    "slack socket mode: %s envelope failed: %s",
+                    "slack socket mode: %s envelope failed: %s\n%s",
                     kind,
-                    _describe(exc),
+                    type(exc).__name__,
+                    "".join(traceback.format_tb(exc.__traceback__)),
                 )
+                await _report_failure(payload)
+            finally:
+                if task is not None:
+                    self._inflight.discard(task)
 
         return handle

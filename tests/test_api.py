@@ -5700,6 +5700,89 @@ class TestBotConnectorsAPI:
         assert data["status"] == "not_configured"
         assert "bot_token" in data["detail"]
 
+    async def test_send_live_test_asks_slack_for_a_socket_in_socket_mode(
+        self, client: AsyncClient, auth_headers, monkeypatch
+    ):
+        # M1-97: Send live test proves Slack accepts the app-level token; a
+        # refusal or an unreachable Slack fails it before any message is sent,
+        # and two channels on one token fail Check configuration.
+        import httpx
+
+        from backend.api.routes import bot_connectors as routes
+        from backend.bots.slack_socket import SocketModeError
+
+        sent: list[str] = []
+
+        class _Adapter:
+            async def test_connection(self, connector):
+                return True, None
+
+            async def send_message(self, connector, *, chat_id, text):
+                sent.append(chat_id)
+                return True, None
+
+        async def accept(token):
+            assert token == "xapp-1-live"
+            return "wss://wss.slack.test/link"
+
+        async def refuse(token):
+            raise SocketModeError("invalid_auth")
+
+        async def unreachable(token):
+            raise httpx.ConnectError("no route")
+
+        monkeypatch.setattr(routes, "get_adapter", lambda platform: _Adapter())
+        monkeypatch.setenv("M1_97_LIVE_TOKEN", "xapp-1-live")
+
+        def slack(name):
+            return {
+                "name": name,
+                "platform": "slack",
+                "credentials": {"bot_token": "xoxb-t", "signing_secret": "s"},
+                "config": {
+                    "default_chat_id": "C123",
+                    "inbound_mode": "socket",
+                    "app_token_env": "M1_97_LIVE_TOKEN",
+                },
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+            }
+
+        created = await client.post(
+            "/bot-connectors", json=slack("slack-socket-live"), headers=auth_headers
+        )
+        assert created.status_code == 201, created.text
+        connector_id = created.json()["id"]
+
+        outcomes = []
+        for answer in (accept, refuse, unreachable):
+            monkeypatch.setattr(routes, "open_socket_url", answer)
+            resp = await client.post(
+                f"/bot-connectors/{connector_id}/test",
+                json={"live": True},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200
+            checks = {c["name"]: c for c in resp.json()["checks"]}
+            outcomes.append(
+                (checks["socket_mode_live"]["level"], "delivery" in checks, len(sent))
+            )
+            assert "xapp-1-live" not in resp.text
+        assert outcomes == [("pass", True, 1), ("fail", False, 1), ("fail", False, 1)]
+        detail = checks["socket_mode_live"]["detail"]
+        assert detail == "Could not reach Slack: ConnectError."
+
+        # A second Socket Mode channel on the same token: neither gets a socket.
+        second = await client.post(
+            "/bot-connectors", json=slack("slack-socket-twin"), headers=auth_headers
+        )
+        assert second.status_code == 201
+        resp = await client.post(
+            f"/bot-connectors/{connector_id}/test", json={}, headers=auth_headers
+        )
+        [check] = [c for c in resp.json()["checks"] if c["name"] == "socket_mode"]
+        assert check["level"] == "fail" and "slack-socket-twin" in check["detail"]
+
     async def test_bot_connector_viewer_forbidden(
         self, client: AsyncClient, viewer_headers
     ):

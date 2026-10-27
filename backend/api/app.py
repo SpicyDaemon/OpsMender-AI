@@ -214,7 +214,6 @@ async def _lifespan(app: FastAPI):
         slack_socket_manager = SlackSocketManager(app, factory)
         app.state.slack_socket_manager = slack_socket_manager
         await slack_socket_manager.start()
-        scheduler_stoppers.append(slack_socket_manager.stop)
 
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
@@ -268,6 +267,12 @@ async def _lifespan(app: FastAPI):
         worker_conn, unsubscribe = worker_bus
         await unsubscribe()
         await worker_conn.close()
+
+    # Slack sockets first: the envelopes being handled finish before the
+    # background tasks they start are swept (M1-97).
+    slack_socket_manager = getattr(app.state, "slack_socket_manager", None)
+    if slack_socket_manager is not None:
+        await slack_socket_manager.stop()
 
     session_tasks = list(getattr(app.state, "session_tasks", set()))
     for task in session_tasks:

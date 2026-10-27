@@ -18,7 +18,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import func, select
 
+from backend.db.models import IncidentPage
 from backend.db.repos import (
     EscalationChainRepo,
     IncidentAssignmentRepo,
@@ -56,8 +58,9 @@ async def _paged(
     """An incident paged to ``user`` ``age`` minutes ago, its chain in
     ``chain_status`` and the incident in ``incident_status``. The page's
     ``sent_at`` is what the 24 hour window for an exhausted chain checks.
-    ``finished`` sets the chain's ``finished_at``, as an acknowledgement
-    made before the lock existed left it."""
+    An exhausted or cancelled chain gets a ``finished_at``, as the engine
+    writes it; ``finished`` sets one for any other status, as an
+    acknowledgement made before the lock existed left it."""
     incident = await _seed_incident(app, title=title)
     async with app.state.session_factory() as db:
         team = await TeamRepo.create(
@@ -70,7 +73,7 @@ async def _paged(
             db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id
         )
         state.status = chain_status
-        if finished:
+        if finished or chain_status in ("exhausted", "cancelled"):
             state.finished_at = datetime.now(timezone.utc) - timedelta(minutes=age)
         page = await IncidentPageRepo.create(
             db, TEST_ORG_ID, incident_id=incident.id, user_id=user.id
@@ -80,6 +83,15 @@ async def _paged(
         row.status = incident_status
         await db.commit()
     return incident
+
+
+async def _page_count(app, incident_id):
+    async with app.state.session_factory() as db:
+        return await db.scalar(
+            select(func.count())
+            .select_from(IncidentPage)
+            .where(IncidentPage.incident_id == incident_id)
+        )
 
 
 async def _bare(client, slack_user_id, command="/ack"):
@@ -309,7 +321,14 @@ async def test_every_command_without_an_id_acts_on_a_chain_that_ran_out(client, 
     assert await _bare(client, "U_EV", command="/take") == (
         "You're now assigned to *ran-out*."
     )
+    pages = await _page_count(app, incident.id)
     assert await _bare(client, "U_EV", command="/release") == "Released *ran-out*."
+    assert await _page_count(app, incident.id) == pages
+    async with app.state.session_factory() as db:
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, TEST_ORG_ID, incident.id
+        )
+        assert state.status == "exhausted"
     assert await _bare(client, "U_EV", command="/resolve") == (
         "Marked *ran-out* resolved."
     )

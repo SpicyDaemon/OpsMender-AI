@@ -1,10 +1,10 @@
 """M1-73: the chat incident card says who holds the incident and stays current
 after a chat action.
 
-Every native card (Slack, Teams, Discord) shows the facts the text card shows,
+Every native card (Slack, Discord) shows the facts the text card shows,
 from one helper. A verified chat Acknowledge or Resolve re-renders the card in
 the channel through the same incident event the web path emits: Slack and
-Discord edit the posted message in place, Teams posts a fresh card. Escalate
+Discord edit the posted message in place, Telegram posts a fresh card. Escalate
 keeps the buttons; Start AI Session and taps that change nothing leave the
 card alone. The Slack `/ack`, `/take`, `/resolve` and `/release` commands and
 the phone keypad update it as a tap would. Every other ownership change (a
@@ -95,8 +95,7 @@ PLATFORM_CHANNEL = "C456"
 PLATFORM_TS = "1700000000.000300"
 DISCORD_CHANNEL = "discord-channel"
 DISCORD_MESSAGE = "discord-message"
-TEAMS_CHAT = "19:chat@thread.v2"
-BOT_APP_ID = "11111111-1111-1111-1111-111111111111"
+FOLLOWUP_CHAT = "-100777"
 PASSWORD = "chat-card-password-1"
 
 _RealAsyncClient = httpx.AsyncClient
@@ -292,8 +291,8 @@ class _Outbound:
             return httpx.Response(
                 200, json={"id": DISCORD_MESSAGE, "channel_id": DISCORD_CHANNEL}
             )
-        if host == "graph.microsoft.com":
-            return httpx.Response(201, json={"id": "teams-message-2"})
+        if host == "api.telegram.org":
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
         return httpx.Response(404)
 
     async def _probe_then_answer(self) -> httpx.Response:
@@ -587,26 +586,18 @@ async def _audit_statuses(app, incident_id) -> list[str]:
         )
 
 
-async def _add_teams_channel(app, monkeypatch) -> None:
-    """A Teams Notification Channel beside the Slack one. Teams cannot edit a
-    posted card, so every card it gets is a new post."""
-
-    async def _token(**kwargs):
-        return SimpleNamespace(token_type="Bearer", access_token="graph-token")
-
-    monkeypatch.setattr("backend.bots.connectors.teams.acquire_app_only_token", _token)
+async def _add_followup_channel(app, monkeypatch) -> None:
+    """A Telegram Notification Channel beside the Slack one. Telegram cannot
+    edit a posted card, so every card it gets is a new post. (Teams played this
+    part until its delivery was taken down for a rebuild, M1-96.)"""
     async with app.state.session_factory() as db:
         await BotConnectorRepo.create(
             db,
             TEST_ORG_ID,
-            name="teams-cards",
-            platform="teams",
-            config={"bot_app_id": BOT_APP_ID, "default_chat_id": TEAMS_CHAT},
-            credentials={
-                "tenant_id": "tenant",
-                "client_id": "client",
-                "client_secret": "secret",
-            },
+            name="telegram-cards",
+            platform="telegram",
+            config={"default_chat_id": FOLLOWUP_CHAT},
+            credentials={"bot_token": "123456:followup"},
             allowed_capabilities=["notifications"],
             status="configured",
             is_enabled=True,
@@ -614,8 +605,16 @@ async def _add_teams_channel(app, monkeypatch) -> None:
         await db.commit()
 
 
-def _teams_posts(outbound) -> int:
-    return len(outbound.to(f"/chats/{TEAMS_CHAT}/messages"))
+def _followup_requests(outbound) -> list[tuple[str, str, object]]:
+    return [
+        item
+        for item in outbound.to("/sendMessage")
+        if (item[2] or {}).get("chat_id") == FOLLOWUP_CHAT
+    ]
+
+
+def _followup_posts(outbound) -> int:
+    return len(_followup_requests(outbound))
 
 
 async def _seed_chain(app, seeded) -> uuid.UUID:
@@ -1177,7 +1176,7 @@ async def test_slack_start_ai_session_leaves_the_card_alone(
     """Starting a session changes nothing the card shows, and the web emits no
     incident event for it: no card edit and no fresh card anywhere."""
     seeded = await _seed_slack(app)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     dispatched: list[uuid.UUID] = []
 
     async def _dispatch(app_, session_id):
@@ -1190,7 +1189,7 @@ async def test_slack_start_ai_session_leaves_the_card_alone(
     await _tap(client, ACTION_ACK, seeded.incident_id)
     await _drain(card_tasks)
     assert len(outbound.to("chat.update")) == 1
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
 
     resp = await _tap(
         client,
@@ -1207,7 +1206,7 @@ async def test_slack_start_ai_session_leaves_the_card_alone(
     assert len(dispatched) == 1
     assert len(outbound.to("chat.update")) == 1
     assert outbound.to("chat.postMessage") == []
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
     receipts = await _receipts(app, seeded.incident_id)
     assert "incident.updated" not in [r.lifecycle_event for r in receipts]
 
@@ -1216,9 +1215,9 @@ async def test_taps_that_change_nothing_leave_the_card_alone(
     client, app, outbound, card_tasks, monkeypatch
 ):
     """A second, distinct Acknowledge or Resolve tap changes nothing: it is
-    answered, but no card is edited and Teams gets no fresh card."""
+    answered, but no card is edited and Telegram gets no fresh card."""
     seeded = await _seed_slack(app)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     steps = [
         (ACTION_ACK, "acknowledged"),
         (ACTION_ACK, "already acknowledged"),
@@ -1235,7 +1234,7 @@ async def test_taps_that_change_nothing_leave_the_card_alone(
         assert outbound.to("hooks.slack.com")[-1][2]["text"] == (
             f"{verb} incident *Checkout 500s*."
         )
-        seen.append((len(outbound.to("chat.update")), _teams_posts(outbound)))
+        seen.append((len(outbound.to("chat.update")), _followup_posts(outbound)))
 
     assert seen == [(1, 1), (1, 1), (2, 2), (2, 2)]
     events = [r.lifecycle_event for r in await _receipts(app, seeded.incident_id)]
@@ -1364,11 +1363,11 @@ async def test_release_edits_the_card_back_to_unowned(
     via, client, app, outbound, card_tasks, monkeypatch
 ):
     seeded = await _seed_slack(app)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     await _tap(client, ACTION_ACK, seeded.incident_id)
     await _drain(card_tasks)
     assert await _owner(app, seeded.incident_id) == seeded.user_id
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
     # A Slack channel added after the card went out has nothing to edit.
     async with app.state.session_factory() as db:
         await BotConnectorRepo.create(
@@ -1415,7 +1414,7 @@ async def test_release_edits_the_card_back_to_unowned(
     ]
     # Edit in place only: no new post anywhere, nobody paged.
     assert outbound.to("chat.postMessage") == []
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
     assert await _page_count(app, seeded.incident_id) == pages_before
     receipts = await _receipts(app, seeded.incident_id)
     assert receipts[-1].lifecycle_event == "incident.updated"
@@ -1426,7 +1425,7 @@ async def test_force_take_edits_the_card_to_name_the_new_owner(
     client, app, outbound, card_tasks, monkeypatch
 ):
     seeded = await _seed_slack(app)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     await _tap(client, ACTION_ACK, seeded.incident_id)
     await _drain(card_tasks)
     async with app.state.session_factory() as db:
@@ -1460,7 +1459,7 @@ async def test_force_take_edits_the_card_to_name_the_new_owner(
     assert _context(blocks).startswith("Acknowledged by Ada Min · ")
     assert "*Responder*\nAssigned to Ada Min" in _fields(blocks)
     assert ACTION_ACK not in _action_ids(blocks)
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
 
 
 async def _add_user(
@@ -1515,7 +1514,7 @@ async def test_web_take_or_assign_edits_the_card(
     route, client, app, outbound, card_tasks, monkeypatch
 ):
     seeded = await _seed_slack(app)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
 
     resp = await client.post(
         f"/incidents/{seeded.incident_id}/{route}",
@@ -1527,8 +1526,8 @@ async def test_web_take_or_assign_edits_the_card(
 
     assert await _owner(app, seeded.incident_id) == seeded.user_id
     _assert_held_by(outbound, seeded.incident_id, "Sam Ops", edits=1)
-    # Edit in place only: Teams cannot edit, so it gets nothing.
-    assert _teams_posts(outbound) == 0
+    # Edit in place only: Telegram cannot edit, so it gets nothing.
+    assert _followup_posts(outbound) == 0
     receipts = await _receipts(app, seeded.incident_id)
     assert (receipts[-1].lifecycle_event, receipts[-1].delivery_status) == (
         "incident.updated",
@@ -2138,91 +2137,6 @@ async def test_discord_new_card_carries_the_facts_and_drops_acknowledge(app, out
     assert receipts[-1].external_message_id == DISCORD_MESSAGE
 
 
-# ---------------------------------------------------------------------------
-# Teams
-# ---------------------------------------------------------------------------
-
-
-async def test_teams_acknowledge_posts_a_fresh_card(
-    client, app, outbound, card_tasks, monkeypatch
-):
-    async def _verified(**kwargs):
-        return None
-
-    async def _token(**kwargs):
-        return SimpleNamespace(token_type="Bearer", access_token="graph-token")
-
-    monkeypatch.setattr(
-        "backend.api.routes.teams_paging.verify_bot_framework_token", _verified
-    )
-    monkeypatch.setattr("backend.bots.connectors.teams.acquire_app_only_token", _token)
-    seeded = await _seed(
-        app,
-        platform="teams",
-        credentials={
-            "tenant_id": "tenant",
-            "client_id": "client",
-            "client_secret": "secret",
-        },
-        config={"bot_app_id": BOT_APP_ID, "default_chat_id": TEAMS_CHAT},
-        external_user_id="aad-tia",
-        first_name="Tia",
-        prior_channel=TEAMS_CHAT,
-        prior_message="teams-message-1",
-        can_update=False,
-    )
-    resp = await client.post(
-        "/bot/teams/activity",
-        json={
-            "type": "message",
-            "id": "teams-activity-ack",
-            "recipient": {"id": f"28:{BOT_APP_ID}"},
-            "from": {"id": "29:tia", "aadObjectId": "aad-tia", "name": "Tia"},
-            "conversation": {"id": TEAMS_CHAT},
-            "replyToId": "teams-message-1",
-            "value": {
-                "action": "opsmender:ack",
-                "incident_id": str(seeded.incident_id),
-            },
-        },
-    )
-    await _drain(card_tasks)
-
-    assert resp.json() == {
-        "type": "message",
-        "text": "acknowledged incident *Checkout 500s*.",
-    }
-    posts = outbound.to(f"/chats/{TEAMS_CHAT}/messages")
-    assert len(posts) == 1
-    card = posts[0][2]["attachments"][0]["content"]
-    facts = next(b for b in card["body"] if b["type"] == "FactSet")["facts"]
-    kv = {fact["title"]: fact["value"] for fact in facts}
-    assert kv["Responder"] == "Assigned to Tia Ops"
-    assert kv["Acknowledged by"] == "Tia Ops"
-    assert kv["Service"] == "Checkout API"
-    assert kv["Team"] == "Payments"
-    assert [action["title"] for action in card["actions"]] == [
-        "Resolve",
-        "Escalate",
-        "Start AI Session",
-        "View in OpsMender",
-    ]
-
-    assert await _owner(app, seeded.incident_id) == seeded.user_id
-    receipts = await _receipts(app, seeded.incident_id)
-    assert [r.lifecycle_event for r in receipts] == [
-        "incident.created",
-        "incident.acknowledged",
-    ]
-    assert receipts[-1].external_message_id == "teams-message-2"
-    assert receipts[-1].can_update is False
-
-
-# ---------------------------------------------------------------------------
-# Ordering: a late delivery never renders a state older than the card
-# ---------------------------------------------------------------------------
-
-
 async def _hold_escalation(monkeypatch) -> tuple[list, object]:
     """Hold the escalation engine's card delivery (scheduled before the
     request commits) to run it later, as a slow channel would."""
@@ -2283,30 +2197,30 @@ async def test_delayed_escalation_does_not_undo_the_acknowledged_card(
     ]
 
 
-async def test_delayed_escalation_posts_no_stale_teams_card(
+async def test_delayed_escalation_posts_no_stale_card_where_cards_cannot_edit(
     client, app, outbound, card_tasks, monkeypatch
 ):
-    """Teams cannot edit, so a late escalation would post a fresh card after
+    """Telegram cannot edit, so a late escalation would post a fresh card after
     the acknowledged one. It posts nothing instead."""
     seeded = await _seed_slack(app)
     await _seed_chain(app, seeded)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     held, original = await _hold_escalation(monkeypatch)
     await _escalate_then_acknowledge(client, app, card_tasks, held, seeded)
-    assert _teams_posts(outbound) == 1
-    acknowledged = outbound.to(f"/chats/{TEAMS_CHAT}/messages")[0][2]
+    assert _followup_posts(outbound) == 1
+    acknowledged = _followup_requests(outbound)[0][2]
     assert "Acknowledged by" in json.dumps(acknowledged)
 
     args, kwargs = held[0]
     await original(*args, **kwargs)
     await _drain(card_tasks)
 
-    assert _teams_posts(outbound) == 1
+    assert _followup_posts(outbound) == 1
     assert len(outbound.to("chat.update")) == 1
     assert outbound.to("chat.postMessage") == []
     receipts = await _receipts(app, seeded.incident_id)
     assert "incident.escalated" not in [r.lifecycle_event for r in receipts]
-    assert sorted(r.platform for r in receipts) == ["slack", "slack", "teams"]
+    assert sorted(r.platform for r in receipts) == ["slack", "slack", "telegram"]
 
 
 async def _add_platform_slack_channel(app, platform_id, *, prior_card_for=None):
@@ -2463,7 +2377,7 @@ async def test_two_queued_cards_keep_the_newer_owner(
     """Both events exist before either provider receipt, including a slow send."""
     seeded = await _seed_slack(app)
     await _seed_chain(app, seeded)
-    await _add_teams_channel(app, monkeypatch)
+    await _add_followup_channel(app, monkeypatch)
     held, schedule_text = await _hold_escalation(monkeypatch)
     response = await _tap(client, ACTION_ESCALATE, seeded.incident_id)
     assert response.status_code == 200
@@ -2540,8 +2454,8 @@ async def test_two_queued_cards_keep_the_newer_owner(
     assert ACTION_ACK not in _action_ids(blocks)
     assert await _owner(app, seeded.incident_id) == seeded.user_id
     assert len(edits) == (1 if order == "newer_first" else 2)
-    teams = outbound.to(f"/chats/{TEAMS_CHAT}/messages")
-    assert "Acknowledged by" in json.dumps(teams[-1][2])
+    followups = _followup_requests(outbound)
+    assert "Acknowledged by" in json.dumps(followups[-1][2])
     receipts = await _receipts(app, seeded.incident_id)
     slack = [r for r in receipts if r.platform == "slack"]
     assert slack[0].event_generated_at is None  # Legacy receipt is preserved.

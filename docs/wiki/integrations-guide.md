@@ -518,44 +518,23 @@ See [Slack as your paging surface](slack-paging-surface.md).
 
 Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
 
-### Microsoft Teams (Graph + Bot Framework)
+### Microsoft Teams (being rebuilt)
 
-Teams Notification Channels use Microsoft Graph app-only credentials for
-outbound Adaptive Cards and Microsoft Bot Framework JWTs for native actions.
+OpsMender sends nothing to Microsoft Teams right now. Microsoft lets an app
+post Teams chat messages through Microsoft Graph only during a migration,
+Teams card buttons need a bot, and the old Office 365 connector webhooks are
+retired. Teams support will come back as a Teams Workflows connector, with
+cards whose buttons open OpsMender to confirm the action, and then a Teams
+bot.
 
-Configure:
-
-```text
-tenant_id=...               # Azure AD directory ID
-client_id=...               # Graph application ID
-client_secret=...           # Graph application secret value
-bot_app_id=...              # Azure Bot registration app ID
-default_chat_id=...         # Teams chat destination
-```
-
-Set the Azure Bot **Messaging endpoint** to:
-
-```text
-POST https://<your-opsmender-url>/bot/teams/activity
-```
-
-Enable verified Teams actions on the Notification Channel only after the Bot
-Framework app ID is set. OpsMender validates the Microsoft-signed JWT audience,
-issuer, and time claims before processing an action.
-
-The card's FactSet carries the same facts as the message text (Service, Team,
-Org when set, Responder, Acknowledged by once someone has, Escalation level
-once above 0), shown as typed, and Acknowledge is left off once someone has
-acknowledged. Graph app-only access cannot edit a posted message, so each
-acknowledge, resolve or escalation, including one made from a card button,
-posts a fresh card in the new state. Changes that only edit cards in place (a
-release, takeover, assignment, reassignment, service move or reopen, and an
-Acknowledge or reassign in bulk from the incident list) post nothing on
-Teams. See
-[Teams as your paging surface](teams-paging-surface.md).
-
-Identity mapping (RBAC): Use the user's Azure AD object ID
-(`activity.from.aadObjectId`) as the platform user ID.
+Until then the settings page does not add new Teams Notification Channels.
+Saved ones are kept and stay editable, but **Check configuration** fails with
+the reason, there is no **Send live test**, a saved Track lane is dropped the
+next time you save, no card or message is posted on any lane, and native
+actions stay off. A button on an old Teams card answers
+with the reason and changes nothing. Use Slack, email, SMS or voice, or
+another chat channel meanwhile. See
+[Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 ### Discord (Interactions)
 
@@ -861,7 +840,7 @@ Identity mapping (RBAC): Use the sender's phone number or Apple ID (e.g., `+1555
 
 Viewer-facing delivery is report-based. Configure organization SMTP under
 **Config**, then use **Reports** for CSV/PDF exports and scheduled stakeholder
-email. Real-time incident status belongs to Track-lane Slack, Teams, Discord,
+email. Real-time incident status belongs to Track-lane Slack, Discord,
 Google Chat, or EventBridge Notification Channels.
 
 ## 4. Docker Deployment Basics

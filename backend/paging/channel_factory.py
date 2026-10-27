@@ -12,16 +12,15 @@ fallback when no complete saved settings exist.
 Env vars consumed:
 
 * ``OPSMENDER_SLACK_BOT_TOKEN``
-* ``OPSMENDER_TEAMS_WEBHOOK_URL``
 * ``OPSMENDER_SMTP_HOST`` (+ ``OPSMENDER_SMTP_PORT``,
   ``OPSMENDER_SMTP_USER``, ``OPSMENDER_SMTP_PASSWORD``,
   ``OPSMENDER_SMTP_FROM``, ``OPSMENDER_SMTP_USE_TLS``)
 * ``OPSMENDER_TWILIO_ACCOUNT_SID`` (+ ``OPSMENDER_TWILIO_AUTH_TOKEN``,
   ``OPSMENDER_TWILIO_FROM_NUMBER``)
-* ``OPSMENDER_TEAMS_GRAPH_TENANT_ID`` (+ ``OPSMENDER_TEAMS_GRAPH_CLIENT_ID``,
-  ``OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET``) - Sprint 37 step 2. When all
-  three are set, the ``teams_dm_graph`` channel key resolves to a
-  ``TeamsGraphDMChannel`` that posts via Graph ``chats/{id}/messages``.
+
+The Teams keys (``teams_dm``, ``teams_dm_graph``) build no channel (M1-96):
+Teams delivery is being rebuilt, and the dispatcher records each page to them
+as skipped with the reason ``teams_rebuilding``.
 """
 
 from __future__ import annotations
@@ -33,8 +32,6 @@ from backend.paging.channels import (
     EmailChannel,
     SlackDMChannel,
     SMSChannel,
-    TeamsDMChannel,
-    TeamsGraphDMChannel,
     VoiceChannel,
 )
 from backend.paging.dispatch import Channel, ChannelFactory
@@ -54,7 +51,6 @@ def build_channel_factory(
     src: Mapping[str, str] = env if env is not None else os.environ
 
     slack_token = src.get("OPSMENDER_SLACK_BOT_TOKEN") or None
-    teams_webhook = src.get("OPSMENDER_TEAMS_WEBHOOK_URL") or None
     smtp_host = src.get("OPSMENDER_SMTP_HOST") or None
     smtp_port_raw = src.get("OPSMENDER_SMTP_PORT") or ""
     try:
@@ -81,15 +77,9 @@ def build_channel_factory(
         src.get("OPSMENDER_TWILIO_VOICE_STATUS_CALLBACK_URL") or None
     )
 
-    teams_graph_tenant = src.get("OPSMENDER_TEAMS_GRAPH_TENANT_ID") or None
-    teams_graph_client = src.get("OPSMENDER_TEAMS_GRAPH_CLIENT_ID") or None
-    teams_graph_secret = src.get("OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET") or None
-
     def factory(key: str) -> Channel | None:
         if key == "slack_dm" and slack_token:
             return SlackDMChannel(bot_token=slack_token)
-        if key == "teams_dm" and teams_webhook:
-            return TeamsDMChannel(webhook_url=teams_webhook)
         if key == "email" and smtp_host:
             return EmailChannel(
                 smtp_host=smtp_host,
@@ -111,17 +101,6 @@ def build_channel_factory(
                 auth_token=twilio_token,
                 from_number=twilio_voice_from,
                 status_callback_url=twilio_voice_status_cb,
-            )
-        if (
-            key == "teams_dm_graph"
-            and teams_graph_tenant
-            and teams_graph_client
-            and teams_graph_secret
-        ):
-            return TeamsGraphDMChannel(
-                tenant_id=teams_graph_tenant,
-                client_id=teams_graph_client,
-                client_secret=teams_graph_secret,
             )
         return None
 

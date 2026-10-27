@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import backend.bots  # noqa: F401  -- registers built-in adapters
 from backend.bots.capabilities import (
+    platform_delivers,
     supports_interactive_actions,
     supports_message_update,
 )
@@ -606,6 +607,10 @@ async def _deliver(
     generated_at: datetime | None = None,
 ) -> None:
     """Serialize a card's stale check, provider send and receipt commit."""
+    if not platform_delivers(connector.platform):
+        # M1-96: a platform being rebuilt (Teams) receives nothing, and is not
+        # marked failed on every incident event either.
+        return
     card_event = incident_id is not None and lifecycle_event in INCIDENT_CHAT_EVENTS
     key = (
         f"incident-card:{org_id}:{incident_id}:{connector.id}:{chat_id}"
@@ -874,9 +879,10 @@ async def deliver_incident_event(
     Honest delivery: each platform receives the same useful incident message
     with an authenticated incident link. Interactive action controls are only
     rendered when the platform supports interactive callbacks and the channel
-    has native actions enabled with a configured verifier. Slack and Teams
+    has native actions enabled with a configured verifier. Slack and Discord
     verify every callback before the shared action coordinator permits a
-    mutation.
+    mutation. A platform that is being rebuilt (M1-96: Microsoft Teams)
+    receives nothing; :func:`_deliver` skips it.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
 
@@ -932,7 +938,6 @@ async def deliver_incident_event(
         is_track = _has_lane(connector, "track")
         if is_track and connector.platform not in {
             "slack",
-            "teams",
             "discord",
             "google_chat",
             "eventbridge",
@@ -1087,7 +1092,6 @@ async def deliver_incident_text(
             continue
         if is_track and connector.platform not in {
             "slack",
-            "teams",
             "discord",
             "google_chat",
             "eventbridge",

@@ -18,6 +18,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables and any rows in them; the database migration's downgrade recreates
   the tables empty. The audit log of tool calls and admin changes is a
   different feature and is unchanged.
+- Microsoft Teams delivery, until it is rebuilt as a Teams Workflows connector
+  and then a Teams bot. The Teams support did not work as built. Microsoft
+  lets an app post Teams chat messages through Microsoft Graph with app-only
+  access only during a migration. A card posted through Graph can carry only
+  link buttons. The Office 365 connector webhooks behind the older message
+  cards are retired. OpsMender now sends nothing to Teams: no pages, incident
+  cards, status updates or AI session posts. A page routed to a saved Teams
+  contact method (`teams_dm` or `teams_dm_graph`), or a routing stage that
+  uses a Teams Notification Channel, is recorded as skipped with the reason
+  `teams_rebuilding`, and the next stage still fires after its wait. The
+  incident timeline says Teams delivery is being rebuilt. Check configuration
+  on a Teams Notification Channel shows only the `enabled` check and a failing
+  `platform` check that gives the reason, and no live test is sent. The Track
+  lane is refused for Teams. The Teams platform capabilities report
+  `delivery: false`, `delivery_only: false` and an `unavailable_reason`. A
+  button on an old Teams card answers with the reason and changes nothing.
+  OpsMender no longer reads `OPSMENDER_TEAMS_WEBHOOK_URL`,
+  `OPSMENDER_TEAMS_GRAPH_TENANT_ID`, `OPSMENDER_TEAMS_GRAPH_CLIENT_ID` or
+  `OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET`. Saved Teams Notification Channels and
+  contact methods are kept, and their Health column shows that Teams is being
+  rebuilt instead of a stale status. The settings page marks Teams as being
+  rebuilt and does not add new Teams channels. Move any routing stage that
+  points at Teams to Slack, email or another channel.
 
 ### Security
 

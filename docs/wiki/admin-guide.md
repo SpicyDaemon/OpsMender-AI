@@ -152,7 +152,7 @@ remediation are routed through Operator Approval.
 Workspace-level notification channels are managed under **Paging & On-call** > **Notification Channels**.
 
 1. Click **Add Channel**.
-2. Choose the platform (e.g., `telegram`, `slack`, `discord`, `teams`, `mattermost`, `matrix`, `whatsapp`, `signal`, `lark`, `dingtalk`, `wecom`, `twilio`, `email`).
+2. Choose the platform (e.g., `telegram`, `slack`, `discord`, `mattermost`, `matrix`, `whatsapp`, `signal`, `lark`, `dingtalk`, `wecom`, `twilio`, `email`).
 3. Add platform-specific connector settings as JSON.
 4. Add credentials as `key=value` lines (e.g., `bot_token=...`).
 5. Select allowed capabilities (e.g., `incident_lookup`, `session_status`, `approvals`, `notifications`).
@@ -161,6 +161,13 @@ Workspace-level notification channels are managed under **Paging & On-call** > *
    readiness are each graded pass/warn/fail), or **Send live test** to probe the
    provider connection and post a real test message to the channel's
    destination.
+
+Microsoft Teams (`teams`) delivery is being rebuilt. The settings page does
+not add new Teams channels. Saved ones are kept and stay editable, but they
+send nothing on any lane, their native actions stay off, a saved Track lane is
+dropped the next time you save, there is no **Send live test**, and **Check
+configuration** fails with the reason. See
+[Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 Telegram webhook URL:
 

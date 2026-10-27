@@ -5519,40 +5519,69 @@ class TestBotConnectorsAPI:
         assert missing_secret.status_code == 201
         assert missing_secret.json()["callback_status"] == "not_configured"
 
-    async def test_teams_native_actions_require_bot_app_id_readiness(
+    async def test_a_teams_connector_is_kept_but_claims_and_passes_nothing(
         self, client: AsyncClient, auth_headers
     ):
-        base = {
-            "platform": "teams",
-            "credentials": {
-                "tenant_id": "tenant",
-                "client_id": "client",
-                "client_secret": "secret",
-            },
-            "allowed_capabilities": ["notifications"],
-            "is_enabled": True,
-            "native_actions_enabled": True,
-        }
-        configured = await client.post(
+        # M1-96: Teams delivery is being rebuilt. A connector can still be
+        # stored, but native actions stay off, it claims no capability, and
+        # Check configuration fails with the reason before any network call.
+        from backend.bots.capabilities import TEAMS_REBUILDING
+
+        created = await client.post(
             "/bot-connectors",
             json={
-                **base,
-                "name": "teams-native-ready",
-                "config": {"bot_app_id": "bot-app"},
+                "name": "teams-kept",
+                "platform": "teams",
+                "credentials": {
+                    "tenant_id": "tenant",
+                    "client_id": "client",
+                    "client_secret": "secret",
+                },
+                "config": {"bot_app_id": "bot-app", "default_chat_id": "19:chat"},
+                "allowed_capabilities": ["notifications"],
+                "is_enabled": True,
+                "native_actions_enabled": True,
             },
             headers=auth_headers,
         )
-        assert configured.status_code == 201
-        assert configured.json()["native_actions_enabled"] is True
-        assert configured.json()["callback_status"] == "configured"
+        assert created.status_code == 201
+        body = created.json()
+        assert body["native_actions_enabled"] is False
+        assert body["callback_status"] == "not_configured"
+        caps = body["platform_capabilities"]
+        assert caps["unavailable_reason"] == TEAMS_REBUILDING
+        assert not caps["delivery"] and not caps["interactive_actions"]
 
-        missing_app = await client.post(
-            "/bot-connectors",
-            json={**base, "name": "teams-native-missing-app"},
+        checked = await client.post(
+            f"/bot-connectors/{body['id']}/test",
+            json={"live": True},
             headers=auth_headers,
         )
-        assert missing_app.status_code == 201
-        assert missing_app.json()["callback_status"] == "not_configured"
+        assert checked.status_code == 200
+        result = checked.json()
+        assert result["success"] is False
+        # Only the enabled check and the reason: no credential, destination or
+        # native-action row that reads as if the channel could post. A failed
+        # configuration never reaches the live connection or send either.
+        assert [(c["name"], c["level"]) for c in result["checks"]] == [
+            ("enabled", "pass"),
+            ("platform", "fail"),
+        ]
+        assert result["checks"][1]["detail"] == TEAMS_REBUILDING
+
+        # Teams gets no Track lane.
+        track = await client.post(
+            "/bot-connectors",
+            json={
+                "name": "teams-track",
+                "platform": "teams",
+                "allowed_capabilities": ["notifications"],
+                "lanes": ["track"],
+            },
+            headers=auth_headers,
+        )
+        assert track.status_code == 400
+        assert "Teams" not in track.json()["detail"]
 
     async def test_discord_native_actions_require_public_key_readiness(
         self, client: AsyncClient, auth_headers

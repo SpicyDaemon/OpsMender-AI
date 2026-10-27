@@ -29,10 +29,12 @@ const SLACK = `<svg width="28" height="28" viewBox="0 0 256 256" aria-hidden="tr
 const LARK = `<svg width="28" height="28" viewBox="0 0 32 25.37" aria-hidden="true"><path fill="#4BC0AE" d="m16.59 13.32.08-.08.27-.27.32-.32.83-.81.73-.72.48-.47c.29-.28.59-.54.91-.78.64-.51 1.36-.93 2.12-1.28.52-.25 1.06-.45 1.61-.62A18.8 18.8 0 0 0 20.39.86 1.72 1.72 0 0 0 19.05 0H5.37a.26.26 0 0 0-.16.47 36.9 36.9 0 0 1 11.34 12.89z"/><path fill="#4C6EB5" d="M11.15 25.37c7.07 0 13.23-3.9 16.43-9.66.12-.2.23-.41.33-.61-.21.42-.47.81-.75 1.18a7.2 7.2 0 0 1-2.21 1.92 7.6 7.6 0 0 1-3.2.82c-.67.03-1.35-.04-2.01-.2l-2.05-.62a33 33 0 0 1-4.62-1.77A38.8 38.8 0 0 1 .45 7.58a.26.26 0 0 0-.45.18v13.06c0 .57.28 1.1.75 1.42a18.75 18.75 0 0 0 10.4 3.13"/><path fill="#214295" d="M31.92 8.34a11.24 11.24 0 0 0-7.99-.6 12.4 12.4 0 0 0-4.03 2.31l-3.32 3.27a17.2 17.2 0 0 1-3.9 2.76 34.4 34.4 0 0 0 7.06 2.74c1.32.33 2.7.28 3.99-.17a7.5 7.5 0 0 0 3.43-2.37c.28-.37.53-.76.75-1.17l1.83-3.65a11.3 11.3 0 0 1 2.18-3.12"/></svg>`;
 
 // Order is the order on the page. `buttons` marks platforms with verified
-// interactive actions (see backend/bots/capabilities.py).
+// interactive actions (see backend/bots/capabilities.py). `rebuilding` marks a
+// platform that sends nothing until its rebuild lands; the page leaves it out
+// of the platform marquee and the platform count.
 const platforms = [
   { id: 'slack',        name: 'Slack',            note: 'Rich card with buttons to act on',           svg: SLACK, buttons: true },
-  { id: 'teams',        name: 'Microsoft Teams',  note: 'Rich card with buttons to act on',           svg: render(bi.BiLogoMicrosoftTeams, '#6264A7'), buttons: true },
+  { id: 'teams',        name: 'Microsoft Teams',  note: 'Being rebuilt, sends nothing for now', svg: render(bi.BiLogoMicrosoftTeams, '#6264A7'), rebuilding: true },
   { id: 'discord',      name: 'Discord',          note: 'Rich card with buttons to act on',           svg: render(si.SiDiscord, '#5865F2'), buttons: true },
   { id: 'telegram',     name: 'Telegram',         note: 'Channel or direct message',   svg: render(si.SiTelegram, '#26A5E4') },
   { id: 'signal',       name: 'Signal',           note: 'Direct message',              svg: render(si.SiSignal, '#3A76F0') },

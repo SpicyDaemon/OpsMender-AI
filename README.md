@@ -80,16 +80,17 @@ reproduce all 13 images, including the Tier 1 approval view.
   closed.
 - **Incident management**: P0-P3 priority, dedup, **combine/merge**, escalation chains, rosters + a team **On Call Schedule** (timezone-aware shifts, click-a-person coverage overrides), maintenance windows.
 - **Similar alert grouping**: optional per-service grouping folds similar alerts into the open incident instead of paging again; automatic flapping detection suppresses repeat pages during fire/clear storms (**P0 always pages**).
-- **On-call paging**: verified Slack, Teams, and Discord incident actions,
+- **On-call paging**: verified Slack and Discord incident actions,
   plus Email / SMS / Voice Call delivery and per-incident channels; the voice
   IVR keypad does 1 acknowledge / 2 escalate / 3 resolve. Reopening a resolved
   paging incident starts a new round; taking an owned incident requests its
   owner's consent, with a reasoned force option for admins and teammates.
   A misrouted incident can be reassigned to the right team, whose Escalation
   Chain then pages, and up to three extra responders can be asked to help.
+  Microsoft Teams support is being rebuilt, so OpsMender sends nothing to
+  Teams for now.
 - **Shared incident tracking**: update-in-place Slack, Discord, and Google
-  Chat status, Teams follow-ups, and versioned AWS EventBridge lifecycle
-  events.
+  Chat status, and versioned AWS EventBridge lifecycle events.
 - **Incident reporting**: on-demand CSV/PDF metrics plus scheduled
   weekly/monthly/quarterly email reports from organization SMTP.
 - **Operational analytics**: read-only **Noise** (alert volume, reduction ratio,
@@ -146,7 +147,7 @@ flowchart LR
 
   API --> DB[("PostgreSQL / SQLite")]
   API --> PAGE["Paging engine<br/>escalation · rosters"]
-  PAGE --> NOTIF["Notification channels<br/>Slack · Teams · Email · SMS"]
+  PAGE --> NOTIF["Notification channels<br/>Slack · Discord · Email · SMS"]
   API --> AGENT["LangGraph agent<br/>observe→diagnose→plan→tier_gate→execute→verify→summarize"]
   AGENT -->|"audited tool calls"| MCP["MCP servers<br/>your infrastructure"]
   AGENT -->|"tier-gated internal tools"| INT["Integration connectors<br/>encrypted auth · self-host base URLs"]
@@ -355,7 +356,8 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`): define routing and on-call.
 5. **On Call Schedule** (`/dashboard/on-call-schedule`): see who's on call per level, replace coverage, and view shifts in any time zone.
 6. **Notification channels** (`/dashboard/paging/notifications`): Slack /
-   Teams / Discord / Email / SMS / Voice Call.
+   Discord / Email / SMS / Voice Call. Microsoft Teams support is being
+   rebuilt and sends nothing for now.
 7. **Voice & SMS calling** (`/dashboard/config`): optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
 8. **People** (`/dashboard/people`): invite operators (Admin / Operator / Viewer).
 9. **Tier** (`/dashboard/config`): default is `2` (advisory); raise to `1`/`0` when ready.
@@ -454,7 +456,7 @@ connector, and the [Admin guide](docs/wiki/admin-guide.md) for credential setup.
 
 ## Documentation
 
-Start with **[Getting Started](docs/wiki/getting-started.md)**. Other guides: [Admin](docs/wiki/admin-guide.md) · [Auth](docs/wiki/auth-guide.md) / [Advanced auth](docs/wiki/advanced-auth-guide.md) · [Paging](docs/wiki/paging-guide.md) · [Skills & MCP](docs/wiki/skills-guide.md) · [Operator](docs/wiki/operator-guide.md) · [Memory](docs/wiki/memory-guide.md) · [Postmortems](docs/wiki/postmortem-guide.md) · [Reliability](docs/wiki/reliability-guide.md) · [Slack](docs/wiki/slack-paging-surface.md) / [Teams](docs/wiki/teams-paging-surface.md) surfaces.
+Start with **[Getting Started](docs/wiki/getting-started.md)**. Other guides: [Admin](docs/wiki/admin-guide.md) · [Auth](docs/wiki/auth-guide.md) / [Advanced auth](docs/wiki/advanced-auth-guide.md) · [Paging](docs/wiki/paging-guide.md) · [Skills & MCP](docs/wiki/skills-guide.md) · [Operator](docs/wiki/operator-guide.md) · [Memory](docs/wiki/memory-guide.md) · [Postmortems](docs/wiki/postmortem-guide.md) · [Reliability](docs/wiki/reliability-guide.md) · [Slack](docs/wiki/slack-paging-surface.md) surface · [Teams (being rebuilt)](docs/wiki/teams-paging-surface.md).
 
 ## Contributing & security
 

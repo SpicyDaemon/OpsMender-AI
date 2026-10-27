@@ -107,6 +107,7 @@ from backend.integrations.overlap import (
 )
 from backend.paging.on_call import on_call_at
 from backend.paging.on_call_context import load_on_call_context
+from backend.paging.routing import TEAMS_CHANNEL_KEYS, TEAMS_SKIP_REASON
 
 
 router = APIRouter(tags=["paging"])
@@ -2050,6 +2051,12 @@ async def test_my_notification_preferences(
 
     results: list[dict[str, str | None]] = []
     for key in sorted(keys):
+        if key in TEAMS_CHANNEL_KEYS:
+            # M1-96: Teams delivery is being rebuilt; say so, as a page does.
+            results.append(
+                {"channel": key, "status": "skipped", "detail": TEAMS_SKIP_REASON}
+            )
+            continue
         recipient = addresses.get(key)
         if not recipient:
             results.append(

@@ -7,6 +7,7 @@ import hmac
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -15,6 +16,7 @@ from backend.api.routes.bot_connectors import (
     _resolve_test_chat_id,
     _status_from_checks,
 )
+from backend.bots.capabilities import TEAMS_REBUILDING
 from backend.bots.connectors import SignalAdapter, TelegramAdapter, get_adapter
 from backend.db.models import BotConnector
 
@@ -690,42 +692,15 @@ class TestSMTPEmailAdapter:
 
 
 class TestTeamsAdapter:
-    async def test_incident_delivery_posts_verified_adaptive_card(self, monkeypatch):
-        captured = {}
+    async def test_sends_nothing_and_its_test_fails_without_a_network_call(
+        self, monkeypatch
+    ):
+        # M1-96: Graph app-only chat posts work only during a migration, so the
+        # adapter sends nothing and says why. Any HTTP client use would fail.
+        def no_network(*args, **kwargs):
+            raise AssertionError("the Teams adapter must not call the network")
 
-        async def fake_token(**kwargs):
-            return SimpleNamespace(token_type="Bearer", access_token="token")
-
-        class FakeResponse:
-            status_code = 201
-
-            @staticmethod
-            def json():
-                return {"id": "teams-message-1"}
-
-        class FakeClient:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *args):
-                return None
-
-            async def post(self, url, **kwargs):
-                captured["url"] = url
-                captured["json"] = kwargs["json"]
-                return FakeResponse()
-
-        monkeypatch.setattr(
-            "backend.bots.connectors.teams.acquire_app_only_token",
-            fake_token,
-        )
-        monkeypatch.setattr(
-            "backend.bots.connectors.teams.httpx.AsyncClient",
-            FakeClient,
-        )
+        monkeypatch.setattr(httpx, "AsyncClient", no_network)
         connector = BotConnector(
             name="teams-test",
             platform="teams",
@@ -748,23 +723,19 @@ class TestTeamsAdapter:
             status="open",
             severity="high",
         )
-        receipt = await get_adapter("teams").send_incident_update(
+        adapter = get_adapter("teams")
+        receipt = await adapter.send_incident_update(
             connector,
             chat_id="19:chat@thread.v2",
             text="fallback",
             incident=incident,
             native_actions_ready=True,
         )
-        assert receipt.ok is True
-        assert receipt.external_message_id == "teams-message-1"
-        assert captured["url"].endswith("/chats/19:chat@thread.v2/messages")
-        actions = captured["json"]["attachments"][0]["content"]["actions"]
-        assert {action["title"] for action in actions} == {
-            "Acknowledge",
-            "Resolve",
-            "Escalate",
-            "Start AI Session",
-        }
+        assert receipt.ok is False and receipt.error == TEAMS_REBUILDING
+        assert await adapter.send_message(
+            connector, chat_id="19:chat@thread.v2", text="hi"
+        ) == (False, TEAMS_REBUILDING)
+        assert await adapter.test_connection(connector) == (False, TEAMS_REBUILDING)
 
 
 class TestEventBridgeAdapter:

@@ -100,9 +100,9 @@ def _validate_lanes(lanes: list[str]) -> list[str]:
 
 def _validate_platform_lanes(platform: str, lanes: list[str]) -> list[str]:
     cleaned = _validate_lanes(lanes)
+    # Not Teams (M1-96): Teams delivery is being rebuilt, so it gets no lane.
     if "track" in cleaned and platform not in {
         "slack",
-        "teams",
         "discord",
         "google_chat",
         "eventbridge",
@@ -110,8 +110,8 @@ def _validate_platform_lanes(platform: str, lanes: list[str]) -> list[str]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Track lane currently supports Slack, Microsoft Teams, "
-                "Discord, Google Chat, and AWS EventBridge."
+                "Track lane currently supports Slack, Discord, Google Chat, "
+                "and AWS EventBridge."
             ),
         )
     return cleaned
@@ -338,6 +338,14 @@ def _connector_config_checks(
         checks.append(_check("enabled", "fail", "Connector is disabled."))
         return checks
     checks.append(_check("enabled", "pass", "Connector is enabled."))
+
+    # A platform that sends nothing (M1-96: Teams) gets its reason and no
+    # other check: credential, destination and native-action checks would read
+    # as if the channel could post.
+    platform_caps = get_platform_capabilities(connector.platform)
+    if platform_caps is not None and platform_caps.unavailable_reason:
+        checks.append(_check("platform", "fail", platform_caps.unavailable_reason))
+        return checks
 
     credentials = connector.credentials or {}
     required_keys = REQUIRED_CREDENTIAL_KEYS.get(connector.platform, ())

@@ -4175,9 +4175,9 @@ function NotificationsPanel({
           </h3>
           <p className="mt-1 text-sm text-fg-secondary">
             Workspace-level channels OpsMender uses to reach people: Telegram,
-            Signal, WhatsApp, Slack, Discord, Microsoft Teams, Mattermost,
-            Matrix, Email, SMS, and custom adapters. Chat-capable adapters can
-            also host incident sessions.
+            Signal, WhatsApp, Slack, Discord, Mattermost, Matrix, Email, SMS,
+            and custom adapters. Chat-capable adapters can also host incident
+            sessions.
           </p>
           <div className="mt-4">
             <NotificationChannelsPage embedded />
@@ -4333,15 +4333,26 @@ const QUIET_DAYS: { value: number; label: string }[] = [
   { value: 6, label: "Sun" },
 ];
 
-// Friendly labels for legacy delivery keys still present in older prefs.
+// Friendly labels for legacy delivery keys still present in older prefs. They
+// label saved stages only and are never offered as a new choice.
 const LEGACY_CHANNEL_LABELS: Record<string, string> = {
   slack_dm: "Slack DM",
-  teams_dm: "Teams DM",
-  teams_dm_graph: "Teams DM",
+  teams_dm: "Teams DM (being rebuilt)",
+  teams_dm_graph: "Teams DM (being rebuilt)",
   email: "Email",
   sms: "SMS",
   voice: "Voice Call",
 };
+
+// Saved keys OpsMender skips while Teams delivery is being rebuilt (M1-96).
+const REBUILDING_CHANNEL_KEYS = new Set(["teams_dm", "teams_dm_graph"]);
+
+/** Whether OpsMender sends anything through a connector. A platform the API
+ *  marks as sending nothing (M1-96: Microsoft Teams) is not a destination. */
+function connectorDelivers(connector: BotConnectorResponse): boolean {
+  const caps = connector.platform_capabilities;
+  return !caps || (caps.delivery !== false && !caps.unavailable_reason);
+}
 
 // Stage delay options gating the next escalation stage.
 const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
@@ -4513,7 +4524,7 @@ export function NotificationPreferencesPanel({
   const channelOptions = useMemo(
     () => [
       ...botConnectors
-        .filter((c) => c.is_enabled)
+        .filter((c) => c.is_enabled && connectorDelivers(c))
         .map((c) => ({ value: c.id, label: c.name, disabled: false })),
       {
         value: "sms",
@@ -4536,10 +4547,33 @@ export function NotificationPreferencesPanel({
   );
 
   const channelLabel = useCallback(
-    (channelId: string) =>
-      botConnectors.find((c) => c.id === channelId)?.name ??
-      LEGACY_CHANNEL_LABELS[channelId] ??
-      channelId,
+    (channelId: string) => {
+      const connector = botConnectors.find((c) => c.id === channelId);
+      if (connector) {
+        return connectorDelivers(connector)
+          ? connector.name
+          : `${connector.name} (being rebuilt)`;
+      }
+      return LEGACY_CHANNEL_LABELS[channelId] ?? channelId;
+    },
+    [botConnectors],
+  );
+
+  // Why OpsMender skips a saved stage, or null when the stage can deliver.
+  const stageSkipReason = useCallback(
+    (channelId: string): string | null => {
+      const connector = botConnectors.find((c) => c.id === channelId);
+      if (connector) {
+        if (connectorDelivers(connector)) return null;
+        const reason =
+          connector.platform_capabilities?.unavailable_reason ||
+          "OpsMender sends nothing to this channel yet.";
+        return `${reason} OpsMender skips this stage.`;
+      }
+      return REBUILDING_CHANNEL_KEYS.has(channelId)
+        ? "Teams DM is being rebuilt, so OpsMender skips this stage."
+        : null;
+    },
     [botConnectors],
   );
 
@@ -4795,6 +4829,7 @@ export function NotificationPreferencesPanel({
                     const inOptions = channelOptions.some(
                       (o) => o.value === stage.channel_id,
                     );
+                    const skipReason = stageSkipReason(stage.channel_id);
                     return (
                       <li
                         key={idx}
@@ -4841,6 +4876,11 @@ export function NotificationPreferencesPanel({
                             Configure in Settings → Voice &amp; SMS calling.
                           </span>
                         ) : null}
+                        {skipReason && (
+                          <span className="w-full text-xs text-fg-muted">
+                            {skipReason}
+                          </span>
+                        )}
                         {/* The last stage's wait is the answer window: how long the
                             next escalation level waits for you after it (M1-22). */}
                         <label
@@ -4922,8 +4962,8 @@ export function NotificationPreferencesPanel({
                                 >
                                   profile
                                 </a>
-                                ). This is a phone call, not a Slack or Teams
-                                call.
+                                ). This is a phone call, not a call in a chat
+                                app.
                               </p>
                             ) : (
                               <p className="flex items-center gap-1.5 text-xs text-status-high">
@@ -4987,7 +5027,7 @@ export function NotificationPreferencesPanel({
           ) : (
             "Notification Channels"
           )}
-          . Chat-capable channels (Slack, Teams) can also host incident
+          . Chat-capable channels such as Slack can also host incident
           sessions; Email and SMS are delivery-only. <strong>Voice Call</strong>{" "}
           places an automated phone call to the number on your{" "}
           <a
@@ -4996,7 +5036,7 @@ export function NotificationPreferencesPanel({
           >
             profile
           </a>
-          . It is a phone call, not a Slack or Teams call.
+          . It is a phone call, not a call in a chat app.
         </span>
       </div>
 

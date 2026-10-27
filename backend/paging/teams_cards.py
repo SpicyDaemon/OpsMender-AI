@@ -1,8 +1,14 @@
 """Teams Adaptive Card builder for paging and Notification Channels.
 
+Nothing posts these cards today: Teams delivery is being rebuilt (M1-96).
+The Bot Framework activity endpoint still uses the action ids and
+:func:`parse_incident_id_from_action` to answer a button on a card posted
+earlier with the reason. The builders are kept for the Teams Workflows
+connector and bot that replace the Microsoft Graph path.
+
 Parallels :mod:`backend.paging.slack_cards`. A *Teams page card* is an
-adaptive card the dispatcher embeds in a Microsoft Graph chat message
-as an ``attachment`` of type ``application/vnd.microsoft.card.adaptive``.
+adaptive card that was embedded in a Microsoft Graph chat message as an
+``attachment`` of type ``application/vnd.microsoft.card.adaptive``.
 
 The card carries the same affordances as the Slack equivalent:
 
@@ -77,8 +83,8 @@ def build_page_card_adaptive(
     to convert it into the Graph chat-message ``attachments`` array.
 
     ``facts`` (from ``incident_card_facts``) join the FactSet. Once
-    ``acknowledged_by`` is set the Acknowledge action goes; Teams cannot edit
-    a posted card, so each change posts a fresh one in this state.
+    ``acknowledged_by`` is set the Acknowledge action goes; Graph cannot edit
+    a posted card, so the Graph path posted a fresh one for each change.
     """
 
     priority = (incident.priority or "P?").upper()
@@ -220,7 +226,8 @@ def build_graph_chat_message(
     acknowledged_by: str | None = None,
 ) -> dict[str, Any]:
     """Return a complete Graph ``chats/{id}/messages`` payload carrying
-    the adaptive card. This is the value the dispatcher posts to Graph.
+    the adaptive card. Nothing posts it today (M1-96): Teams delivery is
+    being rebuilt, and the dispatcher skips Teams pages.
     """
 
     card = build_page_card_adaptive(

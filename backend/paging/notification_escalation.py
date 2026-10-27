@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import backend.bots  # noqa: F401  -- registers built-in connector adapters
+from backend.bots.capabilities import platform_delivers
 from backend.bots.connectors import get_adapter
 from backend.db.models import Incident, User
 from backend.db.repos import (
@@ -36,7 +37,13 @@ from backend.db.repos import (
     NotificationEscalationRepo,
     UserNotificationPrefRepo,
 )
-from backend.paging.routing import LEGACY_CHANNEL_KEYS, Stage, parse_stages
+from backend.paging.routing import (
+    LEGACY_CHANNEL_KEYS,
+    TEAMS_CHANNEL_KEYS,
+    TEAMS_SKIP_REASON,
+    Stage,
+    parse_stages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,9 @@ def build_notification_sender(
     ) -> tuple[str, str | None]:
         # Legacy delivery key → paging channel factory + the user's saved
         # destination for that key.
+        if channel_id in TEAMS_CHANNEL_KEYS:
+            # M1-96: Teams delivery is being rebuilt; never recorded as sent.
+            return ("skipped", TEAMS_SKIP_REASON)
         if channel_id in LEGACY_CHANNEL_KEYS:
             prefs = await UserNotificationPrefRepo.get_for_user(db, org_id, user.id)
             addresses = dict(prefs.channels) if (prefs and prefs.channels) else {}
@@ -154,6 +164,8 @@ def build_notification_sender(
         connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
         if connector is None or not connector.is_enabled:
             return ("skipped", "channel_unconfigured")
+        if not platform_delivers(connector.platform):
+            return ("skipped", TEAMS_SKIP_REASON)
         adapter = get_adapter(connector.platform)
         if adapter is None:
             return ("skipped", "no_adapter")

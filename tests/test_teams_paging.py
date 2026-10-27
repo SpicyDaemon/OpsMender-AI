@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.api.app import create_app
 from backend.api.deps import get_db, set_mcp_pool, set_session_factory
 from backend.auth import bot_framework
+from backend.bots.capabilities import TEAMS_REBUILDING
 from backend.config_loader import set_env_path
 from backend.db.models import Base, Incident, Organization
 from backend.db.repos import (
@@ -438,111 +439,39 @@ class TestTeamsActivityEndpoint:
 
         assert resp.status_code == 200, resp.text
 
-    async def test_ack_button_routes_through_engine(self, client, app, signing_key):
+    @pytest.mark.parametrize(
+        "action", [ACTION_ACK, ACTION_RESOLVE, ACTION_START_AI_SESSION]
+    )
+    async def test_a_verified_action_is_refused_while_teams_is_rebuilt(
+        self, client, app, signing_key, action
+    ):
+        # M1-96: Teams buttons wait for the bot that replaces this path. A
+        # verified click on an old card gets the reason and changes nothing.
         connector = await _seed_teams_connector(app)
         await _seed_user_and_link(app, connector_id=connector.id)
-        incident = await _seed_incident(app, title="ack-me")
-
-        token = _sign_jwt(signing_key)
-        body = _activity_payload(action=ACTION_ACK, incident_id=incident.id)
+        incident = await _seed_incident(app, title="old-card")
         resp = await client.post(
             "/bot/teams/activity",
-            json=body,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200, resp.text
-        text = resp.json()["text"]
-        assert "ack-me" in text
-        assert "acknowledged" in text or "recorded" in text
-        async with app.state.session_factory() as db:
-            reloaded = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
-            assert reloaded.callback_status == "verified"
-
-    async def test_unlinked_user_gets_friendly_reply(self, client, app, signing_key):
-        await _seed_teams_connector(app)
-        incident = await _seed_incident(app)
-        token = _sign_jwt(signing_key)
-        body = _activity_payload(
-            action=ACTION_ACK,
-            incident_id=incident.id,
-            aad_oid="stranger",
-        )
-        resp = await client.post(
-            "/bot/teams/activity",
-            json=body,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200
-        assert "isn't linked" in resp.json()["text"]
-
-    async def test_resolve_marks_incident_resolved(self, client, app, signing_key):
-        connector = await _seed_teams_connector(app)
-        await _seed_user_and_link(app, connector_id=connector.id)
-        incident = await _seed_incident(app, title="bye")
-        token = _sign_jwt(signing_key)
-        body = _activity_payload(action=ACTION_RESOLVE, incident_id=incident.id)
-        resp = await client.post(
-            "/bot/teams/activity",
-            json=body,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200
-        async with app.state.session_factory() as db:
-            reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
-            assert reloaded.status == "resolved"
-
-    async def test_viewer_cannot_mutate(self, client, app, signing_key):
-        connector = await _seed_teams_connector(app)
-        await _seed_user_and_link(
-            app,
-            connector_id=connector.id,
-            aad_oid="aad-viewer",
-            role="viewer",
-        )
-        incident = await _seed_incident(app)
-        body = _activity_payload(
-            action=ACTION_RESOLVE,
-            incident_id=incident.id,
-            aad_oid="aad-viewer",
-        )
-        resp = await client.post(
-            "/bot/teams/activity",
-            json=body,
+            json=_activity_payload(action=action, incident_id=incident.id),
             headers={"Authorization": f"Bearer {_sign_jwt(signing_key)}"},
         )
-        assert resp.status_code == 200
-        assert "role cannot perform" in resp.json()["text"]
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["text"] == TEAMS_REBUILDING
         async with app.state.session_factory() as db:
             reloaded = await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
-            assert reloaded.status != "resolved"
-
-    async def test_duplicate_activity_is_deduplicated(self, client, app, signing_key):
-        connector = await _seed_teams_connector(app)
-        user, _ = await _seed_user_and_link(app, connector_id=connector.id)
-        incident = await _seed_incident(app)
-        # The owner may start the incident's AI session (M1-13).
-        async with app.state.session_factory() as db:
-            await IncidentAssignmentRepo.assign(
-                db, TEST_ORG_ID, incident_id=incident.id, user_id=user.id
+            assert reloaded.status == "open"
+            assert (
+                await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, incident.id)
+                is None
             )
-            await db.commit()
-        body = _activity_payload(
-            action=ACTION_START_AI_SESSION,
-            incident_id=incident.id,
-        )
-        headers = {"Authorization": f"Bearer {_sign_jwt(signing_key)}"}
-        first = await client.post("/bot/teams/activity", json=body, headers=headers)
-        second = await client.post("/bot/teams/activity", json=body, headers=headers)
-        assert first.status_code == second.status_code == 200
-        async with app.state.session_factory() as db:
-            invocation = await NativeActionInvocationRepo.get_by_key(
-                db,
-                TEST_ORG_ID,
-                connector.id,
-                "activity-1",
+            assert (
+                await NativeActionInvocationRepo.get_by_key(
+                    db, TEST_ORG_ID, connector.id, "activity-1"
+                )
+                is None
             )
-            assert invocation is not None
-            assert invocation.status == "applied"
+            stored = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
+            assert stored.callback_status != "verified"
 
     async def test_view_action_short_circuits(self, client, app, signing_key):
         connector = await _seed_teams_connector(app)

@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
-import httpx
 
-from backend.auth import graph_oauth
 from backend.db.models import Incident
-from backend.paging.channels import TeamsGraphDMChannel
 from backend.paging.teams_cards import (
     ACTION_ACK,
     ACTION_ESCALATE,
@@ -238,58 +234,3 @@ class TestParseIncidentIdFromAction:
 
     def test_malformed_returns_none(self):
         assert parse_incident_id_from_action({"incident_id": "not-a-uuid"}) is None
-
-
-class TestTeamsGraphChannelWithCard:
-    """End-to-end: dispatcher passes the adaptive-card attachment via the
-    ``blocks`` kwarg, the channel embeds it in the Graph message payload.
-    """
-
-    async def test_card_payload_lands_in_graph_post(self):
-        graph_oauth.reset_token_cache()
-        captured: list[httpx.Request] = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured.append(request)
-            if "/oauth2/v2.0/token" in str(request.url):
-                return httpx.Response(
-                    200,
-                    json={
-                        "access_token": "t",
-                        "expires_in": 3600,
-                        "token_type": "Bearer",
-                    },
-                )
-            return httpx.Response(201, json={"id": "1"})
-
-        transport = httpx.MockTransport(handler)
-
-        def factory():
-            return httpx.AsyncClient(transport=transport)
-
-        ch = TeamsGraphDMChannel(
-            tenant_id="t",
-            client_id="c",
-            client_secret="s",
-            http_client_factory=factory,
-        )
-        inc = _incident()
-        attachment = wrap_card_as_attachment(
-            build_page_card_adaptive(inc, base_url="https://ops.example.com")
-        )
-        result = await ch.send(
-            recipient="19:aaa@thread.v2",
-            subject="hi",
-            body="b",
-            blocks=[attachment],
-        )
-        assert result.status == "sent"
-        post = captured[1]
-        body = json.loads(post.content.decode("utf-8"))
-        assert body["attachments"][0]["contentType"] == ADAPTIVE_CARD_CONTENT_TYPE
-        # The HTML body references the attachment by id.
-        assert (
-            f'<attachment id="{attachment["id"]}"></attachment>'
-            in body["body"]["content"]
-        )
-        graph_oauth.reset_token_cache()

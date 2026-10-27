@@ -111,7 +111,9 @@ az containerapp hostname bind -g opsmender-prod -n opsmender \
   --validation-method CNAME
 ```
 
-After DNS propagates and the cert is issued, set `OPSMENDER_PUBLIC_URL=https://opsmender.example.com` in `extraEnvironment` and re-deploy so the Slack/Teams deep-link buttons in page cards point at the right host.
+After DNS propagates and the cert is issued, set `OPSMENDER_PUBLIC_URL=https://opsmender.example.com` in `extraEnvironment` and re-deploy so the deep-link buttons in Slack page cards point at the right host.
+
+Microsoft Teams delivery is being rebuilt, so OpsMender sends nothing to Teams for now. Use Slack, email or another channel meanwhile. See [Microsoft Teams: being rebuilt](../../../docs/wiki/teams-paging-surface.md).
 
 ### Rolling a new image tag
 

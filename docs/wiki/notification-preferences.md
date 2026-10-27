@@ -8,7 +8,7 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 - **Routing Summary**: a read-only view of how incidents are routed (derived
   from services → escalation chains → rosters → channels). Editable team-level
   routing defaults remain a future candidate.
-- **Notification Channels**: the workspace delivery adapters (Slack, Teams, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them.
+- **Notification Channels**: the workspace delivery adapters (Slack, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them. Microsoft Teams delivery is being rebuilt and sends nothing for now; see [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
@@ -20,23 +20,20 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
 > **How verified chat actions work.** Every Notification
 > Channel sends a formatted message with an authenticated OpsMender link.
-> Slack, Teams, and Discord channels can additionally opt into native **Acknowledge,
+> Slack and Discord channels can additionally opt into native **Acknowledge,
 > Resolve, Escalate, and Start AI Session** buttons after their platform
-> verifier is configured. Slack uses signing-secret HMAC verification; Teams
-> uses Microsoft Bot Framework JWT verification; Discord uses Ed25519
-> interaction signatures. Each click is mapped to an
+> verifier is configured. Slack uses signing-secret HMAC verification; Discord
+> uses Ed25519 interaction signatures. Each click is mapped to an
 > active OpsMender user, checked for Admin/Operator RBAC, deduplicated, and
-> audited. The Slack, Teams and Discord cards show the same facts as the
+> audited. The Slack and Discord cards show the same facts as the
 > message (Service, Team, Org, Responder, Acknowledged by, Escalation level),
 > and once someone acknowledges, the Acknowledge button is left off. After a
 > verified Acknowledge or Resolve, the card in the channel is brought up to
 > date through the same delivery the web uses: Slack and Discord edit it in
-> place, Teams posts a fresh card. A release, takeover, assignment,
+> place. A release, takeover, assignment,
 > reassignment, bulk Acknowledge from the incident list, service move or
 > reopen edits the Slack and Discord cards already posted in place and posts
-> nothing new. Teams cannot edit a posted card, so these changes post nothing
-> there, and the Teams card catches up at the next acknowledge, resolve or
-> escalation. Start AI Session
+> nothing new. Start AI Session
 > leaves the card as it is. An older render never replaces a newer card: each
 > update carries the moment it was decided, and a channel whose card is already
 > newer than that (an escalation delivered late, after someone acknowledged)
@@ -54,6 +51,9 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > never posts a public, unauthenticated action URL. The capability chips on the
 > Notification Channels table reflect this honestly: a platform only shows
 > **Interactive actions** or **Message updates** once a verified adapter exists.
+> Microsoft Teams is being rebuilt: OpsMender posts no Teams cards, and the
+> buttons on old Teams cards answer with the reason and change nothing. See
+> [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 ---
 
@@ -74,7 +74,7 @@ used when you're paged. The priority comes from the incident's service.
 Each priority holds an **ordered notification escalation** of up to **3 stages**. Stage 1 fires immediately; if the incident is still unacknowledged after the stage's configured **wait** (default 3 minutes, per stage), the next stage fires, and so on:
 
 > **P0 example**
-> 1. Teams Executive Alerts → wait 3 min
+> 1. Slack Executive Alerts → wait 3 min
 > 2. SMS Primary → wait 3 min
 > 3. Telegram Ops
 
@@ -82,14 +82,15 @@ Per stage you pick a **channel** and a **wait**: for non-final stages, the wait 
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone paged after the incident has an owner (a responder added later, or Escalate now while the owner keeps it) gets only their first stage; the owner keeps the incident. Stages go only to active admins and operators: deactivating someone or making them a Viewer stops their remaining stages at once.
 
-**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Microsoft Teams, Telegram, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
+**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). A stage that uses a Microsoft Teams channel, or a saved Teams contact method, is recorded as skipped with the reason `teams_rebuilding`, never as sent, and the next stage fires after its wait. See [Microsoft Teams: being rebuilt](teams-paging-surface.md). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
-**Chat-capable vs delivery-only:** Slack, Teams, and Discord support verified
+**Chat-capable vs delivery-only:** Slack and Discord support verified
 incident actions. Telegram, Mattermost, Matrix, and WhatsApp use the
 authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are
-delivery-only.
+delivery-only. Microsoft Teams sends nothing while its delivery is being
+rebuilt.
 
 **A chat stage posts to a shared channel.** A stage that uses a chat
 Notification Channel posts to that channel's first allowed chat, which is a
@@ -240,13 +241,15 @@ configured. Every channel has one or both delivery lanes:
 
 - **Respond**: fast operator-facing delivery and verified actions where the
   platform supports them.
-- **Track**: one-way shared lifecycle status for Slack, Microsoft Teams,
-  Discord, Google Chat, or AWS EventBridge. Slack, Discord, and Google Chat
-  update one post in place; Teams posts a follow-up and EventBridge emits a
-  structured event when an incident is created, acknowledged, escalated or
-  resolved. Changes that only edit cards, such as a bulk Acknowledge from the
-  incident list (see the list above), edit the Slack, Discord and Google Chat
-  posts and reach neither Teams nor EventBridge.
+- **Track**: one-way shared lifecycle status for Slack, Discord, Google Chat,
+  or AWS EventBridge. Slack, Discord, and Google Chat update one post in
+  place; EventBridge emits a structured event when an incident is created,
+  acknowledged, escalated or resolved. Changes that only edit cards, such as a
+  bulk Acknowledge from the incident list (see the list above), edit the
+  Slack, Discord and Google Chat posts and do not reach EventBridge.
+
+A Microsoft Teams channel receives nothing in either lane while Teams delivery
+is being rebuilt. See [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
 Each channel has a friendly name and provider details that live here only.
 
@@ -255,7 +258,7 @@ Adding a channel here makes it immediately routable in **My Routing** with no fu
 Each channel has a **Team Scope**:
 
 - **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
-- **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically: the team it was reassigned to, then the incident Service's team, then the active escalation chain's team. If none exists, only workspace-wide channels receive the post. When an incident moves to another team (a reassignment, a handoff, or a move to another team's service), the card already in a channel of the team it left is edited once more where the platform can edit a posted message (Slack, Discord, Google Chat): it says **Moved to another team**, names no service, team or responder, and has no action buttons. Teams cannot edit a posted card, so a Teams card there is left as it was. Nothing about the incident reaches that channel after that. Resolving an incident while moving it to another team's service in the same change does the same: the team it left sees **Moved to another team** on its card, and only the new team's channels receive the resolved event.
+- **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically: the team it was reassigned to, then the incident Service's team, then the active escalation chain's team. If none exists, only workspace-wide channels receive the post. When an incident moves to another team (a reassignment, a handoff, or a move to another team's service), the card already in a channel of the team it left is edited once more where the platform can edit a posted message (Slack, Discord, Google Chat): it says **Moved to another team**, names no service, team or responder, and has no action buttons. Nothing about the incident reaches that channel after that. Resolving an incident while moving it to another team's service in the same change does the same: the team it left sees **Moved to another team** on its card, and only the new team's channels receive the resolved event.
 
 Respond channels receive incident and AI-session delivery. Track channels
 receive incident **created / acknowledged / escalated / resolved** status only,
@@ -279,5 +282,6 @@ following can be layered on without changing routing:
   - Escalate → "Incident escalated by &lt;user&gt;"
   - Start Session → "Session started. Session ID: &lt;id&gt;"
 
-Slack, Teams, and Discord actions are implemented. Every other platform keeps
-the authenticated-link fallback until it meets the same verification bar.
+Slack and Discord actions are implemented. Microsoft Teams actions are off
+while Teams delivery is being rebuilt. Every other platform keeps the
+authenticated-link fallback until it meets the same verification bar.

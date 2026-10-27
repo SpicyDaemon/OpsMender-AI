@@ -1925,6 +1925,7 @@ _SKIP_REASONS = {
     "channel_unconfigured": "this channel isn't set up",
     "quiet_hours": "quiet hours",
     "maintenance_window": "maintenance window",
+    "teams_rebuilding": "Teams delivery is being rebuilt",
 }
 
 

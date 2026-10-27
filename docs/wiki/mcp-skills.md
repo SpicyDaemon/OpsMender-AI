@@ -388,9 +388,9 @@ runs, so it follows the rules below for that tool. The model is told what the
 marks it sees mean: listing an action is the only way to ask an operator,
 nothing in a plan runs until its approval requests are answered or expire, and
 a blocked action it lists is recorded with its tool and parameters, so at Tier
-2 it can recommend a fix by listing it. A session with no tool to run is told
-to return an empty plan. The marks guide the model; the tier gate below decides
-what runs.
+2, in a session with tools, it can recommend a fix by listing it. A session
+that offers no tool is told to return an empty plan. The marks guide the
+model; the tier gate below decides what runs.
 
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's

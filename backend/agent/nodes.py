@@ -141,8 +141,8 @@ RUNS = "runs without a person"
 NEEDS_APPROVAL = "waits for operator approval"
 BLOCKED = "blocked"
 TIER_NAMES = {0: "Autonomous", 1: "Approval Required", 2: "Advisory Only"}
-NO_TOOL_LIST = "(none: no tool can run in this session)"
-NO_TOOL_RULE = "No tool can run in this session, so return an empty plan: []."
+NO_TOOL_LIST = "(none)"
+NO_TOOL_RULE = "No tool is offered in this session, so return an empty plan: []."
 MARKS_HEADER = (
     "Next to its class, each tool above shows what the tier gate does with it at "
     "this tier."
@@ -154,8 +154,8 @@ APPROVAL_RULE = (
     "in it the evidence you already have and, for a change, how to undo it. "
     "Nothing in this plan runs until every approval request in it is answered or "
     "expires{clock}. An operator may also redirect a request, up to {redirects} "
-    "times in a session: then nothing in this plan runs, the actions listed after "
-    "that request are dropped, and you plan again."
+    "times: then nothing in this plan runs, the actions listed after that request "
+    "are dropped, and you plan again."
 )
 APPROVAL_CLOCK = (
     ", and if the answers take more than {seconds} seconds in all, the whole plan "
@@ -224,6 +224,10 @@ def _plan_tool_lines(
     lines: list[str] = []
     marks: set[str] = set()
     for name in tool_names:
+        # A name with whitespace or a control character is not a valid MCP tool
+        # name and could start a line of its own, so it is not offered.
+        if not name or any(ch.isspace() or not ch.isprintable() for ch in name):
+            continue
         classification, mark = gate_mark(name, tier, skill_def, can_ask=can_ask)
         marks.add(mark)
         line = f"- {name} ({classification}, {mark})"

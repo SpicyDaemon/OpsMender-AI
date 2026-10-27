@@ -64,8 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an operator, nothing in a plan runs until its approval requests are
   answered or expire, and a blocked action it lists is recorded with its tool
   and parameters for a person to see. A session that cannot run any tool is
-  told so and asked for an empty plan. Before, the prompt gave only the tier
-  number. The tier gate still decides what runs.
+  told so and asked for an empty plan. Where the plan offers a skill's own
+  entries instead of a server's tools (the command line at Tiers 2 and 3), an
+  entry written as a pattern is no longer offered as a tool name. Before, the
+  prompt gave only the tier number. The tier gate still decides what runs.
 - Tier 2 (Advisory Only) sessions can now read before they advise. A skill
   may mark an operation it classifies `safe` as autonomous at T2, and the
   skill template, generated skills and read-only integration tools do so by

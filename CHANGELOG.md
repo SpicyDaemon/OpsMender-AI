@@ -63,8 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explains only the marks it shows: listing an action is the only way to ask
   an operator, nothing in a plan runs until its approval requests are
   answered or expire, and a blocked action it lists is recorded with its tool
-  and parameters for a person to see. A session that cannot run any tool is
-  told so and asked for an empty plan. Where the plan offers a skill's own
+  and parameters for a person to see. A session that offers no tool is asked
+  for an empty plan. Where the plan offers a skill's own
   entries instead of a server's tools (the command line at Tiers 2 and 3), an
   entry written as a pattern is no longer offered as a tool name. Before, the
   prompt gave only the tier number. The tier gate still decides what runs.

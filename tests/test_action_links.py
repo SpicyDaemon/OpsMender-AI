@@ -226,6 +226,27 @@ async def test_link_lifetime_comes_from_the_setting_within_bounds(app):
         assert claims.expires_at - now == timedelta(minutes=expected)
 
 
+async def test_the_link_key_comes_from_the_jwt_secret(app, client):
+    """Rotating OPSMENDER_JWT_SECRET ends every link."""
+    await _user(app, "olive")
+    headers = await _headers(client, "olive")
+    connector, incident = await _setup(app)
+    token = _link(app, connector, incident.id)
+    config = app.state.config
+    before = link_secret(config)
+    config.auth.jwt_secret = "a-rotated-secret"
+    try:
+        assert link_secret(config) != before
+        with pytest.raises(IncidentActionError, match="invalid_action_token"):
+            verify_incident_action_token(token, secret=link_secret(config))
+        preview = await client.post(
+            "/action-links/preview", headers=headers, json={"token": token}
+        )
+        assert preview.json()["state"] == "invalid"
+    finally:
+        config.auth.jwt_secret = "test-secret"
+
+
 async def test_each_link_has_its_own_nonce(app):
     connector, incident = await _setup(app)
     secret = link_secret(app.state.config)
@@ -288,6 +309,7 @@ async def test_confirm_acknowledges_once_and_records_it(app, client, notified):
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "acknowledged"
     assert resp.json()["message"] == "You acknowledged the incident."
+    assert resp.json()["changed"] is True
     assert await _owner(app, incident.id) == olive
     assert notified == [(incident.id, "incident.acknowledged")]
 
@@ -393,6 +415,88 @@ async def test_a_use_that_lost_the_race_is_refused(app, monkeypatch):
             )
     assert await _owner(app, incident.id) == olive
     assert len(await _rows(app, NativeActionInvocation)) == 1
+
+
+async def test_escalate_through_a_link_reaches_the_escalation_engine(app, client):
+    """Escalate needs the channel factory; with no chain it changes nothing."""
+    await _user(app, "olive")
+    headers = await _headers(client, "olive")
+    connector, incident = await _setup(app)
+    resp = await client.post(
+        "/action-links/confirm",
+        headers=headers,
+        json={"token": _link(app, connector, incident.id, action="escalate")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "no_escalation_target"
+    assert resp.json()["changed"] is False
+    assert "Nothing to escalate" in resp.json()["message"]
+
+
+async def test_start_ai_session_through_a_link_dispatches_the_session(
+    app, client, monkeypatch
+):
+    olive = await _user(app, "olive")
+    headers = await _headers(client, "olive")
+    connector, incident = await _setup(app)
+    async with app.state.session_factory() as db:
+        # The incident's owner may start its AI session.
+        await IncidentAssignmentRepo.assign(
+            db, TEST_ORG_ID, incident_id=incident.id, user_id=olive
+        )
+        await db.commit()
+    dispatched = []
+
+    async def dispatch(app_, db, *, org_id, result):
+        dispatched.append(result.session_id)
+
+    monkeypatch.setattr(
+        "backend.api.routes.action_links.dispatch_native_session_result", dispatch
+    )
+    resp = await client.post(
+        "/action-links/confirm",
+        headers=headers,
+        json={"token": _link(app, connector, incident.id, action="start_ai_session")},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] in {"session_started", "session_queued"}
+    assert body["changed"] is True
+    assert dispatched == [uuid.UUID(body["session_id"])]
+
+
+async def test_a_refused_ai_session_is_audited_and_leaves_the_link_usable(
+    app, client, monkeypatch
+):
+    olive = await _user(app, "olive")
+    headers = await _headers(client, "olive")
+    connector, incident = await _setup(app)
+    async with app.state.session_factory() as db:
+        await IncidentAssignmentRepo.assign(
+            db, TEST_ORG_ID, incident_id=incident.id, user_id=olive
+        )
+        await db.commit()
+
+    async def full(*args, **kwargs):
+        raise ValueError("All configured incident-response models are at capacity")
+
+    monkeypatch.setattr("backend.bots.actions.admit_session", full)
+    token = _link(app, connector, incident.id, action="start_ai_session")
+    resp = await client.post(
+        "/action-links/confirm", headers=headers, json={"token": token}
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == (
+        "The AI session did not start: All configured incident-response models "
+        "are at capacity"
+    )
+    assert await _rows(app, NativeActionInvocation) == []
+    [entry] = await _rows(app, AuditEntry)
+    assert entry.permitted is False and entry.block_reason == "session_not_admitted"
+    preview = await client.post(
+        "/action-links/preview", headers=headers, json={"token": token}
+    )
+    assert preview.json()["state"] == "ready"
 
 
 # -- Refusals -------------------------------------------------------------------

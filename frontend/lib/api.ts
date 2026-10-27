@@ -3,6 +3,8 @@
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
+import { CONFIRM_PATH, rememberReturnPath } from "./return-path";
+
 // Defaults to empty string (same-origin) when the frontend is served by the
 // backend itself. Override via NEXT_PUBLIC_API_URL at build time if the
 // frontend is hosted separately.
@@ -60,6 +62,10 @@ async function request<T>(
   if (res.status === 401 && !skipAuth) {
     clearToken();
     if (typeof window !== "undefined") {
+      // An action link's confirm page comes back after sign-in (M1-99).
+      if (window.location.pathname === CONFIRM_PATH) {
+        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
+      }
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -84,7 +90,7 @@ async function request<T>(
       code === "password_change_required" &&
       typeof window !== "undefined" &&
       (window.location.pathname.startsWith("/dashboard") ||
-        window.location.pathname === "/actions/confirm")
+        window.location.pathname === CONFIRM_PATH)
     ) {
       window.location.href = "/password-change-required";
     }

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { FormAlert } from "@/components/ui/Input";
 import { confirmActionLink, getToken, previewActionLink } from "@/lib/api";
 import { formatDateTime } from "@/lib/formatDate";
-import { CONFIRM_PATH, forgetReturnPath, rememberReturnPath } from "@/lib/return-path";
+import { CONFIRM_PATH, rememberReturnPath } from "@/lib/return-path";
 import type { ActionLinkPreview, ActionLinkResult } from "@/lib/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,6 +42,16 @@ function useHash(): string | null {
   return useSyncExternalStore(onHashChange, () => window.location.hash, () => null);
 }
 
+// A token that does not decode is sent as it is, and the server calls it
+// not valid.
+function decodeToken(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 /**
  * Confirm page for a signed action link on a chat card (M1-99).
  *
@@ -52,12 +62,17 @@ function useHash(): string | null {
  * signed-in person presses Confirm, under their own role.
  */
 export default function ActionLinkConfirmPage() {
-  const router = useRouter();
   const hash = useHash();
   const token =
     hash !== null && hash.startsWith("#token=")
-      ? decodeURIComponent(hash.slice("#token=".length))
+      ? decodeToken(hash.slice("#token=".length))
       : "";
+  // A new link starts over: nothing shown for one link can confirm another.
+  return <ConfirmLink key={token} token={token} loaded={hash !== null} />;
+}
+
+function ConfirmLink({ token, loaded }: { token: string; loaded: boolean }) {
+  const router = useRouter();
   const [preview, setPreview] = useState<ActionLinkPreview | null>(null);
   const [result, setResult] = useState<ActionLinkResult | null>(null);
   const [error, setError] = useState("");
@@ -65,18 +80,17 @@ export default function ActionLinkConfirmPage() {
 
   useEffect(() => {
     if (!token) return;
-    // Back here after sign-in, also when an old session turns out expired.
-    rememberReturnPath(`${CONFIRM_PATH}#token=${encodeURIComponent(token)}`);
     if (!getToken()) {
+      // Back here after sign-in. A session that turns out expired on a call
+      // comes back the same way: the API client remembers this page.
+      rememberReturnPath(`${CONFIRM_PATH}#token=${encodeURIComponent(token)}`);
       router.replace("/login");
       return;
     }
     let cancelled = false;
     previewActionLink(token)
       .then((data) => {
-        if (cancelled) return;
-        forgetReturnPath();
-        setPreview(data);
+        if (!cancelled) setPreview(data);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not check this link.");
@@ -108,7 +122,12 @@ export default function ActionLinkConfirmPage() {
 
   if (result) {
     return (
-      <AuthShell title="Done" description={result.message} eyebrow="" footer={dashboardFooter}>
+      <AuthShell
+        title={result.changed ? "Done" : "Nothing changed"}
+        description={result.message}
+        eyebrow=""
+        footer={dashboardFooter}
+      >
         <Link href={incidentHref(result.incident_id)} className={linkClass}>
           Open the incident
         </Link>
@@ -117,7 +136,7 @@ export default function ActionLinkConfirmPage() {
   }
 
   const missing =
-    hash !== null && !token ? "This link is missing its token. Open it again from the card." : "";
+    loaded && !token ? "This link is missing its token. Open it again from the card." : "";
   const loadError = error || missing;
 
   if (!preview) {

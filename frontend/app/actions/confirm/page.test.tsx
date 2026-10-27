@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // One router object, as Next.js gives every render.
@@ -83,6 +83,7 @@ describe("action link confirm page (M1-99)", () => {
       message: "You acknowledged the incident.",
       incident_id: "inc-1",
       session_id: null,
+      changed: true,
     });
     render(<ActionLinkConfirmPage />);
 
@@ -92,7 +93,7 @@ describe("action link confirm page (M1-99)", () => {
     expect(screen.getByText("Ops channel")).toBeTruthy();
     // Opening the link never acts.
     expect(apiMocks.confirmActionLink).not.toHaveBeenCalled();
-    // The link is open, so sign-in no longer needs to come back here.
+    // Signed in: nothing to come back to.
     expect(sessionStorage.getItem("opsmender_return_to")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm: Acknowledge" }));
@@ -112,6 +113,63 @@ describe("action link confirm page (M1-99)", () => {
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/login"));
     expect(sessionStorage.getItem("opsmender_return_to")).toBe("/actions/confirm#token=abc.def");
     expect(apiMocks.previewActionLink).not.toHaveBeenCalled();
+  });
+
+  it("says Nothing changed when the action found its work done", async () => {
+    openAt("#token=abc.def");
+    apiMocks.previewActionLink.mockResolvedValue(READY);
+    apiMocks.confirmActionLink.mockResolvedValue({
+      action: "acknowledge",
+      status: "already_owned",
+      message: "Another responder already owns this incident.",
+      incident_id: "inc-1",
+      session_id: null,
+      changed: false,
+    });
+    render(<ActionLinkConfirmPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm: Acknowledge" }));
+    expect(await screen.findByText("Nothing changed")).toBeTruthy();
+    expect(screen.queryByText("Done")).toBeNull();
+  });
+
+  it("starts over when the link in the address bar changes", async () => {
+    openAt("#token=abc.def");
+    apiMocks.previewActionLink
+      .mockResolvedValueOnce(READY)
+      .mockResolvedValueOnce({ ...READY, action: "resolve", action_label: "Resolve", incident_title: "Other" });
+    apiMocks.confirmActionLink.mockResolvedValue({
+      action: "resolve",
+      status: "resolved",
+      message: "You resolved the incident.",
+      incident_id: "inc-2",
+      session_id: null,
+      changed: true,
+    });
+    render(<ActionLinkConfirmPage />);
+    expect(await screen.findByText("Acknowledge this incident?")).toBeTruthy();
+    act(() => {
+      window.history.replaceState(null, "", "/actions/confirm#token=new.link");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(await screen.findByText("Resolve this incident?")).toBeTruthy();
+    expect(screen.queryByText("Acknowledge this incident?")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Resolve" }));
+    await screen.findByText("Done");
+    expect(apiMocks.confirmActionLink).toHaveBeenCalledWith("new.link");
+  });
+
+  it("sends a token that does not decode to the server instead of failing", async () => {
+    openAt("#token=%E0%A4%A");
+    apiMocks.previewActionLink.mockResolvedValue({
+      ...READY,
+      state: "invalid",
+      message: "This link is not valid.",
+      incident_id: null,
+      can_act: false,
+    });
+    render(<ActionLinkConfirmPage />);
+    expect(await screen.findByText("This link is not valid")).toBeTruthy();
+    expect(apiMocks.previewActionLink).toHaveBeenCalledWith("%E0%A4%A");
   });
 
   it("says when a link has no token", async () => {

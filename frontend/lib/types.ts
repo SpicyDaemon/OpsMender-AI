@@ -2517,6 +2517,8 @@ export interface ActionLinkPreview {
 export interface ActionLinkResult {
   action: string;
   status: string;
+  /** False when the action found its work already done. */
+  changed: boolean;
   message: string;
   incident_id: string;
   session_id: string | null;

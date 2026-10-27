@@ -3270,6 +3270,8 @@ class ActionLinkPreviewResponse(BaseModel):
 class ActionLinkResultResponse(BaseModel):
     action: str
     status: str
+    # False when the action found its work already done.
+    changed: bool
     message: str
     incident_id: uuid.UUID
     session_id: Optional[uuid.UUID] = None

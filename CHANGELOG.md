@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the v1.2.2 release and the dependency audit caught them on the next pull
   request. filelock reaches the lock only through the audit tool itself; it
   is not part of the shipped image. Nothing else changes.
+- pylint moves to 4.0.9: an advisory on 4.0.5 (CVE-2026-114608) was published
+  and the dependency audit caught it on a pull request. pylint is a
+  development tool only; it is not part of the shipped image. Nothing else
+  changes.
 
 ### Changed
 

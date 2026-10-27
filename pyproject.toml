@@ -87,7 +87,7 @@ packages = ["cli", "backend"]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "pylint",
+    "pylint>=4.0.9",
     "black>=26.10.1",
     "mypy",
     "aiosqlite",

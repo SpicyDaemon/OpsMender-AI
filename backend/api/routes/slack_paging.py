@@ -57,6 +57,7 @@ from backend.bots.native_callbacks import (
 )
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
+    LIVE_CHAIN_STATUSES,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
@@ -350,9 +351,11 @@ def _extract_incident_id(text: str) -> uuid.UUID | None:
         return None
 
 
-# An exhausted chain stays exhausted until someone closes the incident, so a
+# Nothing times out an exhausted chain while its incident stays open, so a
 # command without an id takes one only while the user's page on it is this
 # recent. Older, a bare /resolve or /release could act on a forgotten incident.
+# The window counts from the page, not from when the chain ran out: a handoff
+# can restart a chain and run it out again without paging this user.
 EXHAUSTED_PAGE_WINDOW = timedelta(hours=24)
 
 
@@ -363,9 +366,11 @@ async def _latest_user_incident_id(
     command without an explicit incident id should act on.
 
     The incident must be open. Its chain must still be able to page (running,
-    paused or under an acknowledgement lock), at any age. Or its chain is
-    exhausted and this page was sent within ``EXHAUSTED_PAGE_WINDOW``. An
-    incident with no chain state, or a cancelled chain, never qualifies.
+    paused or under an acknowledgement lock, as ``chain_is_live`` decides), at
+    any age. Or its chain is exhausted and this page was sent within
+    ``EXHAUSTED_PAGE_WINDOW``. An incident with no chain state, a cancelled
+    chain, or a chain acknowledged before the lock existed (finished) never
+    qualifies. The newest qualifying page wins.
 
     M1-95: in the 2026-10-24 live round ``/ack`` answered "no active page
     found" once a one-level chain was exhausted, though the incident was open
@@ -384,7 +389,10 @@ async def _latest_user_incident_id(
             IncidentPage.user_id == user_id,
             Incident.status.not_in(_esc.CLOSED_INCIDENT_STATUSES),
             or_(
-                IncidentChainState.status.in_(("running", "paused", "acked")),
+                and_(
+                    IncidentChainState.status.in_(LIVE_CHAIN_STATUSES),
+                    IncidentChainState.finished_at.is_(None),
+                ),
                 and_(
                     IncidentChainState.status == "exhausted",
                     IncidentPage.sent_at >= exhausted_since,

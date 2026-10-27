@@ -60,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proposed parameters, the tier and the reason (a write blocked at the tier,
   an approval nobody gave or someone rejected), also for sessions with no
   tool source, so Tool Activity and the incident timeline show them.
+- A plan the model wrote inside a Markdown code fence was dropped without a
+  trace. In the 2026-10-24 live round a local model planned eight reads that
+  way and the session completed with no tool call. The plan step now reads
+  the plan when the answer is nothing but the plan: the JSON array of
+  actions (each with a `tool_name`), or one such action on its own, bare or
+  as the one Markdown code fence that is the whole answer. Reasoning a model
+  server writes into the answer, opening it with `<think>` and ending at the
+  first `</think>`, is ignored. Any
+  other answer runs nothing: prose can quote, offer or withdraw an action, so
+  an answer with prose around the plan, a second value, or a cut-off or
+  broken value is never read as a plan. The session transcript then says
+  "The model's plan could not be read, so no action was taken." and the
+  summary is written from that fact. `[]` is still a readable empty plan. A
+  session with no model configured does not get this line.
 - An AI session's plan now shows each MCP tool's arguments (names, types and
   which are required) from the tool's own schema, and the model is told to use
   only those names. In the 2026-10-24 live round about half the tool calls

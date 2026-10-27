@@ -21,7 +21,9 @@ Design rules
 from __future__ import annotations
 
 import inspect
+import json
 import math
+import re
 import uuid
 from typing import Any
 
@@ -413,6 +415,69 @@ def _format_operator_guidance(state: IncidentState) -> str:
     return "\n".join(f"- {item}" for item in guidance)
 
 
+# What the stand-in client answers to every prompt when no model is
+# configured (``session_runner._resolve_llm``). No model wrote it, so the plan
+# step does not report it as an unreadable plan.
+NO_MODEL_ANSWER = "[workflow offline: no model configured]"
+
+
+# The whole answer as one Markdown code fence. The opening line holds at most a
+# one-word language tag, so a label such as "DO NOT RUN" makes it no fence.
+_FENCED = re.compile(r"```[\w.+-]*[ \t]*\r?\n(.*?)\n?```", re.DOTALL)
+# Some model servers put the model's reasoning into the answer: it opens the
+# answer with <think> and ends at the first </think>.
+_THINK_START, _THINK_END = "<think>", "</think>"
+
+
+def _is_action(item: Any) -> bool:
+    return isinstance(item, dict) and isinstance(item.get("tool_name"), str)
+
+
+def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
+    """The actions in the model's plan answer, or ``None`` when it cannot be
+    read (M1-92).
+
+    The plan is read only when the answer is nothing but the plan: the JSON
+    array of actions, or one action object on its own, either bare or as the
+    one Markdown code fence that is the whole answer. Every action needs a
+    text ``tool_name``; ``[]`` is a readable empty plan. Reasoning that a model
+    server writes into the answer, opening it with ``<think>`` and ending at the
+    first ``</think>``, is not part of the answer and is dropped. Anything else
+    gives ``None`` and nothing runs:
+    prose can quote, offer or withdraw an action, so an answer with prose
+    around the plan, a second value, or a cut-off or broken value is never
+    read as a plan."""
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if text.startswith(_THINK_START):
+        if _THINK_END not in text:
+            return None
+        text = text[text.index(_THINK_END) + len(_THINK_END) :].strip()
+    fenced = _FENCED.fullmatch(text)
+    body = fenced.group(1).strip() if fenced else text
+    try:
+        value, end = json.JSONDecoder().raw_decode(body)
+    except (ValueError, RecursionError):
+        return None
+    if body[end:].strip():
+        return None
+    if isinstance(value, dict):
+        return [value] if _is_action(value) else None
+    if not isinstance(value, list):
+        return None
+    if not value:
+        return []
+    return value if all(_is_action(item) for item in value) else None
+
+
+def _plan_update(raw: Any) -> dict[str, Any]:
+    """The plan node's state update for the model's answer ``raw``."""
+    actions = parse_plan(raw)
+    unreadable = actions is None and raw != NO_MODEL_ANSWER
+    return {"plan": actions or [], "plan_unreadable": unreadable}
+
+
 def _build_plan(
     llm: LLM,
     tier: int,
@@ -422,8 +487,6 @@ def _build_plan(
 
     def plan(state: IncidentState) -> dict:
         """Propose a list of remediation actions."""
-        import json
-
         diagnosis = state.get("diagnosis", "")
         tools_list = "\n".join(
             f"- {op.tool} ({op.classification})" for op in skill_def.operations
@@ -439,18 +502,7 @@ def _build_plan(
             tier=tier,
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
-
-        # Parse the LLM response as JSON - fall back to empty plan on failure
-        try:
-            actions = json.loads(raw)
-            if not isinstance(actions, list):
-                actions = []
-        except (json.JSONDecodeError, TypeError):
-            actions = []
-
-        return {
-            "plan": actions,
-        }
+        return _plan_update(raw)
 
     return plan
 
@@ -465,8 +517,6 @@ def _build_plan_with_tool_names(
     """Return a plan node that only exposes the supplied concrete tools."""
 
     def plan(state: IncidentState) -> dict:
-        import json
-
         diagnosis = state.get("diagnosis", "")
         if tool_names:
             tools_list = "\n".join(
@@ -491,17 +541,7 @@ def _build_plan_with_tool_names(
             tier=tier,
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
-
-        try:
-            actions = json.loads(raw)
-            if not isinstance(actions, list):
-                actions = []
-        except (json.JSONDecodeError, TypeError):
-            actions = []
-
-        return {
-            "plan": actions,
-        }
+        return _plan_update(raw)
 
     return plan
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Slack Socket Mode: a Slack Notification Channel can receive card buttons
+  and slash commands over a connection OpsMender opens to Slack, so no public
+  URL is needed. Set **How Slack reaches OpsMender** to **Socket Mode** and put
+  the app-level token (`xapp-`) in the environment variable the channel names
+  (`OPSMENDER_SLACK_APP_TOKEN` by default); the token is never stored. One app
+  process holds the socket at a time, and another takes over within a minute
+  when it stops. Each click and command is acknowledged at once and answered
+  through Slack's response URL. Check configuration, Send live test and
+  `opsmender doctor` cover the token and the socket's holder; the Slack paging
+  guide has the steps and a manifest.
+
 ### Removed
 
 - The environment scan audits: audit runs, their findings, audit schedules,

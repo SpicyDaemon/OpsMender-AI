@@ -207,6 +207,15 @@ async def _lifespan(app: FastAPI):
         await session_queue_scheduler.start()
         scheduler_stoppers.append(session_queue_scheduler.stop)
 
+        # Slack connectors in Socket Mode receive clicks and commands over a
+        # socket this process opens, one process per connector (M1-97).
+        from backend.bots.slack_socket import SlackSocketManager
+
+        slack_socket_manager = SlackSocketManager(app, factory)
+        app.state.slack_socket_manager = slack_socket_manager
+        await slack_socket_manager.start()
+        scheduler_stoppers.append(slack_socket_manager.stop)
+
     # mcp.json file mirror (Sprint 42 step 6). Opt-in via OPSMENDER_MCP_JSON_SYNC.
     # When enabled, reconcile the file against every org's MCP servers on
     # startup so file edits made while the service was down are applied.

@@ -313,6 +313,95 @@ async def check_paging_chain_age(
     )
 
 
+async def check_slack_socket_mode(
+    factory: async_sessionmaker | None, *, probe=None
+) -> list[CheckResult]:
+    """For each enabled Slack connector in Socket Mode (M1-97): the app-level
+    token is in its variable, Slack accepts it, and which process holds the
+    socket. Nothing is reported when no connector uses Socket Mode."""
+    if factory is None:
+        return []
+    from backend.bots.slack_socket import (
+        LEASE_SECONDS,
+        app_token,
+        app_token_env,
+        lease_key,
+        open_socket_url,
+        uses_socket_mode,
+    )
+    from backend.db.models import BotConnector
+    from backend.db.repos import RuntimeConfigRepo
+
+    probe = probe or open_socket_url
+    try:
+        async with factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(BotConnector).where(
+                            BotConnector.platform == "slack",
+                            BotConnector.is_enabled.is_(True),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            connectors = [c for c in rows if uses_socket_mode(c)]
+            holders = {
+                c.id: await RuntimeConfigRepo.lease_holder(session, lease_key(c.id))
+                for c in connectors
+            }
+    except Exception as exc:  # noqa: BLE001
+        return [CheckResult("Slack Socket Mode", "fail", f"Query failed: {exc}")]
+
+    results: list[CheckResult] = []
+    now = datetime.now(timezone.utc)
+    for connector in connectors:
+        name = f"Slack Socket Mode: {connector.name}"
+        token = app_token(connector)
+        if token is None:
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"{app_token_env(connector)} does not hold an app-level token (xapp-).",
+                )
+            )
+            continue
+        try:
+            await probe(token)
+        except Exception as exc:  # noqa: BLE001 - Slack's error code or the network
+            results.append(
+                CheckResult(name, "fail", f"Slack refused the app-level token: {exc}")
+            )
+            continue
+        held = holders.get(connector.id)
+        if held is None:
+            results.append(
+                CheckResult(
+                    name, "warn", "Token accepted; no process holds the socket."
+                )
+            )
+            continue
+        holder, renewed = held
+        if renewed.tzinfo is None:
+            renewed = renewed.replace(tzinfo=timezone.utc)
+        if now - renewed > timedelta(seconds=LEASE_SECONDS):
+            results.append(
+                CheckResult(
+                    name,
+                    "warn",
+                    f"Token accepted; the socket's last holder ({holder}) stopped renewing.",
+                )
+            )
+        else:
+            results.append(
+                CheckResult(name, "ok", f"Token accepted; socket held by {holder}.")
+            )
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -331,6 +420,7 @@ async def run_all_checks(
     results.extend(await check_mcp_servers(factory))
     results.extend(await check_tool_source_overlaps(factory))
     results.append(await check_paging_chain_age(factory))
+    results.extend(await check_slack_socket_mode(factory))
     return results
 
 

@@ -107,6 +107,60 @@ In OpsMender:
 2. **Bot User Links** → for every operator who should be allowed to click buttons or use slash commands, add a row mapping their Slack user id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`).
 3. (Optional) Set `OPSMENDER_SLACK_BOT_TOKEN` in your environment. This is the same token used by the dispatcher for DMs and by the channel mirror for `conversations.create`.
 
+### Socket Mode (no public URL)
+
+Steps 3 and 4 above need a Request URL that Slack can reach from the internet. If OpsMender has none, let it open the connection to Slack instead:
+
+1. In the Slack app's settings, **Socket Mode** → enable it and create an app-level token with the `connections:write` scope; it starts with `xapp-`. With Socket Mode on, Slack sends clicks and slash commands over the socket, so the Request URLs are not needed.
+2. Put the token in an environment variable of the OpsMender app, `OPSMENDER_SLACK_APP_TOKEN` unless you choose another name, and restart the app. The token is read from the environment and never stored.
+3. In OpsMender, on the Slack Notification Channel, set **How Slack reaches OpsMender** to **Socket Mode**, and set **App-level token variable** if you used another name. **Check configuration** confirms the variable holds an app-level token, **Send live test** confirms Slack accepts it, and `opsmender doctor` also shows which app process holds the socket.
+
+One app process holds each Slack channel's socket. When it stops, another process takes the socket over within a minute. Every click and command is acknowledged at once and answered through Slack's response URL, exactly as with Request URLs; the bot token and the user links work the same in both modes.
+
+To create the app from a manifest (api.slack.com/apps, **From a manifest**):
+
+```yaml
+display_information:
+  name: OpsMender
+features:
+  bot_user:
+    display_name: opsmender
+    always_online: true
+  slash_commands:
+    - command: /ack
+      description: Acknowledge your most recently paged incident, or the given one
+      usage_hint: "[incident-id]"
+    - command: /take
+      description: Take an unowned incident or ask the owner to hand it over
+      usage_hint: "[incident-id]"
+    - command: /release
+      description: Release the incident you hold
+      usage_hint: "[incident-id]"
+    - command: /resolve
+      description: Resolve the incident and cancel its Escalation Chain
+      usage_hint: "[incident-id]"
+    - command: /snooze-escalation
+      description: Pause escalation for a while (30m by default, up to 7d)
+      usage_hint: "[duration] [incident-id]"
+    - command: /opsmender-status
+      description: Chain status of an incident, or your running chains
+      usage_hint: "[incident-id]"
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - users:read
+      - commands
+settings:
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+```
+
+Then create the app-level token under **Basic Information** → **App-Level Tokens** and install the app to the workspace.
+
 ---
 
 ## 6. Verification recipe

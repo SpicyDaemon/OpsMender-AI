@@ -62,6 +62,37 @@ class SlackAdapter:
                 placeholder="xoxb-...",
             ),
             FieldSpec(
+                name="inbound_mode",
+                label="How Slack reaches OpsMender",
+                kind="select",
+                group="config",
+                required=False,
+                default="http",
+                helper=(
+                    "Request URLs need a public URL for buttons and commands. "
+                    "Socket Mode needs none: OpsMender opens the connection to Slack."
+                ),
+                doc_url="https://api.slack.com/apis/socket-mode",
+                options=(
+                    ("http", "Request URLs"),
+                    ("socket", "Socket Mode"),
+                ),
+            ),
+            FieldSpec(
+                name="app_token_env",
+                label="App-level token variable",
+                kind="text",
+                group="config",
+                required=False,
+                default="OPSMENDER_SLACK_APP_TOKEN",
+                helper=(
+                    "Socket Mode only. The name of the environment variable that "
+                    "holds the app-level token (xapp-, scope connections:write); "
+                    "the token itself is never stored."
+                ),
+                placeholder="OPSMENDER_SLACK_APP_TOKEN",
+            ),
+            FieldSpec(
                 name="default_chat_id",
                 label="Default channel ID",
                 kind="text",

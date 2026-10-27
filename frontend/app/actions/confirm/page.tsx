@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
 import { FormAlert } from "@/components/ui/Input";
@@ -51,6 +52,7 @@ function useHash(): string | null {
  * signed-in person presses Confirm, under their own role.
  */
 export default function ActionLinkConfirmPage() {
+  const router = useRouter();
   const hash = useHash();
   const token =
     hash !== null && hash.startsWith("#token=")
@@ -66,7 +68,7 @@ export default function ActionLinkConfirmPage() {
     // Back here after sign-in, also when an old session turns out expired.
     rememberReturnPath(`${CONFIRM_PATH}#token=${encodeURIComponent(token)}`);
     if (!getToken()) {
-      window.location.href = "/login";
+      router.replace("/login");
       return;
     }
     let cancelled = false;
@@ -82,7 +84,7 @@ export default function ActionLinkConfirmPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [router, token]);
 
   async function handleConfirm() {
     setSubmitting(true);

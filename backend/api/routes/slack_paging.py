@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_db
@@ -57,6 +57,7 @@ from backend.bots.native_callbacks import (
 )
 from backend.db.models import BotConnector, Incident, IncidentChainState, IncidentPage
 from backend.db.repos import (
+    LIVE_CHAIN_STATUSES,
     IncidentAssignmentRepo,
     IncidentChainStateRepo,
     IncidentRepo,
@@ -350,23 +351,53 @@ def _extract_incident_id(text: str) -> uuid.UUID | None:
         return None
 
 
+# Nothing times out an exhausted chain while its incident stays open, so a
+# command without an id takes one only while the user's page on it is this
+# recent. Older, a bare /resolve or /release could act on a forgotten incident.
+# The window counts from the page, not from when the chain ran out: a handoff
+# can restart a chain and run it out again without paging this user.
+EXHAUSTED_PAGE_WINDOW = timedelta(hours=24)
+
+
 async def _latest_user_incident_id(
     db: AsyncSession, *, org_id: uuid.UUID, user_id: uuid.UUID
 ) -> uuid.UUID | None:
-    """Find the most recently paged incident for ``user_id`` whose chain is
-    still ``running`` or ``paused``. Used when a slash command is invoked
-    without an explicit incident id."""
+    """Find the most recently paged incident for ``user_id`` that a slash
+    command without an explicit incident id should act on.
 
+    The incident must be open. Its chain must still be able to page (running,
+    paused or under an acknowledgement lock, as ``chain_is_live`` decides), at
+    any age. Or its chain is exhausted and this page was sent within
+    ``EXHAUSTED_PAGE_WINDOW``. An incident with no chain state, a cancelled
+    chain, or a chain acknowledged before the lock existed (finished) never
+    qualifies. The newest qualifying page wins.
+
+    M1-95: in the 2026-10-24 live round ``/ack`` answered "no active page
+    found" once a one-level chain was exhausted, though the incident was open
+    and held."""
+
+    exhausted_since = datetime.now(timezone.utc) - EXHAUSTED_PAGE_WINDOW
     stmt = (
         select(IncidentPage.incident_id)
         .join(
             IncidentChainState,
             IncidentChainState.incident_id == IncidentPage.incident_id,
         )
+        .join(Incident, Incident.id == IncidentPage.incident_id)
         .where(
             IncidentPage.org_id == org_id,
             IncidentPage.user_id == user_id,
-            IncidentChainState.status.in_(("running", "paused", "acked")),
+            Incident.status.not_in(_esc.CLOSED_INCIDENT_STATUSES),
+            or_(
+                and_(
+                    IncidentChainState.status.in_(LIVE_CHAIN_STATUSES),
+                    IncidentChainState.finished_at.is_(None),
+                ),
+                and_(
+                    IncidentChainState.status == "exhausted",
+                    IncidentPage.sent_at >= exhausted_since,
+                ),
+            ),
         )
         .order_by(IncidentPage.sent_at.desc())
         .limit(1)

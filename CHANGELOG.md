@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when it stops. Each click and command is acknowledged at once and answered
   through Slack's response URL. Check configuration, Send live test and
   `opsmender doctor` cover the token and the socket's holder; the Slack paging
-  guide has the steps and a manifest.
+  guide has the steps and a manifest. Messages written to the bot (the Events
+  API) are not read over the socket yet.
 
 ### Removed
 

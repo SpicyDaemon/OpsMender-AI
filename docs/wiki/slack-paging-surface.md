@@ -117,6 +117,8 @@ Steps 3 and 4 above need a Request URL that Slack can reach from the internet. I
 
 One app process holds each Slack channel's socket. When it stops, another process takes the socket over within a minute. Every click and command is acknowledged at once and answered through Slack's response URL, exactly as with Request URLs; the bot token and the user links work the same in both modes.
 
+Socket Mode carries the card buttons and the slash commands above. Messages written to the bot (the Events API path in the [integrations guide](integrations-guide.md)) are not read over the socket yet: with Socket Mode on, Slack sends those to the socket too, so keep Request URLs if your team uses them.
+
 To create the app from a manifest (api.slack.com/apps, **From a manifest**):
 
 ```yaml

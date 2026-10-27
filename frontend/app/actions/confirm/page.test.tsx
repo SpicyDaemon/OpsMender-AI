@@ -2,6 +2,14 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// One router object, as Next.js gives every render.
+const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+const routerReplace = router.replace;
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+}));
+
 vi.mock("@/components/auth/AuthShell", () => ({
   AuthShell: ({
     title,
@@ -59,6 +67,7 @@ describe("action link confirm page (M1-99)", () => {
     apiMocks.getToken.mockReturnValue("session-jwt");
     apiMocks.previewActionLink.mockReset();
     apiMocks.confirmActionLink.mockReset();
+    routerReplace.mockReset();
   });
 
   afterEach(() => {
@@ -100,11 +109,8 @@ describe("action link confirm page (M1-99)", () => {
     openAt("#token=abc.def");
     apiMocks.getToken.mockReturnValue(null);
     render(<ActionLinkConfirmPage />);
-    await waitFor(() =>
-      expect(sessionStorage.getItem("opsmender_return_to")).toBe(
-        "/actions/confirm#token=abc.def",
-      ),
-    );
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/login"));
+    expect(sessionStorage.getItem("opsmender_return_to")).toBe("/actions/confirm#token=abc.def");
     expect(apiMocks.previewActionLink).not.toHaveBeenCalled();
   });
 

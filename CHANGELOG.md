@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Signed action links for chat cards. A card that cannot carry buttons that
+  act inside the chat can carry one link per incident action (Acknowledge,
+  Resolve, Escalate, Start AI session). The link opens a confirm page in
+  OpsMender, and opening it changes nothing, since link scanners in mail and
+  chat follow links. The person signs in (password, MFA or SSO bring them back
+  to the page), sees the incident and the action, and confirms; the action then
+  runs once, under their own role, and the audit log records it as an
+  `action_link` entry, as it records a refused attempt. A used, expired or
+  tampered link, a link from another org and a link from a turned-off
+  Notification Channel are refused; a refusal for the person's role or team
+  leaves the link usable by someone who may act. A link lasts a day by default
+  (`OPSMENDER_ACTION_LINK_TTL_MINUTES`, 5 minutes to 7 days). Its token rides
+  in the URL fragment, so it never reaches a server log. Nothing posts these
+  links yet; they are for cards that can only open links, such as a Teams
+  Workflows card.
+
 ### Removed
 
 - The environment scan audits: audit runs, their findings, audit schedules,

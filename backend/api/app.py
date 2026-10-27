@@ -435,6 +435,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     from backend.api.routes.ticket_sync import router as ticket_sync_router
     from backend.api.routes.voice import router as voice_router
     from backend.api.routes.voice_settings import router as voice_settings_router
+    from backend.api.routes.action_links import router as action_links_router
 
     api_routers = [
         auth_router,
@@ -469,6 +470,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         invites_public_router,
         notifications_router,
         voice_settings_router,
+        action_links_router,
     ]
     dispatcher_routers = [
         ingest_webhook_router,

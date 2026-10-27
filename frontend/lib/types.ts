@@ -2496,3 +2496,28 @@ export interface RetentionRunReportResponse {
   total_errors: number;
   items: RetentionRunReportItem[];
 }
+
+/** A signed action link's state for the confirm page (M1-99). */
+export interface ActionLinkPreview {
+  state: "ready" | "used" | "expired" | "channel_off" | "invalid";
+  message: string | null;
+  action: string | null;
+  action_label: string | null;
+  incident_id: string | null;
+  incident_title: string | null;
+  incident_status: string | null;
+  incident_severity: string | null;
+  channel_name: string | null;
+  expires_at: string | null;
+  can_act: boolean;
+  used_at: string | null;
+  used_result: string | null;
+}
+
+export interface ActionLinkResult {
+  action: string;
+  status: string;
+  message: string;
+  incident_id: string;
+  session_id: string | null;
+}

@@ -169,6 +169,33 @@ dropped the next time you save, there is no **Send live test**, and **Check
 configuration** fails with the reason. See
 [Microsoft Teams: being rebuilt](teams-paging-surface.md).
 
+### Signed action links
+
+Some chat cards cannot carry buttons that act inside the chat; a Microsoft
+Teams Workflows card, for one, can only open links. Such a card carries one
+signed link per incident action. The link opens a confirm page in OpsMender:
+
+- Opening a link changes nothing. Link scanners in mail and chat follow links,
+  so the action waits for the person to press **Confirm**.
+- The person must sign in first (password, MFA or SSO); afterwards they come
+  back to the confirm page. The page shows the incident, the action and the
+  Notification Channel that posted the link.
+- The action runs once, under the signed-in person's role, with the same
+  checks as a chat button: a Viewer cannot act, and only an Admin, a member of
+  the incident's team or someone its Escalation Chain paged can acknowledge.
+  A refusal for the person's role or team leaves the link usable by someone
+  who may act.
+- A used or expired link, a tampered link, a link from another org and a link
+  from a Notification Channel that is turned off are refused, and the page
+  says why. An expired link still points at its incident.
+- The audit log (**Activity**) records every attempt as an **Action link**
+  entry: the action, the incident, the channel, the person, and the result or
+  the reason it was refused.
+- A link lasts a day by default. Set `OPSMENDER_ACTION_LINK_TTL_MINUTES`
+  (5 minutes to 7 days) to change it. The token rides in the URL fragment, so
+  it never reaches a server or proxy log, and it is signed with a key derived
+  from `OPSMENDER_JWT_SECRET`, so rotating that secret also ends every link.
+
 Telegram webhook URL:
 
 ```text

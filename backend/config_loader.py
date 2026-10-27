@@ -395,6 +395,8 @@ class AuthConfig:
     signin_max_failures: int = 5
     signin_max_address_failures: int = 100
     signin_window_seconds: int = 900
+    # How long a signed action link on a chat card stays usable (M1-99).
+    action_link_ttl_minutes: int = 1440
 
 
 @dataclasses.dataclass
@@ -694,6 +696,9 @@ class AppConfig:
                 ),
                 signin_window_seconds=_env_int(
                     env, "OPSMENDER_SIGNIN_WINDOW_SECONDS", 900
+                ),
+                action_link_ttl_minutes=_env_int(
+                    env, "OPSMENDER_ACTION_LINK_TTL_MINUTES", 1440
                 ),
             ),
             saml=SAMLConfig(

@@ -42,6 +42,7 @@ const TYPE_FILTER_OPTIONS = [
   { value: "approval_decision", label: "Approval decision" },
   { value: "tier_override", label: "Tier override" },
   { value: "incident_deleted", label: "Incident deleted" },
+  { value: "action_link", label: "Action link" },
   { value: "pre", label: "Tool call" },
   { value: "post", label: "Tool result" },
 ];

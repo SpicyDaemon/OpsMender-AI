@@ -3239,3 +3239,37 @@ class RetentionRunReportResponse(BaseModel):
     total_deleted: int
     total_errors: int
     items: list[RetentionRunReportItem]
+
+
+class ActionLinkRequest(BaseModel):
+    """A signed action link's token (M1-99). It travels in the body, never in
+    a URL, so it stays out of access logs."""
+
+    token: str = Field(..., min_length=1, max_length=2048)
+
+
+class ActionLinkPreviewResponse(BaseModel):
+    """What the confirm page shows. ``state`` is ready, used, expired,
+    channel_off or invalid; an invalid link names no incident."""
+
+    state: str
+    message: Optional[str] = None
+    action: Optional[str] = None
+    action_label: Optional[str] = None
+    incident_id: Optional[uuid.UUID] = None
+    incident_title: Optional[str] = None
+    incident_status: Optional[str] = None
+    incident_severity: Optional[str] = None
+    channel_name: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    can_act: bool = False
+    used_at: Optional[datetime] = None
+    used_result: Optional[str] = None
+
+
+class ActionLinkResultResponse(BaseModel):
+    action: str
+    status: str
+    message: str
+    incident_id: uuid.UUID
+    session_id: Optional[uuid.UUID] = None

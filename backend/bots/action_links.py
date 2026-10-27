@@ -1,7 +1,8 @@
 """Signed action links for chat cards (M1-99).
 
 A card that cannot carry buttons that act inside the chat (a Teams Workflows
-card can only open links) gets one link per incident action. The link opens a
+card can only open links) can carry one link per incident action; nothing
+posts these links yet, the Teams Workflows connector will. The link opens a
 confirm page in OpsMender, and opening it never acts, since link scanners in
 mail and chat follow links. The person signs in, sees the incident and the
 action, and confirms; the action then runs once, under their own role, through
@@ -47,6 +48,9 @@ MIN_TTL_MINUTES = 5
 MAX_TTL_MINUTES = 7 * 24 * 60
 _KEY_PURPOSE = b"opsmender incident action links"
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+# An AI session the admission refused; the reason travels as the cause.
+SESSION_REFUSED = "session_not_admitted"
 
 # What a link that cannot be used says, by state.
 REFUSALS = {
@@ -175,14 +179,21 @@ async def use_link(
         )
         if not reserved:
             raise IncidentActionError(REFUSALS["used"])
-        result = await execute_incident_action(
-            db,
-            claims=claims,
-            actor_user_id=user_id,
-            channel_factory=channel_factory,
-            config=config,
-            via=VIA,
-        )
+        try:
+            result = await execute_incident_action(
+                db,
+                claims=claims,
+                actor_user_id=user_id,
+                channel_factory=channel_factory,
+                config=config,
+                via=VIA,
+            )
+        except IncidentActionError:
+            raise
+        except ValueError as exc:
+            # Session admission refuses with a reason for the person (every
+            # model at capacity, the incident no longer waiting for one).
+            raise IncidentActionError(SESSION_REFUSED) from exc
         await NativeActionInvocationRepo.finish(
             db,
             use,

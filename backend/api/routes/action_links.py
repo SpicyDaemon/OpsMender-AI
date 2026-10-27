@@ -22,7 +22,12 @@ from backend.api.schemas import (
     ActionLinkResultResponse,
 )
 from backend.auth.roles import request_role
-from backend.bots.action_links import REFUSALS, read_link, use_link
+from backend.bots.action_links import (
+    REFUSALS,
+    SESSION_REFUSED,
+    read_link,
+    use_link,
+)
 from backend.bots.actions import IncidentActionError
 from backend.bots.native_callbacks import (
     ERROR_MESSAGES,
@@ -62,7 +67,17 @@ REFUSAL_STATUS = {
     "incident_not_found": 404,
     "link_used": 409,
     "connector_disabled": 409,
+    SESSION_REFUSED: 409,
     "expired_action_token": 410,
+}
+
+# Results that changed something; the others found it already done.
+CHANGED = {
+    "acknowledged",
+    "resolved",
+    "escalated",
+    "session_started",
+    "session_queued",
 }
 
 RESULT_MESSAGES = {
@@ -72,10 +87,16 @@ RESULT_MESSAGES = {
     "resolved": "You resolved the incident.",
     "already_resolved": "The incident is already resolved.",
     "escalated": "The incident was escalated.",
-    "no_escalation_target": "The Escalation Chain has no further step.",
+    "no_escalation_target": (
+        "Nothing to escalate: the incident is closed, has no Escalation Chain, "
+        "or its chain has no further step."
+    ),
     "session_started": "An AI session started.",
     "session_queued": "An AI session is queued.",
-    "already_active": "An AI session is already running.",
+    "already_active": (
+        "This incident already has an AI session (running, queued or waiting "
+        "for an approval)."
+    ),
 }
 
 
@@ -149,6 +170,9 @@ async def confirm_action_link(
         )
     except IncidentActionError as exc:
         code = str(exc)
+        detail = REFUSAL_MESSAGES.get(code, f"Action refused: {code}.")
+        if code == SESSION_REFUSED and exc.__cause__ is not None:
+            detail = f"The AI session did not start: {exc.__cause__}"
         await AuditEntryRepo.create(
             db,
             org_id,
@@ -163,7 +187,7 @@ async def confirm_action_link(
         # Returned, not raised, so the request still commits the audit entry.
         return JSONResponse(
             status_code=REFUSAL_STATUS.get(code, 403),
-            content={"detail": REFUSAL_MESSAGES.get(code, f"Action refused: {code}.")},
+            content={"detail": detail},
         )
     await AuditEntryRepo.create(
         db,
@@ -180,6 +204,7 @@ async def confirm_action_link(
     return ActionLinkResultResponse(
         action=result.action,
         status=result.status,
+        changed=result.status in CHANGED,
         message=RESULT_MESSAGES.get(result.status, result.status.replace("_", " ")),
         incident_id=result.incident_id,
         session_id=result.session_id,

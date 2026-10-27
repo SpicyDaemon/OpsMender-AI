@@ -274,6 +274,8 @@ const pages = [
   ["34-people-detail", ids.user && `/dashboard/people/detail?id=${ids.user}`],
   ["35-config", "/dashboard/config"],
   ["36-profile", "/dashboard/settings/profile"],
+  // A signed action link (M1-99) that is not valid; a signed-in person sees why.
+  ["37-action-link-invalid", "/actions/confirm#token=bogus-token-for-error-state"],
 ];
 
 console.log("dashboard pages (desktop dark):");

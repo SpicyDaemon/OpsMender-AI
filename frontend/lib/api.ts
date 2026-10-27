@@ -77,13 +77,14 @@ async function request<T>(
       // non-JSON response
     }
     // A temporary password must change first (O-18). Like AuthGuard, only a
-    // dashboard tab goes to the change page, so sign-in, reset links and the
-    // change page itself keep working.
+    // dashboard tab or an action link's confirm page goes to the change page,
+    // so sign-in, reset links and the change page itself keep working.
     if (
       res.status === 403 &&
       code === "password_change_required" &&
       typeof window !== "undefined" &&
-      window.location.pathname.startsWith("/dashboard")
+      (window.location.pathname.startsWith("/dashboard") ||
+        window.location.pathname === "/actions/confirm")
     ) {
       window.location.href = "/password-change-required";
     }
@@ -2329,4 +2330,18 @@ export async function updateRetention(
 
 export async function runRetentionNow(): Promise<RetentionRunReportResponse> {
   return api.post<RetentionRunReportResponse>("/retention/run");
+}
+
+// Signed action links on chat cards (M1-99). The token goes in the body, never
+// in a URL, so it stays out of access logs.
+export async function previewActionLink(
+  token: string,
+): Promise<import("./types").ActionLinkPreview> {
+  return api.post<import("./types").ActionLinkPreview>("/action-links/preview", { token });
+}
+
+export async function confirmActionLink(
+  token: string,
+): Promise<import("./types").ActionLinkResult> {
+  return api.post<import("./types").ActionLinkResult>("/action-links/confirm", { token });
 }

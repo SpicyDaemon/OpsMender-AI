@@ -8,6 +8,7 @@ import { changeMyPassword } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { FormError } from "@/components/ui/Input";
 import { PasswordField } from "@/components/ui/PasswordField";
+import { takeReturnPath } from "@/lib/return-path";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 /**
@@ -48,7 +49,7 @@ export default function PasswordChangeRequiredPage() {
     try {
       await changeMyPassword({ current_password: current, new_password: next });
       await refresh();
-      navigateDashboard("/dashboard");
+      navigateDashboard(takeReturnPath());
     } catch (err) {
       setError(
         err instanceof Error && err.message

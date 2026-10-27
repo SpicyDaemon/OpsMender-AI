@@ -56,12 +56,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The AI's plan now states what the active tier allows: at Tier 0 the
-  actions the skill allows run at once and the rest are blocked, at Tier 1
-  each write it lists becomes an approval request for an operator, and at
-  Tier 2 only the reads the skill allows run. Before, the plan was told only
-  the tier number, and in the 2026-10-24 live round no Tier 1 session ever
-  proposed a write for approval. The tier gate still decides what runs.
+- The AI's plan prompt now marks each tool it offers with what the tier gate
+  does with it at the session's tier: runs without a person, waits for
+  operator approval, or blocked. The mark comes from the same tier check the
+  gate runs, so it follows each skill's policy for that tool. The prompt
+  explains only the marks it shows: listing an action is the only way to ask
+  an operator, nothing in a plan runs until its approval requests are
+  answered or expire, and a blocked action it lists is recorded with its tool
+  and parameters for a person to see. A session that cannot run any tool is
+  told so and asked for an empty plan. Before, the prompt gave only the tier
+  number. The tier gate still decides what runs.
 - Tier 2 (Advisory Only) sessions can now read before they advise. A skill
   may mark an operation it classifies `safe` as autonomous at T2, and the
   skill template, generated skills and read-only integration tools do so by

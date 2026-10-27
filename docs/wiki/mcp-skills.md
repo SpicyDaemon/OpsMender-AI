@@ -381,11 +381,16 @@ guardrail applies, then the operation's explicit active-tier policy, followed by
 the Tier 0 reversible floor. Unknown or underspecified operations are denied,
 except a generic command tool at Tier 1, which asks for approval.
 
-The model is told the active tier's contract when it plans: at Tier 0 what the
-skill allows runs at once and the rest is blocked; at Tier 1 reads run and each
-write it lists becomes an approval request (listing it is the only way to ask);
-at Tier 2 only the reads the skill allows at T2 run. The text guides the model;
-the tier gate below decides what runs.
+When the model plans, each tool it is offered is marked with what the tier
+gate does with it at the session's tier: `runs without a person`, `waits for
+operator approval` or `blocked`. The mark comes from the same check the gate
+runs, so it follows the rules below for that tool. The model is told what the
+marks it sees mean: listing an action is the only way to ask an operator,
+nothing in a plan runs until its approval requests are answered or expire, and
+a blocked action it lists is recorded with its tool and parameters, so at Tier
+2 it can recommend a fix by listing it. A session with no tool to run is told
+to return an empty plan. The marks guide the model; the tier gate below decides
+what runs.
 
 The tier gate runs before any tool/action execution and knows: the selected
 session tier, the skill policy for the selected MCP server, the action's

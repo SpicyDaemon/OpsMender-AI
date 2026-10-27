@@ -200,6 +200,27 @@ def build_graph(
     builder = StateGraph(IncidentState)
     node_order = validate_workflow_node_order(node_order)
 
+    # What the plan prompt is told (M1-90): whether an approval service
+    # answers, whether anything the plan proposes can run (an executor, and a
+    # plan the tier gate checks before execute), and the Tier 0 node clock
+    # when the nodes run under one.
+    has_executor = mcp_session is not None and audit_logger is not None
+    can_run = (
+        has_executor
+        and "plan" in node_order
+        and "tier_gate" in node_order
+        and node_order.index("plan") < node_order.index("tier_gate")
+    )
+    plan_flags = {
+        "can_ask": approval_service is not None,
+        "can_run": can_run,
+        "wait_limit": (
+            tier0_time_config.max_node_seconds
+            if tier == 0 and tier0_time_config is not None
+            else None
+        ),
+    }
+
     # -- select node implementations ----------------------------------------
     if llm is not None:
         observe_fn = _build_observe(llm, skill_def, tier)
@@ -211,9 +232,10 @@ def build_graph(
                 skill_def,
                 plan_tool_names,
                 tool_descriptions=plan_tool_descriptions,
+                **plan_flags,
             )
         else:
-            plan_fn = _build_plan(llm, tier, skill_def)
+            plan_fn = _build_plan(llm, tier, skill_def, **plan_flags)
         verify_fn = _build_verify(llm, skill_def, tier)
         summarize_fn = _build_summarize(llm, skill_def, tier)
     else:
@@ -223,7 +245,7 @@ def build_graph(
         verify_fn = verify
         summarize_fn = summarize
 
-    if mcp_session is not None and audit_logger is not None:
+    if has_executor:
         execute_fn = _build_execute(
             mcp_session,
             skill_def,
@@ -233,12 +255,7 @@ def build_graph(
     else:
         execute_fn = execute
 
-    if (
-        workflow_enabled
-        and skill_def.workflow
-        and mcp_session is not None
-        and audit_logger is not None
-    ):
+    if workflow_enabled and skill_def.workflow and has_executor:
         plan_fn = _build_workflow_plan(
             WorkflowExecutor(
                 mcp_session=mcp_session,

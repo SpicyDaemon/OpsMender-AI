@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -29,8 +30,10 @@ from backend.bots.slack_socket import (
     SocketModeClient,
     SocketModeError,
     handle_envelope,
+    bot_app_id,
     lease_key,
     open_socket_url,
+    state_key,
     token_conflicts,
 )
 from backend.db.models import BotConnector
@@ -55,7 +58,7 @@ RESPONSE_URL = "https://hooks.slack.com/actions/T1/1/abc"
 
 
 async def _socket_connector(
-    app, *, mode="socket", enabled=True, name=None, token_env=TOKEN_ENV
+    app, *, mode="socket", enabled=True, name=None, token_env=TOKEN_ENV, bot=None
 ):
     async with app.state.session_factory() as db:
         connector = await BotConnectorRepo.create(
@@ -64,7 +67,11 @@ async def _socket_connector(
             name=name or f"slack-{mode}-{'on' if enabled else 'off'}",
             platform="slack",
             config={"inbound_mode": mode, "app_token_env": token_env},
-            credentials={"signing_secret": "unused", "bot_token": "xoxb-t"},
+            # Each channel its own Slack app unless a test shares one.
+            credentials={
+                "signing_secret": "unused",
+                "bot_token": bot or f"xoxb-{uuid.uuid4().hex[:12]}",
+            },
             allowed_capabilities=["paging"],
             status="configured",
             is_enabled=enabled,
@@ -79,7 +86,8 @@ class _FakeSlack:
     the test queues ("close" drops the socket without a word) and records
     what the client sends back."""
 
-    def __init__(self):
+    def __init__(self, hello=None):
+        self.hello = hello or {"type": "hello"}
         self.received: list[dict] = []
         self.connections = 0
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -100,7 +108,7 @@ class _FakeSlack:
 
     async def _serve(self, ws):
         self.connections += 1
-        await ws.send(json.dumps({"type": "hello"}))
+        await ws.send(json.dumps(self.hello))
 
         async def read():
             async for raw in ws:
@@ -114,7 +122,9 @@ class _FakeSlack:
                     break
                 if message == "abort":
                     # Drop the connection without a close frame, as a network
-                    # failure would.
+                    # failure would, once the hello has reached the client (an
+                    # abort discards what is not sent yet).
+                    await asyncio.sleep(0.2)
                     ws.transport.abort()
                     break
                 await ws.send(json.dumps(message))
@@ -134,7 +144,7 @@ async def _until(condition, seconds=5.0):
 
 async def _stop(task):
     task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.wait([task], timeout=2)
 
 
 async def test_each_envelope_is_acknowledged_before_it_is_handled():
@@ -199,8 +209,9 @@ async def test_after_a_socket_said_hello_the_wait_starts_over(monkeypatch):
         pass
 
     async with _FakeSlack() as slack:
-        await slack.queue.put({"type": "disconnect", "reason": "refresh_requested"})
         await slack.queue.put("abort")
+        await slack.queue.put({"type": "disconnect", "reason": "refresh_requested"})
+        await slack.queue.put({"type": "disconnect", "reason": "refresh_requested"})
         calls = 0
 
         async def open_url(token):
@@ -208,7 +219,7 @@ async def test_after_a_socket_said_hello_the_wait_starts_over(monkeypatch):
             calls += 1
             if calls <= 2:
                 raise SocketModeError("internal_error")
-            if calls == 5:
+            if calls == 6:
                 raise asyncio.CancelledError
             return slack.url
 
@@ -222,10 +233,74 @@ async def test_after_a_socket_said_hello_the_wait_starts_over(monkeypatch):
         )
         with pytest.raises(asyncio.CancelledError):
             await client.run()
-        assert slack.connections == 2
+        assert slack.connections == 3
         assert not client.connected
 
-    assert waits == [1.0, 2.0, 1.0]
+    # Two failures (1, 2); the drop after hello waits the first again (1); the
+    # first refresh reconnects at once; a second within QUICK_RECONNECT_GAP
+    # waits the first (1).
+    assert waits == [1.0, 2.0, 1.0, 1.0]
+
+
+async def test_a_socket_for_another_app_is_closed_and_not_reopened():
+    handled = []
+
+    async def handle(kind, payload):
+        handled.append(kind)
+
+    hello = {"type": "hello", "connection_info": {"app_id": "A_OTHER"}}
+    async with _FakeSlack(hello=hello) as slack:
+        await slack.queue.put(
+            {"envelope_id": "e1", "type": "interactive", "payload": {}}
+        )
+
+        async def open_url(token):
+            return slack.url
+
+        checked = []
+
+        async def check_app(app_id):
+            checked.append(app_id)
+            return app_id == "A_MINE"
+
+        client = SocketModeClient(TOKEN, handle, open_url=open_url, backoff_first=0.01)
+        client.check_app = check_app
+        await asyncio.wait_for(client.run(), timeout=5)
+        assert slack.connections == 1
+
+    assert checked == ["A_OTHER"] and client.wrong_app == "A_OTHER"
+    assert handled == [] and not client.connected
+
+
+async def test_bot_app_id_asks_slack_which_app_the_bot_belongs_to(monkeypatch):
+    real_client = httpx.AsyncClient
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path, request.url.params.get("bot")))
+        if request.url.path.endswith("auth.test"):
+            return httpx.Response(200, json={"ok": True, "bot_id": "B1"})
+        return httpx.Response(
+            200, json={"ok": True, "bot": {"id": "B1", "app_id": "A1"}}
+        )
+
+    monkeypatch.setattr(
+        slack_socket.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
+    )
+    assert await bot_app_id("xoxb-1") == "A1"
+    assert seen == [("/api/auth.test", None), ("/api/bots.info", "B1")]
+
+    def broken(request):
+        return httpx.Response(200, json={"ok": False, "error": "invalid_auth"})
+
+    monkeypatch.setattr(
+        slack_socket.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=httpx.MockTransport(broken), **kw),
+    )
+    assert await bot_app_id("xoxb-1") is None
 
 
 async def test_it_reconnects_when_slack_asks_and_when_the_socket_drops():
@@ -385,7 +460,7 @@ async def test_two_managers_on_one_database_run_one_socket(app):
     # its socket on its next tick.
     assert await b.tick(now + timedelta(seconds=81)) == {connector.id}
     assert await a.tick(now + timedelta(seconds=82)) == set()
-    await asyncio.gather(first, return_exceptions=True)
+    await asyncio.wait([first], timeout=2)
     assert first.cancelled()
     assert len(_Recorder.made) == 2
     assert not a._sockets and set(b._sockets) == {connector.id}
@@ -441,6 +516,19 @@ async def test_channels_that_share_an_app_token_get_no_socket(app, monkeypatch):
         first.id: ["slack-second"],
         second.id: ["slack-first"],
     }
+    # One bot token is one Slack app too, whatever the app-level tokens.
+    twins = [
+        await _socket_connector(
+            app, name="slack-twin-a", token_env="M1_97_A", bot="xoxb-same"
+        ),
+        await _socket_connector(
+            app, name="slack-twin-b", token_env="M1_97_B", bot="xoxb-same"
+        ),
+    ]
+    assert token_conflicts(twins, {"M1_97_A": "xapp-1-a", "M1_97_B": "xapp-1-b"}) == {
+        twins[0].id: ["slack-twin-b"],
+        twins[1].id: ["slack-twin-a"],
+    }
     # The same token in another variable is still the same app.
     renamed = {**env, "M1_97_OWN_TOKEN": TOKEN}
     assert set(token_conflicts([first, second, own], renamed)) == {
@@ -487,7 +575,7 @@ async def test_a_new_token_variable_restarts_the_socket(app):
         row.config = {"inbound_mode": "socket", "app_token_env": "M1_97_NEW_TOKEN"}
         await db.commit()
     assert await manager.tick(now + timedelta(seconds=20)) == {connector.id}
-    await asyncio.gather(first, return_exceptions=True)
+    await asyncio.wait([first], timeout=2)
     assert first.cancelled()
     assert [r.token for r in _Recorder.made] == [TOKEN, "xapp-1-C3-new"]
     await manager.stop()
@@ -505,15 +593,36 @@ async def test_a_holder_that_cannot_renew_closes_its_socket_before_the_lease_can
     now = datetime.now(timezone.utc)
     assert await a.tick(now) == {connector.id}
     task = a._sockets[connector.id].task
+    # A renewal moves the fence.
+    assert await a.tick(now + timedelta(seconds=30)) == {connector.id}
+    assert a.fence(now + timedelta(seconds=79)) == set()
     # Renewals fail from here on (the database is unreachable from a).
-    assert a.fence(now + timedelta(seconds=39)) == set()
-    assert a.fence(now + timedelta(seconds=40)) == {connector.id}
-    await asyncio.gather(task, return_exceptions=True)
+    assert a.fence(now + timedelta(seconds=80)) == {connector.id}
+    await asyncio.wait([task], timeout=2)
     assert task.cancelled() and not a._sockets
-    # Closed well before the lease could pass: b cannot take it yet.
-    assert await b.tick(now + timedelta(seconds=41)) == set()
-    assert await b.tick(now + timedelta(seconds=61)) == {connector.id}
+    # Closed before the lease could pass: b cannot take it yet.
+    assert await b.tick(now + timedelta(seconds=81)) == set()
+    assert await b.tick(now + timedelta(seconds=91)) == {connector.id}
     await b.stop()
+
+
+async def test_a_tick_never_runs_past_a_socket_fence(app):
+    _Recorder.made = []
+    await _socket_connector(app)
+    manager = SlackSocketManager(
+        app,
+        app.state.session_factory,
+        holder="x",
+        env={TOKEN_ENV: TOKEN},
+        client_factory=_Recorder,
+    )
+    now = datetime.now(timezone.utc)
+    assert manager.tick_budget(now) == 20.0  # no socket: a whole renewal
+    await manager.tick(now)
+    assert manager.tick_budget(now + timedelta(seconds=20)) == 20.0
+    assert manager.tick_budget(now + timedelta(seconds=45)) == 5.0
+    assert manager.tick_budget(now + timedelta(seconds=60)) == 1.0
+    await manager.stop()
 
 
 @pytest.mark.parametrize("failure", ["raises", "hangs"])
@@ -561,10 +670,125 @@ async def test_a_holder_that_cannot_connect_gives_the_socket_up(app):
     # A connected holder keeps it.
     assert await healthy.tick(now + timedelta(seconds=141)) == {connector.id}
     await healthy.stop()
-    # The one that gave up rests a minute before it tries again.
-    assert await stuck.tick(now + timedelta(seconds=100)) == set()
-    assert await stuck.tick(now + timedelta(seconds=121)) == {connector.id}
+    # The one that gave up rests a little over one renewal before it tries
+    # again, long enough for another process to take the lease.
+    assert await stuck.tick(now + timedelta(seconds=80)) == set()
+    assert await stuck.tick(now + timedelta(seconds=86)) == {connector.id}
     await stuck.stop()
+
+
+async def test_the_doctor_sees_a_holder_that_is_not_connected(app, monkeypatch):
+    from backend.doctor import check_slack_socket_mode
+
+    _Recorder.made = []
+    connector = await _socket_connector(app)
+    monkeypatch.setenv(TOKEN_ENV, TOKEN)
+    factory = app.state.session_factory
+
+    async def accept(token):
+        return "wss://wss.slack.test/link"
+
+    stuck = SlackSocketManager(
+        app,
+        factory,
+        holder="stuck",
+        env={TOKEN_ENV: TOKEN},
+        client_factory=_Unreachable,
+    )
+    now = datetime.now(timezone.utc)
+    await stuck.tick(now)
+    [result] = await check_slack_socket_mode(factory, probe=accept)
+    assert result.status == "warn" and "not connected" in result.detail
+
+    # A minute later it gives the socket up, and the doctor says why.
+    await stuck.tick(now + timedelta(seconds=60))
+    [result] = await check_slack_socket_mode(factory, probe=accept)
+    assert result.status == "warn" and "could not connect" in result.detail
+    async with factory() as db:
+        raw = await RuntimeConfigRepo.get_value(
+            db, TEST_ORG_ID, state_key(connector.id)
+        )
+    assert json.loads(raw)["problem"] == "not_connecting"
+    await stuck.stop()
+
+    connected = SlackSocketManager(
+        app, factory, holder="up", env={TOKEN_ENV: TOKEN}, client_factory=_Recorder
+    )
+    await connected.tick(now + timedelta(seconds=61))
+    await connected.tick(now + timedelta(seconds=81))
+    [result] = await check_slack_socket_mode(factory, probe=accept)
+    assert result.status == "ok" and "held by up" in result.detail
+    await connected.stop()
+
+
+async def test_a_socket_for_another_app_gets_no_socket_until_the_tokens_change(
+    app, monkeypatch
+):
+    from backend.doctor import check_slack_socket_mode
+
+    class _OtherApp(_Recorder):
+        async def run(self):
+            self.wrong_app = "A_OTHER"
+
+    _Recorder.made = []
+    connector = await _socket_connector(app, bot="xoxb-app-y")
+    factory = app.state.session_factory
+    manager = SlackSocketManager(
+        app, factory, holder="x", env={TOKEN_ENV: TOKEN}, client_factory=_OtherApp
+    )
+    now = datetime.now(timezone.utc)
+    assert await manager.tick(now) == {connector.id}
+    assert _Recorder.made[0].check_app is not None
+    await asyncio.wait([manager._sockets[connector.id].task], timeout=2)
+    assert await manager.tick(now + timedelta(seconds=20)) == set()
+    assert await manager.tick(now + timedelta(seconds=40)) == set()
+    assert len(_Recorder.made) == 1  # not reopened
+    async with factory() as db:
+        assert await RuntimeConfigRepo.lease_holder(db, lease_key(connector.id)) is None
+
+    monkeypatch.setenv(TOKEN_ENV, TOKEN)
+
+    async def accept(token):
+        return "wss://wss.slack.test/link"
+
+    [result] = await check_slack_socket_mode(factory, probe=accept)
+    assert result.status == "fail" and "A_OTHER" in result.detail
+
+    # A new bot token is a new configuration: the socket is tried again.
+    async with factory() as db:
+        row = await BotConnectorRepo.get_by_id(db, TEST_ORG_ID, connector.id)
+        row.credentials = {"signing_secret": "unused", "bot_token": "xoxb-app-x"}
+        await db.commit()
+    assert await manager.tick(now + timedelta(seconds=60)) == {connector.id}
+    assert len(_Recorder.made) == 2
+    await manager.stop()
+
+
+async def test_the_app_check_compares_with_the_bot_token_app(app, monkeypatch):
+    connector = await _socket_connector(app, bot="xoxb-app-y")
+    manager = SlackSocketManager(
+        app,
+        app.state.session_factory,
+        holder="x",
+        env={TOKEN_ENV: TOKEN},
+        client_factory=_Recorder,
+    )
+    lookups = []
+
+    async def lookup(token):
+        lookups.append(token)
+        return {"xoxb-app-y": "A_Y"}.get(token)
+
+    monkeypatch.setattr(slack_socket, "bot_app_id", lookup)
+    await manager.tick()
+    check = _Recorder.made[-1].check_app
+    assert await check("A_Y") is True
+    assert await check("A_X") is False
+    assert lookups == ["xoxb-app-y"]  # looked up once
+    # A bot whose app Slack does not name never closes a socket.
+    manager._bots[connector.id] = "xoxb-unknown"
+    assert await check("A_X") is True
+    await manager.stop()
 
 
 async def test_stop_lets_envelopes_being_handled_finish(app, monkeypatch):
@@ -591,6 +815,16 @@ async def test_stop_lets_envelopes_being_handled_finish(app, monkeypatch):
     stopping = asyncio.create_task(manager.stop())
     await asyncio.sleep(0.05)
     assert not stopping.done()  # stop waits for the envelope
+    # Meanwhile the socket is closed and its lease free for another process.
+    other = SlackSocketManager(
+        app,
+        app.state.session_factory,
+        holder="other",
+        env={TOKEN_ENV: TOKEN},
+        client_factory=_Recorder,
+    )
+    assert len(await other.tick()) == 1
+    await other.stop()
     release.set()
     await stopping
     assert finished == ["interactive"] and not pending.cancelled()
@@ -653,7 +887,11 @@ async def test_the_manager_runs_envelopes_and_answers_a_failure(
         await handle("interactive", {"response_url": RESPONSE_URL})
     # The person hears it failed; the log has the place, not the message.
     assert answers[-1] == (RESPONSE_URL, FAILURE_TEXT)
-    assert "RuntimeError" in caplog.text and "slack_socket.py" in caplog.text
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "RuntimeError" in m and 'File "' in m and "slack_socket.py" in m
+        for m in messages
+    )
     assert RESPONSE_URL not in caplog.text
     await manager.stop()
 
@@ -784,7 +1022,9 @@ async def test_an_envelope_for_a_turned_off_connector_does_nothing(app, answers)
         )
 
 
-async def test_a_slash_command_over_the_socket_keeps_what_it_changed(app, answers):
+async def test_a_slash_command_over_the_socket_keeps_what_it_changed(
+    app, answers, monkeypatch
+):
     from sqlalchemy import select
 
     from backend.db.models import IncidentChainState
@@ -804,6 +1044,20 @@ async def test_a_slash_command_over_the_socket_keeps_what_it_changed(app, answer
         await db.commit()
         state_id = state.id
 
+    seen_at_post = []
+
+    async def post(url, text):
+        # Another session reads what the answer reports: it is committed.
+        async with app.state.session_factory() as db:
+            row = (
+                await db.execute(
+                    select(IncidentChainState).where(IncidentChainState.id == state_id)
+                )
+            ).scalar_one()
+            seen_at_post.append(row.status)
+        answers.append((url, text))
+
+    monkeypatch.setattr("backend.api.routes.slack_paging._post_answer", post)
     await handle_envelope(
         app,
         app.state.session_factory,
@@ -819,6 +1073,7 @@ async def test_a_slash_command_over_the_socket_keeps_what_it_changed(app, answer
 
     [(url, text)] = answers
     assert url == RESPONSE_URL and "Snoozed" in text
+    assert seen_at_post == ["paused"]
     async with app.state.session_factory() as db:
         row = (
             await db.execute(
@@ -897,6 +1152,13 @@ async def test_the_doctor_reports_each_socket_mode_connector(app, monkeypatch):
     [result] = await check_slack_socket_mode(factory, probe=refuse)
     assert result.status == "fail" and "refused" in result.detail
     assert "invalid_auth" in result.detail
+
+    async def busy(token):
+        raise SocketModeError("ratelimited")
+
+    [result] = await check_slack_socket_mode(factory, probe=busy)
+    assert result.status == "fail" and "refused" not in result.detail
+    assert "ratelimited" in result.detail
     # Slack never answered, so nothing refused the token.
     [result] = await check_slack_socket_mode(factory, probe=unreachable)
     assert result.status == "fail" and "refused" not in result.detail

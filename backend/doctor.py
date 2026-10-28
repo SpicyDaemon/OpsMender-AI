@@ -11,6 +11,7 @@ CLI is the only place that prints; the functions return data.
 
 from __future__ import annotations
 
+import json
 import pathlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -332,6 +333,7 @@ async def check_slack_socket_mode(
         lease_key,
         open_socket_url,
         socket_connectors,
+        state_key,
         token_conflicts,
     )
     from backend.db.repos import RuntimeConfigRepo
@@ -344,6 +346,15 @@ async def check_slack_socket_mode(
                 c.id: await RuntimeConfigRepo.lease_holder(session, lease_key(c.id))
                 for c in connectors
             }
+            states = {}
+            for c in connectors:
+                raw = await RuntimeConfigRepo.get_value(
+                    session, c.org_id, state_key(c.id)
+                )
+                try:
+                    states[c.id] = json.loads(raw) if raw else {}
+                except ValueError:
+                    states[c.id] = {}
     except Exception as exc:  # noqa: BLE001
         return [CheckResult("Slack Socket Mode", "fail", f"Query failed: {exc}")]
 
@@ -367,7 +378,7 @@ async def check_slack_socket_mode(
                 CheckResult(
                     name,
                     "fail",
-                    f"{app_token_env(connector)} holds the same app-level token as "
+                    f"Shares its Slack app (the app-level token or the bot token) with "
                     f"{', '.join(conflicts[connector.id])}; each Socket Mode channel "
                     "needs its own Slack app, so none of them gets a socket.",
                 )
@@ -377,7 +388,13 @@ async def check_slack_socket_mode(
             await probe(token)
         except SocketModeError as exc:
             results.append(
-                CheckResult(name, "fail", f"Slack refused the app-level token: {exc}")
+                CheckResult(
+                    name,
+                    "fail",
+                    f"Slack refused the app-level token: {exc}"
+                    if exc.refused
+                    else f"Slack did not open a socket ({exc}); try again later.",
+                )
             )
             continue
         except Exception as exc:  # noqa: BLE001 - the network, not Slack's answer
@@ -387,13 +404,28 @@ async def check_slack_socket_mode(
                 )
             )
             continue
-        held = holders.get(connector.id)
-        if held is None:
+        state = states.get(connector.id) or {}
+        if state.get("problem") == "wrong_app":
             results.append(
                 CheckResult(
-                    name, "warn", "Token accepted; no process holds the socket."
+                    name,
+                    "fail",
+                    f"The app-level token in {app_token_env(connector)} belongs to "
+                    f"Slack app {state.get('socket_app')}, not to the app of the bot "
+                    "token; no socket opens until one of them changes.",
                 )
             )
+            continue
+        held = holders.get(connector.id)
+        if held is None:
+            detail = "Token accepted; no process holds the socket."
+            if state.get("problem") == "not_connecting":
+                detail = (
+                    f"Token accepted, but {state.get('holder')} could not connect for a "
+                    "minute and gave the socket up; check outbound access to "
+                    "wss-primary.slack.com."
+                )
+            results.append(CheckResult(name, "warn", detail))
             continue
         holder, renewed = held
         if renewed.tzinfo is None:
@@ -404,6 +436,15 @@ async def check_slack_socket_mode(
                     name,
                     "warn",
                     f"Token accepted; the socket's last holder ({holder}) stopped renewing.",
+                )
+            )
+        elif state.get("holder") == holder and not state.get("connected"):
+            results.append(
+                CheckResult(
+                    name,
+                    "warn",
+                    f"Token accepted; {holder} holds the socket but is not connected "
+                    "yet (it gives the socket up after a minute without one).",
                 )
             )
         else:

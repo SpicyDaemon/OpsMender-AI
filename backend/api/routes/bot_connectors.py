@@ -400,7 +400,8 @@ def _connector_config_checks(
                 _check(
                     "socket_mode",
                     "fail",
-                    f"Socket Mode: the app-level token in {variable} is also used by "
+                    f"Socket Mode: this channel shares its Slack app (the app-level "
+                    f"token in {variable} or the bot token) with "
                     f"{', '.join(shared_token_with)}. Each Socket Mode channel needs "
                     "its own Slack app, so none of them gets a socket; give each its "
                     "own app or switch the others to Request URLs.",
@@ -802,7 +803,9 @@ async def test_bot_connector(
                         _check(
                             "socket_mode_live",
                             "fail",
-                            f"Slack refused Socket Mode for the app-level token: {exc}.",
+                            f"Slack refused Socket Mode for the app-level token: {exc}."
+                            if exc.refused
+                            else f"Slack did not open a socket ({exc}); try again later.",
                         )
                     )
                 except Exception as exc:  # noqa: BLE001 - a network failure

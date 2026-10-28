@@ -4,18 +4,21 @@ opens to Slack, so no public URL is needed (M1-97).
 A Slack connector whose ``config.inbound_mode`` is ``socket`` names the
 environment variable that holds its app-level token (``xapp-``); the token is
 never stored. Each Socket Mode connector needs its own Slack app: Slack hands
-each envelope to one of an app's open sockets, so two connectors on one token
-would each see a random share of the clicks. Connectors that share a token get
-no socket, and Check configuration and the doctor say why.
+each envelope to one of an app's open sockets, so two connectors on one app
+would each see a random share of the clicks. Connectors that share an
+app-level token or a bot token get no socket, and a socket whose app-level
+token turns out to belong to another app than the connector's bot token is
+closed; Check configuration and the doctor say why.
 
 One app process holds each connector's socket at a time. The holder keeps a
 lease row in ``runtime_config`` and renews it while its socket is connected or
 still connecting. A holder that cannot renew closes its sockets before the
 lease can pass to another process, and a holder that cannot connect gives the
-lease up, so another process can try. Every envelope is acknowledged at once
-and then handled by the same code as the HTTP endpoints; the outcome is posted
-to the payload's ``response_url``, so slow work never misses Slack's three
-seconds.
+lease up, so another process can try. The holder also keeps a state row the
+doctor reads: connected or not, and any problem. Every envelope is
+acknowledged at once and then handled by the same code as the HTTP endpoints;
+the outcome is posted to the payload's ``response_url``, so slow work never
+misses Slack's three seconds.
 """
 
 from __future__ import annotations
@@ -53,12 +56,11 @@ LEASE_PREFIX = "slack.socket_lease."
 # LEASE_SECONDS pass without a renewal.
 LEASE_SECONDS = 60
 RENEW_SECONDS = 20
-# A holder that has not renewed for FENCE_SECONDS closes its socket, so it is
-# gone before another process can take the lease.
-FENCE_SECONDS = LEASE_SECONDS - RENEW_SECONDS
-# A socket that has not been connected for CONNECT_GRACE_SECONDS gives its
-# lease up, and this process waits as long before taking it again.
-CONNECT_GRACE_SECONDS = LEASE_SECONDS
+STATE_PREFIX = "slack.socket_state."
+AUTH_TEST_URL = "https://slack.com/api/auth.test"
+BOTS_INFO_URL = "https://slack.com/api/bots.info"
+# Slack's answers that are not about the token: it did not refuse it.
+NOT_A_REFUSAL = {"ratelimited", "internal_error", "fatal_error", "service_unavailable"}
 # On shutdown, envelopes being handled get this long to finish.
 DRAIN_SECONDS = 10.0
 # Closing an old socket never holds up the next one for long.
@@ -100,22 +102,34 @@ def app_token(
     return value if value.startswith(APP_TOKEN_PREFIX) else None
 
 
+def bot_token(connector: BotConnector) -> str | None:
+    value = str((connector.credentials or {}).get("bot_token") or "").strip()
+    return value or None
+
+
 def token_conflicts(
     connectors: Iterable[BotConnector], env: Mapping[str, str] = os.environ
 ) -> dict[uuid.UUID, list[str]]:
-    """For each Socket Mode connector whose app-level token another of the
-    given connectors also uses, the names of those others."""
-    by_token: dict[str, list[BotConnector]] = {}
+    """For each Socket Mode connector that shares its Slack app with another
+    of the given connectors (the same app-level token, or the same bot token,
+    which one app has per workspace), the names of those others."""
+    groups: dict[tuple[str, str], list[BotConnector]] = {}
     for connector in connectors:
-        token = app_token(connector, env) if uses_socket_mode(connector) else None
-        if token is not None:
-            by_token.setdefault(token, []).append(connector)
-    return {
-        connector.id: sorted(other.name for other in group if other is not connector)
-        for group in by_token.values()
-        if len(group) > 1
-        for connector in group
-    }
+        if not uses_socket_mode(connector):
+            continue
+        for kind, value in (
+            ("app", app_token(connector, env)),
+            ("bot", bot_token(connector)),
+        ):
+            if value is not None:
+                groups.setdefault((kind, value), []).append(connector)
+    others: dict[uuid.UUID, set[str]] = {}
+    for group in groups.values():
+        for connector in group if len(group) > 1 else ():
+            others.setdefault(connector.id, set()).update(
+                other.name for other in group if other is not connector
+            )
+    return {connector_id: sorted(names) for connector_id, names in others.items()}
 
 
 async def socket_connectors(db) -> list[BotConnector]:
@@ -139,8 +153,18 @@ def lease_key(connector_id: uuid.UUID) -> str:
     return f"{LEASE_PREFIX}{connector_id}"
 
 
+def state_key(connector_id: uuid.UUID) -> str:
+    return f"{STATE_PREFIX}{connector_id}"
+
+
 class SocketModeError(Exception):
     """Slack would not open a socket; the message is Slack's error code."""
+
+    @property
+    def refused(self) -> bool:
+        """Whether Slack refused the token, rather than being busy or down."""
+        code = str(self)
+        return code not in NOT_A_REFUSAL and not code.startswith("http_")
 
 
 async def open_socket_url(token: str) -> str:
@@ -159,6 +183,26 @@ async def open_socket_url(token: str) -> str:
         error = data.get("error") if isinstance(data, dict) else None
         raise SocketModeError(str(error or f"http_{response.status_code}"))
     return url
+
+
+async def bot_app_id(token: str) -> str | None:
+    """The Slack app a bot token belongs to (``auth.test`` then ``bots.info``),
+    or ``None`` when Slack does not say."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {"Authorization": f"Bearer {token}"}
+            who = (await client.post(AUTH_TEST_URL, headers=headers)).json()
+            bot_id = who.get("bot_id") if isinstance(who, dict) else None
+            if not bot_id:
+                return None
+            info = (
+                await client.get(BOTS_INFO_URL, headers=headers, params={"bot": bot_id})
+            ).json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    bot = info.get("bot") if isinstance(info, dict) else None
+    app_id = bot.get("app_id") if isinstance(bot, dict) else None
+    return app_id if isinstance(app_id, str) and app_id else None
 
 
 def _connect(url: str):
@@ -193,14 +237,19 @@ class SocketModeClient:
         self.connected = False
         self._greeted = False
         self._last_quick = float("-inf")
+        # Set by the manager: does the app a socket greets for belong to this
+        # connector? A socket for another app is closed and the client stops.
+        self.check_app: Callable[[str], Awaitable[bool]] | None = None
+        self.wrong_app: str | None = None
 
     async def run(self) -> None:
-        """Serve sockets until cancelled. When Slack asks for a new socket the
-        next one opens at once. After any other close of a socket that said
-        hello the wait goes back to the first one; a failure before hello
-        doubles it, up to the maximum."""
+        """Serve sockets until cancelled, or until a socket greets for another
+        app than the connector's. When Slack asks for a new socket the next one
+        opens at once (at most once per ``QUICK_RECONNECT_GAP``). After any other
+        close of a socket that said hello the wait goes back to the first one; a
+        failure before hello doubles it, up to the maximum."""
         delay = self._first
-        while True:
+        while self.wrong_app is None:
             self._greeted = False
             asked_to_reconnect = False
             try:
@@ -239,6 +288,12 @@ class SocketModeClient:
                 continue
             kind = message.get("type")
             if kind == "hello":
+                info = message.get("connection_info")
+                app_id = info.get("app_id") if isinstance(info, dict) else None
+                if isinstance(app_id, str) and app_id and self.check_app is not None:
+                    if not await self.check_app(app_id):
+                        self.wrong_app = app_id
+                        return False
                 self._greeted = self.connected = True
                 continue
             if kind == "disconnect":
@@ -259,7 +314,9 @@ class SocketModeClient:
 def _describe(exc: Exception) -> str:
     # A socket URL carries a ticket, so connection errors are named, not shown.
     if isinstance(exc, SocketModeError):
-        return f"Slack refused the socket: {exc}"
+        if exc.refused:
+            return f"Slack refused the socket: {exc}"
+        return f"Slack did not open a socket: {exc}"
     return type(exc).__name__
 
 
@@ -353,8 +410,13 @@ class SlackSocketManager:
         )
         self._lease = lease_seconds
         self._renew = renew_seconds
-        self._fence = timedelta(seconds=lease_seconds - renew_seconds)
+        # A holder closes its sockets half a renewal before the lease runs out,
+        # so they are gone before another process can take it over.
+        self._fence = timedelta(seconds=lease_seconds - renew_seconds / 2)
+        # A socket not connected for a lease gives it up, and the process rests
+        # a little over one renewal: long enough for another process to try.
         self._grace = timedelta(seconds=lease_seconds)
+        self._rest = timedelta(seconds=renew_seconds + 5)
         self._env = env
         self._client_factory = client_factory
         self._sockets: dict[uuid.UUID, _Socket] = {}
@@ -362,6 +424,11 @@ class SlackSocketManager:
         self._resting: dict[uuid.UUID, datetime] = {}
         self._inflight: set[asyncio.Task] = set()
         self._conflicts: dict[uuid.UUID, list[str]] = {}
+        # Connectors whose socket greeted for another app, with the tokens it
+        # was found with: no socket until one of them changes.
+        self._wrong_app: dict[uuid.UUID, tuple[str, str | None, str]] = {}
+        self._app_ids: dict[str, str | None] = {}
+        self._bots: dict[uuid.UUID, str | None] = {}
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -383,6 +450,20 @@ class SlackSocketManager:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # The sockets are closed: another process may take them over while
+        # the envelopes already read finish here.
+        if sockets:
+            try:
+                async with self._factory() as db:
+                    for connector_id, _ in sockets:
+                        await RuntimeConfigRepo.release_lease(
+                            db, lease_key(connector_id), self.holder
+                        )
+                    await db.commit()
+            except Exception as exc:  # noqa: BLE001 - the lease expires on its own
+                logger.warning(
+                    "slack socket mode: lease release failed: %s", _describe(exc)
+                )
         # Handlers register when they start; one created just now has not yet.
         inflight = set(self._inflight).union(
             *(getattr(s.client, "tasks", ()) for _, s in sockets)
@@ -392,35 +473,33 @@ class SlackSocketManager:
             for task in late:
                 task.cancel()
             await asyncio.gather(*late, return_exceptions=True)
-        if not sockets:
-            return
-        try:
-            async with self._factory() as db:
-                for connector_id, _ in sockets:
-                    await RuntimeConfigRepo.release_lease(
-                        db, lease_key(connector_id), self.holder
-                    )
-                await db.commit()
-        except Exception as exc:  # noqa: BLE001 - the lease expires on its own
-            logger.warning(
-                "slack socket mode: lease release failed: %s", _describe(exc)
-            )
 
     async def _loop(self) -> None:
         while True:
             started = time.monotonic()
             try:
-                # A tick that hangs on the database counts as a failed renewal.
-                await asyncio.wait_for(self.tick(), timeout=self._renew)
+                # A tick that hangs on the database counts as a failed renewal,
+                # and never runs past the moment a socket must be closed.
+                await asyncio.wait_for(self.tick(), timeout=self.tick_budget())
             except Exception as exc:  # noqa: BLE001 - logged, retried next tick
                 logger.warning("slack socket mode: tick failed: %s", _describe(exc))
-                self.fence()
+            self.fence()
             await asyncio.sleep(max(0.0, self._renew - (time.monotonic() - started)))
+
+    def tick_budget(self, now: datetime | None = None) -> float:
+        """Seconds a tick may take: a renewal, or less when a socket's fence
+        comes sooner (never less than one second)."""
+        now = now or datetime.now(timezone.utc)
+        budget = float(self._renew)
+        for held in self._sockets.values():
+            budget = min(budget, (held.renewed + self._fence - now).total_seconds())
+        return max(budget, 1.0)
 
     def fence(self, now: datetime | None = None) -> set[uuid.UUID]:
         """Close every socket whose lease has not been renewed for
-        ``lease_seconds - renew_seconds``: another process may take the lease
-        soon, and two sockets for one app split its clicks. Returns them."""
+        ``lease_seconds - renew_seconds / 2``: another process may take the
+        lease soon, and two sockets for one app split its clicks. Returns
+        them."""
         now = now or datetime.now(timezone.utc)
         closed = {
             connector_id
@@ -451,7 +530,12 @@ class SlackSocketManager:
             if now - held.seen_connected >= self._grace
         }
         for connector_id in given_up:
-            self._resting[connector_id] = now + self._grace
+            self._resting[connector_id] = now + self._rest
+        wrong_app = {
+            connector_id: held
+            for connector_id, held in self._sockets.items()
+            if getattr(held.client, "wrong_app", None)
+        }
         held_tokens: dict[uuid.UUID, str] = {}
         async with self._factory() as db:
             connectors = await socket_connectors(db)
@@ -465,17 +549,41 @@ class SlackSocketManager:
                         ", ".join(others),
                     )
                 self._conflicts = conflicts
+            states: dict[uuid.UUID, dict[str, Any]] = {}
             for connector in connectors:
                 token = app_token(connector, self._env)
                 if token is None or connector.id in conflicts:
+                    continue
+                fingerprint = (token, bot_token(connector), app_token_env(connector))
+                if connector.id in wrong_app:
+                    held = wrong_app[connector.id]
+                    self._wrong_app[connector.id] = fingerprint
+                    states[connector.id] = {
+                        "connected": False,
+                        "problem": "wrong_app",
+                        "socket_app": held.client.wrong_app,
+                    }
+                    logger.warning(
+                        "slack socket mode: the app-level token of %s belongs to "
+                        "Slack app %s, not to the app of its bot token; no socket",
+                        connector.id,
+                        held.client.wrong_app,
+                    )
+                    continue
+                if self._wrong_app.get(connector.id) == fingerprint:
+                    continue
+                self._wrong_app.pop(connector.id, None)
+                if connector.id in given_up:
+                    states[connector.id] = {
+                        "connected": False,
+                        "problem": "not_connecting",
+                    }
                     continue
                 resting_until = self._resting.get(connector.id)
                 if resting_until is not None:
                     if resting_until > now:
                         continue
                     del self._resting[connector.id]
-                if connector.id in given_up:
-                    continue
                 if await RuntimeConfigRepo.take_lease(
                     db,
                     connector.org_id,
@@ -485,6 +593,24 @@ class SlackSocketManager:
                     seconds=self._lease,
                 ):
                     held_tokens[connector.id] = token
+                    held = self._sockets.get(connector.id)
+                    connected = held is not None and bool(
+                        getattr(held.client, "connected", False)
+                    )
+                    states.setdefault(
+                        connector.id, {"connected": connected, "problem": None}
+                    )
+                    self._bots[connector.id] = bot_token(connector)
+            for connector_id, state in states.items():
+                connector_org = next(
+                    c.org_id for c in connectors if c.id == connector_id
+                )
+                await RuntimeConfigRepo.set(
+                    db,
+                    connector_org,
+                    key=state_key(connector_id),
+                    value=json.dumps({"holder": self.holder, **state}),
+                )
             for connector_id in self._sockets:
                 if connector_id not in held_tokens:
                     await RuntimeConfigRepo.release_lease(
@@ -502,6 +628,7 @@ class SlackSocketManager:
         for connector_id, token in held_tokens.items():
             if connector_id not in self._sockets:
                 client = self._client_factory(token, self._handler(connector_id))
+                client.check_app = self._app_checker(connector_id)
                 self._sockets[connector_id] = _Socket(
                     client=client,
                     task=asyncio.create_task(
@@ -512,6 +639,19 @@ class SlackSocketManager:
                     seen_connected=now,
                 )
         return set(held_tokens)
+
+    def _app_checker(self, connector_id: uuid.UUID) -> Callable[[str], Awaitable[bool]]:
+        async def check(app_id: str) -> bool:
+            bot = self._bots.get(connector_id)
+            if bot is None:
+                return True
+            if bot not in self._app_ids:
+                self._app_ids[bot] = await bot_app_id(bot)
+            expected = self._app_ids[bot]
+            # Unknown is not wrong: a failed lookup never closes a socket.
+            return expected is None or expected == app_id
+
+        return check
 
     def _handler(self, connector_id: uuid.UUID) -> Handler:
         async def handle(kind: str, payload: dict[str, Any]) -> None:

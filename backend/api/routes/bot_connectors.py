@@ -32,6 +32,15 @@ from backend.bots.capabilities import (
     supports_interactive_actions,
 )
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
+from backend.bots.slack_socket import (
+    SocketModeError,
+    app_token,
+    app_token_env,
+    open_socket_url,
+    socket_connectors,
+    token_conflicts,
+    uses_socket_mode,
+)
 from backend.auth.secrets import encrypt_secret
 from backend.db.models import BotConnector, User
 from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, TeamRepo, UserRepo
@@ -325,8 +334,12 @@ def _connector_config_checks(
     connector: BotConnector,
     *,
     requested_chat_id: str | None = None,
+    shared_token_with: list[str] | None = None,
 ) -> list[BotConnectorTestCheck]:
     """Structured, network-free configuration + readiness checks.
+
+    ``shared_token_with`` names the other Socket Mode channels that use this
+    channel's app-level token (M1-97).
 
     Each check is a ``pass`` / ``warn`` / ``fail``. ``fail`` means the channel
     cannot work as configured; ``warn`` means it will work but a useful behavior
@@ -370,6 +383,39 @@ def _connector_config_checks(
                 ),
             )
         )
+
+    if uses_socket_mode(connector):
+        variable = app_token_env(connector)
+        if app_token(connector) is None:
+            checks.append(
+                _check(
+                    "socket_mode",
+                    "fail",
+                    f"Socket Mode is on, but the environment variable {variable} "
+                    "does not hold an app-level token (xapp-).",
+                )
+            )
+        elif shared_token_with:
+            checks.append(
+                _check(
+                    "socket_mode",
+                    "fail",
+                    f"Socket Mode: this channel shares its Slack app (the app-level "
+                    f"token in {variable} or the bot token) with "
+                    f"{', '.join(shared_token_with)}. Each Socket Mode channel needs "
+                    "its own Slack app, so none of them gets a socket; give each its "
+                    "own app or switch the others to Request URLs.",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "socket_mode",
+                    "pass",
+                    f"Socket Mode: the app-level token comes from {variable}; "
+                    "no public URL is needed.",
+                )
+            )
 
     capabilities = list(connector.allowed_capabilities or [])
     if not capabilities:
@@ -706,7 +752,15 @@ async def test_bot_connector(
         )
 
     request = body or BotConnectorTestRequest()
-    checks = _connector_config_checks(connector, requested_chat_id=request.chat_id)
+    shared_token_with = None
+    if uses_socket_mode(connector):
+        others = [c for c in await socket_connectors(db) if c.id != connector.id]
+        shared_token_with = token_conflicts([*others, connector]).get(connector.id)
+    checks = _connector_config_checks(
+        connector,
+        requested_chat_id=request.chat_id,
+        shared_token_with=shared_token_with,
+    )
     target_chat_id = _resolve_test_chat_id(connector, request.chat_id)
     live_message_sent = False
 
@@ -731,6 +785,37 @@ async def test_bot_connector(
                     if ok
                     else _check("connection", "fail", f"Connection failed: {err}")
                 )
+            # Socket Mode: Slack must accept the app-level token. Asking for a
+            # socket URL proves it without holding a socket (M1-97).
+            token = app_token(connector) if uses_socket_mode(connector) else None
+            if token is not None:
+                try:
+                    await open_socket_url(token)
+                    checks.append(
+                        _check(
+                            "socket_mode_live",
+                            "pass",
+                            "Slack accepted the app-level token for Socket Mode.",
+                        )
+                    )
+                except SocketModeError as exc:
+                    checks.append(
+                        _check(
+                            "socket_mode_live",
+                            "fail",
+                            f"Slack refused Socket Mode for the app-level token: {exc}."
+                            if exc.refused
+                            else f"Slack did not open a socket ({exc}); try again later.",
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 - a network failure
+                    checks.append(
+                        _check(
+                            "socket_mode_live",
+                            "fail",
+                            f"Could not reach Slack: {type(exc).__name__}.",
+                        )
+                    )
             # Live delivery - actually send a message to the resolved destination.
             if not any(c.level == "fail" for c in checks):
                 if not target_chat_id:

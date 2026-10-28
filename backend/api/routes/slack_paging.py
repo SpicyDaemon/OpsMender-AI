@@ -29,6 +29,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
@@ -198,6 +199,35 @@ async def slack_interactions(
     except (json.JSONDecodeError, RecursionError):
         return _ephemeral("Could not parse Slack payload.")
 
+    async def answer(response_url: Any, text: str) -> Response:
+        return await _answer(db, background_tasks, response_url, text)
+
+    return await process_interaction(
+        request.app, db, connector, payload, fallback_key=raw_body, answer=answer
+    )
+
+
+AnswerFn = Callable[[Any, str], Awaitable["Response | None"]]
+
+
+async def process_interaction(
+    app,
+    db: AsyncSession,
+    connector: BotConnector,
+    payload: dict[str, Any],
+    *,
+    fallback_key: bytes,
+    answer: AnswerFn,
+) -> Response | None:
+    """Run a ``block_actions`` click from a paging card, once the caller
+    knows which Slack connector it came through.
+
+    Two callers: the signed HTTP request above, and a Socket Mode envelope
+    (``backend/bots/slack_socket.py``, M1-97), which the app-level token
+    already authenticates. ``answer`` tells the person the outcome;
+    ``fallback_key`` keys the idempotency check when Slack sends neither an
+    action timestamp nor a trigger id.
+    """
     if payload.get("type") != "block_actions":
         # Other interactivity types (view_submission, shortcut, …) aren't
         # used by paging cards yet - ack so Slack stops retrying.
@@ -215,27 +245,21 @@ async def slack_interactions(
     response_url = payload.get("response_url")
     incident_id = parse_incident_id_from_action(payload)
     if incident_id is None:
-        return await _answer(
-            db,
-            background_tasks,
-            response_url,
-            "Could not identify the incident from that action.",
+        return await answer(
+            response_url, "Could not identify the incident from that action."
         )
 
     slack_user_id = (payload.get("user") or {}).get("id")
     if not slack_user_id:
-        return await _answer(
-            db,
-            background_tasks,
-            response_url,
-            "Slack didn't tell us who clicked the button.",
+        return await answer(
+            response_url, "Slack didn't tell us who clicked the button."
         )
 
     raw_action = actions[0]
     idempotency_key = str(
         raw_action.get("action_ts")
         or payload.get("trigger_id")
-        or hashlib.sha256(raw_body).hexdigest()
+        or hashlib.sha256(fallback_key).hexdigest()
     )
     try:
         result = await execute_normalized_callback(
@@ -254,17 +278,17 @@ async def slack_interactions(
                 channel_id=str((payload.get("channel") or {}).get("id") or "") or None,
                 message_id=str((payload.get("message") or {}).get("ts") or "") or None,
             ),
-            config=request.app.state.config,
+            config=app.state.config,
         )
     except IncidentActionError as exc:
         message = callback_error_message(exc).replace(
             "Your external account",
             "Your Slack account",
         )
-        return await _answer(db, background_tasks, response_url, message)
+        return await answer(response_url, message)
 
     await dispatch_native_session_result(
-        request.app,
+        app,
         db,
         org_id=connector.org_id,
         result=result,
@@ -272,9 +296,7 @@ async def slack_interactions(
     await refresh_incident_card(db, org_id=connector.org_id, result=result)
     incident = await IncidentRepo.get_by_id(db, connector.org_id, incident_id)
     title = incident.title if incident is not None else str(incident_id)
-    return await _answer(
-        db, background_tasks, response_url, callback_result_message(result, title)
-    )
+    return await answer(response_url, callback_result_message(result, title))
 
 
 # ---------------------------------------------------------------------------
@@ -692,10 +714,19 @@ async def slack_commands(
         )
 
     form = await request.form()
-    command = (form.get("command") or "").strip()
+    return await process_command(db, connector, form)
+
+
+async def process_command(
+    db: AsyncSession, connector: BotConnector, fields: Mapping[str, Any]
+) -> JSONResponse:
+    """Run a slash command, once the caller knows which Slack connector it
+    came through. ``fields`` is the HTTP form or a Socket Mode envelope's
+    payload (M1-97); Slack sends the same keys either way."""
+    command = str(fields.get("command") or "").strip()
     command = SLASH_COMMAND_ALIASES.get(command, command)
-    text = (form.get("text") or "").strip()
-    slack_user_id = (form.get("user_id") or "").strip()
+    text = str(fields.get("text") or "").strip()
+    slack_user_id = str(fields.get("user_id") or "").strip()
 
     if not command:
         return _ephemeral("Missing command.")

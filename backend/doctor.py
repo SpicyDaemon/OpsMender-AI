@@ -11,6 +11,7 @@ CLI is the only place that prints; the functions return data.
 
 from __future__ import annotations
 
+import json
 import pathlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -313,6 +314,148 @@ async def check_paging_chain_age(
     )
 
 
+async def check_slack_socket_mode(
+    factory: async_sessionmaker | None, *, probe=None
+) -> list[CheckResult]:
+    """For each enabled Slack connector in Socket Mode (M1-97): the app-level
+    token is in its variable and no other Socket Mode channel uses it, Slack
+    accepts it, and which process holds the socket, as of the holder's last
+    renewal (up to about 20 s old). A holder that cannot keep its socket
+    connected gives it up within about a minute, and one that has not renewed
+    for ``FENCE_SECONDS`` has closed its socket, so it is reported as stopped.
+    Nothing is reported when no connector uses Socket Mode."""
+    if factory is None:
+        return []
+    from backend.bots.slack_socket import (
+        FENCE_SECONDS,
+        SocketModeError,
+        app_token,
+        app_token_env,
+        lease_key,
+        open_socket_url,
+        socket_connectors,
+        state_key,
+        token_conflicts,
+    )
+    from backend.db.repos import RuntimeConfigRepo
+
+    probe = probe or open_socket_url
+    try:
+        async with factory() as session:
+            connectors = await socket_connectors(session)
+            holders = {
+                c.id: await RuntimeConfigRepo.lease_holder(session, lease_key(c.id))
+                for c in connectors
+            }
+            states = {}
+            for c in connectors:
+                raw = await RuntimeConfigRepo.get_value(
+                    session, c.org_id, state_key(c.id)
+                )
+                try:
+                    states[c.id] = json.loads(raw) if raw else {}
+                except ValueError:
+                    states[c.id] = {}
+    except Exception as exc:  # noqa: BLE001
+        return [CheckResult("Slack Socket Mode", "fail", f"Query failed: {exc}")]
+
+    results: list[CheckResult] = []
+    now = datetime.now(timezone.utc)
+    conflicts = token_conflicts(connectors)
+    for connector in connectors:
+        name = f"Slack Socket Mode: {connector.name}"
+        token = app_token(connector)
+        if token is None:
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"{app_token_env(connector)} does not hold an app-level token (xapp-).",
+                )
+            )
+            continue
+        if connector.id in conflicts:
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"Shares its Slack app (the app-level token or the bot token) with "
+                    f"{', '.join(conflicts[connector.id])}; each Socket Mode channel "
+                    "needs its own Slack app, so none of them gets a socket.",
+                )
+            )
+            continue
+        try:
+            await probe(token)
+        except SocketModeError as exc:
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"Slack refused the app-level token: {exc}"
+                    if exc.refused
+                    else f"Slack did not open a socket ({exc}); try again later.",
+                )
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001 - the network, not Slack's answer
+            results.append(
+                CheckResult(
+                    name, "fail", f"Could not reach Slack: {type(exc).__name__}"
+                )
+            )
+            continue
+        state = states.get(connector.id) or {}
+        if state.get("problem") == "wrong_app":
+            results.append(
+                CheckResult(
+                    name,
+                    "fail",
+                    f"The app-level token in {app_token_env(connector)} belongs to "
+                    f"Slack app {state.get('socket_app')}, not to the app of the bot "
+                    "token; no socket opens until one of them changes.",
+                )
+            )
+            continue
+        held = holders.get(connector.id)
+        if held is None:
+            detail = "Token accepted; no process holds the socket."
+            if state.get("problem") == "not_connecting":
+                detail = (
+                    f"Token accepted, but {state.get('holder')} could not connect for a "
+                    "minute and gave the socket up; check outbound access to "
+                    "wss-primary.slack.com."
+                )
+            results.append(CheckResult(name, "warn", detail))
+            continue
+        holder, renewed = held
+        if renewed.tzinfo is None:
+            renewed = renewed.replace(tzinfo=timezone.utc)
+        if now - renewed >= timedelta(seconds=FENCE_SECONDS):
+            results.append(
+                CheckResult(
+                    name,
+                    "warn",
+                    f"Token accepted; the socket's last holder ({holder}) stopped "
+                    "renewing, so its socket is closed.",
+                )
+            )
+        elif state.get("holder") == holder and not state.get("connected"):
+            results.append(
+                CheckResult(
+                    name,
+                    "warn",
+                    f"Token accepted; {holder} holds the socket but is not connected "
+                    "yet (it gives the socket up after a minute without one).",
+                )
+            )
+        else:
+            results.append(
+                CheckResult(name, "ok", f"Token accepted; socket held by {holder}.")
+            )
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -331,6 +474,7 @@ async def run_all_checks(
     results.extend(await check_mcp_servers(factory))
     results.extend(await check_tool_source_overlaps(factory))
     results.append(await check_paging_chain_age(factory))
+    results.extend(await check_slack_socket_mode(factory))
     return results
 
 

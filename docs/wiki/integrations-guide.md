@@ -501,6 +501,8 @@ https://<your-opsmender-url>/bot-connectors/<connector-id>/slack/webhook
 
 Ensure you subscribe to the `message.channels` bot event. OpsMender verifies every inbound request using HMAC-SHA256 signatures (`X-Slack-Signature`) against your `signing_secret`.
 
+If OpsMender has no public URL, a Slack Notification Channel can receive the card buttons and slash commands over Socket Mode instead (see [Slack as your paging surface](slack-paging-surface.md)). Messages to the bot through this Events API path are not read over the socket yet.
+
 Incident cards: the channel card shows the same facts as the message text
 (Service, Team, Org when set, Responder, Acknowledged by once someone has,
 Escalation level once above 0) and a **View in OpsMender** button built from

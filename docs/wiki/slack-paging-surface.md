@@ -107,6 +107,64 @@ In OpsMender:
 2. **Bot User Links** → for every operator who should be allowed to click buttons or use slash commands, add a row mapping their Slack user id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`).
 3. (Optional) Set `OPSMENDER_SLACK_BOT_TOKEN` in your environment. This is the same token used by the dispatcher for DMs and by the channel mirror for `conversations.create`.
 
+### Socket Mode (no public URL)
+
+Steps 3 and 4 above need a Request URL that Slack can reach from the internet. If OpsMender has none, let it open the connection to Slack instead:
+
+1. In the Slack app's settings, **Socket Mode** → enable it and create an app-level token with the `connections:write` scope; it starts with `xapp-`. With Socket Mode on, Slack sends clicks and slash commands over the socket, so the Request URLs are not needed.
+2. Put the token in an environment variable of the OpsMender app, `OPSMENDER_SLACK_APP_TOKEN` unless you choose another name, and restart the app. The token is read from the environment and never stored.
+3. In OpsMender, on the Slack Notification Channel, set **How Slack reaches OpsMender** to **Socket Mode**, and set **App-level token variable** if you used another name. **Check configuration** confirms the variable holds an app-level token, **Send live test** confirms Slack accepts it, and `opsmender doctor` also shows which app process holds the socket and whether it was connected at its last renewal (at most about 20 seconds ago).
+
+Each Socket Mode channel needs its own Slack app, with its app-level token in its own variable. Slack spreads an app's clicks across all of its open sockets, so two channels on one app would each get a share of the other's; channels that share an app-level token or a bot token get no socket at all, and **Check configuration** and `opsmender doctor` name the others. When a socket opens, OpsMender also checks that its app-level token belongs to the same Slack app as the channel's bot token; if not, the socket is closed and stays closed until one of the tokens changes, and `opsmender doctor` names the app the token belongs to.
+
+The socket runs in the app processes that run the schedulers (the one process of a single-process install, the scheduler role in a distributed one), and one of them holds each channel's socket. When it stops cleanly, another process takes the socket over within about 20 seconds; after a crash, within about 80 seconds, once the old hold runs out (a restarted process waits for that too). A holder that cannot renew its hold closes the socket before another process can take it. One that cannot connect for a minute gives the socket up and tries again about 40 seconds later, so another process can take it meanwhile. Slack replaces each socket every few hours; OpsMender then reconnects at once, and a click in the second that takes gets Slack's "not responding" message and can be tried again. In Socket Mode every click and command is acknowledged at once and answered through Slack's response URL, so command answers, like button answers, need outbound access to `hooks.slack.com`. The bot token and the user links work as with Request URLs.
+
+Socket Mode carries the card buttons and the slash commands above. Messages written to the bot (the Events API path in the [integrations guide](integrations-guide.md)) are not read over the socket yet: with Socket Mode on, Slack sends those to the socket too, so keep Request URLs if your team uses them.
+
+To create the app from a manifest (api.slack.com/apps, **From a manifest**):
+
+```yaml
+display_information:
+  name: OpsMender
+features:
+  bot_user:
+    display_name: opsmender
+    always_online: true
+  slash_commands:
+    - command: /ack
+      description: Acknowledge your most recently paged incident, or the given one
+      usage_hint: "[incident-id]"
+    - command: /take
+      description: Take your most recently paged incident or the given one, or ask its owner for it
+      usage_hint: "[incident-id]"
+    - command: /release
+      description: Release your most recently paged incident, or the given one
+      usage_hint: "[incident-id]"
+    - command: /resolve
+      description: Resolve your most recently paged incident or the given one, ending its chain
+      usage_hint: "[incident-id]"
+    - command: /snooze-escalation
+      description: Pause escalation of your most recently paged incident or the given one
+      usage_hint: "[duration] [incident-id]"
+    - command: /opsmender-status
+      description: Chain status of your latest paged incident or the given one, else up to 10 running chains
+      usage_hint: "[incident-id]"
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - users:read
+      - commands
+settings:
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
+```
+
+Then create the app-level token under **Basic Information** → **App-Level Tokens** and install the app to the workspace.
+
 ---
 
 ## 6. Verification recipe
@@ -128,7 +186,7 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 | Symptom | Likely cause |
 |---------|--------------|
 | "Your Slack account isn't linked" on every click | Missing `bot_user_links` row for that Slack user id in that connector + org. |
-| A click works but you see no confirmation | The answer goes to the interaction's `response_url`. OpsMender logs `Slack response_url answer failed` when it cannot reach `hooks.slack.com` (an outbound firewall, for example). The action itself is already applied. |
+| A click works but you see no confirmation | The answer goes to the interaction's `response_url`. OpsMender logs `Slack response_url answer failed` when it cannot reach `hooks.slack.com` (an outbound firewall, for example). The action itself is already applied. In Socket Mode, slash command answers go the same way. |
 | **View in OpsMender** opens the wrong host | `OPSMENDER_PUBLIC_URL` is unset or points at an internal address. Set it to the address your responders open. |
 | 403 `invalid_signature` in OpsMender logs | The Slack `signing_secret` on the `bot_connectors` row doesn't match the app's signing secret. |
 | Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs or their two aliases (`/opsmender-status`, `/snooze-escalation`); the reply lists both spellings. |

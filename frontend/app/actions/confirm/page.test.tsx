@@ -134,9 +134,12 @@ describe("action link confirm page (M1-99)", () => {
 
   it("starts over when the link in the address bar changes", async () => {
     openAt("#token=abc.def");
-    apiMocks.previewActionLink
-      .mockResolvedValueOnce(READY)
-      .mockResolvedValueOnce({ ...READY, action: "resolve", action_label: "Resolve", incident_title: "Other" });
+    let answerSecond: (value: unknown) => void = () => undefined;
+    apiMocks.previewActionLink.mockResolvedValueOnce(READY).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answerSecond = resolve;
+      }),
+    );
     apiMocks.confirmActionLink.mockResolvedValue({
       action: "resolve",
       status: "resolved",
@@ -151,8 +154,12 @@ describe("action link confirm page (M1-99)", () => {
       window.history.replaceState(null, "", "/actions/confirm#token=new.link");
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
-    expect(await screen.findByText("Resolve this incident?")).toBeTruthy();
+    // Nothing of the old link stays while the new one is checked.
+    expect(await screen.findByText("Checking the link…")).toBeTruthy();
     expect(screen.queryByText("Acknowledge this incident?")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    act(() => answerSecond({ ...READY, action: "resolve", action_label: "Resolve", incident_title: "Other" }));
+    expect(await screen.findByText("Resolve this incident?")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Confirm: Resolve" }));
     await screen.findByText("Done");
     expect(apiMocks.confirmActionLink).toHaveBeenCalledWith("new.link");
@@ -170,6 +177,14 @@ describe("action link confirm page (M1-99)", () => {
     render(<ActionLinkConfirmPage />);
     expect(await screen.findByText("This link is not valid")).toBeTruthy();
     expect(apiMocks.previewActionLink).toHaveBeenCalledWith("%E0%A4%A");
+  });
+
+  it("leaves no return path behind when the link cannot be checked", async () => {
+    openAt("#token=abc.def");
+    apiMocks.previewActionLink.mockRejectedValue(new Error("HTTP 500"));
+    render(<ActionLinkConfirmPage />);
+    expect(await screen.findByText("HTTP 500")).toBeTruthy();
+    expect(sessionStorage.getItem("opsmender_return_to")).toBeNull();
   });
 
   it("says when a link has no token", async () => {

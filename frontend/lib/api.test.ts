@@ -59,12 +59,24 @@ describe("request", () => {
     // The session stays: the person needs it to change the password.
     expect(getToken()).toBe("session-token");
 
-    // An action link's confirm page needs a full session too (M1-99).
-    openAt("/actions/confirm");
-    await expect(api.post("/action-links/preview", { token: "t" })).rejects.toThrow(
+    // An action link's confirm page needs a full session too, and comes back
+    // once the password has changed (M1-99).
+    sessionStorage.clear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        href: "http://localhost/actions/confirm#token=t.sig",
+        pathname: "/actions/confirm",
+        hash: "#token=t.sig",
+      },
+    });
+    await expect(api.post("/action-links/preview", { token: "t.sig" })).rejects.toThrow(
       REFUSAL.detail,
     );
     expect(window.location.href).toBe("/password-change-required");
+    expect(sessionStorage.getItem("opsmender_return_to")).toBe("/actions/confirm#token=t.sig");
+    sessionStorage.clear();
 
     // Sign-in and the change page itself stay where they are.
     for (const page of ["/login", "/password-change-required"]) {

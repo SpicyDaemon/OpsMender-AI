@@ -76,6 +76,7 @@ CHANGED = {
     "acknowledged",
     "resolved",
     "escalated",
+    "chain_exhausted",
     "session_started",
     "session_queued",
 }
@@ -88,8 +89,11 @@ RESULT_MESSAGES = {
     "already_resolved": "The incident is already resolved.",
     "escalated": "The incident was escalated.",
     "no_escalation_target": (
-        "Nothing to escalate: the incident is closed, has no Escalation Chain, "
-        "or its chain has no further step."
+        "Nothing to escalate: the incident is closed or has no running Escalation "
+        "Chain."
+    ),
+    "chain_exhausted": (
+        "The Escalation Chain had no further step, so it ended and its team was told."
     ),
     "session_started": "An AI session started.",
     "session_queued": "An AI session is queued.",

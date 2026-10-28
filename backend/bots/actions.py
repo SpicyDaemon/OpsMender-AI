@@ -20,10 +20,12 @@ from backend.db.repos import (
     BotActionAuditRepo,
     BotUserLinkRepo,
     IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentRepo,
     NativeActionInvocationRepo,
     SessionRepo,
     UserRepo,
+    chain_is_live,
 )
 from backend.paging import escalation as _escalation
 from backend.services.incident_timeline import record_lifecycle_comment
@@ -54,6 +56,8 @@ class IncidentActionTokenClaims:
     message_id: str | None
     expires_at: datetime
     nonce: str
+    # The Notification Channel whose card carried a signed action link (M1-99).
+    connector_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,7 @@ def make_incident_action_token(
     message_id: str | None = None,
     expires_at: datetime | None = None,
     nonce: str | None = None,
+    connector_id: uuid.UUID | None = None,
 ) -> str:
     if not secret:
         raise IncidentActionError("missing_action_secret")
@@ -125,6 +130,8 @@ def make_incident_action_token(
         "exp": int(exp.timestamp()),
         "nonce": nonce or uuid.uuid4().hex,
     }
+    if connector_id is not None:
+        payload["connector_id"] = str(connector_id)
     body = _b64encode(_canonical_json(payload))
     sig = hmac.new(secret.encode("utf-8"), body.encode("ascii"), hashlib.sha256)
     return f"{body}.{_b64encode(sig.digest())}"
@@ -163,6 +170,11 @@ def verify_incident_action_token(
             message_id=payload.get("message_id"),
             expires_at=exp,
             nonce=str(payload["nonce"]),
+            connector_id=(
+                uuid.UUID(str(payload["connector_id"]))
+                if payload.get("connector_id") is not None
+                else None
+            ),
         )
     except IncidentActionError:
         raise
@@ -245,6 +257,7 @@ async def execute_incident_action(
     external_actor: ExternalActorIdentity | None = None,
     channel_factory: async_sessionmaker[AsyncSession] | None = None,
     config: AppConfig | None = None,
+    via: str | None = None,
 ) -> IncidentActionResult:
     """Execute a verified incident action.
 
@@ -306,7 +319,7 @@ async def execute_incident_action(
             claims.org_id,
             incident_id=claims.incident_id,
             assignee_id=actor_user_id,
-            via=(connector.platform if connector is not None else "web_ui"),
+            via=via or (connector.platform if connector is not None else "web_ui"),
         )
         status = {
             "closed": "already_resolved",
@@ -362,15 +375,26 @@ async def execute_incident_action(
     if claims.action == "escalate":
         if channel_factory is None:
             raise IncidentActionError("channel_factory_required")
+        # A live chain with no further level ends here, and its team is told;
+        # that is a change, unlike a chain that was not running at all.
+        live = chain_is_live(
+            await IncidentChainStateRepo.get_for_incident(
+                db, claims.org_id, claims.incident_id
+            )
+        ) and incident.status not in ("resolved", "merged")
         outcome = await _escalation.escalate_now(
             db,
             claims.org_id,
             incident_id=claims.incident_id,
             channel_factory=channel_factory,
         )
+        if outcome:
+            status = "escalated"
+        else:
+            status = "chain_exhausted" if live else "no_escalation_target"
         return IncidentActionResult(
             action=claims.action,
-            status="escalated" if outcome else "no_escalation_target",
+            status=status,
             incident_id=claims.incident_id,
             actor_user_id=actor_user_id,
         )

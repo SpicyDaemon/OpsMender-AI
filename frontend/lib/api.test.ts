@@ -59,6 +59,25 @@ describe("request", () => {
     // The session stays: the person needs it to change the password.
     expect(getToken()).toBe("session-token");
 
+    // An action link's confirm page needs a full session too, and comes back
+    // once the password has changed (M1-99).
+    sessionStorage.clear();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        href: "http://localhost/actions/confirm#token=t.sig",
+        pathname: "/actions/confirm",
+        hash: "#token=t.sig",
+      },
+    });
+    await expect(api.post("/action-links/preview", { token: "t.sig" })).rejects.toThrow(
+      REFUSAL.detail,
+    );
+    expect(window.location.href).toBe("/password-change-required");
+    expect(sessionStorage.getItem("opsmender_return_to")).toBe("/actions/confirm#token=t.sig");
+    sessionStorage.clear();
+
     // Sign-in and the change page itself stay where they are.
     for (const page of ["/login", "/password-change-required"]) {
       openAt(page);
@@ -76,6 +95,35 @@ describe("request", () => {
     openAt("/dashboard/settings");
     await expect(api.get("/config")).rejects.toThrow("not in allowed roles");
     expect(window.location.href).toBe("http://localhost/dashboard/settings");
+  });
+
+  it("brings an action link back after a session runs out on it", async () => {
+    sessionStorage.clear();
+    setToken("expired-session");
+    vi.stubGlobal("fetch", answer(401, { detail: "Not authenticated" }));
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        href: "http://localhost/actions/confirm#token=abc.def",
+        pathname: "/actions/confirm",
+        hash: "#token=abc.def",
+      },
+    });
+    await expect(api.post("/action-links/confirm", { token: "abc.def" })).rejects.toThrow(
+      "Unauthorized",
+    );
+    expect(window.location.href).toBe("/login");
+    expect(sessionStorage.getItem("opsmender_return_to")).toBe(
+      "/actions/confirm#token=abc.def",
+    );
+
+    // Any other page goes to sign-in without a return path.
+    sessionStorage.clear();
+    setToken("expired-session");
+    openAt("/dashboard/incidents");
+    await expect(api.get("/incidents")).rejects.toThrow("Unauthorized");
+    expect(sessionStorage.getItem("opsmender_return_to")).toBeNull();
   });
 
   it("turns the list FastAPI sends for a bad body into one message", async () => {

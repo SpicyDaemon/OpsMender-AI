@@ -3,6 +3,8 @@
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
+import { CONFIRM_PATH, rememberReturnPath } from "./return-path";
+
 // Defaults to empty string (same-origin) when the frontend is served by the
 // backend itself. Override via NEXT_PUBLIC_API_URL at build time if the
 // frontend is hosted separately.
@@ -60,6 +62,10 @@ async function request<T>(
   if (res.status === 401 && !skipAuth) {
     clearToken();
     if (typeof window !== "undefined") {
+      // An action link's confirm page comes back after sign-in (M1-99).
+      if (window.location.pathname === CONFIRM_PATH) {
+        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
+      }
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -77,14 +83,19 @@ async function request<T>(
       // non-JSON response
     }
     // A temporary password must change first (O-18). Like AuthGuard, only a
-    // dashboard tab goes to the change page, so sign-in, reset links and the
-    // change page itself keep working.
+    // dashboard tab or an action link's confirm page goes to the change page,
+    // so sign-in, reset links and the change page itself keep working.
     if (
       res.status === 403 &&
       code === "password_change_required" &&
       typeof window !== "undefined" &&
-      window.location.pathname.startsWith("/dashboard")
+      (window.location.pathname.startsWith("/dashboard") ||
+        window.location.pathname === CONFIRM_PATH)
     ) {
+      // The confirm page comes back once the password has changed (M1-99).
+      if (window.location.pathname === CONFIRM_PATH) {
+        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
+      }
       window.location.href = "/password-change-required";
     }
     throw Object.assign(new Error(detail), { status: res.status });
@@ -2329,4 +2340,18 @@ export async function updateRetention(
 
 export async function runRetentionNow(): Promise<RetentionRunReportResponse> {
   return api.post<RetentionRunReportResponse>("/retention/run");
+}
+
+// Signed action links on chat cards (M1-99). The token goes in the body, never
+// in a URL, so it stays out of access logs.
+export async function previewActionLink(
+  token: string,
+): Promise<import("./types").ActionLinkPreview> {
+  return api.post<import("./types").ActionLinkPreview>("/action-links/preview", { token });
+}
+
+export async function confirmActionLink(
+  token: string,
+): Promise<import("./types").ActionLinkResult> {
+  return api.post<import("./types").ActionLinkResult>("/action-links/confirm", { token });
 }

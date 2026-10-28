@@ -50,6 +50,7 @@ RESULT_MESSAGES = {
     "already_resolved": "already resolved",
     "escalated": "escalated",
     "no_escalation_target": "found no further escalation target for",
+    "chain_exhausted": "ran out the Escalation Chain of",
     "session_started": "started an AI session for",
     "session_queued": "queued an AI session for",
     "already_active": "found an active AI session for",

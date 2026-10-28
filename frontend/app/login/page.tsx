@@ -15,6 +15,7 @@ import {
   setToken,
 } from "@/lib/api";
 import type { TenantContextResponse } from "@/lib/types";
+import { takeReturnPath } from "@/lib/return-path";
 import { useDashboardNavigation } from "@/lib/use-dashboard-navigation";
 
 export default function LoginPage() {
@@ -54,7 +55,7 @@ export default function LoginPage() {
     (async () => {
       try {
         await getMe();
-        navigateDashboard("/dashboard");
+        navigateDashboard(takeReturnPath());
       } catch (err) {
         setError(err instanceof Error ? err.message : "SSO login failed");
       }
@@ -73,7 +74,7 @@ export default function LoginPage() {
       } else if (outcome.mfaEnrollmentRequired) {
         router.push("/mfa-setup");
       } else {
-        navigateDashboard("/dashboard");
+        navigateDashboard(takeReturnPath());
       }
     } catch (err) {
       // Too many failed attempts: say how long to wait. Anything else stays

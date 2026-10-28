@@ -2988,6 +2988,70 @@ class RuntimeConfigRepo:
         await db.flush()
         return item
 
+    @staticmethod
+    async def take_lease(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        key: str,
+        holder: str,
+        *,
+        now: datetime,
+        seconds: int,
+    ) -> bool:
+        """Take or renew the lease ``key`` for ``holder`` (M1-97).
+
+        The row's value names the holder and ``updated_at`` its last renewal.
+        One UPDATE takes it when this holder already has it or its last
+        renewal is older than ``seconds``; without a row, an insert takes it
+        and a concurrent insert loses on the primary key. Works the same on
+        SQLite and PostgreSQL, so several processes agree on one holder."""
+        stale = now - timedelta(seconds=seconds)
+        result = await db.execute(
+            update(RuntimeConfig)
+            .where(
+                RuntimeConfig.key == key,
+                or_(RuntimeConfig.value == holder, RuntimeConfig.updated_at < stale),
+            )
+            .values(org_id=org_id, value=holder, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount == 1:
+            return True
+        found = await db.execute(
+            select(RuntimeConfig.key).where(RuntimeConfig.key == key)
+        )
+        if found.first() is not None:
+            return False
+        try:
+            async with db.begin_nested():
+                db.add(
+                    RuntimeConfig(org_id=org_id, key=key, value=holder, updated_at=now)
+                )
+        except IntegrityError:
+            return False
+        return True
+
+    @staticmethod
+    async def release_lease(db: AsyncSession, key: str, holder: str) -> None:
+        """Give up the lease ``key`` if ``holder`` still has it."""
+        await db.execute(
+            delete(RuntimeConfig)
+            .where(RuntimeConfig.key == key, RuntimeConfig.value == holder)
+            .execution_options(synchronize_session=False)
+        )
+
+    @staticmethod
+    async def lease_holder(db: AsyncSession, key: str) -> tuple[str, datetime] | None:
+        """Who holds the lease ``key`` and when they last renewed it."""
+        row = (
+            await db.execute(
+                select(RuntimeConfig.value, RuntimeConfig.updated_at).where(
+                    RuntimeConfig.key == key
+                )
+            )
+        ).first()
+        return None if row is None else (row[0], row[1])
+
 
 class WorkflowProfileRepo:
     @staticmethod

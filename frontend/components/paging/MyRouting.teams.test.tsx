@@ -196,7 +196,7 @@ describe("My Routing while Teams delivery is being rebuilt", () => {
     });
     render(<NotificationPreferencesPanel />);
 
-    await screen.findByLabelText("P0 answer window");
+    await screen.findByLabelText("P1 stage 1 channel");
     expect(selectedText("P1 stage 1 channel")).toBe(
       "Incident cards (channel posts only)",
     );

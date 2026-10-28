@@ -433,6 +433,40 @@ async def test_escalate_through_a_link_reaches_the_escalation_engine(app, client
     assert "Nothing to escalate" in resp.json()["message"]
 
 
+async def test_escalate_that_runs_out_the_chain_is_a_change(app, client):
+    from backend.db.repos import (
+        EscalationChainRepo,
+        IncidentChainStateRepo,
+        TeamRepo,
+    )
+
+    await _user(app, "olive")
+    headers = await _headers(client, "olive")
+    connector, incident = await _setup(app)
+    async with app.state.session_factory() as db:
+        team = await TeamRepo.create(db, TEST_ORG_ID, name="t-link", slug="t-link")
+        chain = await EscalationChainRepo.create(
+            db, TEST_ORG_ID, team_id=team.id, name="c-link", description=None
+        )
+        await IncidentChainStateRepo.create(
+            db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id
+        )
+        await db.commit()
+    resp = await client.post(
+        "/action-links/confirm",
+        headers=headers,
+        json={"token": _link(app, connector, incident.id, action="escalate")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "chain_exhausted"
+    assert resp.json()["changed"] is True
+    async with app.state.session_factory() as db:
+        state = await IncidentChainStateRepo.get_for_incident(
+            db, TEST_ORG_ID, incident.id
+        )
+        assert state.status == "exhausted"
+
+
 async def test_start_ai_session_through_a_link_dispatches_the_session(
     app, client, monkeypatch
 ):

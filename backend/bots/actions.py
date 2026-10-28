@@ -20,10 +20,12 @@ from backend.db.repos import (
     BotActionAuditRepo,
     BotUserLinkRepo,
     IncidentAssignmentRepo,
+    IncidentChainStateRepo,
     IncidentRepo,
     NativeActionInvocationRepo,
     SessionRepo,
     UserRepo,
+    chain_is_live,
 )
 from backend.paging import escalation as _escalation
 from backend.services.incident_timeline import record_lifecycle_comment
@@ -373,15 +375,26 @@ async def execute_incident_action(
     if claims.action == "escalate":
         if channel_factory is None:
             raise IncidentActionError("channel_factory_required")
+        # A live chain with no further level ends here, and its team is told;
+        # that is a change, unlike a chain that was not running at all.
+        live = chain_is_live(
+            await IncidentChainStateRepo.get_for_incident(
+                db, claims.org_id, claims.incident_id
+            )
+        ) and incident.status not in ("resolved", "merged")
         outcome = await _escalation.escalate_now(
             db,
             claims.org_id,
             incident_id=claims.incident_id,
             channel_factory=channel_factory,
         )
+        if outcome:
+            status = "escalated"
+        else:
+            status = "chain_exhausted" if live else "no_escalation_target"
         return IncidentActionResult(
             action=claims.action,
-            status="escalated" if outcome else "no_escalation_target",
+            status=status,
             incident_id=claims.incident_id,
             actor_user_id=actor_user_id,
         )

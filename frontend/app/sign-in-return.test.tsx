@@ -152,6 +152,8 @@ describe("signing in comes back to an action link (M1-99)", () => {
   });
 
   it("after a forced password change", async () => {
+    // The API client remembers the link when it sends the confirm page to
+    // the password change page (frontend/lib/api.test.ts).
     stubLocation("/password-change-required");
     sessionStorage.setItem(KEY, LINK);
     render(<PasswordChangeRequiredPage />);

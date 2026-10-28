@@ -92,6 +92,10 @@ async function request<T>(
       (window.location.pathname.startsWith("/dashboard") ||
         window.location.pathname === CONFIRM_PATH)
     ) {
+      // The confirm page comes back once the password has changed (M1-99).
+      if (window.location.pathname === CONFIRM_PATH) {
+        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
+      }
       window.location.href = "/password-change-required";
     }
     throw Object.assign(new Error(detail), { status: res.status });

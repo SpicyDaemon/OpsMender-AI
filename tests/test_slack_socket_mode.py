@@ -640,28 +640,30 @@ async def test_the_loop_closes_a_socket_before_its_lease_runs_out(app, later):
         env={TOKEN_ENV: TOKEN},
         client_factory=_Recorder,
     )
-    real_tick = manager.tick
-    plan = iter(["ok", *later, *(["raises"] * 10)])
+    # Acquire the starting lease outside the loop's one-second tick budget.
+    # This test starts with a held socket; slow database setup must not turn
+    # it into a test of whether the first tick can finish in one second.
+    await manager.tick()
+    task = manager._sockets[connector.id].task
+    lease_runs_out = manager._sockets[connector.id].renewed + timedelta(seconds=3)
+    plan = iter([*later, *(["raises"] * 10)])
 
     async def tick(now=None):
         step = next(plan)
-        if step == "ok":
-            return await real_tick(now)
         if step == "hangs":
             await asyncio.Event().wait()
         raise RuntimeError("database unreachable")
 
     manager.tick = tick
-    loop = asyncio.get_running_loop()
-    started = loop.time()
     await manager.start()
-    await _until(lambda: connector.id in manager._sockets, seconds=5)
-    task = manager._sockets[connector.id].task
-    await _until(task.done, seconds=5)
-    assert task.cancelled()
-    # Fenced at lease - renew / 2 (2.5 s), before the 3 s lease ran out.
-    assert loop.time() - started < 3.0
-    await manager.stop()
+    try:
+        await _until(task.done, seconds=5)
+        assert task.cancelled()
+        # Still require closure before the real lease expires, not three
+        # seconds after observing the socket or finishing database setup.
+        assert datetime.now(timezone.utc) < lease_runs_out
+    finally:
+        await manager.stop()
 
 
 @pytest.mark.parametrize("failure", ["raises", "hangs"])

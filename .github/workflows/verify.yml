@@ -117,7 +117,7 @@ jobs:
       - name: Postgres concurrency tests
         shell: bash
         # A failed interleaving can leave a lock held through teardown, so the
-        # step has a ceiling; the 123 cases take about five minutes on a hosted
+        # step has a ceiling; the suite takes about five minutes on a hosted
         # runner (the v1.2.0 release run hit the old five-minute limit with every
         # test passed), so the ceiling sits well above a normal run.
         timeout-minutes: 12
@@ -131,6 +131,7 @@ jobs:
           tests/test_race_answers_postgres.py
           tests/test_scheduler_claims_postgres.py
           tests/test_card_event_order_postgres.py
+          tests/test_teams_workflows_postgres.py
           tests/test_sla_api.py
           tests/test_voice_settings.py
           -q --timeout=180 --timeout-method=thread

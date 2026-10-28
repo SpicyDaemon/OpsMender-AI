@@ -16,6 +16,7 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from backend.config_loader import AppConfig
 from backend.mcp.pool import MCPServerPool
 
 # ---------------------------------------------------------------------------
@@ -24,6 +25,20 @@ from backend.mcp.pool import MCPServerPool
 
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 _mcp_pool: MCPServerPool | None = None
+_app_config: AppConfig | None = None
+
+
+def set_app_config(config: AppConfig) -> None:
+    """Called by ``create_app`` with the config ``app.state.config`` holds."""
+    global _app_config
+    _app_config = config
+
+
+def get_current_app_config() -> AppConfig:
+    """The app's config for code outside a request (M1-100: signing action
+    links on a channel card), so links are signed with the same object the
+    confirm route verifies with. Loads it when no app was created."""
+    return _app_config if _app_config is not None else AppConfig.load()
 
 
 def set_session_factory(factory: async_sessionmaker[AsyncSession]) -> None:

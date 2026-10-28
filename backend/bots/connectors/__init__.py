@@ -26,6 +26,7 @@ from .signal import SignalAdapter
 from .slack import SlackAdapter
 from .smtp import SMTPEmailAdapter
 from .teams import TeamsAdapter
+from .teams_workflows import TeamsWorkflowsAdapter
 from .telegram import TelegramAdapter
 from .twilio import TwilioAdapter
 from .wecom import WeComAdapter
@@ -50,6 +51,7 @@ __all__ = [
     "SlackAdapter",
     "SMTPEmailAdapter",
     "TeamsAdapter",
+    "TeamsWorkflowsAdapter",
     "TelegramAdapter",
     "TwilioAdapter",
     "WeComAdapter",

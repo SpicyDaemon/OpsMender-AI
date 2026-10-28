@@ -8,7 +8,7 @@ When an incident reaches OpsMender's paging engine, it has to know **how** to re
 - **Routing Summary**: a read-only view of how incidents are routed (derived
   from services → escalation chains → rosters → channels). Editable team-level
   routing defaults remain a future candidate.
-- **Notification Channels**: the workspace delivery adapters (Slack, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, custom). Configure these once; operators route to them. Microsoft Teams delivery is being rebuilt and sends nothing for now; see [Microsoft Teams: being rebuilt](teams-paging-surface.md).
+- **Notification Channels**: the workspace delivery adapters (Slack, Telegram, Signal, WhatsApp, Discord, Mattermost, Matrix, Mailgun Email, SMTP Email, SMS, Microsoft Teams (Workflows), custom). Configure these once; operators route to them. A Microsoft Teams (Workflows) channel posts incident cards to a Teams channel; the older Microsoft Teams channel type sends nothing while the Teams bot is being rebuilt. See [Microsoft Teams](teams-paging-surface.md).
 
 Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 
@@ -51,9 +51,11 @@ Maintenance Windows remain at `/dashboard/paging/maintenance-windows`.
 > never posts a public, unauthenticated action URL. The capability chips on the
 > Notification Channels table reflect this honestly: a platform only shows
 > **Interactive actions** or **Message updates** once a verified adapter exists.
-> Microsoft Teams is being rebuilt: OpsMender posts no Teams cards, and the
-> buttons on old Teams cards answer with the reason and change nothing. See
-> [Microsoft Teams: being rebuilt](teams-paging-surface.md).
+> A Microsoft Teams (Workflows) card shows **Link buttons**: each button is a
+> signed link that opens OpsMender's confirm page, where the person signs in
+> and confirms. The older Microsoft Teams channel type posts no cards while the
+> Teams bot is being rebuilt, and the buttons on old Teams cards answer with
+> the reason and change nothing. See [Microsoft Teams](teams-paging-surface.md).
 
 ---
 
@@ -82,15 +84,16 @@ Per stage you pick a **channel** and a **wait**: for non-final stages, the wait 
 
 **Escalation stops on acknowledgement or resolution.** Once you (or anyone) acknowledges or resolves the incident, no further stages are delivered. A stage already being sent at that moment still goes out: the acknowledgement or resolution waits for that send to finish, and nothing is sent after it. Each stage is sent once, even when more than one scheduler runs. Someone paged after the incident has an owner (a responder added later, or Escalate now while the owner keeps it) gets only their first stage; the owner keeps the incident. Stages go only to active admins and operators: deactivating someone or making them a Viewer stops their remaining stages at once.
 
-**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). A stage that uses a Microsoft Teams channel, or a saved Teams contact method, is recorded as skipped with the reason `teams_rebuilding`, never as sent, and the next stage fires after its wait. See [Microsoft Teams: being rebuilt](teams-paging-surface.md). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
+**Channels are driven by your configured Notification Channels, plus workspace Voice/SMS calling.** Any enabled channel (Telegram, Slack, Discord, Email, WhatsApp, Signal, Mattermost, Matrix, and more) is selectable by its friendly name (e.g. "Slack NOC"). A stage that uses an older Microsoft Teams channel, or a saved Teams contact method, is recorded as skipped with the reason `teams_rebuilding`, never as sent, and the next stage fires after its wait. A Microsoft Teams (Workflows) channel posts to a shared Teams channel, so it is not offered as a stage; a stage saved on one through the API is skipped with the reason `channel_posts_only`. See [Microsoft Teams](teams-paging-surface.md). Voice Call and SMS come from **Settings -> Voice & SMS calling** and are disabled in My Routing until configured. If no channels are configured, My Routing shows an empty state with a link to the relevant settings.
 
 If a priority has **no** stages, the incident does **not** notify you for that priority ("Do not notify").
 
 **Chat-capable vs delivery-only:** Slack and Discord support verified
 incident actions. Telegram, Mattermost, Matrix, and WhatsApp use the
 authenticated-link fallback. Mailgun Email, SMTP Email, and SMS are
-delivery-only. Microsoft Teams sends nothing while its delivery is being
-rebuilt.
+delivery-only. Microsoft Teams (Workflows) cards carry signed links to
+OpsMender's confirm page. The older Microsoft Teams channel type sends nothing
+while the Teams bot is being rebuilt.
 
 **A chat stage posts to a shared channel.** A stage that uses a chat
 Notification Channel posts to that channel's first allowed chat, which is a
@@ -248,22 +251,26 @@ configured. Every channel has one or both delivery lanes:
   bulk Acknowledge from the incident list (see the list above), edit the
   Slack, Discord and Google Chat posts and do not reach EventBridge.
 
-A Microsoft Teams channel receives nothing in either lane while Teams delivery
-is being rebuilt. See [Microsoft Teams: being rebuilt](teams-paging-surface.md).
+A Microsoft Teams (Workflows) channel takes the Respond lane only: it posts a
+new card for each change and cannot edit one in place. The older Microsoft
+Teams channel type receives nothing in either lane while the Teams bot is
+being rebuilt. See [Microsoft Teams](teams-paging-surface.md).
 
 Each channel has a friendly name and provider details that live here only.
 
-Adding a channel here makes it immediately routable in **My Routing** with no further changes: the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes.
+Adding a channel here makes it immediately routable in **My Routing** with no further changes: the routing layer routes to *configured channels*, not to platform types, so new providers never require routing changes. A Microsoft Teams (Workflows) channel is the exception: it posts to a shared channel and is not a My Routing stage.
 
 Each channel has a **Team Scope**:
 
-- **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post.
+- **Workspace-wide** channels receive every incident lifecycle post and every incident-linked AI session lifecycle post. Microsoft Teams (Workflows) channels get no AI session posts, which would spend the post limit incident cards need.
 - **Specific teams** channels receive only matching incidents and sessions. OpsMender resolves the incident team deterministically: the team it was reassigned to, then the incident Service's team, then the active escalation chain's team. If none exists, only workspace-wide channels receive the post. When an incident moves to another team (a reassignment, a handoff, or a move to another team's service), the card already in a channel of the team it left is edited once more where the platform can edit a posted message (Slack, Discord, Google Chat): it says **Moved to another team**, names no service, team or responder, and has no action buttons. Nothing about the incident reaches that channel after that. Resolving an incident while moving it to another team's service in the same change does the same: the team it left sees **Moved to another team** on its card, and only the new team's channels receive the resolved event.
 
 Respond channels receive incident and AI-session delivery. Track channels
 receive incident **created / acknowledged / escalated / resolved** status only,
 without action controls. Messages always include authenticated OpsMender links;
-no provider receives a public action URL.
+no provider receives a public action URL. Microsoft Teams (Workflows) cards
+carry signed links that only open a confirm page; the action runs after the
+person signs in and confirms.
 
 ---
 
@@ -282,6 +289,7 @@ following can be layered on without changing routing:
   - Escalate → "Incident escalated by &lt;user&gt;"
   - Start Session → "Session started. Session ID: &lt;id&gt;"
 
-Slack and Discord actions are implemented. Microsoft Teams actions are off
-while Teams delivery is being rebuilt. Every other platform keeps the
+Slack and Discord actions are implemented. Microsoft Teams (Workflows) cards
+carry signed links to a confirm page in OpsMender; actions inside Teams wait
+for the Teams bot, which is being rebuilt. Every other platform keeps the
 authenticated-link fallback until it meets the same verification bar.

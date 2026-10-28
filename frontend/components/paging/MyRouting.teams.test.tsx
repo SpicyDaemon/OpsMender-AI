@@ -4,7 +4,9 @@
  * A connector the API marks as sending nothing is never offered as a stage,
  * and no Teams DM choice is offered either. Saved Teams stages stay visible,
  * labelled as being rebuilt with the reason OpsMender skips them, and are
- * saved back unchanged.
+ * saved back unchanged. A Microsoft Teams (Workflows) channel (M1-100) posts
+ * to a shared channel, so it is not offered as a stage either, and a saved
+ * stage on one says OpsMender skips it.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,7 +45,19 @@ import { NotificationPreferencesPanel } from "@/components/paging/PagingShell";
 
 // The reason comes from the API; the UI renders whatever text it is given.
 const TEAMS_REASON =
-  "Microsoft Teams delivery is being rebuilt. OpsMender sends nothing to Teams until its Teams Workflows connector and bot are ready.";
+  "The Microsoft Teams bot is being rebuilt. This channel type sends nothing until the Teams bot is ready. To post incident cards to Teams now, add a Microsoft Teams (Workflows) channel.";
+
+const WORKFLOWS = {
+  id: "c-workflows",
+  name: "Incident cards",
+  platform: "teams_workflows",
+  is_enabled: true,
+  platform_capabilities: {
+    delivery: true,
+    link_actions: true,
+    unavailable_reason: null,
+  },
+};
 
 const CONNECTORS = [
   {
@@ -150,6 +164,56 @@ describe("My Routing while Teams delivery is being rebuilt", () => {
     expect(body.routing.P1).toEqual([{ channel_id: "c-teams", delay_seconds: 0 }]);
     expect(body.routing.P2).toEqual([
       { channel_id: "teams_dm_graph", delay_seconds: 0 },
+    ]);
+  });
+
+  it("does not offer a Teams Workflows channel as a stage", async () => {
+    listBotConnectors.mockResolvedValue({
+      items: [CONNECTORS[0], WORKFLOWS],
+      total: 2,
+    });
+    render(<NotificationPreferencesPanel />);
+    const addButtons = await screen.findAllByRole("button", {
+      name: /add stage/i,
+    });
+    fireEvent.click(addButtons[0]);
+
+    const select = await screen.findByLabelText("P0 stage 1 channel");
+    const options = optionTexts(select as HTMLElement);
+    expect(options).toContain("Slack NOC");
+    expect(options.some((text) => text.includes("Incident cards"))).toBe(false);
+    expect((select as HTMLSelectElement).value).toBe("c-slack");
+  });
+
+  it("explains that a saved Workflows stage is skipped", async () => {
+    listBotConnectors.mockResolvedValue({
+      items: [CONNECTORS[0], WORKFLOWS],
+      total: 2,
+    });
+    getMyNotificationPreferences.mockResolvedValue({
+      ...basePref,
+      routing: { P1: [{ channel_id: "c-workflows", delay_seconds: 0 }] },
+    });
+    render(<NotificationPreferencesPanel />);
+
+    await screen.findByLabelText("P1 stage 1 channel");
+    expect(selectedText("P1 stage 1 channel")).toBe(
+      "Incident cards (channel posts only)",
+    );
+    expect(
+      screen.getByText(
+        "A Microsoft Teams (Workflows) channel posts incident cards to its Teams channel, not personal pages. OpsMender skips this stage.",
+      ),
+    ).toBeTruthy();
+
+    // The saved stage is kept on save; the server skips it.
+    fireEvent.click(screen.getByRole("button", { name: /save routing/i }));
+    await waitFor(() =>
+      expect(updateMyNotificationPreferences).toHaveBeenCalled(),
+    );
+    const body = updateMyNotificationPreferences.mock.calls[0][0];
+    expect(body.routing.P1).toEqual([
+      { channel_id: "c-workflows", delay_seconds: 0 },
     ]);
   });
 

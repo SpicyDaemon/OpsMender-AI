@@ -217,6 +217,7 @@ const PLATFORM_ICONS: Record<string, Brand> = {
   discord: { Icon: SiDiscord, color: "#5865F2" },
   google_chat: { Icon: SiGooglechat, color: "#34A853" },
   teams: { Icon: BiLogoMicrosoftTeams, color: "#6264A7" },
+  teams_workflows: { Icon: BiLogoMicrosoftTeams, color: "#6264A7" },
   mattermost: { Icon: SiMattermost, color: "#0058CC" },
   matrix: { Icon: SiMatrix },
   feishu: { Icon: LarkBrandIcon },

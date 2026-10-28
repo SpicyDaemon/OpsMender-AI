@@ -11,7 +11,7 @@ This is the v1 guide to OpsMender's paging and on-call surface. The product mode
 
 If you only want a one-line summary: create a Team, create its Escalation Chain, add a Service with an intake endpoint, attach a Roster schedule, then configure Notifications.
 
-For the data-model + algorithm overview (Paging Model, design invariant D-021), see `backend/paging/on_call.py`. For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md). Microsoft Teams delivery is being rebuilt and sends nothing for now; see [Microsoft Teams: being rebuilt](teams-paging-surface.md).
+For the data-model + algorithm overview (Paging Model, design invariant D-021), see `backend/paging/on_call.py`. For platform-specific chat details, see [Slack as your paging surface](slack-paging-surface.md). For incident cards in a Microsoft Teams channel, see [Microsoft Teams](teams-paging-surface.md); the Teams bot is being rebuilt.
 
 ---
 
@@ -452,7 +452,7 @@ Sections:
 - Routing by Priority: map `P0`/`P1`/`P2`/`P3` to configured channels.
 - Sessions / Chat: session behavior for chat-capable adapters only.
 
-Supported channels depend on configured adapters, such as Slack, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters. Microsoft Teams sends nothing while its delivery is being rebuilt: a page routed to Teams is recorded as skipped with the reason `teams_rebuilding`, never as sent (see [Microsoft Teams: being rebuilt](teams-paging-surface.md)). Voice Call and SMS delivery use **Settings -> Voice & SMS calling**. The matching `OPSMENDER_TWILIO_*` environment variables still bootstrap fresh instances, but saved Settings values override them. Voice calls read the incident summary and accept keypad actions: `1` acknowledge, `2` escalate, `3` resolve, and `*` repeat.
+Supported channels depend on configured adapters, such as Slack, Discord, Telegram, Email, SMS, WhatsApp, Signal, and custom adapters. A page routed to a saved Teams contact method or an older Microsoft Teams channel is recorded as skipped with the reason `teams_rebuilding`, never as sent, while the Teams bot is being rebuilt. A Microsoft Teams (Workflows) channel posts incident cards to a shared Teams channel and is not a paging destination; a stage on one is skipped with the reason `channel_posts_only` (see [Microsoft Teams](teams-paging-surface.md)). Voice Call and SMS delivery use **Settings -> Voice & SMS calling**. The matching `OPSMENDER_TWILIO_*` environment variables still bootstrap fresh instances, but saved Settings values override them. Voice calls read the incident summary and accept keypad actions: `1` acknowledge, `2` escalate, `3` resolve, and `*` repeat.
 
 Stakeholder communication lives under Reports. Admins and operators can export
 incident CSV/PDF reports, while admins can schedule recurring email delivery.

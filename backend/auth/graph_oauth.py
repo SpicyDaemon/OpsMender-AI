@@ -1,20 +1,21 @@
 """Microsoft Graph app-only OAuth helper (Sprint 37 step 1).
 
-Nothing in OpsMender calls this today (M1-96): Teams delivery is being rebuilt
-as a Workflows connector and a bot, and the Teams adapter makes no Graph call.
-It is kept, with its tests, for that rebuild. It used **app-only**
-(client-credentials) authentication, not user-delegated OAuth: the
-operator registers an Azure AD app, grants application permissions in
-the Azure portal (admin consent flow), and pastes the resulting
-``tenant_id`` / ``client_id`` / ``client_secret`` into the Teams bot
-connector. There is no browser redirect - token acquisition is a
-server-side POST to the token endpoint.
+The Microsoft Teams (Workflows) channel uses it for its optional Microsoft
+Entra sign-in (M1-100): a workflow whose trigger allows only people in the
+tenant takes a client-credentials token for the Power Automate audience. The
+old Teams adapter makes no Graph call (M1-96); the Graph scope is kept for the
+Teams bot. Authentication is **app-only** (client credentials), not
+user-delegated OAuth: the operator registers an app in Microsoft Entra and
+pastes its ``tenant_id`` / ``client_id`` / ``client_secret``. There is no
+browser redirect - token acquisition is a server-side POST to the token
+endpoint of the commercial cloud only.
 
 This module exposes one entry point - :func:`acquire_app_only_token` -
-plus a small in-process cache keyed by ``(tenant_id, client_id)`` so we
-don't hammer Microsoft for every request. Tokens are valid for ~1
-hour; the cache evicts them 60 seconds before expiry to give callers a
-safety margin.
+plus a small in-process cache keyed by tenant, client, scope and secret digest
+so we don't hammer Microsoft for every request, and a token for one
+audience is never handed to another. Tokens are valid for ~1 hour; the
+cache evicts them 60 seconds before expiry to give callers a safety
+margin. :func:`forget_token` drops one entry after the audience refuses it.
 
 Tests inject ``http_client_factory`` returning an ``httpx.AsyncClient``
 backed by ``httpx.MockTransport``.
@@ -23,6 +24,7 @@ backed by ``httpx.MockTransport``.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
@@ -57,10 +59,17 @@ class GraphToken:
 
 
 class GraphOAuthError(RuntimeError):
-    """Raised when the token endpoint returns an error response."""
+    """Raised when the token endpoint returns an error response.
+
+    ``status_code`` is the token endpoint's HTTP status, or None when no
+    answer came (a network error is then the ``__cause__``)."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
-_token_cache: dict[tuple[str, str], GraphToken] = {}
+_token_cache: dict[tuple[str, str, str, str], GraphToken] = {}
 _cache_lock = asyncio.Lock()
 
 
@@ -69,6 +78,13 @@ def reset_token_cache() -> None:
     calls this - the cache is process-local and self-evicting."""
 
     _token_cache.clear()
+
+
+def forget_token(tenant_id: str, client_id: str, scope: str) -> None:
+    """Drop this app's cached tokens for an audience, including rotated secrets."""
+    for key in list(_token_cache):
+        if key[:3] == (tenant_id, client_id, scope):
+            _token_cache.pop(key, None)
 
 
 async def acquire_app_only_token(
@@ -91,7 +107,12 @@ async def acquire_app_only_token(
     if not tenant_id or not client_id or not client_secret:
         raise GraphOAuthError("tenant_id, client_id, and client_secret are required")
 
-    cache_key = (tenant_id, client_id)
+    cache_key = (
+        tenant_id,
+        client_id,
+        scope,
+        hashlib.sha256(client_secret.encode("utf-8")).hexdigest(),
+    )
 
     async with _cache_lock:
         if not force_refresh:
@@ -122,7 +143,9 @@ async def acquire_app_only_token(
                 msg = body.get("error_description") or body.get("error") or resp.text
             except ValueError:
                 msg = resp.text
-            raise GraphOAuthError(f"http {resp.status_code}: {msg}")
+            raise GraphOAuthError(
+                f"http {resp.status_code}: {msg}", status_code=resp.status_code
+            )
 
         try:
             data = resp.json()
@@ -132,7 +155,10 @@ async def acquire_app_only_token(
         access_token = data.get("access_token")
         expires_in = data.get("expires_in")
         if not access_token or not isinstance(expires_in, int):
-            raise GraphOAuthError(f"token endpoint returned unexpected payload: {data}")
+            # Never the payload: it can hold an access_token.
+            raise GraphOAuthError(
+                "token endpoint returned no access_token or expires_in"
+            )
 
         token = GraphToken(
             access_token=access_token,

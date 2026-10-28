@@ -4,7 +4,7 @@ Sprint 38 makes the OpsMender web UI usable on a phone for the most time-sensiti
 
 > Sprint 38 doesn't add native push. The web UI relies on Slack's and Discord's native push to deliver the deep link; once you tap "View in OpsMender" the page loads in your phone's browser and the mobile-optimized layout takes over from there.
 >
-> Microsoft Teams sends nothing while its delivery is being rebuilt, so it is not a push path today. See [Microsoft Teams: being rebuilt](teams-paging-surface.md).
+> A Microsoft Teams (Workflows) channel posts incident cards to a shared Teams channel. Whether Teams pushes them to your phone depends on your channel notification settings. Its buttons open OpsMender's confirm page; how Teams mobile opens them has not been checked in a live test tenant. It does not page you personally, and the Teams bot is being rebuilt. See [Microsoft Teams](teams-paging-surface.md).
 
 ---
 
@@ -34,7 +34,7 @@ Sprint 38 reworked three surfaces. Everything else degrades gracefully but isn't
 
 For mobile-first responders we recommend:
 
-1. **Enable Slack DM** in `Paging → Notifications`. Slack ships push to your phone: `Push notifications` already work without any extra OpsMender wiring. Teams DM sends nothing while Teams delivery is being rebuilt.
+1. **Enable Slack DM** in `Paging → Notifications`. Slack ships push to your phone: `Push notifications` already work without any extra OpsMender wiring. Teams DM sends nothing while the Teams bot is being rebuilt.
 2. **Set quiet hours with a P0 breakthrough**. Page yourself only at night for true sev-0 pages so phone fatigue doesn't burn you out.
 3. **Use the chat surface for ack / take / resolve**. The web UI is for the long-tail tasks: reading logs, approving a Tier-1 action that needs more context, marking the post-mortem owner.
 
@@ -71,5 +71,5 @@ These will land iteratively. The Sprint 38 goal was the **respond-to-a-page** pa
 See also:
 
 - [Slack as your paging surface](slack-paging-surface.md): push delivery + button actions in Slack.
-- [Microsoft Teams: being rebuilt](teams-paging-surface.md): why OpsMender sends nothing to Teams today, and what to use meanwhile.
+- [Microsoft Teams](teams-paging-surface.md): incident cards in a Teams channel through a workflow, with buttons that open OpsMender to confirm.
 - [Notification Preferences](notification-preferences.md): channels, per-priority routing, quiet hours.

@@ -9,6 +9,8 @@
  * A platform the API marks as sending nothing (M1-96: Microsoft Teams is being
  * rebuilt) shows a "Being rebuilt" note with the API's reason instead of chips,
  * and cannot be added from the picker. Saved Teams channels stay editable.
+ * Microsoft Teams (Workflows) (M1-100) is offered beside it: link buttons, a
+ * hidden workflow URL, the Respond lane only and Send live test.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -26,10 +28,83 @@ function pickPlatform(value: string) {
 // The reason comes from the API; the UI renders whatever text it is given.
 const TEAMS_REASON = vi.hoisted(
   () =>
-    "Microsoft Teams delivery is being rebuilt. OpsMender sends nothing to Teams until its Teams Workflows connector and bot are ready.",
+    "The Microsoft Teams bot is being rebuilt. This channel type sends nothing until the Teams bot is ready. To post incident cards to Teams now, add a Microsoft Teams (Workflows) channel.",
 );
 
+const WORKFLOWS_CAPS = vi.hoisted(() => ({
+  platform: "teams_workflows",
+  display_name: "Microsoft Teams (Workflows)",
+  delivery: true,
+  incident_card: true,
+  incident_updates: true,
+  interactive_actions: false,
+  direct_message: false,
+  shared_channel: true,
+  ai_session_link: true,
+  message_update: false,
+  link_actions: true,
+  interaction_route: null,
+  delivery_only: false,
+  unavailable_reason: null,
+}));
+
 const platformSchemas = vi.hoisted(() => [
+  {
+    platform: "teams_workflows",
+    label: "Microsoft Teams (Workflows)",
+    oauth_enabled: false,
+    capabilities: WORKFLOWS_CAPS,
+    fields: [
+      {
+        name: "webhook_url",
+        label: "Workflow URL",
+        kind: "secret",
+        group: "credentials",
+        required: true,
+        default: null,
+        helper: "Copy it from the workflow's trigger.",
+        doc_url: null,
+        placeholder: "https://...invoke?api-version=...&sig=...",
+        options: [],
+      },
+      {
+        name: "entra_tenant_id",
+        label: "Microsoft Entra tenant ID (optional)",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "entra_client_id",
+        label: "Application (client) ID (optional)",
+        kind: "text",
+        group: "config",
+        required: false,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+      {
+        name: "entra_client_secret",
+        label: "Client secret (optional)",
+        kind: "secret",
+        group: "credentials",
+        required: false,
+        default: null,
+        helper: null,
+        doc_url: null,
+        placeholder: null,
+        options: [],
+      },
+    ],
+  },
   {
     platform: "teams",
     label: "Microsoft Teams",
@@ -752,5 +827,142 @@ describe("Notification Channels capability rendering", () => {
     expect(
       document.querySelector('[role="option"][data-value="smtp"]'),
     ).toBeNull();
+  });
+});
+
+// A saved Microsoft Teams (Workflows) channel (M1-100), as the API returns it:
+// the workflow URL is stored, so only its key name comes back.
+const workflowsSaved = connector({
+  id: "c-workflows",
+  name: "Teams incidents",
+  platform: "teams_workflows",
+  platform_label: "Microsoft Teams (Workflows)",
+  has_credentials: true,
+  credential_keys: ["webhook_url"],
+  platform_capabilities: WORKFLOWS_CAPS,
+  status: "healthy",
+});
+
+async function openNewWorkflowsChannel() {
+  render(
+    <BotConnectorSection connectors={[]} onReload={async () => {}} canEdit />,
+  );
+  await act(async () => {});
+  fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
+  pickPlatform("teams_workflows");
+  return screen.getByRole("dialog");
+}
+
+describe("Microsoft Teams (Workflows) channel", () => {
+  it("lists Microsoft Teams (Workflows) beside the Teams bot being rebuilt", async () => {
+    render(
+      <BotConnectorSection connectors={[]} onReload={async () => {}} canEdit />,
+    );
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: /new channel/i }));
+    fireEvent.click(screen.getByLabelText("Platform"));
+    const values = Array.from(
+      document.querySelectorAll('[role="option"]'),
+    ).map((option) => option.getAttribute("data-value"));
+    expect(values.indexOf("teams_workflows")).toBe(values.indexOf("teams") + 1);
+    expect(
+      document.querySelector('[role="option"][data-value="teams_workflows"]')
+        ?.textContent,
+    ).toBe("Microsoft Teams (Workflows)");
+    expect(
+      document.querySelector('[role="option"][data-value="teams"]')?.textContent,
+    ).toBe("Microsoft Teams (being rebuilt)");
+  });
+
+  it("shows Incident updates, Link buttons and Channel post chips and the link copy, with no verified-actions switch", async () => {
+    const dialog = await openNewWorkflowsChannel();
+    expect(
+      within(dialog).getByText("Microsoft Teams (Workflows) can:"),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(/Incident updates · Link buttons · Channel post/),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        /A new card is posted when an incident is created, acknowledged, escalated, resolved or reopened; ownership changes post nothing\. Its buttons open OpsMender, where the person signs in and confirms; nothing acts inside the chat, and a posted card is never edited\./,
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/Enable verified/i)).toBeNull();
+    expect(within(dialog).queryByText(/Interactive actions/)).toBeNull();
+    expect(within(dialog).queryByRole("note")).toBeNull();
+  });
+
+  it("offers only the Respond lane", async () => {
+    const dialog = await openNewWorkflowsChannel();
+    expect(within(dialog).getByText("Respond")).toBeTruthy();
+    expect(within(dialog).queryByLabelText(/Track/)).toBeNull();
+  });
+
+  it("renders the workflow URL as a hidden secret field and creates the channel", async () => {
+    createBotConnectorMock.mockReset();
+    createBotConnectorMock.mockResolvedValue(workflowsSaved);
+    const dialog = await openNewWorkflowsChannel();
+
+    const url = within(dialog).getByLabelText(/Workflow URL/) as HTMLInputElement;
+    expect(url.type).toBe("password");
+    expect(
+      (
+        within(dialog).getByLabelText(
+          /Microsoft Entra tenant ID \(optional\)/,
+        ) as HTMLInputElement
+      ).type,
+    ).toBe("text");
+
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Teams incidents" },
+    });
+    fireEvent.change(url, {
+      target: {
+        value:
+          "https://prod-12.westus.logic.azure.com/workflows/x/triggers/manual/paths/invoke?sig=abc",
+      },
+    });
+    const create = within(dialog).getByRole("button", {
+      name: /Create Connector/i,
+    }) as HTMLButtonElement;
+    expect(create.disabled).toBe(false);
+    fireEvent.submit(create.closest("form")!);
+
+    await waitFor(() => expect(createBotConnectorMock).toHaveBeenCalled());
+    const [payload] = createBotConnectorMock.mock.calls[0];
+    expect(payload.platform).toBe("teams_workflows");
+    expect(payload.credentials).toEqual({
+      webhook_url:
+        "https://prod-12.westus.logic.azure.com/workflows/x/triggers/manual/paths/invoke?sig=abc",
+    });
+    // Nothing secret goes to config, and no native-action opt-in is sent.
+    expect(payload.config).toBeNull();
+    expect(payload.native_actions_enabled).toBe(false);
+    expect(payload.lanes).toEqual(["respond"]);
+  });
+
+  it("keeps Send live test on a saved Workflows channel", async () => {
+    render(
+      <BotConnectorSection
+        connectors={[workflowsSaved]}
+        onReload={async () => {}}
+        canEdit
+      />,
+    );
+    await act(async () => {});
+
+    const row = screen.getByText("Teams incidents").closest("tr")!;
+    expect(within(row).getByText("Link buttons")).toBeTruthy();
+    expect(within(row).queryByText("being rebuilt")).toBeNull();
+
+    fireEvent.click(within(row).getByRole("button", { name: /^Edit$/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("button", { name: /Send live test/i }),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByRole("button", { name: /Check configuration/i }),
+    ).toBeTruthy();
   });
 });

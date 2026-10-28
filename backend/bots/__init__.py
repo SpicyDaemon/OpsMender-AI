@@ -13,6 +13,7 @@ from backend.bots.connectors import (
     SlackAdapter,
     SMTPEmailAdapter,
     TeamsAdapter,
+    TeamsWorkflowsAdapter,
     TelegramAdapter,
     TwilioAdapter,
     WeComAdapter,
@@ -39,4 +40,5 @@ register_adapter(EmailAdapter())
 register_adapter(HomeAssistantAdapter())
 register_adapter(BlueBubblesAdapter())
 register_adapter(TeamsAdapter())
+register_adapter(TeamsWorkflowsAdapter())
 register_adapter(EventBridgeAdapter())

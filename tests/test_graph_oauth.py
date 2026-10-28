@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import time
+import hashlib
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
 from backend.auth import graph_oauth
 from backend.auth.graph_oauth import (
+    GRAPH_DEFAULT_SCOPE,
     GraphOAuthError,
     GraphToken,
     acquire_app_only_token,
+    forget_token,
     reset_token_cache,
     verify_graph_credentials,
 )
@@ -111,6 +115,43 @@ class TestAcquireAppOnlyToken:
         assert tok2.access_token == "abc"
         assert len(captured) == 1
 
+    async def test_changed_secret_cannot_reuse_cached_token(self):
+        captured = []
+
+        def handler(request):
+            captured.append(request)
+            secret = parse_qs(request.content.decode())["client_secret"][0]
+            if secret != SECRET:
+                return httpx.Response(401, json={"error": "invalid_client"})
+            return httpx.Response(
+                200, json={"access_token": "valid", "expires_in": 3600}
+            )
+
+        factory = _factory_for(handler)
+        token = await acquire_app_only_token(
+            tenant_id=TENANT,
+            client_id=CLIENT,
+            client_secret=SECRET,
+            http_client_factory=factory,
+        )
+        with pytest.raises(GraphOAuthError):
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret="wrong",
+                http_client_factory=factory,
+            )
+        assert len(captured) == 2
+        assert (
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret=SECRET,
+                http_client_factory=factory,
+            )
+        ) is token
+        assert len(captured) == 2
+
     async def test_force_refresh_bypasses_cache(self):
         handler, captured = _token_response_handler(access_token="abc")
         factory = _factory_for(handler)
@@ -135,7 +176,13 @@ class TestAcquireAppOnlyToken:
         )
         factory = _factory_for(handler)
         # Pre-populate with an already-expired token.
-        graph_oauth._token_cache[(TENANT, CLIENT)] = GraphToken(
+        key = (
+            TENANT,
+            CLIENT,
+            GRAPH_DEFAULT_SCOPE,
+            hashlib.sha256(SECRET.encode()).hexdigest(),
+        )
+        graph_oauth._token_cache[key] = GraphToken(
             access_token="stale",
             expires_at=time.time() - 10,
             token_type="Bearer",
@@ -166,6 +213,83 @@ class TestAcquireAppOnlyToken:
                 http_client_factory=factory,
             )
         assert "Client secret expired" in str(excinfo.value)
+
+    async def test_http_error_carries_status_code(self):
+        handler, _ = _token_response_handler(status_code=503)
+        with pytest.raises(GraphOAuthError) as excinfo:
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret=SECRET,
+                http_client_factory=_factory_for(handler),
+            )
+        assert excinfo.value.status_code == 503
+
+        def network_down(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("down", request=request)
+
+        with pytest.raises(GraphOAuthError) as excinfo:
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret=SECRET,
+                http_client_factory=_factory_for(network_down),
+            )
+        assert excinfo.value.status_code is None
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
+
+    async def test_unexpected_payload_is_not_echoed(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            # A token but no expiry: the answer must not be repeated.
+            return httpx.Response(200, json={"access_token": "LEAKED-TOKEN"})
+
+        with pytest.raises(GraphOAuthError) as excinfo:
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret=SECRET,
+                http_client_factory=_factory_for(handler),
+            )
+        assert "LEAKED-TOKEN" not in str(excinfo.value)
+        assert str(excinfo.value) == (
+            "token endpoint returned no access_token or expires_in"
+        )
+
+    async def test_cache_is_keyed_by_scope(self):
+        handler, captured = _token_response_handler(access_token="abc")
+        factory = _factory_for(handler)
+        flow_scope = "https://service.flow.microsoft.com//.default"
+        for scope in (GRAPH_DEFAULT_SCOPE, flow_scope, GRAPH_DEFAULT_SCOPE, flow_scope):
+            await acquire_app_only_token(
+                tenant_id=TENANT,
+                client_id=CLIENT,
+                client_secret=SECRET,
+                scope=scope,
+                http_client_factory=factory,
+            )
+        # One token per audience: a Graph token is never handed to Flow.
+        assert [parse_qs(req.content.decode("utf-8"))["scope"] for req in captured] == [
+            [GRAPH_DEFAULT_SCOPE],
+            [flow_scope],
+        ]
+        # Forgetting one leaves the other cached.
+        forget_token(TENANT, CLIENT, flow_scope)
+        await acquire_app_only_token(
+            tenant_id=TENANT,
+            client_id=CLIENT,
+            client_secret=SECRET,
+            scope=GRAPH_DEFAULT_SCOPE,
+            http_client_factory=factory,
+        )
+        assert len(captured) == 2
+        await acquire_app_only_token(
+            tenant_id=TENANT,
+            client_id=CLIENT,
+            client_secret=SECRET,
+            scope=flow_scope,
+            http_client_factory=factory,
+        )
+        assert len(captured) == 3
 
 
 class TestVerifyGraphCredentials:

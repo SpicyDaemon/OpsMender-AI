@@ -23,8 +23,9 @@ single-channel routing becomes Stage 1."
 ``BotConnector`` UUID, as a string) or a legacy delivery key
 (``slack_dm`` / ``teams_dm`` / ``teams_dm_graph`` / ``email`` / ``sms`` / ``voice``).
 The dispatcher resolves both. A stage on a Teams key or a Teams Notification
-Channel is skipped with ``teams_rebuilding`` while Teams delivery is being
-rebuilt (M1-96).
+Channel is skipped with ``teams_rebuilding`` while the Teams bot is being
+rebuilt (M1-96). A stage on a Microsoft Teams (Workflows) channel is skipped
+with ``channel_posts_only``: it posts to a shared channel (M1-100).
 """
 
 from __future__ import annotations
@@ -37,10 +38,14 @@ LEGACY_CHANNEL_KEYS: frozenset[str] = frozenset(
     {"slack_dm", "teams_dm", "teams_dm_graph", "email", "sms", "voice"}
 )
 # Stored contact methods that point at Teams (M1-96): kept, but every page to
-# them is skipped with this reason until the Teams Workflows connector and bot
-# are built.
+# them is skipped with this reason until the Teams bot is built.
 TEAMS_CHANNEL_KEYS: frozenset[str] = frozenset({"teams_dm", "teams_dm_graph"})
 TEAMS_SKIP_REASON = "teams_rebuilding"
+# Notification Channels that post incident cards to a shared channel and take
+# no personal page (M1-100): a routing stage on one is skipped with this
+# reason, so a stage never bypasses the channel's post limit.
+CHANNEL_POSTS_ONLY_PLATFORMS: frozenset[str] = frozenset({"teams_workflows"})
+CHANNEL_POSTS_ONLY_SKIP_REASON = "channel_posts_only"
 
 MAX_STAGES = 3
 # O-02: a stage saved without a wait waits 3 minutes, as in My Routing.

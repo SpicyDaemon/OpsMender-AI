@@ -15,6 +15,11 @@ class DeliveryReceipt:
     external_thread_id: str | None = None
     external_channel_id: str | None = None
     can_update: bool = False
+    # The receipt status to record; None keeps the caller's default.
+    delivery_status: str | None = None
+    # The provider did not take it but may later (429, 408, 5xx, timeout,
+    # network), so the caller holds the card instead of failing the channel.
+    retryable: bool = False
 
 
 @dataclass(frozen=True)

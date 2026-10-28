@@ -113,7 +113,7 @@ az containerapp hostname bind -g opsmender-prod -n opsmender \
 
 After DNS propagates and the cert is issued, set `OPSMENDER_PUBLIC_URL=https://opsmender.example.com` in `extraEnvironment` and re-deploy so the deep-link buttons in Slack page cards point at the right host.
 
-Microsoft Teams delivery is being rebuilt, so OpsMender sends nothing to Teams for now. Use Slack, email or another channel meanwhile. See [Microsoft Teams: being rebuilt](../../../docs/wiki/teams-paging-surface.md).
+To post incident cards to a shared Teams channel, add a Microsoft Teams (Workflows) Notification Channel. Its buttons also use `OPSMENDER_PUBLIC_URL`. The older Microsoft Graph Teams channel type sends nothing while the Teams bot is being rebuilt. See [Microsoft Teams](../../../docs/wiki/teams-paging-surface.md).
 
 ### Rolling a new image tag
 

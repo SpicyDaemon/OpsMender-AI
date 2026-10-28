@@ -93,7 +93,8 @@ RESULT_MESSAGES = {
         "Chain."
     ),
     "chain_exhausted": (
-        "The Escalation Chain had no further step, so it ended and its team was told."
+        "No further Escalation Chain level had anyone to page, so the chain ended "
+        "and its team was told."
     ),
     "session_started": "An AI session started.",
     "session_queued": "An AI session is queued.",

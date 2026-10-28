@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { useAuth } from "@/context/auth";
@@ -27,11 +27,16 @@ export default function PasswordChangeRequiredPage() {
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Set once the password changed here: the submit decides where to go next
+  // (an action link that sent the person to sign in, M1-99), not the effect.
+  const changedHere = useRef(false);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
     // If the flag is already cleared (e.g. navigated here directly), move on.
-    else if (!loading && user && !user.must_change_password) navigateDashboard("/dashboard");
+    else if (!loading && user && !user.must_change_password && !changedHere.current) {
+      navigateDashboard("/dashboard");
+    }
   }, [loading, user, router, navigateDashboard]);
 
   async function handleSubmit(e: FormEvent) {
@@ -48,6 +53,7 @@ export default function PasswordChangeRequiredPage() {
     setSubmitting(true);
     try {
       await changeMyPassword({ current_password: current, new_password: next });
+      changedHere.current = true;
       await refresh();
       navigateDashboard(takeReturnPath());
     } catch (err) {

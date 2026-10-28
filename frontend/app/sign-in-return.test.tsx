@@ -27,14 +27,28 @@ vi.mock("@/lib/use-dashboard-navigation", () => ({
   useDashboardNavigation: () => navigate,
 }));
 vi.mock("@/lib/api", () => apiMocks);
-vi.mock("@/context/auth", () => ({
-  useAuth: () => ({
-    login: auth.login,
-    refresh: auth.refresh,
-    user: { id: "u-1", username: "ada", must_change_password: true },
-    loading: false,
-  }),
-}));
+// A refresh after the password change clears the flag, as the real one does.
+vi.mock("@/context/auth", async () => {
+  const React = await import("react");
+  return {
+    useAuth: () => {
+      const [user, setUser] = React.useState({
+        id: "u-1",
+        username: "ada",
+        must_change_password: true,
+      });
+      return {
+        login: auth.login,
+        user,
+        loading: false,
+        refresh: async () => {
+          await auth.refresh();
+          setUser((current) => ({ ...current, must_change_password: false }));
+        },
+      };
+    },
+  };
+});
 vi.mock("@/components/auth/AuthShell", () => ({
   AuthShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -168,6 +182,10 @@ describe("signing in comes back to an action link (M1-99)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /update password & continue/i }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith(LINK));
+    // The cleared flag re-renders the page; it must not send the person on
+    // to the dashboard instead.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(navigate.mock.calls.map((call) => call[0])).toEqual([LINK]);
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 });

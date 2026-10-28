@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import os
 import uuid
@@ -18,6 +19,7 @@ import backend.bots  # noqa: F401  -- registers built-in adapters
 from backend.bots.capabilities import (
     platform_delivers,
     supports_interactive_actions,
+    supports_link_actions,
     supports_message_update,
 )
 from backend.bots.connectors import get_adapter
@@ -27,6 +29,13 @@ from backend.bots.incident_card import (
     SIGN_IN_TO_ACT_HINT,
     build_incident_message,
     incident_card_facts,
+)
+from backend.bots.post_budget import (
+    ERROR_AFTER,
+    HELD_LOOKBACK,
+    budget_for,
+    budget_platforms,
+    channel_state,
 )
 from backend.db.models import BotActionAudit, BotConnector
 from backend.db.repos import (
@@ -45,6 +54,7 @@ from backend.db.repos import (
     UserRepo,
     take_turns,
 )
+from backend.paging.teams_cards import CLOSED_STATUSES
 
 
 async def _resolve_org_name(db: AsyncSession, org_id: uuid.UUID) -> str | None:
@@ -77,6 +87,11 @@ def _utcnow() -> datetime:
 def _allowed_chat_ids(connector: BotConnector) -> list[str]:
     if connector.platform == "eventbridge":
         return ["eventbridge"]
+    # A channel with one fixed destination (M1-100: the Teams workflow's
+    # channel or chat) has no chat ids to configure.
+    fixed = getattr(get_adapter(connector.platform), "fixed_destination", None)
+    if fixed:
+        return [fixed]
     config = connector.config or {}
     raw = config.get("allowed_chat_ids") or []
     if isinstance(raw, list) and raw:
@@ -97,14 +112,19 @@ def _has_lane(connector: BotConnector, lane: str) -> bool:
 
 
 def _native_actions_ready(connector: BotConnector, *, is_track: bool) -> bool:
-    """Whether this channel's incident card carries verified action buttons:
-    an interactive platform, opted in, with a configured verifier, on the
-    Respond lane (Track posts are status-only)."""
+    """Whether this channel's incident card carries action buttons, on the
+    Respond lane only (Track posts are status-only): an interactive platform,
+    opted in, with a configured verifier; or a platform whose buttons are
+    signed links to OpsMender's confirm page (M1-100), which need no callback
+    and no opt-in, since acting there needs sign-in and Confirm."""
+    if is_track:
+        return False
+    if supports_link_actions(connector.platform):
+        return True
     return bool(
         supports_interactive_actions(connector.platform)
         and connector.native_actions_enabled
         and connector.callback_status in {"configured", "verified"}
-        and not is_track
     )
 
 
@@ -286,6 +306,7 @@ async def _deliver_via_adapter(
     text: str,
     command_label: str,
     session_id: uuid.UUID | None,
+    incident_id: uuid.UUID | None = None,
     incident=None,
     native_actions_ready: bool = False,
     service_name: str | None = None,
@@ -321,6 +342,20 @@ async def _deliver_via_adapter(
                 service_name=service_name,
                 team_name=team_name,
             )
+        elif supports_link_actions(connector.platform):
+            # M1-100: the card is built from the incident, with signed links
+            # minted only when this channel's card may carry them.
+            receipt = await adapter.send_incident_update(
+                connector,
+                chat_id=chat_id,
+                text=text,
+                incident=incident,
+                links_ready=native_actions_ready,
+                facts=facts,
+                acknowledged_by=acknowledged_by,
+                event_type=command_label.removeprefix("notify:"),
+                incident_id=incident_id,
+            )
         else:
             receipt = await adapter.send_incident_update(
                 connector,
@@ -328,14 +363,8 @@ async def _deliver_via_adapter(
                 text=text,
             )
         if receipt.external_channel_id is None:
-            return DeliveryReceipt(
-                ok=receipt.ok,
-                error=receipt.error,
-                external_message_id=receipt.external_message_id,
-                external_thread_id=receipt.external_thread_id,
-                external_channel_id=chat_id,
-                can_update=receipt.can_update,
-            )
+            # Keeps the receipt's delivery status and retry hint.
+            return dataclasses.replace(receipt, external_channel_id=chat_id)
         return receipt
 
     ok, error = await adapter.send_message(connector, chat_id=chat_id, text=text)
@@ -411,10 +440,93 @@ async def _record_delivery(
             rendered_status=rendered_status,
             can_update=receipt.can_update,
             session_id=session_id,
-            delivery_status=delivery_status,
+            delivery_status=receipt.delivery_status or delivery_status,
             last_updated_at=last_updated_at,
             event_generated_at=generated_at,
         )
+
+
+async def _record_not_posted(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    chat_id: str,
+    command_label: str,
+    session_id: uuid.UUID | None,
+    incident_id: uuid.UUID | None,
+    lifecycle_event: str | None,
+    rendered_status: str | None,
+    generated_at: datetime | None,
+    status: str,
+    detail: str,
+    held_receipt: bool,
+) -> None:
+    """Record a post that did not go out (M1-100): held or limited by the
+    post limit, or a transient failure. Never touches the connector status.
+
+    A held card also gets a ``held`` receipt. As the channel's latest card
+    receipt it makes an older event still in flight stale, and it is what
+    :func:`post_held_cards` looks for.
+    """
+    await BotActionAuditRepo.create(
+        db,
+        org_id,
+        connector_id=connector.id,
+        platform=connector.platform,
+        chat_id=chat_id,
+        command=command_label,
+        status=status,
+        detail=detail[:1000],
+        session_id=session_id,
+        incident_id=incident_id,
+    )
+    if held_receipt and incident_id is not None and lifecycle_event is not None:
+        await IncidentNotificationReceiptRepo.create(
+            db,
+            org_id,
+            incident_id=incident_id,
+            connector_id=connector.id,
+            platform=connector.platform,
+            lifecycle_event=lifecycle_event,
+            external_channel_id=chat_id,
+            rendered_status=rendered_status,
+            can_update=False,
+            session_id=session_id,
+            delivery_status="held",
+            event_generated_at=generated_at,
+        )
+
+
+async def _status_changed_since_last_card(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    connector: BotConnector,
+    chat_id: str,
+    incident_id: uuid.UUID | None,
+    incident,
+    rendered_status: str | None,
+) -> bool:
+    """Whether an edit-only refresh still posts a new card (M1-100): on a
+    link-button channel that cannot edit, when the status differs from the
+    latest card's (a reopen), so the last card does not keep saying
+    resolved. Ownership changes keep the status and post nothing."""
+    if incident is None or incident_id is None:
+        return False
+    if not supports_link_actions(connector.platform):
+        return False
+    if supports_message_update(connector.platform):
+        return False
+    latest = await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+        db,
+        org_id,
+        incident_id=incident_id,
+        connector_id=connector.id,
+        external_channel_id=chat_id,
+        lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+    )
+    return latest is not None and latest.rendered_status != rendered_status
 
 
 async def _try_update_incident_notification(
@@ -605,20 +717,55 @@ async def _deliver(
     acknowledged_by: str | None = None,
     edit_only: bool = False,
     generated_at: datetime | None = None,
+    catch_up: bool = False,
+    planned_receipt_id: uuid.UUID | None = None,
 ) -> None:
-    """Serialize a card's stale check, provider send and receipt commit."""
+    """Serialize a card's stale check, provider send and receipt commit.
+
+    A channel with a post limit (M1-100: Microsoft Teams (Workflows)) takes
+    one turn per channel for every post, so the count, the post and its
+    record run one at a time across processes. Over the limit, or while the
+    channel is paused after a transient failure, a card is held and a text
+    post is dropped; neither marks the channel failed. ``catch_up`` is the
+    held-card sweep posting the current state of an incident whose latest
+    card here is still held.
+    """
     if not platform_delivers(connector.platform):
         # M1-96: a platform being rebuilt (Teams) receives nothing, and is not
         # marked failed on every incident event either.
         return
     card_event = incident_id is not None and lifecycle_event in INCIDENT_CHAT_EVENTS
-    key = (
-        f"incident-card:{org_id}:{incident_id}:{connector.id}:{chat_id}"
-        if card_event
-        else None
-    )
+    budget = budget_for(connector.platform)
+    if budget is not None:
+        # One turn per channel for every post: the count, the post and its
+        # record run one at a time across processes (M1-100).
+        key = f"connector-posts:{org_id}:{connector.id}"
+    else:
+        key = (
+            f"incident-card:{org_id}:{incident_id}:{connector.id}:{chat_id}"
+            if card_event
+            else None
+        )
     async with _delivery_turn(factory, key) as db:
         if card_event:
+            if catch_up:
+                latest = (
+                    await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+                        db,
+                        org_id,
+                        incident_id=incident_id,
+                        connector_id=connector.id,
+                        external_channel_id=chat_id,
+                        lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+                    )
+                )
+                if (
+                    latest is None
+                    or latest.delivery_status != "held"
+                    or latest.id != planned_receipt_id
+                ):
+                    # A newer event arrived, or another sweep posted it.
+                    return
             if generated_at is not None and await _newer_card_in_channel(
                 db,
                 org_id=org_id,
@@ -656,9 +803,49 @@ async def _deliver(
             )
             if updated:
                 return
-        if edit_only:
-            # Nothing to edit here: an edit-only refresh never posts a new message.
+        if edit_only and not await _status_changed_since_last_card(
+            db,
+            org_id=org_id,
+            connector=connector,
+            chat_id=chat_id,
+            incident_id=incident_id,
+            incident=incident,
+            rendered_status=rendered_status,
+        ):
+            # Nothing to edit here: an edit-only refresh never posts a new
+            # message, unless a channel that cannot edit would keep showing a
+            # status the incident left (M1-100: a reopen).
             return
+
+        state = None
+        if budget is not None:
+            now = _utcnow()
+            state = await channel_state(db, org_id, connector.id, budget, now=now)
+            reason = state.blocked_reason(budget, platform=connector.platform, now=now)
+            if reason is not None or (catch_up and state.last_failed):
+                if not catch_up:
+                    await _record_not_posted(
+                        db,
+                        org_id=org_id,
+                        connector=connector,
+                        chat_id=chat_id,
+                        command_label=command_label,
+                        session_id=session_id,
+                        incident_id=incident_id,
+                        lifecycle_event=lifecycle_event,
+                        rendered_status=rendered_status,
+                        generated_at=generated_at,
+                        status="held" if card_event else "limited",
+                        detail=f"{reason}. "
+                        + (
+                            "OpsMender posts the newest state of this incident "
+                            "when there is room."
+                            if card_event
+                            else "This message was not posted."
+                        ),
+                        held_receipt=card_event,
+                    )
+                return
 
         if connector.platform == "telegram":
             receipt = await _deliver_to_telegram(
@@ -679,6 +866,7 @@ async def _deliver(
                 text=text,
                 command_label=command_label,
                 session_id=session_id,
+                incident_id=incident_id,
                 incident=incident,
                 native_actions_ready=native_actions_ready,
                 service_name=service_name,
@@ -687,6 +875,45 @@ async def _deliver(
                 facts=facts,
                 acknowledged_by=acknowledged_by,
             )
+        if state is not None and not receipt.ok and receipt.retryable:
+            # The provider may take it later: hold the card, pause the channel
+            # (derived from these rows) and leave its status alone until
+            # several posts in a row did not go through.
+            await _record_not_posted(
+                db,
+                org_id=org_id,
+                connector=connector,
+                chat_id=chat_id,
+                command_label=command_label,
+                session_id=session_id,
+                incident_id=incident_id,
+                lifecycle_event=lifecycle_event,
+                rendered_status=rendered_status,
+                generated_at=generated_at,
+                status="transient_failure",
+                detail=f"{receipt.error}. "
+                + (
+                    "OpsMender posts the newest state of this incident when the "
+                    "workflow answers."
+                    if card_event
+                    else "This message is not retried."
+                ),
+                held_receipt=card_event and not catch_up,
+            )
+            streak = state.transient_streak + 1
+            if streak >= ERROR_AFTER:
+                await BotConnectorRepo.mark_status(
+                    db,
+                    org_id,
+                    connector.id,
+                    status="error",
+                    error=(
+                        f"{receipt.error}. {streak} posts in a row did not go "
+                        "through; OpsMender keeps trying and posts held cards "
+                        "when the workflow answers."
+                    )[:1000],
+                )
+            return
         await _record_delivery(
             db,
             org_id=org_id,
@@ -745,6 +972,10 @@ async def deliver_session_chat_event(
     )
 
     for connector in connectors:
+        if budget_for(connector.platform) is not None:
+            # AI session progress would spend the post limit incident cards
+            # need (M1-100).
+            continue
         if not _has_capability(connector, "notifications"):
             continue
         if not _has_lane(connector, "respond"):
@@ -872,7 +1103,10 @@ async def deliver_incident_event(
     previous_team_id: uuid.UUID | None = None,
     previous_team_only: bool = False,
     generated_at: datetime | None = None,
-) -> None:
+    only_connector_id: uuid.UUID | None = None,
+    catch_up: bool = False,
+    planned_receipt_id: uuid.UUID | None = None,
+) -> int:
     """Post an incident card/message to every enabled Notification Channel that
     has the ``notifications`` capability.
 
@@ -881,15 +1115,17 @@ async def deliver_incident_event(
     rendered when the platform supports interactive callbacks and the channel
     has native actions enabled with a configured verifier. Slack and Discord
     verify every callback before the shared action coordinator permits a
-    mutation. A platform that is being rebuilt (M1-96: Microsoft Teams)
-    receives nothing; :func:`_deliver` skips it.
+    mutation. A Microsoft Teams (Workflows) channel gets a new card per
+    change; the old Teams channel type receives nothing while the Teams bot
+    is being rebuilt.
     Delivery-only platforms (SMS, email, custom webhook, …) get the same
     message minus any card framing, which their adapters already handle.
 
     ``edit_only`` brings the cards already posted up to date and nothing
     else: a channel whose platform cannot edit a message, or that has no
-    card to edit, gets no new post. Ownership changes use it, since a fresh
-    card in every channel for each one would be noise.
+    card to edit, gets no new post. Link-button channels (Teams Workflows)
+    receive a new card only when the status changed since their last card,
+    on reopen. Ownership changes alone post nothing.
 
     ``previous_team_id`` is the team that handled the incident before a
     reassign, handoff or service move. A channel scoped to that team but not
@@ -901,15 +1137,19 @@ async def deliver_incident_event(
     scheduled for them (a resolve that moves the incident in the same change).
 
     ``generated_at`` is when the event was scheduled; see :func:`_deliver`.
+
+    ``only_connector_id`` and ``catch_up`` are for :func:`post_held_cards`:
+    one channel, posting the incident's current state over its held card.
+    Returns how many deliveries were made (0: no channel takes the event).
     """
     generated_at = generated_at or _utcnow()
     if event_type not in INCIDENT_CHAT_EVENTS:
-        return
+        return 0
 
     async with factory() as db:
         incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
         if incident is None:
-            return
+            return 0
 
         team_id, team_name, service_name = await _resolve_incident_team(
             db, org_id, incident
@@ -920,8 +1160,14 @@ async def deliver_incident_event(
         connectors = list(
             await BotConnectorRepo.list_all(db, org_id, enabled_only=True)
         )
+    # A channel with a post limit goes last (stable), so its turn, which can
+    # wait on a slow workflow, never delays the others in this loop.
+    connectors.sort(key=lambda c: budget_for(c.platform) is not None)
 
+    calls = 0
     for connector in connectors:
+        if only_connector_id is not None and connector.id != only_connector_id:
+            continue
         if not _has_capability(connector, "notifications"):
             continue
         if get_adapter(connector.platform) is None and connector.platform != "telegram":
@@ -975,6 +1221,7 @@ async def deliver_incident_event(
         if is_track:
             chat_ids = chat_ids[:1]
         for chat_id in chat_ids:
+            calls += 1
             await _deliver(
                 factory,
                 org_id=org_id,
@@ -997,7 +1244,10 @@ async def deliver_incident_event(
                 ),
                 edit_only=edit_only,
                 generated_at=generated_at,
+                catch_up=catch_up,
+                planned_receipt_id=planned_receipt_id,
             )
+    return calls
 
 
 def schedule_incident_event(
@@ -1083,6 +1333,8 @@ async def deliver_incident_text(
                 receiving_team = await TeamRepo.get_by_id(db, org_id, resolved_team_id)
                 team_name = receiving_team.name if receiving_team is not None else None
                 service_name = None
+    # A channel with a post limit goes last (see deliver_incident_event).
+    connectors.sort(key=lambda c: budget_for(c.platform) is not None)
 
     for connector in connectors:
         if not _has_capability(connector, "notifications"):
@@ -1187,6 +1439,119 @@ def schedule_incident_text(
         task_registry.add(task)
         task.add_done_callback(task_registry.discard)
     return task
+
+
+PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+
+async def post_held_cards(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Post the current state of each incident whose latest card in a
+    Workflows channel is held, within the channel's room. Never raises.
+
+    Every held change of one incident becomes one card showing the state read
+    at post time, with the headline of its newest held event; open incidents
+    go first, then P0 to P3, then the oldest hold. A channel that is paused,
+    stopped by a refused post or full is skipped, and holds whose last row is
+    older than an hour are not posted. The delivery turn checks again that
+    the card is still held, so two sweeps (or a sweep and a normal post) post
+    it once. Returns how many incidents it tried to post.
+    """
+    try:
+        return await _post_held_cards(factory, now=now or _utcnow())
+    except Exception as exc:  # noqa: BLE001 - the next tick sweeps again
+        log.warning("held channel card sweep failed: %s", type(exc).__name__)
+        return 0
+
+
+async def _post_held_cards(
+    factory: async_sessionmaker[AsyncSession], *, now: datetime
+) -> int:
+    # (org_id, connector_id, incident_id, held receipt id, lifecycle event)
+    planned: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, str]] = []
+    async with factory() as db:
+        rows = await BotActionAuditRepo.list_holds_since(
+            db, since=now - HELD_LOOKBACK, platforms=budget_platforms()
+        )
+        if not rows:
+            return 0
+        # Rows come oldest first, so each group keeps its first hold.
+        first_held: dict[tuple[uuid.UUID, uuid.UUID], dict] = {}
+        for row in rows:
+            held = first_held.setdefault((row.org_id, row.connector_id), {})
+            held.setdefault((row.incident_id, row.chat_id), _as_utc(row.created_at))
+
+        for (org_id, connector_id), held in first_held.items():
+            connector = await BotConnectorRepo.get_by_id(db, org_id, connector_id)
+            if connector is None or not connector.is_enabled:
+                continue
+            budget = budget_for(connector.platform)
+            if budget is None:
+                continue
+            state = await channel_state(db, org_id, connector_id, budget, now=now)
+            if state.paused_until is not None or state.last_failed:
+                continue
+            room = budget.limit - state.used
+            if room <= 0:
+                continue
+            candidates = []
+            for (incident_id, chat_id), since in held.items():
+                receipt = (
+                    await IncidentNotificationReceiptRepo.latest_for_incident_channel(
+                        db,
+                        org_id,
+                        incident_id=incident_id,
+                        connector_id=connector_id,
+                        external_channel_id=chat_id,
+                        lifecycle_events=sorted(INCIDENT_CHAT_EVENTS),
+                    )
+                )
+                if receipt is not None and receipt.delivery_status == "held":
+                    candidates.append((incident_id, receipt, since))
+            ranks = await IncidentRepo.list_priority_status(
+                db, org_id, [incident_id for incident_id, _r, _s in candidates]
+            )
+
+            def order(candidate, ranks=ranks):
+                priority, status = ranks.get(candidate[0], (None, ""))
+                return (
+                    status in CLOSED_STATUSES,
+                    PRIORITY_RANK.get(priority or "", len(PRIORITY_RANK)),
+                    candidate[2],
+                )
+
+            candidates.sort(key=order)
+            planned += [
+                (org_id, connector_id, incident_id, receipt.id, receipt.lifecycle_event)
+                for incident_id, receipt, _since in candidates[:room]
+            ]
+
+    for org_id, connector_id, incident_id, receipt_id, event_type in planned:
+        try:
+            calls = await deliver_incident_event(
+                factory,
+                org_id=org_id,
+                incident_id=incident_id,
+                event_type=event_type,
+                base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+                only_connector_id=connector_id,
+                catch_up=True,
+                planned_receipt_id=receipt_id,
+                generated_at=_utcnow(),
+            )
+            if calls == 0:
+                # The channel no longer takes this incident (team scope, lane,
+                # capability, turned off): not tried again every tick, and it
+                # takes no room from the others.
+                async with factory() as db:
+                    await IncidentNotificationReceiptRepo.mark_dropped(db, receipt_id)
+                    await db.commit()
+        except Exception as exc:  # noqa: BLE001 - one card never stops the rest
+            log.warning("held channel card not posted: %s", type(exc).__name__)
+    return len(planned)
 
 
 async def _resolve_relay_targets(

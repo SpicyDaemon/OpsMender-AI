@@ -38,6 +38,8 @@ from backend.db.repos import (
     UserNotificationPrefRepo,
 )
 from backend.paging.routing import (
+    CHANNEL_POSTS_ONLY_PLATFORMS,
+    CHANNEL_POSTS_ONLY_SKIP_REASON,
     LEGACY_CHANNEL_KEYS,
     TEAMS_CHANNEL_KEYS,
     TEAMS_SKIP_REASON,
@@ -166,6 +168,10 @@ def build_notification_sender(
             return ("skipped", "channel_unconfigured")
         if not platform_delivers(connector.platform):
             return ("skipped", TEAMS_SKIP_REASON)
+        if connector.platform in CHANNEL_POSTS_ONLY_PLATFORMS:
+            # A channel post, not a personal page, and it would bypass the
+            # channel's post limit (M1-100). The next stage fires after its wait.
+            return ("skipped", CHANNEL_POSTS_ONLY_SKIP_REASON)
         adapter = get_adapter(connector.platform)
         if adapter is None:
             return ("skipped", "no_adapter")

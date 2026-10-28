@@ -17,6 +17,7 @@ from backend.bots.capabilities import (
     platform_delivers,
     supports_incident_card,
     supports_interactive_actions,
+    supports_link_actions,
     supports_message_update,
 )
 from backend.bots.connectors import list_platforms
@@ -123,3 +124,50 @@ def test_as_dict_round_trip_exposes_delivery_only():
     assert data["interactive_actions"] is True
     assert data["message_update"] is True
     assert data["delivery_only"] is False
+
+
+def test_workflows_capabilities():
+    # M1-100: a new card per change, buttons that are signed links to the
+    # confirm page, and nothing that acts inside Teams or edits a card.
+    caps = get_platform_capabilities("teams_workflows")
+    assert caps.display_name == "Microsoft Teams (Workflows)"
+    assert display_name("teams_workflows") == "Microsoft Teams (Workflows)"
+    for flag in (
+        "delivery",
+        "incident_card",
+        "incident_updates",
+        "shared_channel",
+        "ai_session_link",
+        "link_actions",
+    ):
+        assert getattr(caps, flag) is True, flag
+    for flag in (
+        "interactive_actions",
+        "message_update",
+        "direct_message",
+        "voice_call",
+        "delivery_only",
+    ):
+        assert getattr(caps, flag) is False, flag
+    assert caps.interaction_route is None
+    assert caps.unavailable_reason is None
+    assert platform_delivers("teams_workflows") is True
+    data = caps.as_dict()
+    assert data["link_actions"] is True
+    assert data["interactive_actions"] is False
+
+
+def test_only_workflows_advertises_link_actions():
+    for platform, caps in PLATFORM_CAPABILITIES.items():
+        expected = platform == "teams_workflows"
+        assert caps.link_actions is expected, platform
+        assert supports_link_actions(platform) is expected, platform
+        assert caps.as_dict()["link_actions"] is expected, platform
+    assert supports_link_actions("nope") is False
+
+
+def test_teams_rebuilding_note_points_to_workflows():
+    assert "being rebuilt" in TEAMS_REBUILDING
+    assert "Teams bot" in TEAMS_REBUILDING
+    assert "add a Microsoft Teams (Workflows) channel" in TEAMS_REBUILDING
+    assert "Workflows connector" not in TEAMS_REBUILDING

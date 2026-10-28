@@ -239,8 +239,9 @@ async def _refresh_channel_cards(
     a service handoff, a reopen, a bulk change, a session override), edit the
     incident card already in each channel so it names who holds the incident
     now and offers Acknowledge again once nobody does.
-    Edit in place only: platforms that cannot edit get nothing new, and
-    nobody is paged. A move to another team passes the team it left, whose
+    Platforms that cannot edit get nothing new, except link-button channels
+    (Teams Workflows) when the status changed since their last card, on reopen.
+    Nobody is paged. A move to another team passes the team it left, whose
     scoped channels get one last edit saying it moved (see
     :func:`backend.bots.notifier.deliver_incident_event`)."""
     await _notify_channels(
@@ -1892,13 +1893,21 @@ async def get_incident_timeline(
             if receipt.external_channel_id
             else (lifecycle or None)
         )
+        # M1-100: a card held by a channel's post limit, and one never posted
+        # because the channel no longer takes the incident.
+        if receipt.delivery_status == "held":
+            title = f"Held for {platform_label}"
+        elif receipt.delivery_status == "dropped":
+            title = f"Not posted to {platform_label}"
+        else:
+            title = f"Notified {platform_label}"
         items.append(
             IncidentTimelineItemResponse(
                 id=f"notification:{receipt.id}",
                 happened_at=_aware(receipt.last_sent_at) or receipt.last_sent_at,
                 lane="notification",
                 event_type="notification_sent",
-                title=f"Notified {platform_label}",
+                title=title,
                 body=body,
                 status=receipt.delivery_status,
                 metadata={
@@ -1926,6 +1935,9 @@ _SKIP_REASONS = {
     "quiet_hours": "quiet hours",
     "maintenance_window": "maintenance window",
     "teams_rebuilding": "Teams delivery is being rebuilt",
+    "channel_posts_only": (
+        "a Microsoft Teams (Workflows) channel takes incident cards, not personal pages"
+    ),
 }
 
 

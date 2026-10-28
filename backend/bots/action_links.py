@@ -1,8 +1,8 @@
 """Signed action links for chat cards (M1-99).
 
 A card that cannot carry buttons that act inside the chat (a Teams Workflows
-card can only open links) can carry one link per incident action; nothing
-posts these links yet, the Teams Workflows connector will. The link opens a
+card can only open links) can carry one link per incident action; the
+Microsoft Teams (Workflows) channel posts them (M1-100). The link opens a
 confirm page in OpsMender, and opening it never acts, since link scanners in
 mail and chat follow links. The person signs in, sees the incident and the
 action, and confirms; the action then runs once, under their own role, through

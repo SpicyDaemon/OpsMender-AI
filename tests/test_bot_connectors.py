@@ -5,20 +5,33 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from backend.api.routes import bot_connectors as routes
 from backend.api.routes.bot_connectors import (
     _connector_config_checks,
     _resolve_test_chat_id,
     _status_from_checks,
 )
+from backend.api.schemas import BotConnectorTestRequest, BotConnectorUpsert
+from backend.auth.secrets import decrypt_secret, encrypt_secret
 from backend.bots.capabilities import TEAMS_REBUILDING
 from backend.bots.connectors import SignalAdapter, TelegramAdapter, get_adapter
-from backend.db.models import BotConnector
+from backend.bots.connectors import registry
+from backend.bots.connectors.teams_workflows import (
+    LIVE_TEST_NOTE,
+    TeamsWorkflowsAdapter,
+)
+from backend.db.models import Base, BotActionAudit, BotConnector, Organization
+from backend.db.repos import BotConnectorRepo
 
 
 def _make_connector(
@@ -535,6 +548,7 @@ class TestFormSchema:
         "smtp",
         "homeassistant",
         "bluebubbles",
+        "teams_workflows",
     ]
 
     def test_all_adapters_registered(self):
@@ -1163,3 +1177,408 @@ class TestMailgunEmailAdapter:
             headers={},
             raw_body=raw_body,
         )
+
+
+# ---------------------------------------------------------------------------
+# M1-100: Microsoft Teams (Workflows) channel settings
+# ---------------------------------------------------------------------------
+
+WORKFLOWS_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000101")
+WORKFLOW_URL = (
+    "https://prod-12.westus.logic.azure.com/workflows/abc/triggers/manual/paths/"
+    "invoke?api-version=2016-06-01&sig=SECRETSIG"
+)
+LIVE_TEXT = "OpsMender test message: your Notification Channel is configured correctly."
+
+
+@pytest.fixture
+async def workflows_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPSMENDER_SECRET_KEY", "connector-test-key")
+    monkeypatch.setenv("OPSMENDER_PUBLIC_URL", "https://ops.example.com")
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'workflows-settings.db'}", echo=False
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as db:
+        db.add(Organization(id=WORKFLOWS_ORG_ID, name="Acme", slug="acme"))
+        await db.commit()
+    yield factory
+    await engine.dispose()
+
+
+def _workflows_body(**overrides) -> BotConnectorUpsert:
+    values = dict(
+        name="Teams incidents",
+        platform="teams_workflows",
+        config={"entra_tenant_id": "tenant-1", "entra_client_id": "client-1"},
+        credentials={
+            "webhook_url": WORKFLOW_URL,
+            "entra_client_secret": "CLIENT-SECRET",
+        },
+        allowed_capabilities=["notifications"],
+        lanes=["respond"],
+        is_enabled=True,
+    )
+    values.update(overrides)
+    return BotConnectorUpsert(**values)
+
+
+async def _workflows_connector(factory, **overrides) -> BotConnector:
+    values = dict(
+        name="Teams incidents",
+        platform="teams_workflows",
+        config={},
+        credentials={"webhook_url": "enc:" + encrypt_secret(WORKFLOW_URL)},
+        allowed_capabilities=["notifications"],
+        status="configured",
+        is_enabled=True,
+    )
+    values.update(overrides)
+    async with factory() as db:
+        connector = await BotConnectorRepo.create(db, WORKFLOWS_ORG_ID, **values)
+        await db.commit()
+    return connector
+
+
+async def _post_rows(factory, connector, *rows) -> None:
+    """``(status, command, age)`` audit rows, as earlier posts wrote them."""
+    async with factory() as db:
+        for status, command, age in rows:
+            db.add(
+                BotActionAudit(
+                    org_id=WORKFLOWS_ORG_ID,
+                    connector_id=connector.id,
+                    platform=connector.platform,
+                    chat_id="workflow",
+                    command=command,
+                    status=status,
+                    created_at=datetime.now(timezone.utc) - age,
+                )
+            )
+        await db.commit()
+
+
+async def _run_test(factory, connector, **request):
+    async with factory() as db:
+        return await routes.test_bot_connector(
+            connector.id,
+            BotConnectorTestRequest(**request),
+            db=db,
+            org_id=WORKFLOWS_ORG_ID,
+            user=None,
+        )
+
+
+class TestTeamsWorkflowsChannel:
+    async def test_workflows_credentials_are_encrypted_and_never_returned(
+        self, workflows_db
+    ):
+        async with workflows_db() as db:
+            created = await routes.create_bot_connector(
+                _workflows_body(), db=db, org_id=WORKFLOWS_ORG_ID, user=None
+            )
+            stored = await BotConnectorRepo.get_by_id(db, WORKFLOWS_ORG_ID, created.id)
+            saved = dict(stored.credentials)
+            updated = await routes.update_bot_connector(
+                created.id,
+                _workflows_body(credentials={"webhook_url": WORKFLOW_URL + "2"}),
+                db=db,
+                org_id=WORKFLOWS_ORG_ID,
+                user=None,
+            )
+            stored = await BotConnectorRepo.get_by_id(db, WORKFLOWS_ORG_ID, created.id)
+            replaced = dict(stored.credentials)
+
+        assert all(value.startswith("enc:") for value in saved.values())
+        assert decrypt_secret(saved["webhook_url"][4:]) == WORKFLOW_URL
+        assert decrypt_secret(saved["entra_client_secret"][4:]) == "CLIENT-SECRET"
+        # Credentials are replaced as a whole bag, and stored encrypted again.
+        assert list(replaced) == ["webhook_url"]
+        assert decrypt_secret(replaced["webhook_url"][4:]) == WORKFLOW_URL + "2"
+
+        assert created.credential_keys == ["entra_client_secret", "webhook_url"]
+        assert updated.credential_keys == ["webhook_url"]
+        for response in (created, updated):
+            dumped = response.model_dump_json()
+            for secret in ("sig=", "SECRETSIG", "/workflows/", "CLIENT-SECRET", "enc:"):
+                assert secret not in dumped
+
+    async def test_workflows_entra_ids_stay_in_config(self, workflows_db):
+        async with workflows_db() as db:
+            created = await routes.create_bot_connector(
+                _workflows_body(), db=db, org_id=WORKFLOWS_ORG_ID, user=None
+            )
+            stored = await BotConnectorRepo.get_by_id(db, WORKFLOWS_ORG_ID, created.id)
+        expected = {"entra_tenant_id": "tenant-1", "entra_client_id": "client-1"}
+        assert stored.config == expected
+        assert created.config == expected
+        assert set(stored.credentials) == {"webhook_url", "entra_client_secret"}
+
+    async def test_workflows_native_actions_stay_off(self, workflows_db):
+        async with workflows_db() as db:
+            created = await routes.create_bot_connector(
+                _workflows_body(native_actions_enabled=True),
+                db=db,
+                org_id=WORKFLOWS_ORG_ID,
+                user=None,
+            )
+        assert created.native_actions_enabled is False
+        assert created.callback_status == "not_configured"
+        assert created.platform_capabilities["link_actions"] is True
+        assert created.platform_capabilities["interactive_actions"] is False
+
+    def test_workflows_check_configuration_rows(self, monkeypatch):
+        monkeypatch.setenv("OPSMENDER_PUBLIC_URL", "https://ops.example.com")
+        connector = BotConnector(
+            name="Teams incidents",
+            platform="teams_workflows",
+            config={},
+            credentials={"webhook_url": WORKFLOW_URL},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+        )
+        checks = _connector_config_checks(connector, requested_chat_id="C9")
+        assert [(c.name, c.level) for c in checks] == [
+            ("enabled", "pass"),
+            ("credentials", "pass"),
+            ("capabilities", "pass"),
+            ("workflow_url", "pass"),
+            ("entra", "pass"),
+            ("public_url", "pass"),
+            ("destination", "pass"),
+            ("team_scope", "pass"),
+        ]
+        details = {c.name: c.detail for c in checks}
+        assert details["destination"] == (
+            "Cards go to the channel or chat the workflow posts to."
+        )
+        assert details["workflow_url"] == (
+            "Posts go to the Power Automate host prod-12.westus.logic.azure.com."
+        )
+        assert not any("sig=" in c.detail or "/workflows/" in c.detail for c in checks)
+        assert _resolve_test_chat_id(connector, "C9") == "workflow"
+
+        # Without the URL only the credentials row fails; the adapter's rows
+        # wait for it.
+        connector.credentials = {}
+        checks = _connector_config_checks(connector)
+        assert [(c.name, c.level) for c in checks] == [
+            ("enabled", "pass"),
+            ("credentials", "fail"),
+            ("capabilities", "pass"),
+            ("destination", "pass"),
+            ("team_scope", "pass"),
+        ]
+        assert _status_from_checks(checks)[1] == "not_configured"
+
+        # A retired Office 365 connector URL fails the check.
+        connector.credentials = {
+            "webhook_url": "https://outlook.office.com/webhook/abc/IncomingWebhook/x"
+        }
+        checks = _connector_config_checks(connector)
+        assert {c.name: c.level for c in checks}["workflow_url"] == "fail"
+        assert _status_from_checks(checks)[1] == "error"
+
+    async def test_workflows_check_configuration_reports_post_budget_and_last_post(
+        self, workflows_db
+    ):
+        fresh = await _workflows_connector(workflows_db, name="fresh")
+        busy = await _workflows_connector(workflows_db, name="busy")
+        await _post_rows(
+            workflows_db,
+            busy,
+            *[("ok", "notify:incident.created", timedelta(minutes=1))] * 3,
+            ("held", "notify:incident.created", timedelta(minutes=1)),
+        )
+        quiet = await _workflows_connector(workflows_db, name="quiet")
+        await _post_rows(workflows_db, quiet, ("ok", "live_test", timedelta(days=3)))
+        idle = await _workflows_connector(workflows_db, name="idle")
+        await _post_rows(
+            workflows_db, idle, ("ok", "notify:incident.created", timedelta(days=85))
+        )
+        never = await _workflows_connector(workflows_db, name="never")
+        async with workflows_db() as db:
+            row = await BotConnectorRepo.get_by_id(db, WORKFLOWS_ORG_ID, never.id)
+            row.created_at = datetime.now(timezone.utc) - timedelta(days=90)
+            await db.commit()
+
+        idle_text = (
+            "No post in {} days. Microsoft may turn the workflow off after 90 days "
+            "without a run; Send live test runs it."
+        )
+        expected = {
+            fresh: (
+                ("pass", "0 of 20 posts in the last 5 minutes."),
+                ("pass", "No post yet. Send live test posts one."),
+            ),
+            busy: (
+                (
+                    "warn",
+                    "3 of 20 posts in the last 5 minutes; 1 incident card(s) were "
+                    "held to post when there is room.",
+                ),
+                ("pass", "Last post accepted today."),
+            ),
+            quiet: (
+                ("pass", "0 of 20 posts in the last 5 minutes."),
+                ("pass", "Last post accepted 3 day(s) ago."),
+            ),
+            idle: (
+                ("pass", "0 of 20 posts in the last 5 minutes."),
+                ("warn", idle_text.format(85)),
+            ),
+            never: (
+                ("pass", "0 of 20 posts in the last 5 minutes."),
+                ("warn", idle_text.format(90)),
+            ),
+        }
+        for connector, (post_budget, last_post) in expected.items():
+            response = await _run_test(workflows_db, connector)
+            names = [c.name for c in response.checks]
+            assert len(names) == len(set(names))
+            assert names[-2:] == ["post_budget", "last_post"]
+            checks = {c.name: (c.level, c.detail) for c in response.checks}
+            assert checks["post_budget"] == post_budget, connector.name
+            assert checks["last_post"] == last_post, connector.name
+            assert response.success is True
+            assert response.live_message_sent is False
+
+    async def test_workflows_send_live_test_posts_a_text_card_and_counts(
+        self, workflows_db, monkeypatch
+    ):
+        posted: list[httpx.Request] = []
+        answers = [202, 404]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted.append(request)
+            return httpx.Response(answers.pop(0))
+
+        adapter = TeamsWorkflowsAdapter(
+            http_client_factory=lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(handler)
+            ),
+            config_loader=lambda: None,
+        )
+        monkeypatch.setitem(registry._ADAPTERS, "teams_workflows", adapter)
+        connector = await _workflows_connector(workflows_db)
+
+        # A requested chat id is ignored: the workflow is the only destination.
+        response = await _run_test(workflows_db, connector, live=True, chat_id="C9")
+        assert response.success is True
+        assert response.live_message_sent is True
+        assert response.detail == LIVE_TEST_NOTE
+        assert response.target_chat_id == "workflow"
+        checks = {c.name: (c.level, c.detail) for c in response.checks}
+        assert checks["delivery"] == ("pass", LIVE_TEST_NOTE)
+        assert "connection" not in checks
+        # One request, the card itself: no probe.
+        [request] = posted
+        card = json.loads(request.content)["attachments"][0]["content"]
+        assert card["body"][0]["text"] == LIVE_TEXT
+
+        refused = await _run_test(workflows_db, connector, live=True)
+        assert refused.success is False
+        assert refused.status == "error"
+        not_found = (
+            "Teams Workflows did not find the workflow (HTTP 404): it may be off or "
+            "deleted, or its URL regenerated; paste the current URL"
+        )
+        assert {c.name: (c.level, c.detail) for c in refused.checks}["delivery"] == (
+            "fail",
+            f"Delivery failed: {not_found}",
+        )
+        assert "sig=" not in refused.model_dump_json()
+
+        async with workflows_db() as db:
+            rows = (
+                await db.execute(
+                    select(BotActionAudit)
+                    .where(BotActionAudit.connector_id == connector.id)
+                    .order_by(BotActionAudit.created_at)
+                )
+            ).scalars()
+            audit = [(r.command, r.status, r.chat_id, r.detail) for r in rows]
+            stored = await BotConnectorRepo.get_by_id(
+                db, WORKFLOWS_ORG_ID, connector.id
+            )
+        assert audit == [
+            ("live_test", "ok", "workflow", None),
+            ("live_test", "delivery_failed", "workflow", not_found),
+        ]
+        assert stored.status == "error"
+
+        # The accepted test counted toward the post limit (the refused one too).
+        response = await _run_test(workflows_db, connector)
+        checks = {c.name: (c.level, c.detail) for c in response.checks}
+        assert checks["post_budget"][1].startswith("The last post was refused")
+
+    async def test_live_test_posts_even_when_the_channel_is_at_its_limit(
+        self, workflows_db, monkeypatch
+    ):
+        posted = []
+
+        def handler(request):
+            posted.append(request)
+            return httpx.Response(202)
+
+        adapter = TeamsWorkflowsAdapter(
+            http_client_factory=lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(handler)
+            )
+        )
+        monkeypatch.setitem(registry._ADAPTERS, "teams_workflows", adapter)
+        connector = await _workflows_connector(workflows_db)
+        await _post_rows(
+            workflows_db,
+            connector,
+            *[
+                ("ok", "notify:incident.created", timedelta(seconds=30))
+                for _ in range(20)
+            ],
+        )
+        response = await _run_test(workflows_db, connector, live=True)
+        assert response.success and response.live_message_sent
+        assert len(posted) == 1
+        async with workflows_db() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(BotActionAudit).where(
+                            BotActionAudit.connector_id == connector.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert len(rows) == 21
+        assert (
+            sum(row.command == "live_test" and row.status == "ok" for row in rows) == 1
+        )
+
+    def test_config_checks_hook_absent_platform_unchanged(self):
+        connector = BotConnector(
+            name="slack-c",
+            platform="slack",
+            config={"default_chat_id": "C123"},
+            credentials={"signing_secret": "s", "bot_token": "xoxb"},
+            allowed_capabilities=["notifications"],
+            status="configured",
+            is_enabled=True,
+        )
+        assert not hasattr(get_adapter("slack"), "config_checks")
+        checks = _connector_config_checks(connector, requested_chat_id="C9")
+        assert [(c.name, c.level) for c in checks] == [
+            ("enabled", "pass"),
+            ("credentials", "pass"),
+            ("capabilities", "pass"),
+            ("destination", "pass"),
+            ("team_scope", "pass"),
+        ]
+        assert {c.name: c.detail for c in checks}["destination"] == (
+            "Lifecycle posts target chat C9."
+        )
+        assert _resolve_test_chat_id(connector, "C9") == "C9"

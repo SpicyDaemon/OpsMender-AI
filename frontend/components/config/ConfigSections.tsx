@@ -2904,6 +2904,7 @@ const PLATFORM_LABELS: Record<BotConnectorPlatform, string> = {
   discord: "Discord",
   google_chat: "Google Chat",
   teams: "Microsoft Teams",
+  teams_workflows: "Microsoft Teams (Workflows)",
   mattermost: "Mattermost",
   matrix: "Matrix",
   feishu: "Lark / Feishu",
@@ -2982,6 +2983,7 @@ function platformCapabilityLabels(
   if (caps.incident_updates || caps.incident_card) out.push("Incident updates");
   if (caps.message_update) out.push("Message updates");
   if (caps.interactive_actions) out.push("Interactive actions");
+  if (caps.link_actions) out.push("Link buttons");
   if (caps.delivery_only) out.push("Delivery-only");
   if (caps.direct_message) out.push("DM");
   if (caps.shared_channel) out.push("Channel post");
@@ -3552,12 +3554,22 @@ function BotConnectorModal({
               {schema?.label ?? PLATFORM_LABELS[form.platform]} can:
             </span>{" "}
             {platformCapabilityLabels(schema?.capabilities).join(" · ")}
-            <span className="mt-1 block text-fg-muted">
-              OpsMender posts incident updates with authenticated links. Native
-              message updates or in-chat actions appear only when the platform
-              has a verified callback/update path; otherwise responders act
-              after signing in to OpsMender.
-            </span>
+            {schema?.capabilities?.link_actions ? (
+              <span className="mt-1 block text-fg-muted">
+                A new card is posted when an incident is created, acknowledged,
+                escalated, resolved or reopened; ownership changes post nothing.
+                Its buttons open
+                OpsMender, where the person signs in and confirms; nothing acts
+                inside the chat, and a posted card is never edited.
+              </span>
+            ) : (
+              <span className="mt-1 block text-fg-muted">
+                OpsMender posts incident updates with authenticated links.
+                Native message updates or in-chat actions appear only when the
+                platform has a verified callback/update path; otherwise
+                responders act after signing in to OpsMender.
+              </span>
+            )}
           </div>
         )}
 

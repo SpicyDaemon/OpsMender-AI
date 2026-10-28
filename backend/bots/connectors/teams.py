@@ -3,8 +3,9 @@
 Teams delivery is being rebuilt (M1-96). Microsoft Graph lets an app post
 chat messages with app-only auth only during a migration, and Graph cards allow
 link buttons only, so this adapter sends nothing and its connection test fails
-with the reason. Stored connectors keep their credentials for the Teams
-Workflows connector and bot that replace this path.
+with the reason. Stored connectors keep their credentials for the Teams bot
+(M1-101). Incident cards reach Teams through the Microsoft Teams (Workflows)
+channel (``teams_workflows.py``).
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ class TeamsAdapter:
     """Microsoft Teams adapter while Teams delivery is being rebuilt (M1-96).
 
     It sends nothing. Its form keeps the values a saved Teams channel holds
-    for the Teams Workflows connector and bot that replace this channel.
+    for the Teams bot.
     """
 
     platform = "teams"
@@ -39,8 +40,7 @@ class TeamsAdapter:
                 required=True,
                 helper=(
                     "Directory (tenant) ID of your Azure AD app. Kept for the "
-                    "Teams Workflows connector and bot that replace this channel. "
-                    "Nothing is sent to Teams today."
+                    "Teams bot. This channel type sends nothing today."
                 ),
                 placeholder="00000000-0000-0000-0000-000000000000",
             ),
@@ -52,7 +52,7 @@ class TeamsAdapter:
                 required=True,
                 helper=(
                     "Application (client) ID of your Azure AD app. Kept for the "
-                    "Teams Workflows connector and bot."
+                    "Teams bot."
                 ),
                 placeholder="00000000-0000-0000-0000-000000000000",
             ),
@@ -63,8 +63,7 @@ class TeamsAdapter:
                 group="credentials",
                 required=True,
                 helper=(
-                    "Client secret value (not the secret ID). Kept for the Teams "
-                    "Workflows connector and bot."
+                    "Client secret value (not the secret ID). Kept for the Teams bot."
                 ),
             ),
             FieldSpec(
@@ -85,8 +84,8 @@ class TeamsAdapter:
                 group="config",
                 required=False,
                 helper=(
-                    "Optional. Teams chat ID. Kept for the Teams Workflows "
-                    "connector and bot. Nothing is sent to it today."
+                    "Optional. Teams chat ID. Kept for the Teams bot. Nothing is "
+                    "sent to it today."
                 ),
             ),
         ]

@@ -710,6 +710,22 @@ class IncidentRepo:
         return (await db.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
+    async def list_priority_status(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        incident_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, tuple[str | None, str]]:
+        """``{id: (priority, status)}`` for these incidents, in one query."""
+        if not incident_ids:
+            return {}
+        rows = await db.execute(
+            select(Incident.id, Incident.priority, Incident.status).where(
+                Incident.org_id == org_id, Incident.id.in_(list(incident_ids))
+            )
+        )
+        return {row.id: (row.priority, row.status) for row in rows}
+
+    @staticmethod
     async def list_all(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -4531,6 +4547,20 @@ class IncidentNotificationReceiptRepo:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def mark_dropped(db: AsyncSession, receipt_id: uuid.UUID) -> bool:
+        """Mark a held card as not posted (M1-100), once: only a receipt that
+        is still ``held`` changes."""
+        result = await db.execute(
+            update(IncidentNotificationReceipt)
+            .where(
+                IncidentNotificationReceipt.id == receipt_id,
+                IncidentNotificationReceipt.delivery_status == "held",
+            )
+            .values(delivery_status="dropped", updated_at=datetime.now(timezone.utc))
+        )
+        return result.rowcount > 0
+
+    @staticmethod
     async def list_for_incident(
         db: AsyncSession,
         org_id: uuid.UUID,
@@ -4657,6 +4687,83 @@ class BotActionAuditRepo:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    @staticmethod
+    def _posts(
+        org_id: uuid.UUID, connector_id: uuid.UUID, statuses: Sequence[str]
+    ) -> tuple:
+        """One channel's outbound posts (notifications and live tests) in
+        these statuses. Inbound commands and chat-button rows never count."""
+        return (
+            BotActionAudit.org_id == org_id,
+            BotActionAudit.connector_id == connector_id,
+            BotActionAudit.status.in_(list(statuses)),
+            or_(
+                BotActionAudit.command.like("notify:%"),
+                BotActionAudit.command == "live_test",
+            ),
+        )
+
+    @staticmethod
+    async def count_posts_since(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        *,
+        since: datetime,
+        statuses: Sequence[str],
+    ) -> int:
+        """Committed posts to one channel since ``since`` (UTC-aware)."""
+        stmt = (
+            select(func.count())
+            .select_from(BotActionAudit)
+            .where(
+                *BotActionAuditRepo._posts(org_id, connector_id, statuses),
+                BotActionAudit.created_at >= since,
+            )
+        )
+        return int((await db.execute(stmt)).scalar_one())
+
+    @staticmethod
+    async def latest_posts(
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        connector_id: uuid.UUID,
+        *,
+        statuses: Sequence[str],
+        limit: int,
+    ) -> Sequence[BotActionAudit]:
+        """One channel's newest posts in these statuses, newest first."""
+        stmt = (
+            select(BotActionAudit)
+            .where(*BotActionAuditRepo._posts(org_id, connector_id, statuses))
+            .order_by(BotActionAudit.created_at.desc())
+            .limit(limit)
+        )
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def list_holds_since(
+        db: AsyncSession,
+        *,
+        since: datetime,
+        platforms: Sequence[str],
+    ) -> Sequence[BotActionAudit]:
+        """Held and transiently failed incident posts on these platforms since
+        ``since`` (UTC-aware), oldest first: the cards a sweep may post."""
+        if not platforms:
+            return []
+        stmt = (
+            select(BotActionAudit)
+            .where(
+                BotActionAudit.status.in_(("held", "transient_failure")),
+                BotActionAudit.incident_id.is_not(None),
+                BotActionAudit.platform.in_(list(platforms)),
+                BotActionAudit.created_at >= since,
+            )
+            .order_by(BotActionAudit.created_at)
+        )
+        return (await db.execute(stmt)).scalars().all()
 
 
 class NativeActionInvocationRepo:

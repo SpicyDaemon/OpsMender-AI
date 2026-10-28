@@ -40,6 +40,11 @@ Capability flags
     The platform/adapter can update a previously-posted incident message in
     place using a stored provider message id. Enabled only when the adapter has
     a verified provider edit path.
+``link_actions``
+    The incident card carries signed links (M1-99) that open OpsMender's
+    confirm page, where the action runs after sign-in and Confirm. Nothing
+    calls back from the chat, so no verifier or interaction route is needed.
+    Not ``interactive_actions``.
 
 ``delivery_only`` is *derived*: a channel is delivery-only when it receives
 messages but can neither render an incident card nor host interactive actions.
@@ -59,14 +64,15 @@ from dataclasses import dataclass
 
 # M1-96: Microsoft Graph lets an app post chat messages with app-only auth only
 # during a migration, Graph cards allow link buttons only, and the Office 365
-# connector webhooks are retired. Teams sends nothing until its Workflows
-# connector and bot are built.
+# connector webhooks are retired. The old Teams channel type sends nothing
+# until the Teams bot is built (M1-101); incident cards go to Teams through a
+# Microsoft Teams (Workflows) channel (M1-100).
 TEAMS_REBUILDING = (
-    "Microsoft Teams delivery is being rebuilt. Microsoft lets an app post Teams "
-    "chat messages through Microsoft Graph only during a migration, and Teams card "
-    "buttons need a bot, so OpsMender sends nothing to Teams until its Teams "
-    "Workflows connector and bot are ready. Use Slack, email or another channel "
-    "meanwhile."
+    "The Microsoft Teams bot is being rebuilt. Microsoft lets an app post Teams "
+    "chat messages through Microsoft Graph only during a migration, and card "
+    "buttons that act inside Teams need a bot, so this channel type sends nothing "
+    "until the Teams bot is ready. To post incident cards to Teams now, add a "
+    "Microsoft Teams (Workflows) channel."
 )
 
 
@@ -84,6 +90,7 @@ class PlatformCapabilities:
     shared_channel: bool = False
     ai_session_link: bool = True
     message_update: bool = False
+    link_actions: bool = False
     interaction_route: str | None = None
     # Can this provider place an outbound **phone call** (PSTN voice)? True only
     # for telephony providers (e.g. Twilio); chat bots cannot place calls. Gates
@@ -110,6 +117,7 @@ class PlatformCapabilities:
             "shared_channel": self.shared_channel,
             "ai_session_link": self.ai_session_link,
             "message_update": self.message_update,
+            "link_actions": self.link_actions,
             "interaction_route": self.interaction_route,
             "voice_call": self.voice_call,
             "delivery_only": self.delivery_only,
@@ -126,6 +134,7 @@ def _cap(
     direct_message: bool = False,
     shared_channel: bool = False,
     message_update: bool = False,
+    link_actions: bool = False,
     interaction_route: str | None = None,
     voice_call: bool = False,
 ) -> PlatformCapabilities:
@@ -137,6 +146,7 @@ def _cap(
         direct_message=direct_message,
         shared_channel=shared_channel,
         message_update=message_update,
+        link_actions=link_actions,
         interaction_route=interaction_route,
         voice_call=voice_call,
     )
@@ -160,8 +170,7 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         message_update=True,
     ),
     # Being rebuilt (M1-96): nothing is claimed and nothing is sent. Stored Teams
-    # connectors and contact methods are kept for the Workflows connector and
-    # the bot that replace this path.
+    # connectors and contact methods are kept for the Teams bot (M1-101).
     "teams": PlatformCapabilities(
         platform="teams",
         display_name="Microsoft Teams",
@@ -169,6 +178,16 @@ PLATFORM_CAPABILITIES: dict[str, PlatformCapabilities] = {
         incident_updates=False,
         ai_session_link=False,
         unavailable_reason=TEAMS_REBUILDING,
+    ),
+    # M1-100: a Teams workflow posts a new card per incident change. The card's
+    # buttons are signed links to OpsMender's confirm page; nothing acts inside
+    # Teams and a posted card is never edited.
+    "teams_workflows": _cap(
+        "teams_workflows",
+        "Microsoft Teams (Workflows)",
+        incident_card=True,
+        shared_channel=True,
+        link_actions=True,
     ),
     "discord": _cap(
         "discord",
@@ -264,6 +283,11 @@ def supports_incident_card(platform: str) -> bool:
 def supports_interactive_actions(platform: str) -> bool:
     caps = PLATFORM_CAPABILITIES.get(platform)
     return bool(caps and caps.interactive_actions)
+
+
+def supports_link_actions(platform: str) -> bool:
+    caps = PLATFORM_CAPABILITIES.get(platform)
+    return bool(caps and caps.link_actions)
 
 
 def assert_interactive_action_contract(route_paths: Collection[str]) -> None:

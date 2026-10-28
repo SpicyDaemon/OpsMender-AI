@@ -18,8 +18,9 @@ const INTEGRATION_KINDS = [
 
 const NOTIFICATION_PLATFORMS = [
   "telegram", "signal", "whatsapp", "slack", "discord", "google_chat",
-  "teams", "mattermost", "matrix", "feishu", "dingtalk", "wecom", "weixin",
-  "twilio", "email", "smtp", "homeassistant", "bluebubbles", "eventbridge",
+  "teams", "teams_workflows", "mattermost", "matrix", "feishu", "dingtalk",
+  "wecom", "weixin", "twilio", "email", "smtp", "homeassistant", "bluebubbles",
+  "eventbridge",
 ];
 
 const MODEL_PROVIDERS = [

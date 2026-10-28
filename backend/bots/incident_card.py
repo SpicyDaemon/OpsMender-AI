@@ -12,8 +12,10 @@ incident link** that opens the incident detail page; the recipient signs in
 and acts there. This is the secure, universally-supported fallback the product
 spec mandates for platforms without verified interactive callbacks. Slack and
 Discord can replace that fallback hint with native actions when the channel
-opts in and its platform verifier is configured. Microsoft Teams receives
-nothing while its delivery is being rebuilt (M1-96).
+opts in and its platform verifier is configured. A Microsoft Teams (Workflows)
+card carries signed links (M1-99) that open a confirm page; the action runs
+only after sign-in and Confirm, never on GET. The old Teams channel type
+receives nothing while the Teams bot is being rebuilt.
 
 ``build_incident_message`` is deliberately platform-neutral: it returns a
 single markdown-ish string that every adapter's ``send_message`` already knows
@@ -67,7 +69,8 @@ def incident_link(incident_id: Any, *, base_url: str | None = None) -> str:
     return f"{public_base_url(base_url)}/dashboard/incidents/detail?id={incident_id}"
 
 
-def _headline(event_type: str | None) -> str:
+def event_headline(event_type: str | None) -> str:
+    """The headline at the top of an incident card for ``event_type``."""
     if event_type and event_type in EVENT_HEADLINES:
         return EVENT_HEADLINES[event_type]
     return "🚨 Incident update"
@@ -139,7 +142,7 @@ def build_incident_message(
     enabled and callback verification is configured; other platforms keep the
     OpsMender link fallback.
     """
-    lines: list[str] = [f"*{_headline(event_type)}: {incident.title}*"]
+    lines: list[str] = [f"*{event_headline(event_type)}: {incident.title}*"]
 
     facts: list[str] = []
     if incident.severity:

@@ -4354,6 +4354,10 @@ function connectorDelivers(connector: BotConnectorResponse): boolean {
   return !caps || (caps.delivery !== false && !caps.unavailable_reason);
 }
 
+// Channels that post incident cards to a shared Teams channel and take no
+// personal page (M1-100). A saved stage on one is skipped by the server.
+const CHANNEL_POSTS_ONLY_PLATFORMS = new Set(["teams_workflows"]);
+
 // Stage delay options gating the next escalation stage.
 const STAGE_DELAY_OPTIONS: { value: number; label: string }[] = [
   { value: 60, label: "1 min" },
@@ -4524,7 +4528,12 @@ export function NotificationPreferencesPanel({
   const channelOptions = useMemo(
     () => [
       ...botConnectors
-        .filter((c) => c.is_enabled && connectorDelivers(c))
+        .filter(
+          (c) =>
+            c.is_enabled &&
+            connectorDelivers(c) &&
+            !CHANNEL_POSTS_ONLY_PLATFORMS.has(c.platform),
+        )
         .map((c) => ({ value: c.id, label: c.name, disabled: false })),
       {
         value: "sms",
@@ -4550,9 +4559,12 @@ export function NotificationPreferencesPanel({
     (channelId: string) => {
       const connector = botConnectors.find((c) => c.id === channelId);
       if (connector) {
-        return connectorDelivers(connector)
-          ? connector.name
-          : `${connector.name} (being rebuilt)`;
+        if (!connectorDelivers(connector)) {
+          return `${connector.name} (being rebuilt)`;
+        }
+        return CHANNEL_POSTS_ONLY_PLATFORMS.has(connector.platform)
+          ? `${connector.name} (channel posts only)`
+          : connector.name;
       }
       return LEGACY_CHANNEL_LABELS[channelId] ?? channelId;
     },
@@ -4564,6 +4576,9 @@ export function NotificationPreferencesPanel({
     (channelId: string): string | null => {
       const connector = botConnectors.find((c) => c.id === channelId);
       if (connector) {
+        if (CHANNEL_POSTS_ONLY_PLATFORMS.has(connector.platform)) {
+          return "A Microsoft Teams (Workflows) channel posts incident cards to its Teams channel, not personal pages. OpsMender skips this stage.";
+        }
         if (connectorDelivers(connector)) return null;
         const reason =
           connector.platform_capabilities?.unavailable_reason ||

@@ -518,23 +518,39 @@ See [Slack as your paging surface](slack-paging-surface.md).
 
 Identity mapping (RBAC): Use the Slack User ID (e.g., `U0123456789`) as the platform user ID.
 
+### Microsoft Teams (Workflows)
+
+A Microsoft Teams (Workflows) Notification Channel posts an Adaptive Card to
+a Teams channel or group chat for each incident change. In Teams, create a
+workflow from the **Send webhook alerts to a channel** (or **... to a chat**)
+template and copy the URL of its trigger, **When a Teams webhook request is
+received**. In OpsMender, add a Microsoft Teams (Workflows) channel and paste
+the URL; it is stored encrypted and never shown again. For a trigger limited
+to your tenant, also fill in the optional Microsoft Entra tenant ID,
+application (client) ID and client secret.
+
+The card's buttons (Acknowledge, Resolve, Escalate, Start AI session) are
+signed links to OpsMender's confirm page; the action runs after the person
+signs in and confirms, once. View in OpsMender is on every card. The channel
+takes the Respond lane only, posts at most 20 times in 5 minutes (a change
+past that is held and posts later as one card per incident), gets no AI
+session posts and is not a My Routing stage. Built and tested against a mocked
+Workflows endpoint; not yet checked in a live Teams tenant. See
+[Microsoft Teams](teams-paging-surface.md).
+
 ### Microsoft Teams (being rebuilt)
 
-OpsMender sends nothing to Microsoft Teams right now. Microsoft lets an app
-post Teams chat messages through Microsoft Graph only during a migration,
-Teams card buttons need a bot, and the old Office 365 connector webhooks are
-retired. Teams support will come back as a Teams Workflows connector, with
-cards whose buttons open OpsMender to confirm the action, and then a Teams
-bot.
+The older Microsoft Teams channel type sends nothing while the Teams bot is
+being rebuilt: Microsoft lets an app post Teams chat messages through
+Microsoft Graph only during a migration, card buttons that act inside Teams
+need a bot, and the old Office 365 connector webhooks are retired.
 
-Until then the settings page does not add new Teams Notification Channels.
-Saved ones are kept and stay editable, but **Check configuration** fails with
-the reason, there is no **Send live test**, a saved Track lane is dropped the
-next time you save, no card or message is posted on any lane, and native
-actions stay off. A button on an old Teams card answers
-with the reason and changes nothing. Use Slack, email, SMS or voice, or
-another chat channel meanwhile. See
-[Microsoft Teams: being rebuilt](teams-paging-surface.md).
+The settings page does not add new channels of this type. Saved ones are kept
+and stay editable, but **Check configuration** fails with the reason, there is
+no **Send live test**, a saved Track lane is dropped the next time you save,
+no card or message is posted on any lane, and native actions stay off. A
+button on an old Teams card answers with the reason and changes nothing. Add
+a Microsoft Teams (Workflows) channel instead.
 
 ### Discord (Interactions)
 

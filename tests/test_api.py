@@ -5730,6 +5730,7 @@ class TestBotConnectorsAPI:
             "smtp",
             "homeassistant",
             "bluebubbles",
+            "teams_workflows",
         ]:
             assert expected in platforms
         for item in data["items"]:

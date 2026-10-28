@@ -162,12 +162,23 @@ Workspace-level notification channels are managed under **Paging & On-call** > *
    provider connection and post a real test message to the channel's
    destination.
 
-Microsoft Teams (`teams`) delivery is being rebuilt. The settings page does
-not add new Teams channels. Saved ones are kept and stay editable, but they
-send nothing on any lane, their native actions stay off, a saved Track lane is
-dropped the next time you save, there is no **Send live test**, and **Check
-configuration** fails with the reason. See
-[Microsoft Teams: being rebuilt](teams-paging-surface.md).
+The older Microsoft Teams (`teams`) channel type sends nothing while the Teams
+bot is being rebuilt. The settings page does not add new ones. Saved ones are
+kept and stay editable, but they send nothing on any lane, their native
+actions stay off, a saved Track lane is dropped the next time you save, there
+is no **Send live test**, and **Check configuration** fails with the reason.
+
+Microsoft Teams (Workflows) (`teams_workflows`) posts a new incident card to a
+Teams channel or group chat when an incident is created, acknowledged,
+escalated, resolved or reopened; ownership changes post nothing. Use a workflow made
+from the **Send webhook alerts to a channel** template. Paste the workflow's
+URL; it is stored encrypted and never shown again. The channel takes the
+Respond lane only, posts at most 20 times in 5 minutes (a change past that is
+held and posts later as one card per incident), and is not offered as a My
+Routing stage. Its card buttons are signed action links (below). **Check
+configuration** checks the URL, the optional Microsoft Entra fields,
+`OPSMENDER_PUBLIC_URL`, recent posts and the days since the last post; **Send
+live test** posts a small card. See [Microsoft Teams](teams-paging-surface.md).
 
 Telegram webhook URL:
 
@@ -190,11 +201,11 @@ Supported Telegram commands:
 ### Signed action links
 
 Some chat cards cannot carry buttons that act inside the chat; a Microsoft
-Teams Workflows card, for one, can only open links. OpsMender can sign one
-link per incident action for such a card. Nothing posts these links yet: the
-Teams Workflows connector will (see
-[Microsoft Teams: being rebuilt](teams-paging-surface.md)). A link opens a
-confirm page in OpsMender:
+Teams (Workflows) card, for one, can only open links. OpsMender signs one
+link per incident action for such a card. The Microsoft Teams (Workflows)
+card is the first card that carries them (see
+[Microsoft Teams](teams-paging-surface.md)). A link opens a confirm page in
+OpsMender:
 
 - Opening a link changes nothing. Link scanners in mail and chat follow links,
   so the action waits for the person to press **Confirm**.

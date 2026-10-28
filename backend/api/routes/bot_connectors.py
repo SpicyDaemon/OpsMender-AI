@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -32,9 +33,16 @@ from backend.bots.capabilities import (
     supports_interactive_actions,
 )
 from backend.bots.connectors import FieldSpec, get_adapter, list_platforms
+from backend.bots.post_budget import LIVE_TEST_COMMAND, activity_checks, budget_for
 from backend.auth.secrets import encrypt_secret
 from backend.db.models import BotConnector, User
-from backend.db.repos import BotConnectorRepo, BotUserLinkRepo, TeamRepo, UserRepo
+from backend.db.repos import (
+    BotActionAuditRepo,
+    BotConnectorRepo,
+    BotUserLinkRepo,
+    TeamRepo,
+    UserRepo,
+)
 
 router = APIRouter(prefix="/bot-connectors", tags=["bot-connectors"])
 
@@ -54,6 +62,7 @@ REQUIRED_CREDENTIAL_KEYS = {
     "discord": ("public_key", "bot_token"),
     "google_chat": ("client_email", "private_key"),
     "teams": ("tenant_id", "client_id", "client_secret"),
+    "teams_workflows": ("webhook_url",),
     "email": ("mailgun_api_key", "mailgun_domain"),
     "smtp": ("smtp_host", "smtp_port", "from_email"),
     "eventbridge": ("region", "event_bus_name"),
@@ -121,7 +130,12 @@ def _encrypt_platform_credentials(
     platform: str,
     credentials: dict | None,
 ) -> dict | None:
-    if platform not in {"eventbridge", "google_chat"} or credentials is None:
+    # Teams Workflows: the workflow URL is a bearer secret, and so is the
+    # optional Microsoft Entra client secret (M1-100).
+    if (
+        platform not in {"eventbridge", "google_chat", "teams_workflows"}
+        or credentials is None
+    ):
         return credentials
     encrypted: dict[str, object] = {}
     for key, value in credentials.items():
@@ -305,8 +319,13 @@ def _resolve_test_chat_id(
     connector: BotConnector,
     requested: str | None,
 ) -> str | None:
-    """Pick the destination for a live test: caller-supplied wins, otherwise the
-    channel's default chat, otherwise the first allowlisted chat."""
+    """Pick the destination for a live test: a channel with one fixed
+    destination (M1-100: Teams Workflows) always uses it; otherwise
+    caller-supplied wins, then the channel's default chat, then the first
+    allowlisted chat."""
+    fixed = getattr(get_adapter(connector.platform), "fixed_destination", None)
+    if fixed:
+        return fixed
     if requested and requested.strip():
         return requested.strip()
     config = connector.config or {}
@@ -385,11 +404,27 @@ def _connector_config_checks(
             )
         )
 
+    # Platform checks the adapter knows, without a network call (M1-100: the
+    # Teams workflow URL, Microsoft Entra fields and OPSMENDER_PUBLIC_URL).
+    adapter = get_adapter(connector.platform)
+    if not missing:
+        hook = getattr(adapter, "config_checks", None)
+        if callable(hook):
+            checks += [_check(*row) for row in hook(connector)]
+
     # Destination - a notifications channel with no chat target silently
     # delivers nowhere, so surface it as a warning operators can act on.
     if "notifications" in capabilities:
         target = _resolve_test_chat_id(connector, requested_chat_id)
-        if target:
+        if getattr(adapter, "fixed_destination", None):
+            checks.append(
+                _check(
+                    "destination",
+                    "pass",
+                    "Cards go to the channel or chat the workflow posts to.",
+                )
+            )
+        elif target:
             checks.append(
                 _check("destination", "pass", f"Lifecycle posts target chat {target}.")
             )
@@ -706,15 +741,30 @@ async def test_bot_connector(
         )
 
     request = body or BotConnectorTestRequest()
+    adapter = get_adapter(connector.platform)
     checks = _connector_config_checks(connector, requested_chat_id=request.chat_id)
+    # A channel with a post limit (M1-100) also shows its recent posts.
+    caps = get_platform_capabilities(connector.platform)
+    budget = budget_for(connector.platform)
+    if (
+        connector.is_enabled
+        and budget is not None
+        and not (caps is not None and caps.unavailable_reason)
+    ):
+        checks += [
+            _check(*row)
+            for row in await activity_checks(
+                db, org_id, connector, budget, now=datetime.now(timezone.utc)
+            )
+        ]
     target_chat_id = _resolve_test_chat_id(connector, request.chat_id)
     live_message_sent = False
+    live_test_note = getattr(adapter, "live_test_note", None)
 
     # Only attempt a live check when configuration is sound - no point calling a
     # provider with missing credentials.
     config_ok = not any(c.level == "fail" for c in checks)
     if request.live and config_ok:
-        adapter = get_adapter(connector.platform)
         if adapter is None:
             checks.append(
                 _check(
@@ -760,13 +810,28 @@ async def test_bot_connector(
                                 "is configured correctly."
                             ),
                         )
+                        if budget is not None:
+                            # Counted toward the post limit, never blocked by
+                            # it (an admin action; the margin covers it). An
+                            # accepted test lets held cards post again.
+                            await BotActionAuditRepo.create(
+                                db,
+                                org_id,
+                                connector_id=connector.id,
+                                platform=connector.platform,
+                                chat_id=target_chat_id,
+                                command=LIVE_TEST_COMMAND,
+                                status="ok" if ok else "delivery_failed",
+                                detail=None if ok else (err or "")[:1000],
+                            )
                         if ok:
                             live_message_sent = True
                             checks.append(
                                 _check(
                                     "delivery",
                                     "pass",
-                                    f"Test message delivered to {target_chat_id}.",
+                                    live_test_note
+                                    or f"Test message delivered to {target_chat_id}.",
                                 )
                             )
                         else:
@@ -787,7 +852,10 @@ async def test_bot_connector(
     if not success:
         summary = next(c.detail for c in checks if c.level == "fail")
     elif live_message_sent:
-        summary = "Live test message delivered; configuration looks healthy."
+        summary = (
+            live_test_note
+            or "Live test message delivered; configuration looks healthy."
+        )
     elif request.live:
         summary = "Configuration checks passed."
     else:

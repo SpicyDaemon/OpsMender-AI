@@ -883,6 +883,7 @@ export type BotConnectorPlatform =
   | "discord"
   | "google_chat"
   | "teams"
+  | "teams_workflows"
   | "mattermost"
   | "matrix"
   | "feishu"
@@ -928,6 +929,9 @@ export interface PlatformCapabilities {
   shared_channel: boolean;
   ai_session_link: boolean;
   message_update: boolean;
+  /** The card's buttons are signed links to OpsMender's confirm page
+   *  (M1-100: Microsoft Teams (Workflows)); nothing acts inside the chat. */
+  link_actions?: boolean;
   interaction_route: string | null;
   delivery_only: boolean;
   /** Set when OpsMender sends nothing to the platform at all (M1-96:

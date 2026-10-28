@@ -21,9 +21,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Notification Channel are refused; a refusal for the person's role or team
   leaves the link usable by someone who may act. A link lasts a day by default
   (`OPSMENDER_ACTION_LINK_TTL_MINUTES`, 5 minutes to 7 days). Its token rides
-  in the URL fragment, so it never reaches a server log. Nothing posts these
-  links yet; they are for cards that can only open links, such as a Teams
-  Workflows card.
+  in the URL fragment, so it never reaches a server log. Microsoft Teams
+  (Workflows) cards carry them.
+- Microsoft Teams (Workflows) Notification Channel. Paste the URL of a Teams
+  workflow made from the Send webhook alerts to a channel (or chat) template,
+  and OpsMender posts an Adaptive Card for each incident change: created,
+  acknowledged, resolved, escalated, escalation exhausted and a reopen. The
+  card shows the incident's facts, View in OpsMender and, while the incident
+  is open, Acknowledge (until someone has), Resolve, Escalate and Start AI
+  session. Each button is a signed link to OpsMender's confirm page; the
+  person signs in and confirms, and each link works once. A posted card is
+  never edited, ownership changes post nothing, and AI session updates do not
+  go to this channel. OpsMender posts at most 20 times in 5 minutes to each
+  Workflows channel, counted across every OpsMender process; past that, or
+  while the workflow does not answer, a change is held, and the newest state
+  of each held incident posts as one card when there is room, open and higher
+  priority incidents first, for up to an hour; the incident timeline shows a
+  held card. A refused post marks the channel failed, as on every channel; a
+  workflow that does not answer is tried again with a growing wait and marks
+  the channel failed after five tries in a row. The workflow URL and the
+  optional Microsoft Entra client secret (for a trigger limited to your
+  tenant) are stored encrypted and never shown, logged or put in an error.
+  Check configuration checks the URL, the Entra fields, OPSMENDER_PUBLIC_URL,
+  the posts in the last 5 minutes and the days since the last post; Send live
+  test posts a small card and says Teams Workflows accepted it. The channel
+  takes the Respond lane only and is not offered as a My Routing stage. Built
+  and tested against a mocked Workflows endpoint; it has not been checked in
+  a live Teams tenant, and that acceptance is not claimed by this release.
 
 ### Removed
 
@@ -36,12 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables and any rows in them; the database migration's downgrade recreates
   the tables empty. The audit log of tool calls and admin changes is a
   different feature and is unchanged.
-- Microsoft Teams delivery, until it is rebuilt as a Teams Workflows connector
-  and then a Teams bot. The Teams support did not work as built. Microsoft
+- The older Microsoft Graph Teams channel type and Teams personal delivery,
+  until the Teams bot is rebuilt. Microsoft Teams (Workflows) channels post
+  incident cards as described above. The older support did not work as built. Microsoft
   lets an app post Teams chat messages through Microsoft Graph with app-only
   access only during a migration. A card posted through Graph can carry only
   link buttons. The Office 365 connector webhooks behind the older message
-  cards are retired. OpsMender now sends nothing to Teams: no pages, incident
+  cards are retired. The older channel type sends no pages, incident
   cards, status updates or AI session posts. A page routed to a saved Teams
   contact method (`teams_dm` or `teams_dm_graph`), or a routing stage that
   uses a Teams Notification Channel, is recorded as skipped with the reason
@@ -57,8 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OPSMENDER_TEAMS_GRAPH_CLIENT_SECRET`. Saved Teams Notification Channels and
   contact methods are kept, and their Health column shows that Teams is being
   rebuilt instead of a stale status. The settings page marks Teams as being
-  rebuilt and does not add new Teams channels. Move any routing stage that
-  points at Teams to Slack, email or another channel.
+  rebuilt and does not add new channels of the older type. Move any personal
+  routing stage that points at Teams to Slack, email or another channel.
 
 ### Security
 
@@ -74,6 +99,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The older Microsoft Teams channel type still sends nothing while the Teams
+  bot is being rebuilt; its note now points to the Microsoft Teams (Workflows)
+  channel.
 - The AI's plan prompt now marks each tool it offers with what the tier gate
   does with it at the session's tier: runs without a person, waits for
   operator approval, or blocked. The mark comes from the same tier check the

@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from backend.api.health import readiness_status
 from backend.config_loader import AppConfig, check_production_safety
 from backend.logging_config import configure_logging
-from backend.api.deps import set_mcp_pool, set_session_factory
+from backend.api.deps import set_app_config, set_mcp_pool, set_session_factory
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.mcp.mcp_json import MCPJSONSyncer
 from backend.mcp.pool import MCPServerPool
@@ -309,6 +309,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         openapi_url="/openapi.json" if docs_enabled else None,
     )
     app.state.config = config
+    set_app_config(config)
     app.state.startup_complete = False
     app.state.engine = None
     app.state.session_factory = None

@@ -319,14 +319,15 @@ async def check_slack_socket_mode(
 ) -> list[CheckResult]:
     """For each enabled Slack connector in Socket Mode (M1-97): the app-level
     token is in its variable and no other Socket Mode channel uses it, Slack
-    accepts it, and which process holds the socket. A holder that cannot keep
-    its socket connected gives it up within about a minute, so a fresh holder
-    means a socket that is connected or still connecting. Nothing is reported
-    when no connector uses Socket Mode."""
+    accepts it, and which process holds the socket, as of the holder's last
+    renewal (up to about 20 s old). A holder that cannot keep its socket
+    connected gives it up within about a minute, and one that has not renewed
+    for ``FENCE_SECONDS`` has closed its socket, so it is reported as stopped.
+    Nothing is reported when no connector uses Socket Mode."""
     if factory is None:
         return []
     from backend.bots.slack_socket import (
-        LEASE_SECONDS,
+        FENCE_SECONDS,
         SocketModeError,
         app_token,
         app_token_env,
@@ -430,12 +431,13 @@ async def check_slack_socket_mode(
         holder, renewed = held
         if renewed.tzinfo is None:
             renewed = renewed.replace(tzinfo=timezone.utc)
-        if now - renewed > timedelta(seconds=LEASE_SECONDS):
+        if now - renewed >= timedelta(seconds=FENCE_SECONDS):
             results.append(
                 CheckResult(
                     name,
                     "warn",
-                    f"Token accepted; the socket's last holder ({holder}) stopped renewing.",
+                    f"Token accepted; the socket's last holder ({holder}) stopped "
+                    "renewing, so its socket is closed.",
                 )
             )
         elif state.get("holder") == holder and not state.get("connected"):

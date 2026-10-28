@@ -56,6 +56,9 @@ LEASE_PREFIX = "slack.socket_lease."
 # LEASE_SECONDS pass without a renewal.
 LEASE_SECONDS = 60
 RENEW_SECONDS = 20
+# A holder that has not renewed for this long closes its sockets: half a
+# renewal before another process may take the lease.
+FENCE_SECONDS = LEASE_SECONDS - RENEW_SECONDS / 2
 STATE_PREFIX = "slack.socket_state."
 AUTH_TEST_URL = "https://slack.com/api/auth.test"
 BOTS_INFO_URL = "https://slack.com/api/bots.info"
@@ -484,16 +487,32 @@ class SlackSocketManager:
             except Exception as exc:  # noqa: BLE001 - logged, retried next tick
                 logger.warning("slack socket mode: tick failed: %s", _describe(exc))
             self.fence()
-            await asyncio.sleep(max(0.0, self._renew - (time.monotonic() - started)))
+            # Sleep until the next tick, waking for any fence that falls first,
+            # so a socket closes on time even while ticks keep failing.
+            while (left := self._renew - (time.monotonic() - started)) > 0:
+                due = self.fence_due_in()
+                await asyncio.sleep(
+                    left if due is None else max(0.0, min(left, due + 0.05))
+                )
+                self.fence()
+
+    def fence_due_in(self, now: datetime | None = None) -> float | None:
+        """Seconds until the first socket must be closed, or ``None``."""
+        now = now or datetime.now(timezone.utc)
+        deadlines = [
+            (held.renewed + self._fence - now).total_seconds()
+            for held in self._sockets.values()
+        ]
+        return min(deadlines) if deadlines else None
 
     def tick_budget(self, now: datetime | None = None) -> float:
         """Seconds a tick may take: a renewal, or less when a socket's fence
-        comes sooner (never less than one second)."""
+        comes sooner; once a fence is due, next to nothing."""
         now = now or datetime.now(timezone.utc)
         budget = float(self._renew)
         for held in self._sockets.values():
             budget = min(budget, (held.renewed + self._fence - now).total_seconds())
-        return max(budget, 1.0)
+        return max(budget, 0.05)
 
     def fence(self, now: datetime | None = None) -> set[uuid.UUID]:
         """Close every socket whose lease has not been renewed for

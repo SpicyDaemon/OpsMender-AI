@@ -621,7 +621,46 @@ async def test_a_tick_never_runs_past_a_socket_fence(app):
     await manager.tick(now)
     assert manager.tick_budget(now + timedelta(seconds=20)) == 20.0
     assert manager.tick_budget(now + timedelta(seconds=45)) == 5.0
-    assert manager.tick_budget(now + timedelta(seconds=60)) == 1.0
+    assert manager.tick_budget(now + timedelta(seconds=60)) == 0.05
+    await manager.stop()
+
+
+@pytest.mark.parametrize("later", [["raises", "raises"], ["raises", "hangs"]])
+async def test_the_loop_closes_a_socket_before_its_lease_runs_out(app, later):
+    """With a real fence: after one good tick, failing ticks (fast, or one that
+    hangs) still close the socket before the lease could pass."""
+    _Recorder.made = []
+    connector = await _socket_connector(app)
+    manager = SlackSocketManager(
+        app,
+        app.state.session_factory,
+        holder="x",
+        lease_seconds=3,
+        renew_seconds=1,
+        env={TOKEN_ENV: TOKEN},
+        client_factory=_Recorder,
+    )
+    real_tick = manager.tick
+    plan = iter(["ok", *later, *(["raises"] * 10)])
+
+    async def tick(now=None):
+        step = next(plan)
+        if step == "ok":
+            return await real_tick(now)
+        if step == "hangs":
+            await asyncio.Event().wait()
+        raise RuntimeError("database unreachable")
+
+    manager.tick = tick
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    await manager.start()
+    await _until(lambda: connector.id in manager._sockets, seconds=5)
+    task = manager._sockets[connector.id].task
+    await _until(task.done, seconds=5)
+    assert task.cancelled()
+    # Fenced at lease - renew / 2 (2.5 s), before the 3 s lease ran out.
+    assert loop.time() - started < 3.0
     await manager.stop()
 
 
@@ -670,10 +709,10 @@ async def test_a_holder_that_cannot_connect_gives_the_socket_up(app):
     # A connected holder keeps it.
     assert await healthy.tick(now + timedelta(seconds=141)) == {connector.id}
     await healthy.stop()
-    # The one that gave up rests a little over one renewal before it tries
-    # again, long enough for another process to take the lease.
+    # The one that gave up rests a little over one renewal, so at its own
+    # cadence it skips the next tick and tries again at the one after.
     assert await stuck.tick(now + timedelta(seconds=80)) == set()
-    assert await stuck.tick(now + timedelta(seconds=86)) == {connector.id}
+    assert await stuck.tick(now + timedelta(seconds=100)) == {connector.id}
     await stuck.stop()
 
 
@@ -1188,3 +1227,91 @@ async def test_the_doctor_reports_each_socket_mode_connector(app, monkeypatch):
         await db.commit()
     [result] = await check_slack_socket_mode(factory, probe=accept)
     assert result.status == "warn" and "stopped renewing" in result.detail
+
+    # Past the fence but inside the lease: the holder has closed its socket.
+    async with factory() as db:
+        await RuntimeConfigRepo.take_lease(
+            db,
+            TEST_ORG_ID,
+            lease_key(connector.id),
+            "host:1:ab",
+            now=now - timedelta(seconds=55),
+            seconds=60,
+        )
+        await db.commit()
+    [result] = await check_slack_socket_mode(factory, probe=accept)
+    assert result.status == "warn" and "socket is closed" in result.detail
+
+
+async def test_shutdown_stops_the_sockets_before_sweeping_tasks(tmp_path, monkeypatch):
+    """Envelopes being handled finish before the session and background tasks
+    they start are swept, and before the schedulers stop."""
+    from types import SimpleNamespace
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from backend.api import deps
+    from backend.api.app import create_app
+    from backend.config_loader import AppConfig
+    from backend.db.models import Base, Organization
+
+    url = f"sqlite+aiosqlite:///{(tmp_path / 'shutdown.db').as_posix()}"
+    engine = create_async_engine(url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with maker() as db:
+        db.add(Organization(id=TEST_ORG_ID, name="Shutdown", slug="shutdown"))
+        await db.commit()
+    order: list[str] = []
+
+    class _Manager:
+        def __init__(self, app_, factory):
+            pass
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            order.append("slack sockets")
+
+    monkeypatch.setattr(slack_socket, "SlackSocketManager", _Manager)
+    monkeypatch.setattr(
+        "backend.reports.scheduler.ReportScheduler.stop",
+        lambda self: _record(order, "schedulers"),
+    )
+    monkeypatch.setenv("OPSMENDER_DEPLOYMENT_MODE", "development")
+    monkeypatch.setenv("OPSMENDER_ENVIRONMENT", "development")
+    monkeypatch.setenv("OPSMENDER_DATABASE_URL", url)
+    monkeypatch.delenv("OPSMENDER_SERVICE_ROLE", raising=False)
+    env_file = tmp_path / "shutdown.env"
+    env_file.write_text(
+        f"OPSMENDER_JWT_SECRET=shutdown-test-secret\nOPSMENDER_DATABASE_URL={url}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "backend.services.incident_events.IncidentEventPublisher",
+        lambda database_url: SimpleNamespace(database_url=database_url),
+    )
+    monkeypatch.setattr(deps, "_session_factory", deps._session_factory)
+    application = create_app(AppConfig.load(env_file))
+
+    async def waits(marker):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            order.append(marker)
+            raise
+
+    async with application.router.lifespan_context(application):
+        application.state.session_tasks.add(asyncio.create_task(waits("session tasks")))
+        application.state.background_tasks.add(
+            asyncio.create_task(waits("background tasks"))
+        )
+        await asyncio.sleep(0)
+    assert order == ["slack sockets", "session tasks", "background tasks", "schedulers"]
+    await engine.dispose()
+
+
+async def _record(order, marker):
+    order.append(marker)

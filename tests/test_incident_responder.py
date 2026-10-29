@@ -110,8 +110,10 @@ async def _create_incident(client, headers) -> str:
     return resp.json()["id"]
 
 
-async def _get(client, headers, incident_id) -> dict:
-    listing = await client.get("/incidents", headers=headers)
+async def _get(client, headers, incident_id, *, status=None) -> dict:
+    listing = await client.get(
+        "/incidents", headers=headers, params={"status": status} if status else None
+    )
     return next(i for i in listing.json()["items"] if i["id"] == incident_id)
 
 
@@ -251,3 +253,181 @@ async def test_viewer_reads_responder_but_cannot_act(ctx):
     # But cannot acknowledge.
     ack = await client.post(f"/incidents/{iid}/ack", headers=h["viewer"])
     assert ack.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["resolved", "merged"])
+@pytest.mark.parametrize("step", [0, 1])
+@pytest.mark.parametrize("surface", ["list", "detail", "cards"])
+async def test_terminal_pages_are_history_not_waiting_responders(
+    ctx, status, step, surface
+):
+    import json
+
+    from backend.bots.connectors.discord import build_discord_incident_payload
+    from backend.bots.incident_card import incident_card_facts
+    from backend.bots.notifier import _resolve_incident_responder
+    from backend.db.repos import IncidentRepo
+    from backend.paging.slack_cards import build_page_card_blocks
+    from backend.paging.teams_cards import build_workflows_card
+
+    client, factory = ctx["client"], ctx["factory"]
+    h, ids = await _roles(client)
+    iid = await _create_incident(client, h["admin"])
+    org = await _org_of(factory, iid)
+    async with factory() as db:
+        page = await IncidentPageRepo.create(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=step,
+        )
+        page_history = (
+            page.id,
+            page.sent_at.replace(tzinfo=None),
+            page.delivery_status,
+        )
+        incident = await IncidentRepo.get_by_id(db, org, uuid.UUID(iid))
+        incident.status = status
+        await db.commit()
+
+    if surface == "cards":
+        async with factory() as db:
+            incident = await IncidentRepo.get_by_id(db, org, uuid.UUID(iid))
+            responder = await _resolve_incident_responder(db, org, incident.id)
+            assert responder["responder_state"] == "unassigned"
+            assert responder["responder_display_name"] is None
+            assert responder["escalation_level"] == step
+            facts = incident_card_facts(
+                incident,
+                responder=responder,
+                service_name="Service",
+                team_name="Team",
+                org_name="Org",
+            )
+            assert ("Responder", "Unassigned") in facts
+            payloads = [
+                build_page_card_blocks(
+                    incident,
+                    base_url="https://ops.example.com",
+                    include_native_actions=True,
+                    facts=facts,
+                ),
+                build_discord_incident_payload(
+                    "Incident closed",
+                    incident=incident,
+                    native_actions_ready=True,
+                    facts=facts,
+                ),
+                build_workflows_card(
+                    incident,
+                    headline="Incident closed",
+                    facts=facts,
+                    base_url="https://ops.example.com",
+                    action_links={},
+                    acknowledged_by=None,
+                    exhausted=False,
+                ),
+            ]
+            for payload in payloads:
+                encoded = json.dumps(payload)
+                assert "Awaiting Operator User" not in encoded
+                assert "Escalated to Operator User" not in encoded
+    else:
+        if surface == "list":
+            row = await _get(client, h["admin"], iid, status=status)
+        else:
+            result = await client.get(f"/incidents/{iid}", headers=h["admin"])
+            assert result.status_code == 200
+            row = result.json()
+        assert row["responder_state"] == "unassigned"
+        assert row["responder_user_id"] is None
+        assert row["responder_display_name"] is None
+        assert row["escalated_to_user_id"] == ids["operator"]
+
+    async with factory() as db:
+        pages = await IncidentPageRepo.list_for_incident(db, org, uuid.UUID(iid))
+        assert len(pages) == 1
+        assert (
+            pages[0].id,
+            pages[0].sent_at.replace(tzinfo=None),
+            pages[0].delivery_status,
+        ) == page_history
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["resolved", "merged"])
+async def test_terminal_incident_preserves_existing_owner_and_acknowledgement(
+    ctx, status
+):
+    from backend.bots.notifier import _resolve_incident_responder
+    from backend.db.repos import IncidentRepo
+
+    client, factory = ctx["client"], ctx["factory"]
+    h, ids = await _roles(client)
+    iid = await _create_incident(client, h["admin"])
+    org = await _org_of(factory, iid)
+    async with factory() as db:
+        await IncidentAssignmentRepo.assign(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            assigned_by="self_ack",
+        )
+        incident = await IncidentRepo.get_by_id(db, org, uuid.UUID(iid))
+        incident.status = status
+        await db.commit()
+    row = await _get(client, h["admin"], iid, status=status)
+    assert row["responder_state"] == "assigned"
+    assert row["acknowledged_by_user_id"] == ids["operator"]
+    async with factory() as db:
+        snapshot = await _resolve_incident_responder(db, org, uuid.UUID(iid))
+        assert snapshot["responder_state"] == "assigned"
+        assert snapshot["acknowledged_by_display_name"] == "Operator User"
+
+
+@pytest.mark.asyncio
+async def test_reopened_incident_awaits_the_new_page(ctx):
+    from backend.bots.notifier import _resolve_incident_responder
+    from backend.db.repos import IncidentRepo
+
+    client, factory = ctx["client"], ctx["factory"]
+    h, ids = await _roles(client)
+    iid = await _create_incident(client, h["admin"])
+    org = await _org_of(factory, iid)
+    async with factory() as db:
+        await IncidentPageRepo.create(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=1,
+        )
+        incident = await IncidentRepo.get_by_id(db, org, uuid.UUID(iid))
+        incident.status = "resolved"
+        await db.commit()
+    result = await client.patch(
+        f"/incidents/{iid}",
+        headers=h["admin"],
+        json={"status": "open"},
+    )
+    assert result.status_code == 200
+    async with factory() as db:
+        await IncidentPageRepo.create(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["viewer"]),
+            step_index=0,
+            round=1,
+        )
+        await db.commit()
+    row = await _get(client, h["admin"], iid)
+    assert row["responder_state"] == "awaiting"
+    assert row["responder_user_id"] == ids["viewer"]
+    async with factory() as db:
+        snapshot = await _resolve_incident_responder(db, org, uuid.UUID(iid))
+        assert snapshot["responder_state"] == "awaiting"
+        assert snapshot["responder_display_name"] == "Viewer User"

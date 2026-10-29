@@ -147,6 +147,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Resolved and merged incidents no longer show Awaiting or Escalated to a
+  historical page target in incident lists, details or notification cards.
+  Existing owners, acknowledgement and page history are preserved; reopening
+  can show the target of its new paging round.
+
 - Slack status commands show the owner's readable username instead of an
   internal ID that Slack cannot resolve. Outbound message connection failures
   use at most three attempts before recording a safe delivery error and

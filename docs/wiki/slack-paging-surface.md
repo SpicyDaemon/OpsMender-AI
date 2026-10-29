@@ -18,6 +18,7 @@ Channel, the Block Kit card includes:
 - The priority, status and severity of the incident, and the first line of its description.
 - The incident facts in two columns (Slack stacks them on a phone): **Service**, **Team**, **Org** (when set), **Responder** (Assigned to, Awaiting, Escalated to or Unassigned), **Acknowledged by** (once someone has) and **Escalation level** (once above 0). They come from the same source as the message text, so the card and the text always agree.
 - A context line with the incident id. Once someone acknowledges, it reads `Acknowledged by <name> · Incident <id>`.
+- Resolved and merged incidents retain any existing owner and acknowledgement, but do not say Awaiting or Escalated to a historical page target. Page history stays available; a reopened incident can show its new paging target.
 - Action buttons: **Acknowledge**, **Resolve**, **Escalate**, **Start AI Session**. Once the incident is acknowledged, **Acknowledge** is left off and the other three stay. A resolved incident shows no action buttons.
 - A **View in OpsMender** link button that deep-links to the incident detail page with a `?from=slack` breadcrumb. It uses `OPSMENDER_PUBLIC_URL`, the same address as the incident link in the message text, so set it to the address your responders open.
 

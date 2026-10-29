@@ -6,6 +6,7 @@
 
 const KEY = "opsmender_return_to";
 export const CONFIRM_PATH = "/actions/confirm";
+let signingOut = false;
 
 export function isReturnPath(path: string): boolean {
   if (path === CONFIRM_PATH || path.startsWith(`${CONFIRM_PATH}#`)) return true;
@@ -24,7 +25,7 @@ export function isReturnPath(path: string): boolean {
 }
 
 export function rememberReturnPath(path: string): void {
-  if (typeof window === "undefined" || !isReturnPath(path)) return;
+  if (typeof window === "undefined" || signingOut || !isReturnPath(path)) return;
   try {
     sessionStorage.setItem(KEY, path);
   } catch {
@@ -46,9 +47,15 @@ export function forgetReturnPath(): void {
   }
 }
 
+/** Full-page sign-out resets this module; ignore pending guard/API captures. */
+export function forgetReturnPathForSignOut(): void {
+  signingOut = true;
+  forgetReturnPath();
+}
+
 /** The path to open after sign-in, used once; the dashboard otherwise. */
 export function takeReturnPath(fallback = "/dashboard"): string {
-  if (typeof window === "undefined") return fallback;
+  if (typeof window === "undefined" || signingOut) return fallback;
   try {
     const path = sessionStorage.getItem(KEY);
     sessionStorage.removeItem(KEY);

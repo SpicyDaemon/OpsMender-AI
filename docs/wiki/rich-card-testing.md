@@ -36,6 +36,8 @@ credential-bearing connection details.
    incident or session detail opens, including its source label. Cover an
    expired session and configured MFA, SSO or required password changes;
    authentication and current permissions still apply before viewing it.
+   After returning, sign out and sign in without another link: the dashboard
+   should open, since the earlier destination has been consumed.
 3. Test unlinked/inactive users, viewer role, wrong handling team, current-role
    changes, disabled channel, duplicate clicks, stale cards and closed incidents.
    Denials must preserve stored state and avoid revealing another team's facts.

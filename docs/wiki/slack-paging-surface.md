@@ -34,7 +34,7 @@ Every button click is signed, verified, and authenticated against your `bot_user
 | **Acknowledge** | Pauses the chain and assigns the incident to you. Same as the web "Acknowledge" button. The card then names you and drops this button. |
 | **Resolve** | Cancels the escalation chain and marks the incident `resolved`. The card then shows no action buttons. |
 | **Escalate** | Immediately advances to the next configured escalation level. The card shows the new responder and level and keeps its buttons. |
-| **Start AI Session** | Starts the advisory Tier 2 incident session, or reports the already-active session. The card stays as it is. |
+| **Start AI Session** | Starts an incident session using the service's resolved Safety Tier, or reports an already-active session. Current ownership and role checks still apply. The card stays as it is. |
 | **View in OpsMender** | Opens `/dashboard/incidents/detail?id=…&from=slack` in your browser. The detail page surfaces a "you opened this from Slack" banner so context is never lost. |
 
 After a button press, OpsMender tells you what happened in a message only you

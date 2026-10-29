@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import hashlib
 import time
@@ -32,6 +33,36 @@ _SLACK_UPDATE_FALLBACK_ERRORS = {
 # Slack sends a block_actions ``response_url`` on its hooks host (GovSlack
 # workspaces use slack-gov.com). Nothing else is ever posted to.
 _RESPONSE_URL_HOSTS = {"hooks.slack.com", "hooks.slack-gov.com"}
+
+
+async def _post_message(
+    bot_token: str, payload: dict[str, Any]
+) -> tuple[httpx.Response | None, str | None]:
+    """Retry only connection setup, before Slack could accept the message.
+
+    A read/write timeout may follow an accepted post, so it must not trigger
+    another send. Keep transport exception text out of delivery audits.
+    """
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://slack.com/api/chat.postMessage",
+                    headers={
+                        "Authorization": f"Bearer {bot_token}",
+                        "Content-Type": "application/json; charset=utf-8",
+                    },
+                    json=payload,
+                    timeout=10.0,
+                )
+            return response, None
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.PoolTimeout) as exc:
+            error = f"Slack transport error: {type(exc).__name__}"
+            if attempt < 2:
+                await asyncio.sleep(0.25 * (attempt + 1))
+        except httpx.HTTPError as exc:
+            return None, f"Slack transport error: {type(exc).__name__}"
+    return None, error
 
 
 class SlackAdapter:
@@ -214,27 +245,17 @@ class SlackAdapter:
         if not bot_token:
             return False, "Slack bot token is not configured"
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={
-                    "Authorization": f"Bearer {bot_token}",
-                    "Content-Type": "application/json; charset=utf-8",
-                },
-                json={
-                    "channel": chat_id,
-                    "text": text,
-                },
-                timeout=10.0,
-            )
-            if resp.status_code != 200:
-                return False, f"Slack API error: HTTP {resp.status_code}"
+        resp, error = await _post_message(bot_token, {"channel": chat_id, "text": text})
+        if resp is None:
+            return False, error
+        if resp.status_code != 200:
+            return False, f"Slack API error: HTTP {resp.status_code}"
 
-            data = resp.json()
-            if not data.get("ok"):
-                return False, f"Slack API error: {data.get('error')}"
+        data = resp.json()
+        if not data.get("ok"):
+            return False, f"Slack API error: {data.get('error')}"
 
-            return True, None
+        return True, None
 
     async def send_incident_update(
         self,
@@ -263,16 +284,9 @@ class SlackAdapter:
                 facts=facts,
                 acknowledged_by=acknowledged_by,
             )
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={
-                    "Authorization": f"Bearer {bot_token}",
-                    "Content-Type": "application/json; charset=utf-8",
-                },
-                json=payload,
-                timeout=10.0,
-            )
+        resp, error = await _post_message(bot_token, payload)
+        if resp is None:
+            return DeliveryReceipt(ok=False, error=error, external_channel_id=chat_id)
         if resp.status_code != 200:
             return DeliveryReceipt(
                 ok=False, error=f"Slack API error: HTTP {resp.status_code}"

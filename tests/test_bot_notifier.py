@@ -56,6 +56,74 @@ async def _make_connector(
 
 
 class TestSessionChatEventFanOut:
+    async def test_slack_connection_failure_is_audited_and_other_chat_receives(
+        self, factory, monkeypatch
+    ):
+        import httpx
+
+        from backend.db.models import IncidentNotificationReceipt
+
+        attempts = []
+
+        class Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, url, **kwargs):
+                channel = kwargs["json"]["channel"]
+                attempts.append(channel)
+                if channel == "C-fails":
+                    raise httpx.ConnectTimeout("private transport detail")
+                return httpx.Response(
+                    200, json={"ok": True, "channel": channel, "ts": "123.456"}
+                )
+
+        monkeypatch.setattr("backend.bots.connectors.slack.httpx.AsyncClient", Client)
+        async with factory() as db:
+            await BotConnectorRepo.create(
+                db,
+                TEST_ORG_ID,
+                name="slack-fanout",
+                platform="slack",
+                config={"allowed_chat_ids": ["C-fails", "C-works"]},
+                credentials={"bot_token": "synthetic-token"},
+                allowed_capabilities=["notifications"],
+                status="configured",
+                is_enabled=True,
+            )
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Synthetic incident", description="Test only"
+            )
+            session = await SessionRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, tier=2
+            )
+            session.status = "completed"
+            session_id = session.id
+            await db.commit()
+        await notifier.deliver_session_chat_event(
+            factory,
+            org_id=TEST_ORG_ID,
+            event_type="session.completed",
+            session_id=session_id,
+        )
+        assert attempts == ["C-fails", "C-fails", "C-fails", "C-works"]
+        async with factory() as db:
+            audits = list((await db.execute(select(BotActionAudit))).scalars())
+            assert {(a.chat_id, a.status) for a in audits} == {
+                ("C-fails", "delivery_failed"),
+                ("C-works", "ok"),
+            }
+            failure = next(a for a in audits if a.status == "delivery_failed")
+            assert failure.detail == "Slack transport error: ConnectTimeout"
+            receipts = list(
+                (await db.execute(select(IncidentNotificationReceipt))).scalars()
+            )
+            assert len(receipts) == 1
+            assert receipts[0].external_channel_id == "C-works"
+
     async def test_scheduled_event_is_tracked_until_completion(self, monkeypatch):
         started = asyncio.Event()
         release = asyncio.Event()

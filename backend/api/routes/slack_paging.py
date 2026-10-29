@@ -674,7 +674,12 @@ async def _handle_slash(
         active = await IncidentAssignmentRepo.get_active(
             db, connector.org_id, incident_id
         )
-        owner = f"<@{active.assigned_to}>" if active else "unassigned"
+        owner = (
+            await _owner_name(db, connector.org_id, incident_id)
+            if active
+            else "unassigned"
+        )
+        owner = owner.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if state is None:
             return _ephemeral(
                 f"*{incident.title}*: status `{incident.status}`, no chain. "

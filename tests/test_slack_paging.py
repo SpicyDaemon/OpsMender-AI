@@ -207,6 +207,45 @@ def _block_actions_payload(*, action_id, incident_id, user_id):
     }
 
 
+@pytest.mark.parametrize("has_chain", [False, True])
+async def test_status_uses_escaped_owner_name_without_mutating(client, app, has_chain):
+    connector = await _seed_slack_connector(app)
+    user, _ = await _seed_user_and_link(
+        app, connector_id=connector.id, slack_user_id="U_STATUS_OWNER", role="admin"
+    )
+    incident = await _seed_incident(app)
+    async with app.state.session_factory() as db:
+        owner = await UserRepo.get_by_id(db, user.id)
+        owner.username = "Sam <@U-other> & Ops"
+        await IncidentAssignmentRepo.assign(
+            db, TEST_ORG_ID, incident_id=incident.id, user_id=user.id
+        )
+        if has_chain:
+            team = await TeamRepo.create(db, TEST_ORG_ID, name="Status", slug="status")
+            chain = await EscalationChainRepo.create(
+                db, TEST_ORG_ID, team_id=team.id, name="Status chain"
+            )
+            await IncidentChainStateRepo.create(
+                db, TEST_ORG_ID, incident_id=incident.id, chain_id=chain.id
+            )
+        await db.commit()
+    body = _slash_body(
+        command="/opsmender-status", text=str(incident.id), user_id="U_STATUS_OWNER"
+    )
+    response = await client.post(
+        "/bot/slack/commands", content=body, headers=_slack_sign(body)
+    )
+    assert response.status_code == 200
+    assert "Owner: Sam &lt;@U-other&gt; &amp; Ops." in response.json()["text"]
+    assert str(user.id) not in response.json()["text"]
+    async with app.state.session_factory() as db:
+        active = await IncidentAssignmentRepo.get_active(db, TEST_ORG_ID, incident.id)
+        assert active.assigned_to == user.id
+        assert (
+            await IncidentRepo.get_by_id(db, TEST_ORG_ID, incident.id)
+        ).status == "open"
+
+
 # ---------------------------------------------------------------------------
 # Card builder
 # ---------------------------------------------------------------------------

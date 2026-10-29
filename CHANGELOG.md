@@ -147,6 +147,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Incident and AI session links return to their requested detail page after
+  sign-in, including MFA, SSO and required password-change steps. Only the
+  allowed local detail paths and signed confirmation path can be remembered;
+  expired sessions follow the same return behavior.
+
 - Slack status commands show the owner's readable username instead of an
   internal ID that Slack cannot resolve. Outbound message connection failures
   use at most three attempts before recording a safe delivery error and

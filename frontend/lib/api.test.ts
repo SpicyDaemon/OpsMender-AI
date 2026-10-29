@@ -21,14 +21,16 @@ function answer(status: number, body: unknown) {
 }
 
 function openAt(pathname: string) {
+  const parsed = new URL(pathname, "http://localhost");
   Object.defineProperty(window, "location", {
     configurable: true,
     writable: true,
-    value: { href: `http://localhost${pathname}`, pathname },
+    value: { href: parsed.href, pathname: parsed.pathname, search: parsed.search, hash: parsed.hash },
   });
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   const store = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
     configurable: true,
@@ -49,6 +51,20 @@ afterEach(() => {
 });
 
 describe("request", () => {
+  it.each([
+    [401, "/dashboard/incidents/detail?id=00000000-0000-4000-8000-000000000001&from=slack", "/login"],
+    [401, "/dashboard/sessions/detail?id=00000000-0000-4000-8000-000000000001", "/login"],
+    [403, "/dashboard/incidents/detail?id=00000000-0000-4000-8000-000000000001&from=slack", "/password-change-required"],
+    [403, "/dashboard/sessions/detail?id=00000000-0000-4000-8000-000000000001", "/password-change-required"],
+  ])("retains a safe detail before auth refusal %s", async (status, path, destination) => {
+    setToken("session-token");
+    openAt(path as string);
+    vi.stubGlobal("fetch", answer(status as number, REFUSAL));
+    await expect(api.get("/auth/me")).rejects.toThrow();
+    expect(window.location.href).toBe(destination);
+    expect(sessionStorage.getItem("opsmender_return_to")).toBe(path);
+  });
+
   it("sends only a dashboard tab to the password change page", async () => {
     setToken("session-token");
     vi.stubGlobal("fetch", answer(403, REFUSAL));

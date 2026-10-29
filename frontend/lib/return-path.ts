@@ -1,29 +1,59 @@
 /**
- * Where to go after sign-in when a signed action link (M1-99) sent someone to
- * the login page. It lives in sessionStorage, so it survives the MFA and SSO
- * round trips in the same tab, and only the confirm page's own path is ever
- * accepted, so it can never send anyone to another site.
+ * One-time destination after authentication in the same tab. Only signed
+ * confirmation and identified incident/session detail paths are accepted.
+ * MFA, SSO and required password changes reuse this same return contract.
  */
 
 const KEY = "opsmender_return_to";
 export const CONFIRM_PATH = "/actions/confirm";
 
 export function isReturnPath(path: string): boolean {
-  return path === CONFIRM_PATH || path.startsWith(`${CONFIRM_PATH}#`);
+  if (path === CONFIRM_PATH || path.startsWith(`${CONFIRM_PATH}#`)) return true;
+  if (path.length > 256) return false;
+  const detail = /^\/dashboard\/(?:incidents|sessions)\/detail\?([^#]+)$/.exec(path);
+  if (!detail) return false;
+  const fields = detail[1].split("&");
+  if (fields.length > 2 || fields.some((field) => !/^(?:id|from)=[^&]+$/.test(field))) return false;
+  const params = new URLSearchParams(detail[1]);
+  const ids = params.getAll("id");
+  const sources = params.getAll("from");
+  return ids.length === 1 &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ids[0]) &&
+    sources.length <= 1 &&
+    (sources.length === 0 || /^[a-z][a-z0-9_-]{0,31}$/.test(sources[0]));
 }
 
 export function rememberReturnPath(path: string): void {
-  if (isReturnPath(path)) sessionStorage.setItem(KEY, path);
+  if (typeof window === "undefined" || !isReturnPath(path)) return;
+  try {
+    sessionStorage.setItem(KEY, path);
+  } catch {
+    // Unavailable storage must not prevent the authentication redirect.
+  }
+}
+
+export function rememberCurrentReturnPath(): void {
+  if (typeof window === "undefined") return;
+  rememberReturnPath(`${window.location.pathname}${window.location.search ?? ""}${window.location.hash ?? ""}`);
 }
 
 export function forgetReturnPath(): void {
-  sessionStorage.removeItem(KEY);
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(KEY);
+  } catch {
+    // Storage can be disabled by the browser.
+  }
 }
 
 /** The path to open after sign-in, used once; the dashboard otherwise. */
 export function takeReturnPath(fallback = "/dashboard"): string {
   if (typeof window === "undefined") return fallback;
-  const path = sessionStorage.getItem(KEY);
-  sessionStorage.removeItem(KEY);
-  return path !== null && isReturnPath(path) ? path : fallback;
+  try {
+    const path = sessionStorage.getItem(KEY);
+    sessionStorage.removeItem(KEY);
+    return path !== null && isReturnPath(path) ? path : fallback;
+  } catch {
+    return fallback;
+  }
 }

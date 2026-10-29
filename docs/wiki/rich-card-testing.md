@@ -32,6 +32,10 @@ credential-bearing connection details.
 2. Exercise every available control: Acknowledge, Resolve, Escalate, Start AI
    Session and View. Check the visible response, stored incident/chain/owner,
    durable action audit and resulting card. Do not infer execution from prose.
+   Open View both signed in and signed out. After sign-in, confirm the same
+   incident or session detail opens, including its source label. Cover an
+   expired session and configured MFA, SSO or required password changes;
+   authentication and current permissions still apply before viewing it.
 3. Test unlinked/inactive users, viewer role, wrong handling team, current-role
    changes, disabled channel, duplicate clicks, stale cards and closed incidents.
    Denials must preserve stored state and avoid revealing another team's facts.

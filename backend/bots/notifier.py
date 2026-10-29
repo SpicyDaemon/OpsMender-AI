@@ -1058,7 +1058,11 @@ async def _resolve_incident_responder(
     """
     incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
-    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
+    pages = [
+        page
+        for page in await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
+        if page.channel == "recorded"
+    ]
     latest = pages[-1] if pages else None
 
     ack_uid = assignment.assigned_to if assignment is not None else None

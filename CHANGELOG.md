@@ -151,6 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   historical page target in incident lists, details or notification cards.
   Existing owners, acknowledgement and page history are preserved; reopening
   can show the target of its new paging round.
+  Notification targets use recorded chain pages, matching the API; delivery
+  attempts and extra-responder pages do not replace that target.
 
 - Slack status commands show the owner's readable username instead of an
   internal ID that Slack cannot resolve. Outbound message connection failures

@@ -431,3 +431,42 @@ async def test_reopened_incident_awaits_the_new_page(ctx):
         snapshot = await _resolve_incident_responder(db, org, uuid.UUID(iid))
         assert snapshot["responder_state"] == "awaiting"
         assert snapshot["responder_display_name"] == "Viewer User"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel", ["responder", "email"])
+async def test_card_target_ignores_non_chain_page_rows(ctx, channel):
+    from backend.bots.notifier import _resolve_incident_responder
+
+    client, factory = ctx["client"], ctx["factory"]
+    h, ids = await _roles(client)
+    iid = await _create_incident(client, h["admin"])
+    org = await _org_of(factory, iid)
+    async with factory() as db:
+        await IncidentPageRepo.create(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["operator"]),
+            step_index=1,
+        )
+        await IncidentPageRepo.create(
+            db,
+            org,
+            incident_id=uuid.UUID(iid),
+            user_id=uuid.UUID(ids["viewer"]),
+            step_index=None,
+            channel=channel,
+        )
+        await db.commit()
+    row = await _get(client, h["admin"], iid)
+    assert row["responder_state"] == "escalated"
+    assert row["responder_display_name"] == "Operator User"
+    async with factory() as db:
+        snapshot = await _resolve_incident_responder(db, org, uuid.UUID(iid))
+        assert snapshot["responder_state"] == row["responder_state"]
+        assert snapshot["responder_display_name"] == "Operator User"
+        assert snapshot["escalation_level"] == 1
+        assert (
+            len(await IncidentPageRepo.list_for_incident(db, org, uuid.UUID(iid))) == 2
+        )

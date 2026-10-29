@@ -5,8 +5,12 @@ through a **Microsoft Teams (Workflows)** Notification Channel. Teams posts
 each card with its Workflows app; the card's buttons open OpsMender, where
 you sign in and confirm the action.
 
-Status: built and tested against a mocked Workflows endpoint. It has not yet
-been checked in a live Teams tenant.
+Status: bounded functional acceptance covers card delivery and all five
+incident controls, including real AI sessions at Tiers 0, 1 and 2. Deployment
+acceptance remains specific to its configuration and client. Follow the
+[rich-card testing procedure](rich-card-testing.md) when validating a deployment
+or changing shared card behavior. Proposed Teams bot and personal-message
+features are separate from this Workflows surface.
 
 ---
 

@@ -1053,9 +1053,16 @@ async def _resolve_incident_responder(
     otherwise the latest escalation page) without importing the route module.
     Also surfaces escalation context - the level (latest page step index) and
     the previous responder paged before the current one - for escalation cards.
+    Terminal incidents keep history and an existing owner without presenting
+    a past page target as still waiting.
     """
+    incident = await IncidentRepo.get_by_id(db, org_id, incident_id)
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident_id)
-    pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident_id))
+    pages = [
+        page
+        for page in await IncidentPageRepo.list_for_incident(db, org_id, incident_id)
+        if page.channel == "recorded"
+    ]
     latest = pages[-1] if pages else None
 
     ack_uid = assignment.assigned_to if assignment is not None else None
@@ -1064,7 +1071,11 @@ async def _resolve_incident_responder(
 
     if ack_uid is not None:
         state, resp_uid = "assigned", ack_uid
-    elif esc_uid is not None:
+    elif (
+        esc_uid is not None
+        and incident is not None
+        and incident.status not in {"resolved", "merged"}
+    ):
         state = "escalated" if (esc_step or 0) > 0 else "awaiting"
         resp_uid = esc_uid
     else:

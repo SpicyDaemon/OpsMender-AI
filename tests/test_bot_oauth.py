@@ -34,6 +34,7 @@ from backend.auth.bot_oauth import (
     sign_state,
     verify_state,
 )
+from backend.auth.secrets import decrypt_secret
 from backend.config_loader import AppConfig, BotOAuthConfig, set_env_path
 from backend.db.models import Base, BotConnector, Organization
 from backend.db.repos import UserRepo
@@ -486,7 +487,10 @@ class TestCallbackRoute:
         async with app.state.session_factory() as db:
             refreshed = await db.get(BotConnector, slack_connector_id)
             assert refreshed is not None
-            assert refreshed.credentials == {"bot_token": "xoxb-fake"}
+            # Sealed at rest since M1-113; the stored form is never the token.
+            assert set(refreshed.credentials) == {"bot_token"}
+            assert refreshed.credentials["bot_token"].startswith("enc:")
+            assert decrypt_secret(refreshed.credentials["bot_token"][4:]) == "xoxb-fake"
             assert refreshed.status == "configured"
 
     async def test_callback_bad_state_redirects_with_error(

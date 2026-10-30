@@ -43,6 +43,7 @@ from sqlalchemy import select
 
 from backend.db.models import BotConnector
 from backend.db.repos import RuntimeConfigRepo
+from backend.bots.connectors.credentials import readable
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,9 @@ def app_token(
 
 
 def bot_token(connector: BotConnector) -> str | None:
-    value = str((connector.credentials or {}).get("bot_token") or "").strip()
-    return value or None
+    """The connector's bot token in plain text (sealed at rest since M1-113),
+    or ``None`` when none is stored or this server's key cannot open it."""
+    return readable((connector.credentials or {}).get("bot_token"))
 
 
 def token_conflicts(

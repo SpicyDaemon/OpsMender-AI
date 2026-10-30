@@ -103,7 +103,7 @@ In your Slack app's settings:
 
 In OpsMender:
 
-1. **Notification Channels** → either create a new Slack channel or edit the existing one. Paste the bot token and signing secret, then enable verified Slack actions. Save.
+1. **Notification Channels** → either create a new Slack channel or edit the existing one. Paste the bot token and signing secret, then enable verified Slack actions. Save. Both values are stored encrypted with the server's secret key (`OPSMENDER_SECRET_KEY`, or the JWT secret when none is set) and never shown again; if that key changes, **Check configuration** says the stored values cannot be read and you paste them again.
 2. **Bot User Links** → for every operator who should be allowed to click buttons or use slash commands, add a row mapping their Slack user id to their OpsMender user id (`POST /bot-connectors/{id}/user-links`).
 3. (Optional) Set `OPSMENDER_SLACK_BOT_TOKEN` in your environment. This is the same token used by the dispatcher for DMs and by the channel mirror for `conversations.create`.
 
@@ -189,6 +189,7 @@ Once the wiring is done, you can drive the full loop end-to-end without inventin
 | A click works but you see no confirmation | The answer goes to the interaction's `response_url`. OpsMender logs `Slack response_url answer failed` when it cannot reach `hooks.slack.com` (an outbound firewall, for example). The action itself is already applied. In Socket Mode, slash command answers go the same way. |
 | **View in OpsMender** opens the wrong host | `OPSMENDER_PUBLIC_URL` is unset or points at an internal address. Set it to the address your responders open. |
 | 403 `invalid_signature` in OpsMender logs | The Slack `signing_secret` on the `bot_connectors` row doesn't match the app's signing secret. |
+| 403 "cannot be read with this server's secret key" | The channel's credentials were stored under a different `OPSMENDER_SECRET_KEY` (or JWT secret). Paste the bot token and signing secret again. |
 | Slash command returns "Unknown command" | The Slack app's Request URL is right, but the command name isn't one of the six supported verbs or their two aliases (`/opsmender-status`, `/snooze-escalation`); the reply lists both spellings. |
 | Buttons + cards show up but per-incident channels don't | `slack_incident_channels_enabled` is off on the org, or the Slack app is missing `channels:manage`. The OpsMender logs will say `slack channel mirror create failed: missing_scope`. |
 | Snoozed incident never re-fires | A snooze set before v1.1.1 has no end time and stays paused. Acknowledge and release the incident, or use Escalate now, to resume it. Snoozes set since then resume on their own. |

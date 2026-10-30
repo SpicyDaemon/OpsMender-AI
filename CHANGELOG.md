@@ -122,6 +122,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reverse proxy is a plain path. Older clients may still send the token as
   a query parameter; the access log now blanks its value. Workspace, role
   and account checks on the streams are unchanged.
+- A Slack channel's signing secret and bot token are now stored encrypted
+  with the same key that protects SSO client secrets and the other sealed
+  channel credentials, instead of in the clear in the channel's credential
+  record. Existing Slack channels are converted once at the next start, when
+  the key is available, and keep working either way. Slack card clicks,
+  slash commands, Socket Mode, outbound messages and the OAuth install all
+  read the stored values through one helper. A stored value this server's
+  key cannot open (after a key change) is reported by **Check
+  configuration** and refused by every consumer with "enter it again"; the
+  ciphertext is never sent to Slack. Re-entering the channel's credentials
+  stores them under the current key. Re-entering a different signing secret
+  on a verified channel now returns it to "configured" until Slack's next
+  verified callback; before, it stayed "verified".
 
 ### Changed
 

@@ -17,6 +17,7 @@ from backend.bots.delivery import DeliveryReceipt, UpdateResult
 from backend.bots.incident_card import public_base_url
 from backend.paging.slack_cards import build_page_card_blocks
 from .base import FieldSpec, InboundMessage
+from .credentials import UNREADABLE_HINT, readable
 
 
 # Slack chat.update errors that mean the original message can no longer be
@@ -63,6 +64,13 @@ async def _post_message(
         except httpx.HTTPError as exc:
             return None, f"Slack transport error: {type(exc).__name__}"
     return None, error
+
+
+def _bot_token_problem(credentials: Mapping[str, Any]) -> str:
+    """Why no bot token is usable: none stored, or one this key cannot open."""
+    if credentials.get("bot_token"):
+        return f"Slack bot token {UNREADABLE_HINT}"
+    return "Slack bot token is not configured"
 
 
 class SlackAdapter:
@@ -153,11 +161,15 @@ class SlackAdapter:
             )
 
         credentials = connector.credentials or {}
-        signing_secret = credentials.get("signing_secret")
+        signing_secret = readable(credentials.get("signing_secret"))
         if not signing_secret:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Slack signing secret is not configured",
+                detail=(
+                    f"Slack signing secret {UNREADABLE_HINT}"
+                    if credentials.get("signing_secret")
+                    else "Slack signing secret is not configured"
+                ),
             )
 
         # Slack signature verification: https://api.slack.com/authentication/verifying-requests-from-slack
@@ -241,9 +253,9 @@ class SlackAdapter:
         text: str,
     ) -> tuple[bool, str | None]:
         credentials = connector.credentials or {}
-        bot_token = credentials.get("bot_token")
+        bot_token = readable(credentials.get("bot_token"))
         if not bot_token:
-            return False, "Slack bot token is not configured"
+            return False, _bot_token_problem(credentials)
 
         resp, error = await _post_message(bot_token, {"channel": chat_id, "text": text})
         if resp is None:
@@ -270,9 +282,9 @@ class SlackAdapter:
         acknowledged_by: str | None = None,
     ) -> DeliveryReceipt:
         credentials = connector.credentials or {}
-        bot_token = credentials.get("bot_token")
+        bot_token = readable(credentials.get("bot_token"))
         if not bot_token:
-            return DeliveryReceipt(ok=False, error="Slack bot token is not configured")
+            return DeliveryReceipt(ok=False, error=_bot_token_problem(credentials))
 
         payload: dict[str, Any] = {"channel": chat_id, "text": text}
         if incident is not None:
@@ -328,9 +340,9 @@ class SlackAdapter:
         return ``fallback_to_followup=True`` so the notifier posts a new message.
         """
         credentials = connector.credentials or {}
-        bot_token = credentials.get("bot_token")
+        bot_token = readable(credentials.get("bot_token"))
         if not bot_token:
-            return UpdateResult(ok=False, error="Slack bot token is not configured")
+            return UpdateResult(ok=False, error=_bot_token_problem(credentials))
 
         payload: dict[str, Any] = {
             "channel": chat_id,

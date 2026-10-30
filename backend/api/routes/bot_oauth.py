@@ -34,6 +34,7 @@ from backend.auth.bot_oauth import (
     sign_state,
     verify_state,
 )
+from backend.bots.connectors.credentials import seal_credentials
 from backend.db.models import User
 from backend.db.repos import BotConnectorRepo
 
@@ -194,7 +195,7 @@ async def oauth_callback(
 
     merged = dict(connector.credentials or {})
     merged.update(result.credentials)
-    connector.credentials = merged
+    connector.credentials = seal_credentials(platform, merged)
     connector.status = "configured"
     await db.flush()
     await db.commit()

@@ -121,6 +121,23 @@ async def _lifespan(app: FastAPI):
         await bootstrap_model_config(factory, config.providers)
         await report_invalid_key_settings(factory)
 
+        # Slack connector rows written before M1-113 hold their credentials
+        # in the clear; seal them once the key is available. Best-effort:
+        # the rows keep working either way and a failure must not block
+        # startup.
+        try:
+            from backend.bots.connectors.credentials import (
+                seal_legacy_credentials,
+            )
+
+            await seal_legacy_credentials(factory)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "connectors: sealing legacy credentials failed: %s", exc
+            )
+
     if deployment.mode == "monolith":
         # A monolith runs every AI session in this one process, so sessions
         # still marked active were cut off when the last process stopped and

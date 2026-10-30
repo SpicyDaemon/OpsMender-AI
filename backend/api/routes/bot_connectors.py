@@ -43,7 +43,11 @@ from backend.bots.slack_socket import (
     token_conflicts,
     uses_socket_mode,
 )
-from backend.auth.secrets import encrypt_secret
+from backend.bots.connectors.credentials import (
+    UNREADABLE_HINT,
+    readable,
+    seal_credentials,
+)
 from backend.db.models import BotConnector, User
 from backend.db.repos import (
     BotActionAuditRepo,
@@ -79,7 +83,6 @@ REQUIRED_CREDENTIAL_KEYS = {
 }
 
 ALLOWED_LANES = {"respond", "track"}
-_ENCRYPTED_PREFIX = "enc:"
 
 
 def _validate_capabilities(capabilities: list[str]) -> list[str]:
@@ -139,25 +142,9 @@ def _encrypt_platform_credentials(
     platform: str,
     credentials: dict | None,
 ) -> dict | None:
-    # Teams Workflows: the workflow URL is a bearer secret, and so is the
-    # optional Microsoft Entra client secret (M1-100).
-    if (
-        platform not in {"eventbridge", "google_chat", "teams_workflows"}
-        or credentials is None
-    ):
-        return credentials
-    encrypted: dict[str, object] = {}
-    for key, value in credentials.items():
-        if value is None or value == "":
-            encrypted[key] = value
-            continue
-        text = str(value)
-        encrypted[key] = (
-            text
-            if text.startswith(_ENCRYPTED_PREFIX)
-            else _ENCRYPTED_PREFIX + encrypt_secret(text)
-        )
-    return encrypted
+    # Sealed platforms (Teams Workflows, Google Chat, EventBridge and, since
+    # M1-113, Slack) never store a credential value in the clear.
+    return seal_credentials(platform, credentials)
 
 
 def _resolve_credentials(
@@ -210,7 +197,8 @@ def _callback_verifier(
     credentials: dict | None,
 ) -> str:
     if platform == "slack":
-        return str((credentials or {}).get("signing_secret") or "").strip()
+        # Stored sealed (M1-113): compare what the secret is, not its ciphertext.
+        return readable((credentials or {}).get("signing_secret")) or ""
     if platform == "teams":
         return str(
             (config or {}).get("bot_app_id")
@@ -382,12 +370,28 @@ def _connector_config_checks(
     credentials = connector.credentials or {}
     required_keys = REQUIRED_CREDENTIAL_KEYS.get(connector.platform, ())
     missing = [key for key in required_keys if not credentials.get(key)]
+    # A sealed value this server's key cannot open is present but unusable.
+    unreadable = [
+        key
+        for key in required_keys
+        if connector.platform == "slack"
+        and key not in missing
+        and readable(credentials.get(key)) is None
+    ]
     if missing:
         checks.append(
             _check(
                 "credentials",
                 "fail",
                 f"Missing required credential keys: {', '.join(missing)}.",
+            )
+        )
+    elif unreadable:
+        checks.append(
+            _check(
+                "credentials",
+                "fail",
+                f"Stored {', '.join(unreadable)} {UNREADABLE_HINT}.",
             )
         )
     else:
@@ -723,6 +727,10 @@ async def update_bot_connector(
 
     credentials = _resolve_credentials(body, existing)
     credentials = _encrypt_platform_credentials(body.platform, credentials)
+    # Decide the callback state against the row as it was: the ORM update
+    # below also rewrites ``existing`` in this session, so comparing after it
+    # would always find the verifier unchanged.
+    callback_status = _callback_status(body, credentials, existing)
     team_ids = await _validate_team_scope(db, org_id, body)
     try:
         updated = await BotConnectorRepo.update(
@@ -750,7 +758,7 @@ async def update_bot_connector(
             ),
         )
         if updated is not None:
-            updated.callback_status = _callback_status(body, credentials, existing)
+            updated.callback_status = callback_status
         await db.commit()
         if updated is None:
             raise HTTPException(

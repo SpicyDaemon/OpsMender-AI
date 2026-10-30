@@ -48,6 +48,7 @@ from backend.bots.actions import (
     resolve_authorized_external_actor,
 )
 from backend.bots.connectors import get_adapter
+from backend.bots.connectors.credentials import readable
 from backend.bots.native_callbacks import (
     NormalizedNativeCallback,
     callback_error_message,
@@ -158,7 +159,9 @@ async def _find_slack_connector(
     rows = (await db.execute(stmt)).scalars().all()
     for connector in rows:
         creds = connector.credentials or {}
-        secret = creds.get("signing_secret")
+        # Sealed since M1-113; a legacy plain row still reads, and a value
+        # this server's key cannot open is skipped, never used as a secret.
+        secret = readable(creds.get("signing_secret"))
         if not secret:
             continue
         if _verify_signature(

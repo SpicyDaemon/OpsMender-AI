@@ -29,3 +29,11 @@ describe("session detail activity layout", () => {
     expect(sessionDetailSource).toContain("lg:min-h-[36rem]");
   });
 });
+
+describe("session detail approval events", () => {
+  it("names a live approval by the id the server sends, never undefined (F2)", () => {
+    const sites = sessionDetailSource.match(/msg\.data\.approval_id \?\? msg\.data\.id \?\? ""/g) ?? [];
+    expect(sites).toHaveLength(2);
+    expect(sessionDetailSource).not.toContain("`ID: ${msg.data.approval_id}`");
+  });
+});

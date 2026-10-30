@@ -75,7 +75,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
         id: idGen(),
         kind: "approval",
         label: "Approval requested",
-        detail: `ID: ${msg.data.approval_id ?? ""}`,
+        detail: `ID: ${msg.data.approval_id ?? msg.data.id ?? ""}`,
         ts,
       };
     case "approval_resolved":
@@ -83,7 +83,7 @@ function parseWSMessage(msg: WSMessage, idGen: () => number): LogEvent | null {
         id: idGen(),
         kind: "approval",
         label: `Approval ${msg.data.status ?? "resolved"}`,
-        detail: String(msg.data.approval_id ?? ""),
+        detail: String(msg.data.approval_id ?? msg.data.id ?? ""),
         ts,
       };
     case "error":

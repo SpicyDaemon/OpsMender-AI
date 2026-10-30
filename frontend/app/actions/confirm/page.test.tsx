@@ -165,6 +165,21 @@ describe("action link confirm page (M1-99)", () => {
     expect(apiMocks.confirmActionLink).toHaveBeenCalledWith("new.link");
   });
 
+  it("phrases the Start AI session heading as a sentence (F1)", async () => {
+    openAt("#token=abc.def");
+    apiMocks.previewActionLink.mockResolvedValue({
+      ...READY,
+      action: "start_session",
+      action_label: "Start AI session",
+    });
+    render(<ActionLinkConfirmPage />);
+
+    expect(await screen.findByText("Start an AI session for this incident?")).toBeTruthy();
+    expect(screen.queryByText("Start AI session this incident?")).toBeNull();
+    // The button keeps the action's own label.
+    expect(screen.getByRole("button", { name: "Confirm: Start AI session" })).toBeTruthy();
+  });
+
   it("sends a token that does not decode to the server instead of failing", async () => {
     openAt("#token=%E0%A4%A");
     apiMocks.previewActionLink.mockResolvedValue({

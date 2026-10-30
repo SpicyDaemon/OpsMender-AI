@@ -1196,6 +1196,17 @@ export async function learnIngestTokenShape(
 // WebSocket helper
 // ---------------------------------------------------------------------------
 
+// A browser cannot send an Authorization header on a WebSocket handshake, so
+// a stream offers the session token as a subprotocol next to the plain one the
+// server accepts with. The URL carries no token, so neither the access log nor
+// a proxy sees it (F6).
+export const STREAM_SUBPROTOCOL = "opsmender";
+export const STREAM_BEARER_PREFIX = "opsmender-bearer.";
+
+export function streamProtocols(token: string | null): string[] | undefined {
+  return token ? [STREAM_SUBPROTOCOL, `${STREAM_BEARER_PREFIX}${token}`] : undefined;
+}
+
 export function connectSessionStream(
   sessionId: string,
   onMessage: (msg: import("./types").WSMessage) => void,
@@ -1211,9 +1222,7 @@ export function connectSessionStream(
   } else {
     wsBase = "";
   }
-  const token = getToken();
-  const url = `${wsBase}/sessions/${sessionId}/stream${token ? `?token=${token}` : ""}`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(`${wsBase}/sessions/${sessionId}/stream`, streamProtocols(getToken()));
 
   ws.onmessage = (event) => {
     try {
@@ -2103,9 +2112,9 @@ export interface NotificationStreamMessage {
 
 /**
  * Open the per-user notification WebSocket. Mirrors {@link connectSessionStream}:
- * derives the ws(s):// base from BASE_URL or the current page origin and passes
- * the JWT as a query param. Returns the socket so callers can close it on
- * unmount.
+ * derives the ws(s):// base from BASE_URL or the current page origin and offers
+ * the JWT as a handshake subprotocol. Returns the socket so callers can close
+ * it on unmount.
  */
 export function connectNotificationStream(handlers: {
   onNotification: (n: Notification) => void;
@@ -2120,9 +2129,7 @@ export function connectNotificationStream(handlers: {
   } else {
     wsBase = "";
   }
-  const token = getToken();
-  const url = `${wsBase}/notifications/stream${token ? `?token=${token}` : ""}`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(`${wsBase}/notifications/stream`, streamProtocols(getToken()));
 
   ws.onmessage = (event) => {
     try {

@@ -43,26 +43,49 @@ _HTTP_CLIENT_LOGGERS = ("httpx", "httpcore")
 # prints paths (S-108). Keep the first eight characters, like the UI's hint.
 _INTAKE_SECRET = re.compile(r"(/api/v1/intake/[^/?#\s\"]{0,8})[^/?#\s\"]*")
 
+# A stream's bearer token used to travel in the URL (``?token=<JWT>``), and
+# older clients or a proxy may still send it that way. The access log prints
+# the request line with its query string, so blank the value of any token
+# parameter before the record is formatted (F6).
+_QUERY_TOKEN = re.compile(r"([?&](?:token|access_token)=)[^&\s\"']*")
+
 
 def redact_intake_secrets(text: str) -> str:
     """Replace everything past a service intake token's first eight characters."""
     return _INTAKE_SECRET.sub(r"\g<1>…", text)
 
 
-class IntakeSecretFilter(logging.Filter):
-    """Redacts intake secrets from log records before they are formatted."""
+def redact_query_tokens(text: str) -> str:
+    """Blank the value of a ``token`` or ``access_token`` query parameter."""
+    return _QUERY_TOKEN.sub(r"\g<1>[redacted]", text)
+
+
+def redact_access_secrets(text: str) -> str:
+    """Every redaction the access log needs: intake paths and query tokens."""
+    return redact_query_tokens(redact_intake_secrets(text))
+
+
+class AccessSecretFilter(logging.Filter):
+    """Redacts secrets from access-log records before they are formatted.
+
+    uvicorn logs the request line through ``%s`` arguments (and a WebSocket
+    handshake as ``"WebSocket %s"``), so both the message and every string
+    argument are redacted.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.msg, str) and "/api/v1/intake/" in record.msg:
-            record.msg = redact_intake_secrets(record.msg)
+        if isinstance(record.msg, str):
+            record.msg = redact_access_secrets(record.msg)
         if isinstance(record.args, tuple):
             record.args = tuple(
-                redact_intake_secrets(arg)
-                if isinstance(arg, str) and "/api/v1/intake/" in arg
-                else arg
+                redact_access_secrets(arg) if isinstance(arg, str) else arg
                 for arg in record.args
             )
         return True
+
+
+# The filter's earlier name, kept for callers that install or look for it.
+IntakeSecretFilter = AccessSecretFilter
 
 
 def normalize_level(level: str | None) -> str:
@@ -94,7 +117,7 @@ def configure_logging(level: str | None) -> str:
         logging.getLogger(name).setLevel(max(numeric, logging.WARNING))
 
     access = logging.getLogger("uvicorn.access")
-    if not any(isinstance(f, IntakeSecretFilter) for f in access.filters):
-        access.addFilter(IntakeSecretFilter())
+    if not any(isinstance(f, AccessSecretFilter) for f in access.filters):
+        access.addFilter(AccessSecretFilter())
 
     return normalized

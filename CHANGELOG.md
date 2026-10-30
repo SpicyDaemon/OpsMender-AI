@@ -147,6 +147,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Three wording and display corrections found in the Teams acceptance round:
+  a signed Start AI session link now asks "Start an AI session for this
+  incident?" instead of "Start AI session this incident?"; a live approval
+  event in the session detail page and the incident sidecar shows the
+  request's id instead of "ID: undefined"; and the Tier 1 summary line says
+  caution, destructive and generic-command actions pause for approval, as
+  its own matrix and the tier policy already did. Nothing about approval
+  enforcement changes.
+
 - Slack status commands show the owner's readable username instead of an
   internal ID that Slack cannot resolve. Outbound message connection failures
   use at most three attempts before recording a safe delivery error and

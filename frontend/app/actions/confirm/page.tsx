@@ -181,7 +181,7 @@ function ConfirmLink({ token, loaded }: { token: string; loaded: boolean }) {
 
   return (
     <AuthShell
-      title={`${preview.action_label} this incident?`}
+      title={preview.action_label === "Start AI session" ? "Start an AI session for this incident?" : `${preview.action_label} this incident?`}
       description="Nothing happens until you confirm. The action is recorded as yours."
       eyebrow=""
       footer={dashboardFooter}

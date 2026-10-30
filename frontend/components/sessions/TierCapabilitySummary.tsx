@@ -51,7 +51,7 @@ const TIERS: TierDef[] = [
   {
     tier: 1,
     headline: "Approval Required",
-    oneLiner: "AI investigates and proposes. Destructive + generic-command actions pause for operator approval.",
+    oneLiner: "AI investigates and proposes. Caution, destructive, and generic-command actions pause for operator approval.",
     allowed: [
       "Safe operations (autonomous)",
       "Caution + destructive operations (after approval)",

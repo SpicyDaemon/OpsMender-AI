@@ -116,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the dependency audit caught it on a pull request. pylint is a
   development tool only; it is not part of the shipped image. Nothing else
   changes.
+- Live session and notification streams no longer carry the signed-in
+  person's token in the URL. The dashboard offers it in the WebSocket
+  handshake instead, so the request line that reaches the access log or a
+  reverse proxy is a plain path. Older clients may still send the token as
+  a query parameter; the access log now blanks its value. Workspace, role
+  and account checks on the streams are unchanged.
 
 ### Changed
 

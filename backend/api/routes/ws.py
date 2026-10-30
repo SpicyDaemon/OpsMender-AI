@@ -2,8 +2,12 @@
 
 WS /sessions/{session_id}/stream
 
-Authenticates via ``?token=<JWT>`` query parameter (WebSocket does not
-support Authorization headers on connect).
+Authenticates with the caller's session JWT. A browser cannot send an
+``Authorization`` header on a WebSocket handshake, so the dashboard offers
+the token in the ``Sec-WebSocket-Protocol`` header as
+``opsmender-bearer.<JWT>`` next to the plain ``opsmender`` subprotocol, and
+the URL carries no token (F6). The ``?token=<JWT>`` query parameter is still
+accepted for older clients; the access log blanks its value.
 
 Sends JSON messages to the client as events occur:
 - ``node_transition`` - workflow node changed
@@ -108,6 +112,47 @@ async def publish_user(user_id: uuid.UUID, message: WSMessage) -> None:
 RECHECK_SECONDS = 15.0
 # Close code for a stream whose account no longer signs in.
 ACCOUNT_ENDED = 4401
+# The subprotocol a stream is accepted with when the client offered it, and
+# the prefix under which the client offers its bearer token (F6).
+STREAM_SUBPROTOCOL = "opsmender"
+BEARER_SUBPROTOCOL_PREFIX = "opsmender-bearer."
+
+
+def _offered_subprotocols(websocket: WebSocket) -> list[str]:
+    headers = getattr(websocket, "headers", None)
+    raw = headers.get("sec-websocket-protocol", "") if headers is not None else ""
+    return [name.strip() for name in str(raw or "").split(",") if name.strip()]
+
+
+def stream_credentials(
+    websocket: WebSocket, query_token: str | None
+) -> tuple[str | None, str | None]:
+    """The bearer token a stream connects with, and the subprotocol to accept
+    it with (``None`` when the client offered none).
+
+    A token in the handshake header wins over one in the query string, so a
+    client that sends both never has the URL decide who it is.
+    """
+    offered = _offered_subprotocols(websocket)
+    token = next(
+        (
+            name[len(BEARER_SUBPROTOCOL_PREFIX) :]
+            for name in offered
+            if name.startswith(BEARER_SUBPROTOCOL_PREFIX)
+        ),
+        None,
+    )
+    selected = STREAM_SUBPROTOCOL if STREAM_SUBPROTOCOL in offered else None
+    if not isinstance(query_token, str):
+        query_token = None
+    return (token or query_token or None), selected
+
+
+async def _accept(websocket: WebSocket, subprotocol: str | None) -> None:
+    if subprotocol is None:
+        await websocket.accept()
+    else:
+        await websocket.accept(subprotocol=subprotocol)
 
 
 async def _session_user(token: str) -> User | None:
@@ -158,9 +203,13 @@ async def _relay(
 async def session_stream(
     websocket: WebSocket,
     session_id: uuid.UUID,
-    token: str = Query(...),
+    token: str | None = Query(default=None),
 ):
-    # Authenticate via query-param JWT
+    # Authenticate with the handshake's bearer token (or a legacy query token).
+    token, subprotocol = stream_credentials(websocket, token)
+    if token is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     if token.startswith(API_TOKEN_PREFIX):
         await websocket.close(code=4401)
         return
@@ -173,7 +222,7 @@ async def session_stream(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    await websocket.accept()
+    await _accept(websocket, subprotocol)
 
     # Subscribe to session events; close cleanly when the session ends.
     queue = get_channel(session_id)
@@ -193,7 +242,7 @@ async def session_stream(
 @router.websocket("/notifications/stream")
 async def notifications_stream(
     websocket: WebSocket,
-    token: str = Query(...),
+    token: str | None = Query(default=None),
 ):
     """Live per-user notification stream powering the bell.
 
@@ -201,6 +250,10 @@ async def notifications_stream(
     the token's ``sub``), so a client can only ever receive its own
     notifications. Emits ``notification`` messages and ``ping`` keep-alives.
     """
+    token, subprotocol = stream_credentials(websocket, token)
+    if token is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     if token.startswith(API_TOKEN_PREFIX):
         await websocket.close(code=4401)
         return
@@ -210,7 +263,7 @@ async def notifications_stream(
         return
     user_id = user.id
 
-    await websocket.accept()
+    await _accept(websocket, subprotocol)
 
     queue = get_user_channel(user_id)
     try:

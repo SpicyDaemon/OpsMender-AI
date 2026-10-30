@@ -3,7 +3,7 @@
  * All functions throw on non-2xx responses with the API's detail message.
  */
 
-import { CONFIRM_PATH, rememberReturnPath } from "./return-path";
+import { CONFIRM_PATH, rememberCurrentReturnPath } from "./return-path";
 
 // Defaults to empty string (same-origin) when the frontend is served by the
 // backend itself. Override via NEXT_PUBLIC_API_URL at build time if the
@@ -62,10 +62,7 @@ async function request<T>(
   if (res.status === 401 && !skipAuth) {
     clearToken();
     if (typeof window !== "undefined") {
-      // An action link's confirm page comes back after sign-in (M1-99).
-      if (window.location.pathname === CONFIRM_PATH) {
-        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
-      }
+      rememberCurrentReturnPath();
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -92,10 +89,7 @@ async function request<T>(
       (window.location.pathname.startsWith("/dashboard") ||
         window.location.pathname === CONFIRM_PATH)
     ) {
-      // The confirm page comes back once the password has changed (M1-99).
-      if (window.location.pathname === CONFIRM_PATH) {
-        rememberReturnPath(`${CONFIRM_PATH}${window.location.hash}`);
-      }
+      rememberCurrentReturnPath();
       window.location.href = "/password-change-required";
     }
     throw Object.assign(new Error(detail), { status: res.status });
@@ -619,7 +613,10 @@ export async function downloadAuditCsv(params?: {
   });
   if (res.status === 401) {
     clearToken();
-    if (typeof window !== "undefined") window.location.href = "/login";
+    if (typeof window !== "undefined") {
+      rememberCurrentReturnPath();
+      window.location.href = "/login";
+    }
     throw new Error("Unauthorized");
   }
   if (!res.ok) {
@@ -1128,6 +1125,7 @@ export async function importSkill(params: {
   if (res.status === 401) {
     clearToken();
     if (typeof window !== "undefined") {
+      rememberCurrentReturnPath();
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");
@@ -1196,6 +1194,17 @@ export async function learnIngestTokenShape(
 // WebSocket helper
 // ---------------------------------------------------------------------------
 
+// A browser cannot send an Authorization header on a WebSocket handshake, so
+// a stream offers the session token as a subprotocol next to the plain one the
+// server accepts with. The URL carries no token, so neither the access log nor
+// a proxy sees it (F6).
+export const STREAM_SUBPROTOCOL = "opsmender";
+export const STREAM_BEARER_PREFIX = "opsmender-bearer.";
+
+export function streamProtocols(token: string | null): string[] | undefined {
+  return token ? [STREAM_SUBPROTOCOL, `${STREAM_BEARER_PREFIX}${token}`] : undefined;
+}
+
 export function connectSessionStream(
   sessionId: string,
   onMessage: (msg: import("./types").WSMessage) => void,
@@ -1211,9 +1220,7 @@ export function connectSessionStream(
   } else {
     wsBase = "";
   }
-  const token = getToken();
-  const url = `${wsBase}/sessions/${sessionId}/stream${token ? `?token=${token}` : ""}`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(`${wsBase}/sessions/${sessionId}/stream`, streamProtocols(getToken()));
 
   ws.onmessage = (event) => {
     try {
@@ -2103,9 +2110,9 @@ export interface NotificationStreamMessage {
 
 /**
  * Open the per-user notification WebSocket. Mirrors {@link connectSessionStream}:
- * derives the ws(s):// base from BASE_URL or the current page origin and passes
- * the JWT as a query param. Returns the socket so callers can close it on
- * unmount.
+ * derives the ws(s):// base from BASE_URL or the current page origin and offers
+ * the JWT as a handshake subprotocol. Returns the socket so callers can close
+ * it on unmount.
  */
 export function connectNotificationStream(handlers: {
   onNotification: (n: Notification) => void;
@@ -2120,9 +2127,7 @@ export function connectNotificationStream(handlers: {
   } else {
     wsBase = "";
   }
-  const token = getToken();
-  const url = `${wsBase}/notifications/stream${token ? `?token=${token}` : ""}`;
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(`${wsBase}/notifications/stream`, streamProtocols(getToken()));
 
   ws.onmessage = (event) => {
     try {

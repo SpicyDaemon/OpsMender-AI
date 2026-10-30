@@ -116,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the dependency audit caught it on a pull request. pylint is a
   development tool only; it is not part of the shipped image. Nothing else
   changes.
+- Live session and notification streams no longer carry the signed-in
+  person's token in the URL. The dashboard offers it in the WebSocket
+  handshake instead, so the request line that reaches the access log or a
+  reverse proxy is a plain path. Older clients may still send the token as
+  a query parameter; the access log now blanks its value. Workspace, role
+  and account checks on the streams are unchanged.
 
 ### Changed
 
@@ -147,6 +153,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Resolved and merged incidents no longer show Awaiting or Escalated to a
+  historical page target in incident lists, details or notification cards.
+  Existing owners, acknowledgement and page history are preserved; reopening
+  can show the target of its new paging round.
+  Notification targets use recorded chain pages, matching the API; delivery
+  attempts and extra-responder pages do not replace that target.
 - Three wording and display corrections found in the Teams acceptance round:
   a signed Start AI session link now asks "Start an AI session for this
   incident?" instead of "Start AI session this incident?"; a live approval
@@ -161,6 +173,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   use at most three attempts before recording a safe delivery error and
   continuing to other destinations. Read/write timeouts are not retried,
   because Slack may already have received the message.
+
+- Incident and AI session links return to their requested detail page after
+  sign-in, including MFA, SSO and required password-change steps. Only the
+  allowed local detail paths and signed confirmation path can be remembered;
+  expired sessions follow the same return behavior. Intentional sign-out
+  clears the destination and prevents pending redirects from saving it again.
 
 - The correction under a session's summary answered words, not claims. In the
   2026-10-24 live round it was added to correct summaries for sentences such

@@ -39,6 +39,7 @@ This guide covers common issues you might encounter while deploying, configuring
 **Symptom:** The Session Chat does not update automatically when the AI responds. You have to manually refresh the page to see new messages.
 **Resolution:**
 - OpsMender uses WebSockets for real-time chat updates. Ensure your reverse proxy (e.g., Nginx, Traefik) or Load Balancer is configured to support WebSocket upgrades.
+- The dashboard sends the signed-in person's token in the handshake's `Sec-WebSocket-Protocol` header, not in the URL, so the proxy must pass that header through to OpsMender and back. A proxy that strips it makes every stream close with code 1008 (policy violation) right after it opens.
 - Check the browser's developer console for `WebSocket connection failed` errors.
 - If running locally via Docker Compose, ensure port mapping is correct and no local firewall is blocking the WS protocol.
 

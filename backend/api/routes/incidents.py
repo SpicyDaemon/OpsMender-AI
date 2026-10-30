@@ -361,6 +361,8 @@ def _resolve_responder_from(
     assignment,
     pages,
     user_by_id: dict,
+    *,
+    incident_status: str,
 ) -> dict:
     """Resolve responder/assignment state from already-fetched rows.
 
@@ -368,7 +370,8 @@ def _resolve_responder_from(
     is the current target - ``awaiting`` at the first level, ``escalated`` after.
     ``pages`` must be ordered oldest-first (latest page last). Only the
     chain's recorded pages count: delivery attempts and responder requests
-    never change who the incident is awaiting.
+    never change who the incident is awaiting. Terminal incidents retain page
+    history and any existing owner, but never await a historical target.
     """
     chain_pages = [page for page in pages if page.channel == "recorded"]
     latest = chain_pages[-1] if chain_pages else None
@@ -379,7 +382,7 @@ def _resolve_responder_from(
 
     if ack_uid is not None:
         state, resp_uid = "assigned", ack_uid
-    elif esc_uid is not None:
+    elif esc_uid is not None and incident_status not in {"resolved", "merged"}:
         state = "escalated" if (esc_step or 0) > 0 else "awaiting"
         resp_uid = esc_uid
     else:
@@ -422,7 +425,11 @@ async def _to_incident_response(
     }
     assignment = await IncidentAssignmentRepo.get_active(db, org_id, incident.id)
     pages = list(await IncidentPageRepo.list_for_incident(db, org_id, incident.id))
-    data.update(_resolve_responder_from(assignment, pages, user_by_id))
+    data.update(
+        _resolve_responder_from(
+            assignment, pages, user_by_id, incident_status=incident.status
+        )
+    )
     sessions = await SessionRepo.list_by_incident(db, org_id, incident.id)
     active, status = _resolve_ai_session(sessions)
     data["ai_session_active"] = active
@@ -469,6 +476,7 @@ async def _to_incident_list_response(
                 assignment_by_incident.get(incident.id),
                 pages_by_incident.get(incident.id, []),
                 user_by_id,
+                incident_status=incident.status,
             )
         )
         active, status = _resolve_ai_session(sessions_by_incident.get(incident.id, []))

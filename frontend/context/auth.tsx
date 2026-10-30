@@ -16,6 +16,7 @@ import {
   setToken,
 } from "@/lib/api";
 import type { UserResponse } from "@/lib/types";
+import { forgetReturnPathForSignOut } from "@/lib/return-path";
 
 interface AuthContextValue {
   user: UserResponse | null;
@@ -82,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    forgetReturnPathForSignOut();
     clearToken();
     setUser(null);
     window.location.href = "/login";

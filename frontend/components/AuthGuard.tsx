@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth";
 import { PageSpinner } from "@/components/ui/Spinner";
+import { rememberCurrentReturnPath } from "@/lib/return-path";
 
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -11,6 +12,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
+    if (!user || user.must_change_password || user.mfa_enrollment_required) {
+      rememberCurrentReturnPath();
+    }
     if (!user) {
       router.push("/login");
     } else if (user.must_change_password) {

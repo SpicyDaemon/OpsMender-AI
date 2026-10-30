@@ -160,6 +160,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   continuing to other destinations. Read/write timeouts are not retried,
   because Slack may already have received the message.
 
+- Incident and AI session links return to their requested detail page after
+  sign-in, including MFA, SSO and required password-change steps. Only the
+  allowed local detail paths and signed confirmation path can be remembered;
+  expired sessions follow the same return behavior. Intentional sign-out
+  clears the destination and prevents pending redirects from saving it again.
+
 - The correction under a session's summary answered words, not claims. In the
   2026-10-24 live round it was added to correct summaries for sentences such
   as "verify that the circuit breakers remain closed", "whether the pod has

@@ -138,6 +138,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- pyasn1 is raised to 0.6.5 (CVE-2026-119194, CVE-2026-119195,
+  CVE-2026-119196 and CVE-2026-119197 are fixed in that release). It is a
+  direct dependency the image scan flagged on a pull request. Nothing else
+  changes.
 - The older Microsoft Teams channel type still sends nothing while the Teams
   bot is being rebuilt; its note now points to the Microsoft Teams (Workflows)
   channel.

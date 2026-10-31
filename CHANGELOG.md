@@ -170,6 +170,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The chat audit of `/approve` and `/reject` now follows the decision's
+  outcome: `ok` only when the command decided the request, `noop` when it
+  was already decided, had expired or could not be resolved, `not_found`
+  for an unknown id and `role_denied` when the person may not decide it.
+  Before, a repeated approve that correctly changed nothing was recorded as
+  a success because its reply contained the word "approved". Decisions
+  themselves are unchanged.
 - Resolved and merged incidents no longer show Awaiting or Escalated to a
   historical page target in incident lists, details or notification cards.
   Existing owners, acknowledgement and page history are preserved; reopening

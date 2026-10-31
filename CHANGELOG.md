@@ -170,6 +170,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Telegram messages can no longer be refused for their content. Incident
+  cards, AI session lifecycle messages, co-pilot replies and command replies
+  were sent as legacy Markdown, so an incident title, a model summary or a
+  reply holding an unmatched `*`, `_`, backtick or `[` made Telegram reject
+  the whole message and the page or notice was lost. Every Telegram send now
+  goes through one rendering step that produces Telegram HTML with the
+  dynamic text escaped; OpsMender's own bold and code markers still render,
+  and links stay tappable. Slack and the other platforms are unchanged.
 - Resolved and merged incidents no longer show Awaiting or Escalated to a
   historical page target in incident lists, details or notification cards.
   Existing owners, acknowledgement and page history are preserved; reopening

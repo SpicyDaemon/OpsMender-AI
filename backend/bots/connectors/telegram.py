@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from fastapi import HTTPException, status
 
 from backend.bots.telegram import send_message as telegram_send
+from backend.bots.telegram_markup import PARSE_MODE, render
 from backend.db.models import BotConnector
 
 from .base import FieldSpec, InboundMessage
@@ -109,11 +110,14 @@ class TelegramAdapter:
         chat_id: str,
         text: str,
     ) -> dict[str, Any] | None:
+        # The webhook answers with the reply itself; rendered the same way
+        # as an outbound send, so a command argument or an incident title in
+        # the reply can never make Telegram refuse it (M1-121).
         return {
             "method": "sendMessage",
             "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "Markdown",
+            "text": render(text),
+            "parse_mode": PARSE_MODE,
             "disable_web_page_preview": True,
         }
 

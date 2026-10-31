@@ -6045,8 +6045,9 @@ class TestTelegramBotWebhook:
         assert resp.status_code == 200
         text = resp.json()["text"]
         assert session_id in text
-        assert "Status: `active`" in text
-        assert "Tier: `2`" in text
+        # The webhook answers in Telegram HTML (M1-121).
+        assert "Status: <code>active</code>" in text
+        assert "Tier: <code>2</code>" in text
 
     async def test_telegram_webhook_lists_pending_approvals(
         self, client: AsyncClient, app, auth_headers

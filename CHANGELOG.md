@@ -170,6 +170,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An AI session started from a chat card button or a signed action link now
+  sends the Notification Channels the same "AI session started by ..."
+  message as a start from the dashboard, once, naming the person who
+  started it. Before, only a start that had to wait for capacity was
+  announced; an immediate start ran without a word to the channels, which
+  then saw only its later approval or completion messages.
 - Resolved and merged incidents no longer show Awaiting or Escalated to a
   historical page target in incident lists, details or notification cards.
   Existing owners, acknowledgement and page history are preserved; reopening

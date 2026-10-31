@@ -1,7 +1,7 @@
-"""M1-72, M1-81, M1-85 and M1-109: the lock stays at or above the releases that
-closed the advisories the dependency audit found after v1.2.0 (Pillow 13.0.0,
-certifi 2026.10.19), after v1.2.1 (black 26.10.1) and after v1.2.2 (filelock
-4.2.1, pylint 4.0.9)."""
+"""M1-72, M1-81, M1-85, M1-109 and M1-126: the lock stays at or above the
+releases that closed the advisories the dependency audit found after v1.2.0
+(Pillow 13.0.0, certifi 2026.10.19), after v1.2.1 (black 26.10.1) and after
+v1.2.2 (filelock 4.2.1, pylint 4.0.9, pyasn1 0.6.5)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ FLOORS = {
     "black": (26, 10, 1),
     "filelock": (4, 2, 1),
     "pylint": (4, 0, 9),
+    "pyasn1": (0, 6, 5),
 }
 
 
@@ -50,3 +51,8 @@ def test_the_filelock_floor_is_declared_in_pyproject():
 def test_the_pylint_floor_is_declared_in_pyproject():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert re.search(r'"pylint>=4\.0\.9"', pyproject)
+
+
+def test_the_pyasn1_floor_is_declared_in_pyproject():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert re.search(r'"pyasn1>=0\.6\.5"', pyproject)

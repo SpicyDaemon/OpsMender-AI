@@ -193,6 +193,22 @@ async def _resolve_opsmender_user(
     return opsmender_user
 
 
+@dataclass(frozen=True)
+class ApprovalReply:
+    """What a chat decision command answers, and how its audit row reads.
+
+    The audit status follows the decision's outcome, never the reply's words
+    (M1-123): ``ok`` only when this command decided the request; ``noop``
+    when it was already decided, had expired or could not be resolved (a
+    repeat executes nothing twice); ``not_found`` and ``role_denied`` as
+    for the other commands.
+    """
+
+    text: str
+    audit_status: str
+    detail: str
+
+
 async def _resolve_approval_from_bot(
     db: AsyncSession,
     org_id: uuid.UUID,
@@ -200,7 +216,7 @@ async def _resolve_approval_from_bot(
     *,
     decision: str,
     resolver: User,
-) -> str:
+) -> ApprovalReply:
     """The same decision path as the web: expiry, approver, lock activity."""
     from backend.api.routes.approvals import _to_ws_message
     from backend.api.routes.ws import publish
@@ -217,18 +233,28 @@ async def _resolve_approval_from_bot(
     if result.request is not None and result.outcome in ("decided", "expired"):
         await publish(result.request.session_id, _to_ws_message(result.request))
     if result.outcome == "not_found":
-        return "Approval request not found."
+        return ApprovalReply("Approval request not found.", "not_found", decision)
     if result.outcome == "not_pending":
-        return f"Approval request is already {result.request.status}."
+        return ApprovalReply(
+            f"Approval request is already {result.request.status}.",
+            "noop",
+            f"{decision}: already {result.request.status}",
+        )
     if result.outcome == "forbidden":
         from backend.paging.reassign import APPROVAL_FORBIDDEN
 
-        return APPROVAL_FORBIDDEN
+        return ApprovalReply(APPROVAL_FORBIDDEN, "role_denied", decision)
     if result.outcome == "expired":
-        return "Approval request expired before it could be resolved."
+        return ApprovalReply(
+            "Approval request expired before it could be resolved.",
+            "noop",
+            f"{decision}: expired",
+        )
     if result.outcome == "failed":
-        return "Approval request could not be resolved."
-    return f"Approval request `{request_id}` {decision}."
+        return ApprovalReply(
+            "Approval request could not be resolved.", "noop", f"{decision}: failed"
+        )
+    return ApprovalReply(f"Approval request `{request_id}` {decision}.", "ok", decision)
 
 
 async def dispatch_inbound(
@@ -526,7 +552,7 @@ async def dispatch_inbound(
             )
             return DispatchResult(reply_text="Approval ID must be a valid UUID.")
         decision = "approved" if command == "/approve" else "rejected"
-        result_text = await _resolve_approval_from_bot(
+        reply = await _resolve_approval_from_bot(
             db, org_id, request_id, decision=decision, resolver=opsmender_user
         )
         await _audit(
@@ -535,10 +561,10 @@ async def dispatch_inbound(
             connector,
             chat_id=chat_id,
             command=command,
-            status="ok" if decision in result_text else "noop",
-            detail=decision,
+            status=reply.audit_status,
+            detail=reply.detail,
         )
-        return DispatchResult(reply_text=result_text)
+        return DispatchResult(reply_text=reply.text)
 
     if command == "/chat":
         if not _has_capability(connector, "copilot_chat"):

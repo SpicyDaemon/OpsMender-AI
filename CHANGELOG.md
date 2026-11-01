@@ -170,6 +170,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The chat audit of `/approve` and `/reject` now follows the decision's
+  outcome: `ok` only when the command decided the request, `noop` when it
+  was already decided, had expired or could not be resolved, `not_found`
+  for an unknown id and `role_denied` when the person may not decide it.
+  Before, a repeated approve that correctly changed nothing was recorded as
+  a success because its reply contained the word "approved". Decisions
+  themselves are unchanged.
 - An AI session started from a chat card button or a signed action link now
   sends the Notification Channels the same "AI session started by ..."
   message as a start from the dashboard, once, naming the person who

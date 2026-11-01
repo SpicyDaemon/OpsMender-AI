@@ -367,7 +367,12 @@ afterwards keeps them as saved, and the Edit dialog lists the keys it keeps
 under the Configuration fields. Every inbound command is recorded in the `bot_action_audit`
 table along with its outcome (`ok`, `bad_args`, `not_found`,
 `capability_denied`, `chat_not_allowed`, `rate_limited`,
-`unknown_command`, `delivery_failed`).
+`unknown_command`, `unauthorized`, `role_denied`, `noop`,
+`delivery_failed`). For `/approve` and `/reject` the outcome follows the
+decision itself: `ok` only when that command decided the request, `noop`
+when it was already decided, had expired or could not be resolved (a repeat
+never executes twice), `not_found` for an unknown id and `role_denied` when
+the person may not decide it.
 
 #### Outbound delivery
 

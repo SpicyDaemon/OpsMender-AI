@@ -178,6 +178,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   goes through one rendering step that produces Telegram HTML with the
   dynamic text escaped; OpsMender's own bold and code markers still render,
   and links stay tappable. Slack and the other platforms are unchanged.
+- Editing a Notification Channel in the dashboard keeps the settings that
+  have no field in the form. A Telegram channel's allowed chats and rate
+  limit are set through the API only; saving an ordinary edit, such as a new
+  bot token, used to drop them, which let every chat use the bot. The Edit
+  dialog now carries those saved keys as they are and lists them under the
+  Configuration fields. A visible field cleared on purpose is still cleared,
+  credential replacement and team scope work as before, and the API's own
+  update is unchanged. The same applies to every platform with a form.
 - Resolved and merged incidents no longer show Awaiting or Escalated to a
   historical page target in incident lists, details or notification cards.
   Existing owners, acknowledgement and page history are preserved; reopening

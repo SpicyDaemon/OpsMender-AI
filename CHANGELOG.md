@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.3.0] - 2026-11-01
+
+The Slack and Telegram fixes below (the entries from the 2026-10-31 live
+round) are covered by regression tests, the full gate and the hosted checks;
+their re-run against live Slack and Telegram comes after this release. The
+Microsoft Teams (Workflows) channel has not been checked in a live tenant.
+What this release removes is listed under Removed; read it before upgrading.
+
 ### Added
 
 - Signed action links for chat cards. A card that cannot carry buttons that
@@ -3354,7 +3364,8 @@ Archived draft release notes from the earlier Sprints 1-23 milestone planning. K
 - Single multi-stage production Dockerfile (`docker/Dockerfile`) with health checks and a logs volume mount.
 - Node.js LTS bundled inside the Docker image for `npx`-based MCP servers. `OPSMENDER_NODE_PATH` override supported for binary installs.
 
-[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/SpicyDaemon/OpsMender-AI/compare/v1.1.2...v1.2.0

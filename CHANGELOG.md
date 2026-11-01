@@ -170,6 +170,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An AI session started from a chat card button or a signed action link now
+  sends the Notification Channels the same "AI session started by ..."
+  message as a start from the dashboard, once, naming the person who
+  started it. Before, only a start that had to wait for capacity was
+  announced; an immediate start ran without a word to the channels, which
+  then saw only its later approval or completion messages.
 - Telegram messages can no longer be refused for their content. Incident
   cards, AI session lifecycle messages, co-pilot replies and command replies
   were sent as legacy Markdown, so an incident title, a model summary or a

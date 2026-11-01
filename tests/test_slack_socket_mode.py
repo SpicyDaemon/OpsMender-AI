@@ -1317,3 +1317,76 @@ async def test_shutdown_stops_the_sockets_before_sweeping_tasks(tmp_path, monkey
 
 async def _record(order, marker):
     order.append(marker)
+
+
+async def test_the_connected_state_is_published_when_the_socket_says_hello(app):
+    """M1-125 (L-05): the live round saw the takeover's connected state in the
+    database 84 and 90 seconds after a kill while the new socket was up at
+    about 65: a newly admitted socket's state was written only on the next
+    tick, up to one renewal later. The hello now publishes it at once."""
+    connector = await _socket_connector(app)
+    factory = app.state.session_factory
+
+    async def state():
+        async with factory() as db:
+            raw = await RuntimeConfigRepo.get_value(
+                db, TEST_ORG_ID, state_key(connector.id)
+            )
+        return json.loads(raw) if raw else {}
+
+    async with _FakeSlack() as slack:
+
+        async def open_url(token):
+            return slack.url
+
+        def client_factory(token, handle):
+            return SocketModeClient(token, handle, open_url=open_url)
+
+        manager = SlackSocketManager(
+            app,
+            factory,
+            holder="hello",
+            env={TOKEN_ENV: TOKEN},
+            client_factory=client_factory,
+        )
+        await manager.tick()
+        client = manager._sockets[connector.id].client
+        await _until(lambda: client.connected)
+
+        # No second tick: the row follows the hello within a moment.
+        deadline = asyncio.get_running_loop().time() + 2.0
+        published = await state()
+        while not published.get("connected"):
+            assert asyncio.get_running_loop().time() < deadline, published
+            await asyncio.sleep(0.05)
+            published = await state()
+        assert published == {"holder": "hello", "connected": True, "problem": None}
+
+        # A later tick writes the same truth.
+        await manager.tick(datetime.now(timezone.utc) + timedelta(seconds=20))
+        assert (await state())["connected"] is True
+        await manager.stop()
+
+        # A socket this process no longer holds publishes nothing when it
+        # greets: the row keeps what the last tick or the next holder wrote.
+        async with factory() as db:
+            await RuntimeConfigRepo.set(
+                db,
+                TEST_ORG_ID,
+                key=state_key(connector.id),
+                value=json.dumps(
+                    {"holder": "other", "connected": False, "problem": None}
+                ),
+            )
+            await db.commit()
+        orphan = SocketModeClient(
+            TOKEN, manager._handler(connector.id), open_url=open_url
+        )
+        orphan.connected = True
+        publish = manager._connected_publisher(connector.id, TEST_ORG_ID)
+        await publish()
+        assert (await state()) == {
+            "holder": "other",
+            "connected": False,
+            "problem": None,
+        }

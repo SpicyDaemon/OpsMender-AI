@@ -170,6 +170,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Slack Socket Mode publishes a channel's connected state the moment its
+  socket connects, instead of on the next renewal tick up to 20 seconds
+  later. After a takeover the doctor and the channel checks now show the
+  new holder connected within moments of the socket being up; the takeover
+  itself, the hold, the fencing and the renewal cadence are unchanged.
 - Notification Channels that cannot edit a posted card (Telegram and the
   other plain card platforms, as Microsoft Teams (Workflows) already did) get
   one new card when a resolved incident is reopened, so the last card no

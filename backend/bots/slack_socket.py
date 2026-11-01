@@ -246,6 +246,9 @@ class SocketModeClient:
         # connector? A socket for another app is closed and the client stops.
         self.check_app: Callable[[str], Awaitable[bool]] | None = None
         self.wrong_app: str | None = None
+        # Set by the manager: called once a socket has said hello, so the
+        # connected state is published then and not on the next tick (M1-125).
+        self.on_connected: Callable[[], Awaitable[None]] | None = None
 
     async def run(self) -> None:
         """Serve sockets until cancelled, or until a socket greets for another
@@ -300,6 +303,10 @@ class SocketModeClient:
                         self.wrong_app = app_id
                         return False
                 self._greeted = self.connected = True
+                if self.on_connected is not None:
+                    task = asyncio.create_task(self.on_connected())
+                    self.tasks.add(task)
+                    task.add_done_callback(self.tasks.discard)
                 continue
             if kind == "disconnect":
                 return True
@@ -638,6 +645,7 @@ class SlackSocketManager:
                         db, lease_key(connector_id), self.holder
                     )
             await db.commit()
+            orgs = {c.id: c.org_id for c in connectors}
         for connector_id in list(self._sockets):
             held = self._sockets[connector_id]
             token = held_tokens.get(connector_id)
@@ -650,6 +658,9 @@ class SlackSocketManager:
             if connector_id not in self._sockets:
                 client = self._client_factory(token, self._handler(connector_id))
                 client.check_app = self._app_checker(connector_id)
+                client.on_connected = self._connected_publisher(
+                    connector_id, orgs[connector_id]
+                )
                 self._sockets[connector_id] = _Socket(
                     client=client,
                     task=asyncio.create_task(
@@ -660,6 +671,38 @@ class SlackSocketManager:
                     seen_connected=now,
                 )
         return set(held_tokens)
+
+    def _connected_publisher(
+        self, connector_id: uuid.UUID, org_id: uuid.UUID
+    ) -> Callable[[], Awaitable[None]]:
+        """Write the connected state for a socket this process still holds.
+        A tick writes the same truth; this only brings it forward from the
+        next tick to the hello, up to one renewal sooner (M1-125). A write
+        that fails is left to the next tick."""
+
+        async def publish() -> None:
+            held = self._sockets.get(connector_id)
+            if held is None or not getattr(held.client, "connected", False):
+                return
+            try:
+                async with self._factory() as db:
+                    await RuntimeConfigRepo.set(
+                        db,
+                        org_id,
+                        key=state_key(connector_id),
+                        value=json.dumps(
+                            {"holder": self.holder, "connected": True, "problem": None}
+                        ),
+                    )
+                    await db.commit()
+            except Exception as exc:  # noqa: BLE001 - the next tick publishes it
+                logger.warning(
+                    "slack socket mode: connected state of %s not published: %s",
+                    connector_id,
+                    _describe(exc),
+                )
+
+        return publish
 
     def _app_checker(self, connector_id: uuid.UUID) -> Callable[[str], Awaitable[bool]]:
         async def check(app_id: str) -> bool:

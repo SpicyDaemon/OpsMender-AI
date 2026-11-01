@@ -360,7 +360,11 @@ Optional connector config:
 ```
 
 `rate_limit_per_minute` defaults to 30 and applies per-chat. Set to `0`
-to disable. Every inbound command is recorded in the `bot_action_audit`
+to disable. Neither setting has a field in the Notification Channels form.
+Set them with `PUT /bot-connectors/{id}` (the whole channel body; the
+response shows the saved config). Editing the channel in the dashboard
+afterwards keeps them as saved, and the Edit dialog lists the keys it keeps
+under the Configuration fields. Every inbound command is recorded in the `bot_action_audit`
 table along with its outcome (`ok`, `bad_args`, `not_found`,
 `capability_denied`, `chat_not_allowed`, `rate_limited`,
 `unknown_command`, `delivery_failed`).

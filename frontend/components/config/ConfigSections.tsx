@@ -2701,6 +2701,28 @@ function valuesFromConfig(
   return out;
 }
 
+// The saved settings a schema-driven form has no field for, such as
+// Telegram's allowed chats and rate limit, which are set through the API
+// only. Team scope is left out: its own controls and the API own it. A save
+// carries these keys as they are, so an ordinary edit never drops them
+// (M1-120).
+function apiOnlyConfigEntries(
+  schema: BotConnectorPlatformSchema | null,
+  config: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  if (!schema || !config) return {};
+  const fieldNames = new Set(schema.fields.map((field) => field.name));
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (fieldNames.has(key) || key === "team_scope" || key === "team_ids") {
+      continue;
+    }
+    if (value === undefined || value === null) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function defaultValues(
   schema: BotConnectorPlatformSchema | null,
   group: "config" | "credentials",
@@ -2799,6 +2821,7 @@ function parseKeyValueSecrets(text: string): {
 function buildBotConnectorPayload(
   form: BotConnectorFormState,
   schema: BotConnectorPlatformSchema | null,
+  savedConfig: Record<string, unknown> | null = null,
 ): { payload?: BotConnectorUpsert; error?: string } {
   if (!form.name.trim()) return { error: "Name is required." };
   if (form.allowed_capabilities.length === 0) {
@@ -2815,8 +2838,12 @@ function buildBotConnectorPayload(
   let credentialsObj: Record<string, string> | null = null;
 
   if (schema) {
-    // Schema-driven build.
-    const configEntries: Record<string, unknown> = {};
+    // Schema-driven build. Start from the saved keys the form has no field
+    // for; the visible fields then set, or clear, their own keys.
+    const configEntries: Record<string, unknown> = apiOnlyConfigEntries(
+      schema,
+      savedConfig,
+    );
     const credentialEntries: Record<string, string> = {};
     for (const field of schema.fields) {
       if (field.group === "config") {
@@ -3135,6 +3162,14 @@ function DynamicConnectorForm({
     (f) => f.group === "credentials",
   );
   const hasExistingCredentials = Boolean(initialConnector?.has_credentials);
+  const keptKeys = Object.keys(
+    apiOnlyConfigEntries(
+      schema,
+      initialConnector?.platform === form.platform
+        ? initialConnector?.config
+        : null,
+    ),
+  ).sort();
 
   function setConfigValue(name: string, value: string) {
     setForm((current) => ({
@@ -3172,6 +3207,12 @@ function DynamicConnectorForm({
               onToggleSecret={() => toggleSecret(field.name)}
             />
           ))}
+          {keptKeys.length > 0 && (
+            <p className="text-xs text-fg-muted">
+              Kept as saved (set through the API):{" "}
+              <span className="font-mono">{keptKeys.join(", ")}</span>
+            </p>
+          )}
         </fieldset>
       )}
 
@@ -4285,6 +4326,7 @@ export function BotConnectorSection({
     const { payload, error: buildError } = buildBotConnectorPayload(
       form,
       schema,
+      editing && editing.platform === form.platform ? editing.config : null,
     );
     if (buildError || !payload) {
       setError(buildError ?? "Invalid form values.");

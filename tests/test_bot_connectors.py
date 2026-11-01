@@ -156,12 +156,14 @@ class TestTelegramAdapter:
 
     def test_inline_reply_returns_send_message_envelope(self):
         adapter = TelegramAdapter()
-        reply = adapter.inline_reply("-100777", "hello")
+        reply = adapter.inline_reply("-100777", "hello `there` <b>")
+        # Rendered as Telegram HTML (M1-121): our code span becomes a tag and
+        # the angle brackets in the text are escaped.
         assert reply == {
             "method": "sendMessage",
             "chat_id": "-100777",
-            "text": "hello",
-            "parse_mode": "Markdown",
+            "text": "hello <code>there</code> &lt;b&gt;",
+            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
 

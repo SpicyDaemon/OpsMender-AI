@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 import backend.bots  # noqa: F401  -- registers built-in adapters
 from backend.bots.capabilities import (
     platform_delivers,
+    posts_incident_cards,
     supports_interactive_actions,
     supports_link_actions,
     supports_message_update,
@@ -508,13 +509,16 @@ async def _status_changed_since_last_card(
     incident,
     rendered_status: str | None,
 ) -> bool:
-    """Whether an edit-only refresh still posts a new card (M1-100): on a
-    link-button channel that cannot edit, when the status differs from the
-    latest card's (a reopen), so the last card does not keep saying
-    resolved. Ownership changes keep the status and post nothing."""
+    """Whether an edit-only refresh still posts a new card: on a card channel
+    that cannot edit its post (Teams Workflows since M1-100, Telegram and the
+    other card platforms without edits since M1-124), when the status differs
+    from the latest card's, so the last card does not keep saying resolved
+    after a reopen, or stays live after the incident moved to another team
+    (``rendered_status`` ``moved_away``). The same state twice posts nothing,
+    and ownership changes keep the status and post nothing."""
     if incident is None or incident_id is None:
         return False
-    if not supports_link_actions(connector.platform):
+    if not posts_incident_cards(connector.platform):
         return False
     if supports_message_update(connector.platform):
         return False
@@ -1025,6 +1029,9 @@ def schedule_session_chat_event(
     return task
 
 
+# The receipt status of the one notice the team an incident left receives.
+MOVED_AWAY_STATUS = "moved_away"
+
 INCIDENT_CHAT_EVENTS = {
     "incident.created",
     "incident.acknowledged",
@@ -1205,7 +1212,9 @@ async def deliver_incident_event(
         native_actions_ready = not moved_away and _native_actions_ready(
             connector, is_track=is_track
         )
-        # The previous team's channel learns only that the incident moved.
+        # The previous team's channel learns only that the incident moved. Its
+        # receipt says so, so a channel that cannot edit posts that notice
+        # once and never again for the same move (M1-124).
         card = (
             {
                 "responder": None,
@@ -1243,7 +1252,7 @@ async def deliver_incident_event(
                 session_id=None,
                 incident_id=incident_id,
                 lifecycle_event=event_type,
-                rendered_status=incident.status,
+                rendered_status=MOVED_AWAY_STATUS if moved_away else incident.status,
                 incident=incident,
                 native_actions_ready=native_actions_ready,
                 delivery_lane="track" if is_track else "respond",

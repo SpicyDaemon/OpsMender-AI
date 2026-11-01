@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -140,23 +141,31 @@ async def dispatch_native_session_result(
     org_id: uuid.UUID,
     result: IncidentActionResult,
 ) -> None:
-    """Commit and dispatch a verified chat session start after admission."""
+    """Commit and dispatch a verified chat session start after admission.
+
+    A queued start tells the channels it is queued; an immediate start tells
+    them the session was created, by whom, as the web path does, and then
+    runs it (M1-122). Each start publishes its event once.
+    """
     if result.session_id is None or result.status not in {
         "session_started",
         "session_queued",
     }:
         return
     await db.commit()
-    if result.status == "session_queued":
-        from backend.bots.notifier import schedule_session_chat_event
+    from backend.bots.notifier import schedule_session_chat_event
 
-        schedule_session_chat_event(
-            app.state.session_factory,
-            org_id=org_id,
-            task_registry=app.state.background_tasks,
-            event_type="session.queued",
-            session_id=result.session_id,
-        )
+    queued = result.status == "session_queued"
+    schedule_session_chat_event(
+        app.state.session_factory,
+        org_id=org_id,
+        task_registry=getattr(app.state, "background_tasks", None),
+        event_type="session.queued" if queued else "session.created",
+        session_id=result.session_id,
+        actor_user_id=None if queued else result.actor_user_id,
+        base_url=os.environ.get("OPSMENDER_PUBLIC_URL"),
+    )
+    if queued:
         return
 
     from backend.services.session_orchestration import dispatch_session_ready

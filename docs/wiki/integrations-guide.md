@@ -376,6 +376,13 @@ the person may not decide it.
 
 #### Outbound delivery
 
+Telegram cannot edit a message OpsMender has posted, so an incident card is
+never changed in place. When a resolved incident is reopened, the chat gets
+one new card saying it is open again; when an incident moves to another team,
+the chat of the team it left gets one notice that it moved, naming no service,
+team or responder. Ownership changes alone post nothing, and the same state is
+never posted twice.
+
 When the connector has the `notifications` capability and at least one
 chat in `allowed_chat_ids`, OpsMender pushes a Telegram message for each
 session lifecycle event (`session.created`, `session.awaiting_approval`,

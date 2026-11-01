@@ -170,6 +170,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Notification Channels that cannot edit a posted card (Telegram and the
+  other plain card platforms, as Microsoft Teams (Workflows) already did) get
+  one new card when a resolved incident is reopened, so the last card no
+  longer keeps saying resolved, and the channel of the team an incident left
+  gets one notice that it moved, naming no service, team or responder, with
+  or without a status change. Ownership changes alone still post nothing and
+  the same state is never posted twice. Channels that edit in place (Slack,
+  Discord, Google Chat) are unchanged.
 - The chat audit of `/approve` and `/reject` now follows the decision's
   outcome: `ok` only when the command decided the request, `noop` when it
   was already decided, had expired or could not be resolved, `not_found`

@@ -325,6 +325,12 @@ def supports_message_update(platform: str) -> bool:
     return bool(caps and caps.message_update)
 
 
+def posts_incident_cards(platform: str) -> bool:
+    """The platform posts incident cards, native, linked or plain text."""
+    caps = PLATFORM_CAPABILITIES.get(platform)
+    return bool(caps and caps.incident_card)
+
+
 def supports_voice_call(platform: str) -> bool:
     """True only for telephony providers that can place outbound phone calls."""
     caps = PLATFORM_CAPABILITIES.get(platform)

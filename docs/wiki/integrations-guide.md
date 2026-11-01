@@ -339,8 +339,8 @@ Telegram currently supports incident lookup, session status, and approval comman
 - `/reject <approval-id>` rejects a pending request.
 - `/chat <session-id> <message>` relays a message into the target session's
   co-pilot chat (requires the `copilot_chat` capability). The assistant
-  reply appears asynchronously in the OpsMender dashboard; outbound delivery of
-  the reply back into Telegram is a planned follow-up.
+  reply appears in the OpsMender dashboard and is sent back to the chat that
+  relayed the message (see Outbound delivery below).
 - `/help` lists supported commands.
 
 Required connector credentials:
@@ -360,10 +360,19 @@ Optional connector config:
 ```
 
 `rate_limit_per_minute` defaults to 30 and applies per-chat. Set to `0`
-to disable. Every inbound command is recorded in the `bot_action_audit`
+to disable. Neither setting has a field in the Notification Channels form.
+Set them with `PUT /bot-connectors/{id}` (the whole channel body; the
+response shows the saved config). Editing the channel in the dashboard
+afterwards keeps them as saved, and the Edit dialog lists the keys it keeps
+under the Configuration fields. Every inbound command is recorded in the `bot_action_audit`
 table along with its outcome (`ok`, `bad_args`, `not_found`,
 `capability_denied`, `chat_not_allowed`, `rate_limited`,
-`unknown_command`, `delivery_failed`).
+`unknown_command`, `unauthorized`, `role_denied`, `noop`,
+`delivery_failed`). For `/approve` and `/reject` the outcome follows the
+decision itself: `ok` only when that command decided the request, `noop`
+when it was already decided, had expired or could not be resolved (a repeat
+never executes twice), `not_found` for an unknown id and `role_denied` when
+the person may not decide it.
 
 #### Outbound delivery
 
@@ -386,6 +395,13 @@ chat(s) that originated `/chat <session-id> ...` for that session. This
 closes the round-trip so operators can converse with the co-pilot
 entirely from Telegram. Outbound delivery uses the connector's
 `bot_token` credential and records every send in `bot_action_audit`.
+
+Every message to Telegram, incident cards, lifecycle messages, co-pilot
+replies and command replies alike, is sent as Telegram HTML with the dynamic
+text escaped: an incident title, a model summary, a reply or a command
+argument holding `*`, `_`, a backtick or `[` cannot make Telegram refuse the
+message. OpsMender's own bold and code markers render as bold and code, and
+links stay tappable.
 
 #### Identity / RBAC
 

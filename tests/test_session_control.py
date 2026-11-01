@@ -294,10 +294,12 @@ async def test_approvals_follow_the_owner_and_team_rule(world):
             assert resp.json()["detail"] == APPROVAL_FORBIDDEN
     async with world.app.state.session_factory() as db:
         outsider = await UserRepo.get_by_id(db, world.level2)
-        text = await _resolve_approval_from_bot(
+        reply = await _resolve_approval_from_bot(
             db, TEST_ORG_ID, first, decision="approved", resolver=outsider
         )
-    assert text == APPROVAL_FORBIDDEN
+    assert reply.text == APPROVAL_FORBIDDEN
+    # The audit row follows the outcome, not the reply's words (M1-123).
+    assert reply.audit_status == "role_denied"
     assert await _approval_status(world, first) == "pending"
 
     approved = await world.client.post(

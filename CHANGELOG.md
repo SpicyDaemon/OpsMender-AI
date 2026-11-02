@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The postmortem draft lists the plan steps the model wrote. The draft
+  read a plan step's description and tool, the shape of a Skill workflow
+  step, so an AI session's own plan (tool name, parameters and
+  justification per step) added nothing to the Resolution section. Each
+  such step is now a bullet with its justification and its tool.
 
 ## [1.3.0] - 2026-11-01
 

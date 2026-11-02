@@ -104,6 +104,14 @@ def validate_workflow_node_order(node_order: list[str] | None) -> list[str]:
     if "tier_gate" in cleaned and "execute" not in cleaned:
         raise ValueError("tier_gate cannot be used without execute")
 
+    # A plan after the gate is never gated or run (M1-108).
+    if (
+        "plan" in cleaned
+        and "tier_gate" in cleaned
+        and cleaned.index("plan") > cleaned.index("tier_gate")
+    ):
+        raise ValueError("plan must appear before tier_gate")
+
     return cleaned
 
 
@@ -284,7 +292,11 @@ def build_graph(
         remember_fn = remember
 
     tier_gate_fn = _build_tier_gate(
-        tier, skill_def, approval_service, audit_logger=audit_logger
+        tier,
+        skill_def,
+        approval_service,
+        audit_logger=audit_logger,
+        can_run=can_run,
     )
 
     # -- Tier 0 per-node timeouts -------------------------------------------

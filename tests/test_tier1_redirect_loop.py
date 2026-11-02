@@ -14,10 +14,12 @@ from datetime import datetime
 from typing import Any
 
 import pytest
+from mcp.types import CallToolResult, TextContent
 
 from backend.agent.graph import build_graph
 from backend.agent.llm import StubLLM
 from backend.approvals.service import ApprovalResolution
+from backend.audit.logger import AuditLogger
 from backend.skills.parser import SkillDefinition
 from tests.skill_policy_helpers import explicit_operation
 
@@ -79,17 +81,27 @@ def _plan_json() -> str:
     )
 
 
-async def test_redirect_loops_back_to_plan_then_approves(skill_def):
+async def test_redirect_loops_back_to_plan_then_approves(skill_def, tmp_path):
     approval = _RedirectThenApprove()
     # StubLLM returns the same plan JSON for every node call; the plan node
     # parses it into a single caution action that requires approval at Tier 1.
     llm = StubLLM(response=_plan_json())
 
+    async def caller(_session, tool_name, params):
+        return CallToolResult(
+            isError=False, content=[TextContent(type="text", text="restarted")]
+        )
+
+    # Since M1-103 a session that cannot run a tool asks no approval, so the
+    # loop under test needs an executor: a stub session, a caller and a log.
     graph = build_graph(
         tier=1,
         skill_def=skill_def,
         llm=llm,
         approval_service=approval,
+        mcp_session=object(),
+        audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
+        tool_caller=caller,
     )
 
     initial_state = {

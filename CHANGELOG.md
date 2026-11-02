@@ -17,6 +17,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each list now scrolls only itself. The Memories used panel no longer
   draws over the stream or the chat on a phone; it follows the two panels.
   The desktop split view is unchanged.
+- Escalation chains left running from before the acknowledgement lock are
+  closed. A chain whose last level had fired before that change kept the
+  status running with no next due time and no finished time; the engine
+  never ticked it, it showed as running for good, and a Slack command
+  without an incident id could pick its incident at any age. The upgrade
+  marks such rows exhausted, finished at the migration time, without an
+  exhaustion notice. The downgrade leaves them closed: nothing tells them
+  apart from chains a release before 1.1.1 exhausted, and running them
+  again would only bring the bug back. Chains started since the lock
+  were never affected.
+- The postmortem draft lists the plan steps the model wrote. The draft
+  read a plan step's description and tool, the shape of a Skill workflow
+  step, so an AI session's own plan (tool name, parameters and
+  justification per step) added nothing to the Resolution section. Each
+  such step is now a bullet with its justification and the tool it ran;
+  a field the model filled with something other than text is skipped.
+- A session that cannot act says so in every case. The transcript line
+  that a session runs advisory-only was written only when the incident's
+  service existed and none of its MCP servers or connectors was usable; a
+  session whose incident has no service said nothing. It now says so
+  whenever no tool source is attached. A workflow profile can no longer
+  put the plan after the tier gate and execute, where the plan was never
+  gated or run; saving such an order is refused with the reason, and a
+  profile saved that way earlier fails its sessions with the same reason
+  until an administrator moves Plan above Tier gate under Settings, Session
+  workflow, and saves; sessions that already failed stay failed and have
+  to be started again by hand.
+- A session that cannot run a tool no longer asks for approvals. Without
+  a usable MCP server or connector, a Tier 1 plan still created approval
+  requests that an operator could approve while nothing could run, and
+  the actions the gate permitted were dropped without a record. The tier
+  gate now knows whether anything can run; when it cannot, every planned
+  action is blocked and recorded in the audit log and Tool Activity like
+  any other blocked action, and no approval request is created. An action
+  the policy would allow is recorded as blocked because nothing can run;
+  one the policy refuses keeps the policy's own reason. The plan prompt for
+  such a session now says that an action it lists anyway is recorded and
+  nothing runs.
+
+### Security
+
+- A Skill workflow step's output and error text are now redacted like
+  every other tool result before they enter the session record, the
+  model's context or a ticket. A step whose tool echoed an API key, a
+  token or a `password=` value used to keep it in the session's tool
+  calls and workflow result; the same credential-shaped strings are now
+  replaced with `[redacted secret]`, in a step's inputs as well, since a
+  template can copy an earlier output into them. Later steps still
+  receive the real output through their templates, and the audit log is
+  unchanged.
 
 ## [1.3.0] - 2026-11-01
 

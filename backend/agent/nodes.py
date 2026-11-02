@@ -151,8 +151,9 @@ NO_RUN_RULE = (
     "If you list an action anyway, its tool and parameters, but not its "
     "justification, are recorded for a person to see, and nothing runs."
 )
-# The reason the tier gate gives every action of a session that has no
-# usable tool source (M1-103): nothing it plans can run, so nobody is asked.
+# The reason the tier gate gives an action the policy would allow in a
+# session that has no usable tool source (M1-103): nothing it plans can run,
+# so nobody is asked. An action the policy refuses keeps the policy's reason.
 NO_EXECUTOR_REASON = (
     "nothing can run in this session (no usable tool source), so no approval "
     "is asked; the action is recorded"
@@ -815,8 +816,9 @@ def _build_tier_gate(
 
     ``can_run`` is whether anything the plan proposes can run (an executor,
     and a plan the gate checks before execute; ``build_graph`` decides). When
-    it cannot, the gate blocks every action with that reason and asks no
-    approval (M1-103): before, a Tier 1 plan in a session without a usable
+    it cannot, the gate blocks every action and asks no approval: an action
+    the policy would allow gets ``NO_EXECUTOR_REASON``, one it refuses keeps
+    the policy's reason (M1-103). Before, a Tier 1 plan in a session without a usable
     tool source still created approval requests an operator could approve
     while nothing could run, and the actions the gate permitted were dropped
     without a record.

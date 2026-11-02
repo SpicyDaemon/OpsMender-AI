@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests that an operator could approve while nothing could run, and
   the actions the gate permitted were dropped without a record. The tier
   gate now knows whether anything can run; when it cannot, every planned
-  action is blocked with that reason and recorded in the audit log and
-  Tool Activity like any other blocked action, and no approval request is
-  created. The plan prompt for such a session now says that an action it
-  lists anyway is recorded and nothing runs.
+  action is blocked and recorded in the audit log and Tool Activity like
+  any other blocked action, and no approval request is created. An action
+  the policy would allow is recorded as blocked because nothing can run;
+  one the policy refuses keeps the policy's own reason. The plan prompt for
+  such a session now says that an action it lists anyway is recorded and
+  nothing runs.
 
 ### Security
 

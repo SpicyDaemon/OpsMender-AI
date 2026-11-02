@@ -17,7 +17,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
@@ -25,6 +25,7 @@ from backend.approvals import ApprovalService
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.models import Organization
+from backend.db.models import Session as SessionRow
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
 from backend.mcp.client import call_tool as mcp_call_tool
@@ -839,16 +840,26 @@ def _bootstrap_model_args(
 STOP_POLL_SECONDS = 2.0
 
 
+# Statuses a person (or the app's restart) set by ending the session.
+_SESSION_ENDED = ("stopped", "cancelled")
+
+
+class SessionStoppedError(Exception):
+    """The CLI run's session was stopped from the dashboard."""
+
+
 class _SessionStopWatch:
-    """Ends a CLI Tier 1 run when its session is stopped from the dashboard.
+    """Ends a CLI Tier 1 run when its session is stopped.
 
     The run's session row lives in the workspace, so the dashboard's Stop marks
     it stopped and expires its pending approvals, but it cannot cancel this
     process (M1-105). The run reads the row before and after every approval
     wait, before every tool call and every ``STOP_POLL_SECONDS`` while the
-    model works, and cancels itself once the row is stopped, so nothing more
-    is asked or run. A tool call already in flight still completes, as on the
-    server."""
+    model works. Once the row is stopped nothing more is asked or sent: an
+    approval wait raises out of the graph, a tool call is recorded as not sent,
+    and the poll cancels the graph. A tool call already in flight still
+    completes, as on the server. The app's restart marks the sessions it was
+    running as stopped too, and a CLI run honours that the same way."""
 
     def __init__(self, session_factory, org_id: uuid.UUID, session_id: str) -> None:
         self._factory = session_factory
@@ -864,12 +875,18 @@ class _SessionStopWatch:
                 row = await SessionRepo.get_by_id(db, self._org_id, self._session_id)
         except Exception:
             return False
-        self.stopped = row is not None and row.status in ("stopped", "cancelled")
+        self.stopped = row is not None and row.status in _SESSION_ENDED
         return self.stopped
 
     async def check(self) -> None:
+        # A plain exception, not a cancellation: LangGraph turns a
+        # CancelledError raised inside a node into NodeCancelledError, and
+        # audited_tool_call records an exception as the call's end, so the
+        # audit log never shows a call that started and did not end.
         if await self.is_stopped():
-            raise asyncio.CancelledError("the session was stopped from the dashboard")
+            raise SessionStoppedError(
+                "the session was stopped from the dashboard; the call was not sent"
+            )
 
     def approvals(self, inner):
         watch = self
@@ -891,7 +908,12 @@ class _SessionStopWatch:
         return call
 
     async def run(self, awaitable):
-        """The graph's result, or None when the session was stopped."""
+        """The graph's result, or None when the session was stopped.
+
+        A stop seen by a check inside a node ends the graph with that node's
+        error (LangGraph wraps it), a stop seen by the poll cancels the graph,
+        and a stop that lands after the last poll is found by the final read,
+        so the run never reports a stopped session as completed or failed."""
         task = asyncio.ensure_future(awaitable)
         while True:
             done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
@@ -901,11 +923,38 @@ class _SessionStopWatch:
                 task.cancel()
                 break
         try:
-            return await task
-        except asyncio.CancelledError:
-            if not self.stopped:
+            result = await task
+        except BaseException:
+            if not await self.is_stopped():
                 raise
             return None
+        if await self.is_stopped():
+            return None
+        return result
+
+
+async def _close_cli_session(
+    session_factory, org_id, session_id: str, *, status: str, summary: str | None
+) -> None:
+    """Close the CLI's Tier 1 session row under the workspace, unless a person
+    (or the app's restart) already ended it: the update skips a stopped or
+    cancelled row, so it can never overwrite the dashboard's Stop."""
+    if session_factory is None or org_id is None:
+        return
+    try:
+        async with session_factory() as db:
+            await db.execute(
+                update(SessionRow)
+                .where(SessionRow.org_id == org_id)
+                .where(SessionRow.id == uuid.UUID(session_id))
+                .where(SessionRow.status.notin_(_SESSION_ENDED))
+                .values(
+                    status=status, summary=summary, ended_at=datetime.now(timezone.utc)
+                )
+            )
+            await db.commit()
+    except Exception:
+        pass  # DB may not have tables (e.g. local SQLite without migrations)
 
 
 async def _resolve_cli_org(db) -> uuid.UUID:
@@ -1333,6 +1382,16 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         try:
             llm = AnthropicLLM(**model_kwargs)
         except (ImportError, EnvironmentError) as exc:
+            if tier == 1:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    session_id,
+                    status="failed",
+                    summary=f"LLM setup failed: {exc}",
+                )
+            if db_engine is not None:
+                await db_engine.dispose()
             print(f"LLM setup failed: {exc}", file=sys.stderr)
             return 1
 
@@ -1360,6 +1419,14 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             if args.mcp_server:
                 server = await pool.get_server(org_id, args.mcp_server)
                 if server is None:
+                    if tier == 1:
+                        await _close_cli_session(
+                            session_factory,
+                            org_id,
+                            session_id,
+                            status="failed",
+                            summary=f"MCP server '{args.mcp_server}' not found.",
+                        )
                     print(
                         f"MCP server '{args.mcp_server}' not found in DB or env.",
                         file=sys.stderr,
@@ -1475,7 +1542,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         elif stop_watch is not None:
             result = await stop_watch.run(graph.ainvoke(initial_state))
             if result is None:
-                print("The session was stopped from the dashboard; nothing more ran.\n")
+                print("The session was stopped; nothing more was asked or sent.\n")
                 result = {
                     "session_id": session_id,
                     "incident_description": args.incident,
@@ -1531,37 +1598,17 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         # 9. Log session end
         audit_logger.log_session_end(session_id, tier)
-        # Only a Tier 1 run has a session row; a stopped one was closed by
-        # the dashboard. The update names the workspace (M1-105): without it
-        # the row stayed active after every run.
-        if (
-            session_factory is not None
-            and org_id is not None
-            and result.get("status") != "stopped"
-        ):
-            try:
-                async with session_factory() as db:
-                    final_status = result.get("status", "completed")
-                    if final_status == "timed_out":
-                        await SessionRepo.set_status(
-                            db,
-                            org_id,
-                            uuid.UUID(session_id),
-                            status="timed_out",
-                            summary=result.get("summary"),
-                            ended_at=datetime.now(timezone.utc),
-                        )
-                    else:
-                        await SessionRepo.end_session(
-                            db,
-                            org_id,
-                            uuid.UUID(session_id),
-                            status=final_status,
-                            summary=result.get("summary"),
-                        )
-                    await db.commit()
-            except Exception:
-                pass  # DB may not have tables (e.g. local SQLite without migrations)
+        # Only a Tier 1 run has a session row. The close names the workspace
+        # (M1-105): without it the row stayed active after every run. A row
+        # the dashboard stopped is left as it is.
+        if tier == 1 and result.get("status") != "stopped":
+            await _close_cli_session(
+                session_factory,
+                org_id,
+                session_id,
+                status=result.get("status", "completed"),
+                summary=result.get("summary"),
+            )
 
         # 10. Display results
         _print_result(result)
@@ -1578,19 +1625,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
     except Exception as exc:
         audit_logger.log_session_end(session_id, tier)
-        if session_factory is not None and org_id is not None:
-            try:
-                async with session_factory() as db:
-                    await SessionRepo.end_session(
-                        db,
-                        org_id,
-                        uuid.UUID(session_id),
-                        status="failed",
-                        summary=str(exc),
-                    )
-                    await db.commit()
-            except Exception:
-                pass  # DB may not have tables
+        if tier == 1:
+            await _close_cli_session(
+                session_factory, org_id, session_id, status="failed", summary=str(exc)
+            )
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
     finally:

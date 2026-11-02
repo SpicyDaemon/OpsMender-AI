@@ -5,10 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import sqlite3
+import threading
+import time
 import uuid
 from types import SimpleNamespace
 
 import pytest
+from mcp.types import CallToolResult, TextContent
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -544,53 +548,6 @@ class TestTier1StopFromTheDashboard:
             )
         return exc_info.value.code, seen, url
 
-    def test_a_stop_before_the_next_approval_asks_nobody(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        async def body(seen, url, session_id):
-            await _mark_stopped(url, session_id)
-            await seen["graph"]["approval_service"].request_and_wait(
-                session_id=uuid.UUID(session_id),
-                action={"tool_name": "restart_pod", "tool_parameters": {}},
-            )
-            seen["asked"] = True
-
-        code, seen, url = self._run(tmp_path, monkeypatch, body)
-        out = capsys.readouterr().out
-        assert code == 0
-        assert "stopped from the dashboard" in out
-        assert seen.get("cancelled") and "asked" not in seen
-        assert _approvals(url) == []
-        [session] = _sessions(url)
-        assert session.status == "stopped"
-
-    def test_a_stop_during_an_approval_wait_runs_nothing_after_it(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        async def body(seen, url, session_id):
-            async def stop_soon():
-                await asyncio.sleep(0.3)
-                await _mark_stopped(url, session_id)
-
-            stopper = asyncio.ensure_future(stop_soon())
-            await seen["graph"]["approval_service"].request_and_wait(
-                session_id=uuid.UUID(session_id),
-                action={"tool_name": "restart_pod", "tool_parameters": {}},
-            )
-            await stopper
-            # The next action of the plan, an autonomous one, would run here.
-            await seen["graph"]["tool_caller"](object(), "get_pods", {})
-            seen["ran_after_stop"] = True
-
-        code, seen, url = self._run(tmp_path, monkeypatch, body)
-        assert code == 0
-        assert seen.get("cancelled") and "ran_after_stop" not in seen
-        [approval] = _approvals(url)
-        assert approval.status == "expired"
-        # The approval service no longer turns the stopped row into timed_out.
-        [session] = _sessions(url)
-        assert session.status == "stopped"
-
     def test_a_stop_while_the_model_works_cancels_the_run(
         self, tmp_path, monkeypatch, capsys
     ):
@@ -603,3 +560,247 @@ class TestTier1StopFromTheDashboard:
         assert seen.get("cancelled") and "finished" not in seen
         [session] = _sessions(url)
         assert session.status == "stopped"
+
+
+SKILL_T1 = """---
+version: "1"
+environment: t
+operations:
+  - tool: get_pods
+    classification: safe
+    tiers:
+      T0: {enabled: true, mode: autonomous}
+      T1: {enabled: true, mode: autonomous}
+      T2: {enabled: true, mode: autonomous}
+  - tool: restart_pod
+    classification: caution
+    reversible: true
+    compensating_inverse: restart_pod
+    tiers:
+      T0: {enabled: true, mode: autonomous, require_reversible: true}
+      T1: {enabled: true, mode: approval}
+      T2: {enabled: false, mode: blocked}
+---
+"""
+PLAN_MARK = "planning remediation"
+SUMMARY_MARK = "writing an incident summary"
+
+
+def _db_path(url):
+    return url.split("///", 1)[1]
+
+
+def _stop_in_db(db_path, *, expire=True):
+    """The dashboard's Stop, written from outside the CLI's event loop."""
+    con = sqlite3.connect(db_path, timeout=10)
+    try:
+        con.execute("UPDATE sessions SET status = 'stopped'")
+        if expire:
+            con.execute(
+                "UPDATE approval_requests SET status = 'expired' WHERE status = 'pending'"
+            )
+        con.commit()
+    finally:
+        con.close()
+
+
+def _stop_once_asked(db_path):
+    def watch():
+        for _ in range(400):
+            try:
+                con = sqlite3.connect(db_path, timeout=10)
+                try:
+                    pending = con.execute(
+                        "SELECT count(*) FROM approval_requests WHERE status = 'pending'"
+                    ).fetchone()[0]
+                finally:
+                    con.close()
+                if pending:
+                    _stop_in_db(db_path)
+                    return
+            except sqlite3.OperationalError:
+                pass
+            time.sleep(0.05)
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    return thread
+
+
+def _audit(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+class TestTier1StopWithTheRealGraph:
+    """M1-105 fix review: the stop checks raise inside LangGraph nodes, which
+    wrap what a node raises, so these run the real compiled graph with only
+    the model, the MCP connection and the tool call faked."""
+
+    def _run(self, tmp_path, monkeypatch, plan, on_prompt=None, extra=(), poll=60.0):
+        cfg, url, _org_id = _workspace_config(tmp_path)
+        skill = tmp_path / "SKILL.md"
+        skill.write_text(SKILL_T1)
+        calls: list[str] = []
+        server = SimpleNamespace(name="lab", transport="http")
+
+        class FakePool:
+            def __init__(self, session_factory, env_fallback=None):
+                pass
+
+            async def list_servers(self, org_id=None, *, active_only=True):
+                return [server]
+
+            async def get_server(self, org_id=None, name=None):
+                return server if name == "lab" else None
+
+        @contextlib.asynccontextmanager
+        async def fake_connect(config):
+            yield object()
+
+        async def fake_list_tools(session):
+            return [
+                SimpleNamespace(
+                    name="get_pods", description="List pods", inputSchema={}
+                ),
+                SimpleNamespace(
+                    name="restart_pod", description="Restart one pod", inputSchema={}
+                ),
+            ]
+
+        async def fake_call(session, tool_name, params):
+            calls.append(tool_name)
+            return CallToolResult(
+                isError=False, content=[TextContent(type="text", text="ok")]
+            )
+
+        class PlanLLM(StubLLM):
+            def invoke(self, prompt):
+                if on_prompt is not None:
+                    on_prompt(prompt, _db_path(url))
+                return json.dumps(plan) if PLAN_MARK in prompt else "[stub]"
+
+        import backend.agent.llm as llm_module
+        import cli.opsmender as cli_module
+
+        monkeypatch.setattr(cli_module, "MCPServerPool", FakePool)
+        monkeypatch.setattr(cli_module, "connect", fake_connect)
+        monkeypatch.setattr(cli_module, "list_tools", fake_list_tools)
+        monkeypatch.setattr(cli_module, "mcp_call_tool", fake_call)
+        monkeypatch.setattr(cli_module, "STOP_POLL_SECONDS", poll)
+        monkeypatch.setattr(llm_module, "AnthropicLLM", lambda **kw: PlanLLM())
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    str(cfg),
+                    "run",
+                    "--incident",
+                    "x",
+                    "--tier",
+                    "1",
+                    "--skill-file",
+                    str(skill),
+                    *extra,
+                ]
+            )
+        return exc_info.value.code, calls, url
+
+    def test_a_stop_during_an_approval_wait_ends_the_run_as_stopped(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Only the in-node checks act (the poll is slow): the approval wait
+        # returns expired, the check after it raises inside the tier gate,
+        # and LangGraph's wrapping of that error must still end as stopped.
+        db_path = str(tmp_path / "cli.db")
+        watcher = _stop_once_asked(db_path)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "read",
+                },
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {},
+                    "justification": "fix",
+                },
+            ],
+        )
+        watcher.join(timeout=5)
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        assert calls == []  # nothing ran, the autonomous read included
+        [approval] = _approvals(url)
+        assert approval.status == "expired"
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_stop_before_a_tool_call_sends_nothing_and_audits_a_pair(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        def stop_at_plan(prompt, db_path):
+            if PLAN_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "read"}],
+            on_prompt=stop_at_plan,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+        entries = [e for e in _audit(tmp_path) if e.get("tool_name") == "get_pods"]
+        starts = [e for e in entries if e["entry_type"] == "tool_call_start"]
+        ends = [e for e in entries if e["entry_type"] == "tool_call_end"]
+        # Every call that started also ended, as not sent.
+        assert len(starts) == len(ends)
+        assert all("not sent" in json.dumps(e.get("result")) for e in ends)
+
+    def test_a_stop_after_the_last_poll_is_not_overwritten(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        def stop_at_summary(prompt, db_path):
+            if SUMMARY_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+
+        code, calls, url = self._run(
+            tmp_path, monkeypatch, [], on_prompt=stop_at_summary
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_an_llm_setup_failure_closes_the_row(self, tmp_path, monkeypatch, capsys):
+        import backend.agent.llm as llm_module
+
+        def no_key(**kwargs):
+            raise EnvironmentError("ANTHROPIC_API_KEY is not set")
+
+        cfg, url, _org_id = _workspace_config(tmp_path)
+        monkeypatch.setattr(llm_module, "AnthropicLLM", no_key)
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--config", str(cfg), "run", "--incident", "x", "--tier", "1"])
+        assert exc_info.value.code == 1
+        [session] = _sessions(url)
+        assert session.status == "failed" and session.ended_at is not None
+        assert "LLM setup failed" in session.summary
+
+    def test_an_unknown_mcp_server_closes_the_row(self, tmp_path, monkeypatch, capsys):
+        code, calls, url = self._run(
+            tmp_path, monkeypatch, [], extra=("--mcp-server", "typo")
+        )
+        assert code == 1
+        [session] = _sessions(url)
+        assert session.status == "failed" and session.ended_at is not None
+        assert "typo" in session.summary

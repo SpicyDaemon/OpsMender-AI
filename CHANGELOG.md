@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before its next approval or tool call (and an approval wait no longer
   turns a stopped session back into a timed-out or active one), and a
   database with no workspace yet refuses Tier 1 instead of writing under a
-  placeholder id.
+  placeholder id. The app's restart marks the sessions it was running as
+  stopped, and a CLI run whose session it marked stops the same way.
 - Escalation chains left running from before the acknowledgement lock are
   closed. A chain whose last level had fired before that change kept the
   status running with no next due time and no finished time; the engine

@@ -14,6 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step, so an AI session's own plan (tool name, parameters and
   justification per step) added nothing to the Resolution section. Each
   such step is now a bullet with its justification and its tool.
+- A session that cannot act says so in every case. The transcript line
+  that a session runs advisory-only was written only when the incident's
+  service existed and none of its MCP servers or connectors was usable; a
+  session whose incident has no service said nothing. It now says so
+  whenever no tool source is attached. A workflow profile can no longer
+  put the plan after the tier gate and execute, where the plan was never
+  gated or run; saving such an order is refused with the reason.
+- A session that cannot run a tool no longer asks for approvals. Without
+  a usable MCP server or connector, a Tier 1 plan still created approval
+  requests that an operator could approve while nothing could run, and
+  the actions the gate permitted were dropped without a record. The tier
+  gate now knows whether anything can run; when it cannot, every planned
+  action is blocked with that reason and recorded in the audit log and
+  Tool Activity like any other blocked action, and no approval request is
+  created. The plan prompt for such a session now says that an action it
+  lists anyway is recorded and nothing runs.
+
+### Security
+
+- A Skill workflow step's output and error text are now redacted like
+  every other tool result before they enter the session record, the
+  model's context or a ticket. A step whose tool echoed an API key, a
+  token or a `password=` value used to keep it in the session's tool
+  calls and workflow result; the same credential-shaped strings are now
+  replaced with `[redacted secret]`. Later steps still receive the real
+  output through their templates, and the audit log is unchanged.
 
 ## [1.3.0] - 2026-11-01
 

@@ -845,7 +845,14 @@ _SESSION_ENDED = ("stopped", "cancelled")
 
 
 class SessionStoppedError(Exception):
-    """The CLI run's session was stopped from the dashboard."""
+    """The CLI run's session was stopped (from the dashboard, or by the app's
+    restart, which marks every active session stopped)."""
+
+
+STOPPED_MESSAGE = (
+    "The session was stopped (from the dashboard, or by the app's restart); "
+    "nothing more was asked or sent."
+)
 
 
 class _SessionStopWatch:
@@ -855,17 +862,19 @@ class _SessionStopWatch:
     it stopped and expires its pending approvals, but it cannot cancel this
     process (M1-105). The run reads the row before and after every approval
     wait, before every tool call and every ``STOP_POLL_SECONDS`` while the
-    model works. Once the row is stopped nothing more is asked or sent: an
+    model works. Once a read finds the row stopped, the run is cancelled: an
     approval wait raises out of the graph, a tool call is recorded as not sent,
-    and the poll cancels the graph. A tool call already in flight still
-    completes, as on the server. The app's restart marks the sessions it was
-    running as stopped too, and a CLI run honours that the same way."""
+    and no later node asks the model anything. A tool call or a model request
+    already in flight still completes, as on the server. The app's restart
+    marks every active session stopped, a CLI run's included, and the run
+    honours that the same way."""
 
     def __init__(self, session_factory, org_id: uuid.UUID, session_id: str) -> None:
         self._factory = session_factory
         self._org_id = org_id
         self._session_id = uuid.UUID(session_id)
         self.stopped = False
+        self._task: asyncio.Future | None = None
 
     async def is_stopped(self) -> bool:
         if self.stopped:
@@ -884,9 +893,12 @@ class _SessionStopWatch:
         # audited_tool_call records an exception as the call's end, so the
         # audit log never shows a call that started and did not end.
         if await self.is_stopped():
-            raise SessionStoppedError(
-                "the session was stopped from the dashboard; the call was not sent"
-            )
+            # Also cancel the run, so the graph goes no further than this call
+            # (the error alone is recorded and the graph would move on to the
+            # model's verify and summary).
+            if self._task is not None and not self._task.done():
+                self._task.cancel()
+            raise SessionStoppedError("the session was stopped; the call was not sent")
 
     def approvals(self, inner):
         watch = self
@@ -908,13 +920,15 @@ class _SessionStopWatch:
         return call
 
     async def run(self, awaitable):
-        """The graph's result, or None when the session was stopped.
+        """The graph's result, its status set to stopped when the session was
+        stopped, or None when the graph was cut off before it had a result.
 
-        A stop seen by a check inside a node ends the graph with that node's
-        error (LangGraph wraps it), a stop seen by the poll cancels the graph,
-        and a stop that lands after the last poll is found by the final read,
-        so the run never reports a stopped session as completed or failed."""
+        A stop seen by a check or by the poll cancels the graph, and a stop
+        that lands after the last poll is found by the final read, so the run
+        never reports a stopped session as completed or failed, and a run that
+        finished before the stop keeps what it did."""
         task = asyncio.ensure_future(awaitable)
+        self._task = task
         while True:
             done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
             if done:
@@ -928,8 +942,8 @@ class _SessionStopWatch:
             if not await self.is_stopped():
                 raise
             return None
-        if await self.is_stopped():
-            return None
+        if await self.is_stopped() and isinstance(result, dict):
+            result = {**result, "status": "stopped"}
         return result
 
 
@@ -1541,13 +1555,14 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             )
         elif stop_watch is not None:
             result = await stop_watch.run(graph.ainvoke(initial_state))
+            if stop_watch.stopped:
+                print(f"{STOPPED_MESSAGE}\n")
             if result is None:
-                print("The session was stopped; nothing more was asked or sent.\n")
                 result = {
                     "session_id": session_id,
                     "incident_description": args.incident,
                     "status": "stopped",
-                    "summary": "Stopped from the dashboard.",
+                    "summary": STOPPED_MESSAGE,
                 }
         else:
             result = await graph.ainvoke(initial_state)

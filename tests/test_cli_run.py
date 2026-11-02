@@ -642,6 +642,8 @@ class TestTier1StopWithTheRealGraph:
         skill = tmp_path / "SKILL.md"
         skill.write_text(SKILL_T1)
         calls: list[str] = []
+        prompts: list[str] = []
+        self.prompts = prompts
         server = SimpleNamespace(name="lab", transport="http")
 
         class FakePool:
@@ -676,6 +678,7 @@ class TestTier1StopWithTheRealGraph:
 
         class PlanLLM(StubLLM):
             def invoke(self, prompt):
+                prompts.append(prompt)
                 if on_prompt is not None:
                     on_prompt(prompt, _db_path(url))
                 return json.dumps(plan) if PLAN_MARK in prompt else "[stub]"
@@ -764,6 +767,9 @@ class TestTier1StopWithTheRealGraph:
         # Every call that started also ended, as not sent.
         assert len(starts) == len(ends)
         assert all("not sent" in json.dumps(e.get("result")) for e in ends)
+        # The run ends at the stop: verify and summary ask the model nothing.
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
 
     def test_a_stop_after_the_last_poll_is_not_overwritten(
         self, tmp_path, monkeypatch, capsys
@@ -778,6 +784,32 @@ class TestTier1StopWithTheRealGraph:
         out, err = capsys.readouterr()
         assert code == 0, err
         assert "was stopped" in out
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_run_stopped_after_its_tools_ran_keeps_its_record(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        def stop_at_summary(prompt, db_path):
+            if SUMMARY_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "read"}],
+            on_prompt=stop_at_summary,
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == ["get_pods"]
+        data = json.loads(out_file.read_text())
+        # The record says what ran, with the stop as its status.
+        assert data["status"] == "stopped"
+        assert [c["tool_name"] for c in data["tool_calls"]] == ["get_pods"]
+        assert "Executed: 1" in out
         [session] = _sessions(url)
         assert session.status == "stopped"
 

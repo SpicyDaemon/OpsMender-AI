@@ -20,17 +20,24 @@ def _fmt_ts(value: datetime | None) -> str:
 
 
 def _plan_bullets(plan: Any) -> list[str]:
+    """One bullet per plan step.
+
+    A Skill workflow step carries ``description`` and ``tool``; a step the
+    model wrote carries ``tool_name``, ``tool_parameters`` and
+    ``justification`` (M1-107). Both shapes give a bullet, the step's words
+    first and its tool in backticks."""
     bullets: list[str] = []
     if isinstance(plan, list):
         for step in plan:
             if isinstance(step, dict):
+                tool = step.get("tool") or step.get("tool_name")
                 text = (
                     step.get("description")
                     or step.get("action")
-                    or step.get("tool")
+                    or step.get("justification")
+                    or tool
                     or ""
                 )
-                tool = step.get("tool")
                 if text and tool and tool not in text:
                     bullets.append(f"{text} (`{tool}`)")
                 elif text:

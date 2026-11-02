@@ -4,9 +4,10 @@ lock, touches nothing else, and its downgrade leaves the data as it is.
 Before D-021 a chain whose last level had fired kept status ``running`` with
 no next due time and no finished time; the engine never ticks such a row and
 ``chain_is_live`` counts it as live. The migration marks them exhausted,
-finished at the migration time, sends no notice (so ``exhaustion_notified_at``
-stays empty, unlike every chain the engine exhausts) and the downgrade puts
-them back. Both dialects run the same statements: SQLite here, PostgreSQL
+finished at the migration time and sends no notice. The downgrade changes
+no row: nothing tells those rows apart from chains a release before 1.1.1
+exhausted, which carry no notice stamp either. Both dialects run the same
+statements: SQLite here, PostgreSQL
 under the integration marker with ``PART4_PG_URL``.
 """
 

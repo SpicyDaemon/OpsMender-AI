@@ -4,8 +4,9 @@
 the session has an executor. Without one (no usable MCP server or connector),
 a Tier 1 plan still created approval requests that an operator could approve
 while nothing could run, and the actions the gate permitted were dropped
-without a record. The gate now blocks every action of such a session with
-that reason, audits each like any blocked action and asks no approval.
+without a record. The gate now blocks every action of such a session,
+audits each like any blocked action and asks no approval; an action the
+policy would allow gets the no-run reason, one it refuses keeps its own.
 """
 
 from __future__ import annotations

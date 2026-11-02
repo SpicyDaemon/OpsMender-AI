@@ -28,6 +28,17 @@ describe("session detail activity layout", () => {
     expect(sessionDetailSource).toContain("min-h-[32rem]");
     expect(sessionDetailSource).toContain("lg:min-h-[36rem]");
   });
+
+  it("is content-sized below lg so the Memories panel flows after it (M1-129)", () => {
+    expect(sessionDetailSource).toContain("shrink-0 grid-cols-1");
+    expect(sessionDetailSource).toContain("lg:shrink lg:grid-cols-[3fr_2fr]");
+  });
+
+  it("keeps each list at its newest entry without scrolling the page (M1-129)", () => {
+    expect(sessionDetailSource).not.toContain("scrollIntoView");
+    expect(sessionDetailSource.match(/scrollRegionToEnd\(/g)).toHaveLength(2);
+    expect(sessionDetailSource.match(/data-scroll-region=""/g)).toHaveLength(2);
+  });
 });
 
 describe("session detail approval events", () => {

@@ -9,9 +9,12 @@ such a row.
 
 Upgrading marks those rows exhausted, finished at the migration time; it
 sends no exhaustion notice, so their ``exhaustion_notified_at`` stays empty.
-A chain the engine exhausts always carries that stamp, which is how the
-downgrade tells the rows this migration marked from the rest: it puts them
-back to running with no finished time.
+
+The downgrade leaves the data as it is, as e4f5a6b7c8d9 does for its rows.
+Nothing tells the rows this migration closed apart from chains a release
+before 1.1.1 exhausted (those carry no notice stamp either: the column came
+later with no backfill), and putting a stuck row back to running would only
+recreate the bug for the older release, which finishes these chains fine.
 
 Revision ID: f5a6b7c8d9e0
 Revises: e4f5a6b7c8d9
@@ -32,7 +35,6 @@ chain_states = sa.table(
     sa.column("status", sa.String()),
     sa.column("next_step_due_at", sa.DateTime(timezone=True)),
     sa.column("finished_at", sa.DateTime(timezone=True)),
-    sa.column("exhaustion_notified_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -48,11 +50,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        chain_states.update()
-        .where(chain_states.c.status == "exhausted")
-        .where(chain_states.c.next_step_due_at.is_(None))
-        .where(chain_states.c.finished_at.is_not(None))
-        .where(chain_states.c.exhaustion_notified_at.is_(None))
-        .values(status="running", finished_at=None)
-    )
+    """The closed chains stay closed (see the module docstring)."""

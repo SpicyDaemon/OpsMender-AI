@@ -1,5 +1,5 @@
 """M1-106: the migration closes chains left running before the acknowledgement
-lock, and its downgrade restores exactly those rows.
+lock, touches nothing else, and its downgrade leaves the data as it is.
 
 Before D-021 a chain whose last level had fired kept status ``running`` with
 no next due time and no finished time; the engine never ticks such a row and
@@ -31,6 +31,7 @@ LIVE = uuid.UUID("00000000-0000-0000-0000-000000000002")
 EXHAUSTED = uuid.UUID("00000000-0000-0000-0000-000000000003")
 ACKED = uuid.UUID("00000000-0000-0000-0000-000000000004")
 NEW_RUN = uuid.UUID("00000000-0000-0000-0000-000000000005")
+OLD_EXHAUSTED = uuid.UUID("00000000-0000-0000-0000-000000000006")
 
 
 def _schema() -> tuple[sa.MetaData, sa.Table]:
@@ -75,6 +76,10 @@ def _shapes() -> list[dict]:
         {"id": ACKED, "status": "acked", "next_step_due_at": T0 + timedelta(days=1)},
         # A chain acknowledged before the lock existed: finished, stays so.
         {"id": NEW_RUN, "status": "acked", "finished_at": T0},
+        # A chain a release before 1.1.1 exhausted: finished, no notice stamp
+        # (the column came later). It looks like a closed stale row, so only a
+        # downgrade that leaves the data alone can keep it finished.
+        {"id": OLD_EXHAUSTED, "status": "exhausted", "finished_at": T0},
     ]
 
 
@@ -110,14 +115,16 @@ def _exercise(connection, monkeypatch) -> None:
     assert finished is not None
     assert finished.replace(tzinfo=timezone.utc) >= T0
     # Every other row is untouched.
-    for key in (LIVE, EXHAUSTED, ACKED, NEW_RUN):
+    for key in (LIVE, EXHAUSTED, ACKED, NEW_RUN, OLD_EXHAUSTED):
         assert after[key] == before[key], key
 
+    # The downgrade changes no row: nothing is revived as running.
     migration.downgrade()
-    assert _state(connection, table) == before
+    assert _state(connection, table) == after
 
+    # A second upgrade finds nothing left to close.
     migration.upgrade()
-    assert _state(connection, table)[STALE][0] == "exhausted"
+    assert _state(connection, table) == after
     metadata.drop_all(connection)
 
 

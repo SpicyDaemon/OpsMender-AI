@@ -675,6 +675,16 @@ def _build_workflow_plan(workflow_executor):
             session_id=state.get("session_id", "unknown"),
             incident=state.get("incident"),
         )
+        # Credential-shaped strings in a step's output, error or inputs never
+        # reach the model, the session record or a ticket, as the execute
+        # node already guarantees for its tool results (M1-69, M1-98). The
+        # inputs are covered too because a template can copy an earlier
+        # step's output into them. The executor has finished, so later steps
+        # resolved their templates from the unredacted output.
+        for outcome in result.outcomes:
+            outcome.output, _ = redact_value(outcome.output)
+            outcome.error, _ = redact_value(outcome.error)
+            outcome.inputs, _ = redact_value(outcome.inputs)
         return {
             # Downstream tier_gate/execute nodes remain in the graph but have
             # no standard LLM-generated actions to process.

@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- A session that cannot run a tool no longer asks for approvals. Without
+  a usable MCP server or connector, a Tier 1 plan still created approval
+  requests that an operator could approve while nothing could run, and
+  the actions the gate permitted were dropped without a record. The tier
+  gate now knows whether anything can run; when it cannot, every planned
+  action is blocked with that reason and recorded in the audit log and
+  Tool Activity like any other blocked action, and no approval request is
+  created. The plan prompt for such a session now says that an action it
+  lists anyway is recorded and nothing runs.
 
 ## [1.3.0] - 2026-11-01
 

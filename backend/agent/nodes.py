@@ -142,7 +142,17 @@ NEEDS_APPROVAL = "waits for operator approval"
 BLOCKED = "blocked"
 TIER_NAMES = {0: "Autonomous", 1: "Approval Required", 2: "Advisory Only"}
 NO_TOOL_LIST = "(none)"
-NO_TOOL_RULE = "No tool is offered in this session, so return an empty plan: []."
+NO_TOOL_RULE = (
+    "No tool is offered in this session, so return an empty plan: []. If you "
+    "list an action anyway, its tool and parameters, but not its justification, "
+    "are recorded for a person to see, and nothing runs."
+)
+# The reason the tier gate gives every action of a session that has no
+# usable tool source (M1-103): nothing it plans can run, so nobody is asked.
+NO_EXECUTOR_REASON = (
+    "nothing can run in this session (no usable tool source), so no approval "
+    "is asked; the action is recorded"
+)
 MARKS_HEADER = (
     "Next to its class, each tool above shows what the tier gate does with it at "
     "this tier."
@@ -777,6 +787,8 @@ def _build_tier_gate(
     skill_def: SkillDefinition,
     approval_service: ApprovalService | None = None,
     audit_logger=None,
+    *,
+    can_run: bool = True,
 ):
     """Return a tier_gate node function closed over *tier* and *skill_def*.
 
@@ -785,9 +797,38 @@ def _build_tier_gate(
     splits them into ``approved_actions`` and ``blocked_actions``. With an
     ``audit_logger``, each blocked action is written to the audit log.
 
+    ``can_run`` is whether anything the plan proposes can run (an executor,
+    and a plan the gate checks before execute; ``build_graph`` decides). When
+    it cannot, the gate blocks every action with that reason and asks no
+    approval (M1-103): before, a Tier 1 plan in a session without a usable
+    tool source still created approval requests an operator could approve
+    while nothing could run, and the actions the gate permitted were dropped
+    without a record.
+
     This function is **never** delegated to an LLM.
     """
     audit = _blocked_auditor(audit_logger, tier)
+
+    if not can_run:
+
+        def no_run_gate(state: IncidentState) -> dict:
+            blocked = [
+                {
+                    **action,
+                    "block_reason": NO_EXECUTOR_REASON,
+                    "classification": tier_check(
+                        _checked_name(action), tier, skill_def
+                    ).classification,
+                }
+                for action in state.get("plan", [])
+            ]
+            return {
+                "approved_actions": [],
+                "blocked_actions": blocked,
+                "approval_requests": [],
+            }
+
+        return _with_blocked_audit(no_run_gate, audit)
 
     if approval_service is None:
 

@@ -15,8 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never ticked it, it showed as running for good, and a Slack command
   without an incident id could pick its incident at any age. The upgrade
   marks such rows exhausted, finished at the migration time, without an
-  exhaustion notice; the downgrade puts exactly those rows back. Chains
-  started since the lock were never affected.
+  exhaustion notice. The downgrade leaves them closed: nothing tells them
+  apart from chains a release before 1.1.1 exhausted, and running them
+  again would only bring the bug back. Chains started since the lock
+  were never affected.
 - The postmortem draft lists the plan steps the model wrote. The draft
   read a plan step's description and tool, the shape of a Skill workflow
   step, so an AI session's own plan (tool name, parameters and

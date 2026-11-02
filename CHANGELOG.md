@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session whose incident has no service said nothing. It now says so
   whenever no tool source is attached. A workflow profile can no longer
   put the plan after the tier gate and execute, where the plan was never
-  gated or run; saving such an order is refused with the reason.
+  gated or run; saving such an order is refused with the reason, and a
+  profile saved that way earlier fails its sessions with the same reason
+  until its order is corrected in Workflow settings.
 - A session that cannot run a tool no longer asks for approvals. Without
   a usable MCP server or connector, a Tier 1 plan still created approval
   requests that an operator could approve while nothing could run, and
@@ -39,8 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model's context or a ticket. A step whose tool echoed an API key, a
   token or a `password=` value used to keep it in the session's tool
   calls and workflow result; the same credential-shaped strings are now
-  replaced with `[redacted secret]`. Later steps still receive the real
-  output through their templates, and the audit log is unchanged.
+  replaced with `[redacted secret]`, in a step's inputs as well, since a
+  template can copy an earlier output into them. Later steps still
+  receive the real output through their templates, and the audit log is
+  unchanged.
 
 ## [1.3.0] - 2026-11-01
 

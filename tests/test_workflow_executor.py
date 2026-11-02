@@ -208,13 +208,16 @@ async def test_step_output_and_error_are_redacted_before_they_are_recorded(
     workflow_plan = _build_workflow_plan(executor)
 
     state = await workflow_plan(
-        {"session_id": SESSION_ID, "incident": {"id": "inc-9", "title": "API down"}}
+        {
+            "session_id": SESSION_ID,
+            "incident": {"id": "inc-9", "title": f"API down {token}"},
+        }
     )
 
-    # The second step got the real pod name through its template.
+    # The second step got the real pod name and title through its template.
     assert calls[1] == (
         "restart_pod",
-        {"pod": "api-7", "title": "Incident: API down"},
+        {"pod": "api-7", "title": f"Incident: API down {token}"},
     )
     first, second = state["tool_calls"]
     assert first["result"] == {
@@ -222,8 +225,15 @@ async def test_step_output_and_error_are_redacted_before_they_are_recorded(
         "note": "config loaded, password=[redacted secret]",
     }
     assert second["error"] == "registry refused [redacted secret]"
+    # A template that copied the secret into the second step's inputs does not
+    # put it in the record either.
+    assert second["tool_parameters"] == {
+        "pod": "api-7",
+        "title": "Incident: API down [redacted secret]",
+    }
     outcomes = state["workflow_result"]["outcomes"]
     assert outcomes[0]["output"]["note"] == "config loaded, password=[redacted secret]"
     assert outcomes[1]["error"] == "registry refused [redacted secret]"
+    assert outcomes[1]["inputs"]["title"] == "Incident: API down [redacted secret]"
     recorded = repr(state)
     assert "s" * 12 not in recorded and token not in recorded

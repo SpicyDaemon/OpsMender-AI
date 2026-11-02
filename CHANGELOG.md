@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The AI session page opens at the top on a phone. Keeping the event
+  stream and the co-pilot chat scrolled to their newest entry used to
+  scroll the whole page on narrow screens, where the panels sit one under
+  the other, so a responder who opened a session from a chat link landed
+  below the title, the Live pill, Stop and the approval waiting for them.
+  Each list now scrolls only itself. The Memories used panel no longer
+  draws over the stream or the chat on a phone; it follows the two panels.
+  The desktop split view is unchanged.
 
 ## [1.3.0] - 2026-11-01
 

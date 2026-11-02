@@ -65,6 +65,7 @@ import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState
 import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
 import { ToolCallCard } from "@/components/sessions/ToolCallCard";
 import { titleCaseIdentifier, workflowNodeLabel } from "@/lib/displayNames";
+import { scrollRegionToEnd } from "@/lib/scrollRegion";
 import { formatRelative, formatTime } from "@/lib/formatDate";
 import { useAuth } from "@/context/auth";
 import {
@@ -623,12 +624,15 @@ function SessionPageContent() {
     return () => ws.close();
   }, [id, idGen, mergeMessage, refreshApprovals]);
 
-  // Auto-scroll
+  // Keep each list scrolled to its newest entry. Only the list's own scroll
+  // region moves: on a phone the panels sit in page flow, and scrolling the
+  // marker into view used to open the page at the bottom of the stream
+  // (M1-129, MB-01).
   useEffect(() => {
-    eventsBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollRegionToEnd(eventsBottomRef.current);
   }, [events]);
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollRegionToEnd(chatBottomRef.current);
   }, [messages]);
 
   useEffect(() => {
@@ -1159,7 +1163,7 @@ function SessionPageContent() {
           stack as full-width blocks with their own bounded height (below), in
           normal page flow - the grid only fills remaining height at lg+, where
           the panels scroll internally instead of the page. */}
-      <div className="grid min-h-[32rem] grid-cols-1 gap-4 lg:min-h-[36rem] lg:grid-cols-[3fr_2fr]">
+      <div className="grid min-h-[32rem] shrink-0 grid-cols-1 gap-4 lg:min-h-[36rem] lg:shrink lg:grid-cols-[3fr_2fr]">
         {/* Event stream */}
         <div className="flex flex-col rounded-xl border border-border-subtle bg-bg-panel shadow-sm max-h-[70vh] lg:max-h-none lg:min-h-0">
           <div className="px-4 py-3 border-b border-border-subtle flex items-center gap-2">
@@ -1174,6 +1178,7 @@ function SessionPageContent() {
 
           <div
             className="flex-1 overflow-y-auto"
+            data-scroll-region=""
             tabIndex={0}
             role="log"
             aria-label="Session event stream"
@@ -1277,6 +1282,7 @@ function SessionPageContent() {
 
           <div
             className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-bg-elevated/30"
+            data-scroll-region=""
             tabIndex={0}
             role="region"
             aria-label="Session co-pilot chat"

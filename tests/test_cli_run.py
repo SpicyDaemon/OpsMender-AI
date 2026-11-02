@@ -505,63 +505,6 @@ def _approvals(url):
     return asyncio.run(rows())
 
 
-class TestTier1StopFromTheDashboard:
-    """M1-105: the CLI's Tier 1 session lives in the workspace, so Stop must
-    end the run; before, the CLI kept going and could ask again."""
-
-    def _run(self, tmp_path, monkeypatch, graph_body):
-        cfg, url, _org_id = _workspace_config(tmp_path)
-        seen: dict = {}
-
-        class FakeGraph:
-            async def ainvoke(self, state, *args, **kwargs):
-                seen["session_id"] = state["session_id"]
-                try:
-                    await graph_body(seen, url, state["session_id"])
-                except BaseException:
-                    seen["cancelled"] = True
-                    raise
-                seen["finished"] = True
-                return {"status": "completed", "summary": "ok"}
-
-        def fake_build_graph(**kwargs):
-            seen["graph"] = kwargs
-            return FakeGraph()
-
-        import backend.agent.graph as graph_module
-        import cli.opsmender as cli_module
-
-        monkeypatch.setattr(graph_module, "build_graph", fake_build_graph)
-        monkeypatch.setattr(cli_module, "STOP_POLL_SECONDS", 0.05)
-        with pytest.raises(SystemExit) as exc_info:
-            main(
-                [
-                    "--config",
-                    str(cfg),
-                    "run",
-                    "--incident",
-                    "x",
-                    "--tier",
-                    "1",
-                    "--dry-run",
-                ]
-            )
-        return exc_info.value.code, seen, url
-
-    def test_a_stop_while_the_model_works_cancels_the_run(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        async def body(seen, url, session_id):
-            await _mark_stopped(url, session_id, expire_approvals=False)
-            await asyncio.sleep(30)
-
-        code, seen, url = self._run(tmp_path, monkeypatch, body)
-        assert code == 0
-        assert seen.get("cancelled") and "finished" not in seen
-        [session] = _sessions(url)
-        assert session.status == "stopped"
-
-
 SKILL_T1 = """---
 version: "1"
 environment: t
@@ -637,7 +580,16 @@ class TestTier1StopWithTheRealGraph:
     wrap what a node raises, so these run the real compiled graph with only
     the model, the MCP connection and the tool call faked."""
 
-    def _run(self, tmp_path, monkeypatch, plan, on_prompt=None, extra=(), poll=60.0):
+    def _run(
+        self,
+        tmp_path,
+        monkeypatch,
+        plan,
+        on_prompt=None,
+        extra=(),
+        poll=60.0,
+        on_call=None,
+    ):
         cfg, url, _org_id = _workspace_config(tmp_path)
         skill = tmp_path / "SKILL.md"
         skill.write_text(SKILL_T1)
@@ -672,6 +624,8 @@ class TestTier1StopWithTheRealGraph:
 
         async def fake_call(session, tool_name, params):
             calls.append(tool_name)
+            if on_call is not None:
+                await on_call(tool_name, _db_path(url))
             return CallToolResult(
                 isError=False, content=[TextContent(type="text", text="ok")]
             )
@@ -810,6 +764,71 @@ class TestTier1StopWithTheRealGraph:
         assert data["status"] == "stopped"
         assert [c["tool_name"] for c in data["tool_calls"]] == ["get_pods"]
         assert "Executed: 1" in out
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_stop_mid_node_keeps_the_calls_that_ran(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The stop lands while the first of two reads runs: the second is not
+        # sent, the model is asked nothing more, and the record still lists
+        # the read that ran.
+        async def stop_during_first(tool_name, db_path):
+            if len(calls_seen) == 0:
+                _stop_in_db(db_path, expire=False)
+            calls_seen.append(tool_name)
+
+        calls_seen: list[str] = []
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"},
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"ns": "b"},
+                    "justification": "b",
+                },
+            ],
+            on_call=stop_during_first,
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == ["get_pods"]
+        data = json.loads(out_file.read_text())
+        assert data["status"] == "stopped"
+        assert [c["error"] is None for c in data["tool_calls"]] == [True, False]
+        assert "not sent" in data["tool_calls"][1]["error"]
+        assert "get_pods [ok]" in out
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
+
+    def test_a_tool_call_in_flight_is_never_cut_off(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The poll runs every 50 ms while the call takes 300 ms after the stop:
+        # the call completes and the audit log pairs its start and end.
+        async def slow_after_stop(tool_name, db_path):
+            _stop_in_db(db_path, expire=False)
+            await asyncio.sleep(0.3)
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_call=slow_after_stop,
+            poll=0.05,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == ["get_pods"]
+        entries = [e for e in _audit(tmp_path) if e.get("tool_name") == "get_pods"]
+        starts = [e for e in entries if e["entry_type"] == "tool_call_start"]
+        ends = [e for e in entries if e["entry_type"] == "tool_call_end"]
+        assert len(starts) == len(ends) == 1
+        assert "error" not in json.dumps(ends[0].get("result") or {})
         [session] = _sessions(url)
         assert session.status == "stopped"
 

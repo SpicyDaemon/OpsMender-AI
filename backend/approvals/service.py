@@ -18,6 +18,9 @@ from backend.notifications import (
     org_user_ids_with_roles,
 )
 
+# Statuses a person set by stopping or cancelling the session.
+SESSION_ENDED_BY_A_PERSON = frozenset({"stopped", "cancelled"})
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -209,7 +212,13 @@ class ApprovalService:
         self,
         db: AsyncSession,
         request: ApprovalRequest,
-    ) -> str:
+    ) -> str | None:
+        # A person who stopped the session ended it: the approval the stop
+        # expired, or one answered as it stopped, does not bring it back as
+        # timed out or active, and no new status is announced (M1-105).
+        session = await SessionRepo.get_by_id(db, self._org_id, request.session_id)
+        if session is not None and session.status in SESSION_ENDED_BY_A_PERSON:
+            return None
         if request.status == "expired":
             await SessionRepo.set_status(
                 db,
@@ -228,8 +237,8 @@ class ApprovalService:
         )
         return "active"
 
-    def _notify_session_status(self, session_id: uuid.UUID, status: str) -> None:
-        if self._status_notifier is not None:
+    def _notify_session_status(self, session_id: uuid.UUID, status: str | None) -> None:
+        if self._status_notifier is not None and status is not None:
             self._status_notifier(session_id, status)
 
     async def _publish(self, session_id: uuid.UUID, event: dict[str, Any]) -> None:

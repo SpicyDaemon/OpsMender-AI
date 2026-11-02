@@ -13,10 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   At Tier 1 the command created its session and approval service without
   the workspace id, so it stopped with "Tier 1 approval flow requires a
   reachable database" even when the database answered; it now resolves
-  the instance's workspace first, and looks its MCP servers up under it.
+  the instance's workspace first, and looks its MCP servers up under it
+  (falling back to the servers in the environment when the workspace has
+  none registered, as before).
   At Tiers 1 to 3 the plan is now offered the connected server's tools
   with their arguments, as a dashboard session is; before, it listed the
-  skill's entries instead. Tier 0 keeps its sandbox allowlist.
+  skill's entries instead. Tier 0 keeps its sandbox allowlist. The Tier 1
+  session row is closed when the run ends, a dashboard Stop ends the run
+  before its next approval or tool call (and an approval wait no longer
+  turns a stopped session back into a timed-out or active one), and a
+  database with no workspace yet refuses Tier 1 instead of writing under a
+  placeholder id.
 - Escalation chains left running from before the acknowledgement lock are
   closed. A chain whose last level had fired before that change kept the
   status running with no next due time and no finished time; the engine

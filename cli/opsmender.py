@@ -27,6 +27,7 @@ from backend.db.engine import get_engine, get_session_factory, resolve_database_
 from backend.db.models import Organization
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
+from backend.mcp.client import call_tool as mcp_call_tool
 from backend.mcp.client import connect, list_tools, tool_plan_description
 from backend.mcp.pool import MCPServerPool
 from backend.tiers.sandbox import build_sandbox_for_session
@@ -834,6 +835,79 @@ def _bootstrap_model_args(
     return args
 
 
+# How often a CLI Tier 1 run reads its session row for a dashboard Stop.
+STOP_POLL_SECONDS = 2.0
+
+
+class _SessionStopWatch:
+    """Ends a CLI Tier 1 run when its session is stopped from the dashboard.
+
+    The run's session row lives in the workspace, so the dashboard's Stop marks
+    it stopped and expires its pending approvals, but it cannot cancel this
+    process (M1-105). The run reads the row before and after every approval
+    wait, before every tool call and every ``STOP_POLL_SECONDS`` while the
+    model works, and cancels itself once the row is stopped, so nothing more
+    is asked or run. A tool call already in flight still completes, as on the
+    server."""
+
+    def __init__(self, session_factory, org_id: uuid.UUID, session_id: str) -> None:
+        self._factory = session_factory
+        self._org_id = org_id
+        self._session_id = uuid.UUID(session_id)
+        self.stopped = False
+
+    async def is_stopped(self) -> bool:
+        if self.stopped:
+            return True
+        try:
+            async with self._factory() as db:
+                row = await SessionRepo.get_by_id(db, self._org_id, self._session_id)
+        except Exception:
+            return False
+        self.stopped = row is not None and row.status in ("stopped", "cancelled")
+        return self.stopped
+
+    async def check(self) -> None:
+        if await self.is_stopped():
+            raise asyncio.CancelledError("the session was stopped from the dashboard")
+
+    def approvals(self, inner):
+        watch = self
+
+        class _StopAwareApprovals:
+            async def request_and_wait(self, **kwargs):
+                await watch.check()
+                resolution = await inner.request_and_wait(**kwargs)
+                await watch.check()
+                return resolution
+
+        return _StopAwareApprovals()
+
+    def tool_caller(self, inner):
+        async def call(session, tool_name, params):
+            await self.check()
+            return await inner(session, tool_name, params)
+
+        return call
+
+    async def run(self, awaitable):
+        """The graph's result, or None when the session was stopped."""
+        task = asyncio.ensure_future(awaitable)
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
+            if done:
+                break
+            if await self.is_stopped():
+                task.cancel()
+                break
+        try:
+            return await task
+        except asyncio.CancelledError:
+            if not self.stopped:
+                raise
+            return None
+
+
 async def _resolve_cli_org(db) -> uuid.UUID:
     result = await db.execute(
         select(Organization).order_by(Organization.created_at).limit(1)
@@ -1199,14 +1273,25 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     if session_factory is not None:
         try:
             async with session_factory() as db:
-                org_id = await _resolve_cli_org(db)
+                # Only a workspace that exists: on a fresh SQLite database the
+                # organization is created by the first `opsmender serve`, and a
+                # session written under a placeholder id would be lost to it.
+                org = (
+                    await db.execute(
+                        select(Organization).order_by(Organization.created_at).limit(1)
+                    )
+                ).scalar_one_or_none()
+                org_id = org.id if org is not None else None
         except Exception:
             org_id = None
 
     if tier == 1:
         if session_factory is None or org_id is None:
+            if db_engine is not None:
+                await db_engine.dispose()
             print(
-                "Tier 1 approval flow requires a reachable database.",
+                "Tier 1 approval flow requires a reachable database with a "
+                "workspace (start `opsmender serve` once to create it).",
                 file=sys.stderr,
             )
             return 1
@@ -1282,6 +1367,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     return 1
             else:
                 servers = await pool.list_servers(org_id, active_only=True)
+                if not servers:
+                    # Nothing registered in the workspace: the servers from
+                    # the environment, as the command used before.
+                    servers = await pool.list_servers(None, active_only=True)
                 server = servers[0] if servers else None
 
             if server is not None:
@@ -1345,6 +1434,15 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 f"{tier0_time_config.max_node_seconds}s per node\n"
             )
 
+        tool_caller = tier0_sandbox.call_tool if tier0_sandbox is not None else None
+        stop_watch = None
+        if tier == 1 and approval_service is not None:
+            # The Tier 1 session row is in the workspace: honour a dashboard
+            # Stop (M1-105).
+            stop_watch = _SessionStopWatch(session_factory, org_id, session_id)
+            approval_service = stop_watch.approvals(approval_service)
+            tool_caller = stop_watch.tool_caller(tool_caller or mcp_call_tool)
+
         graph = build_graph(
             tier=tier,
             skill_def=skill_def,
@@ -1355,7 +1453,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             tier0_time_config=tier0_time_config,
             plan_tool_names=plan_tool_names,
             plan_tool_descriptions=plan_tool_descriptions,
-            tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
+            tool_caller=tool_caller,
         )
 
         print(
@@ -1374,6 +1472,16 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 initial_state,
                 seconds=tier0_time_config.max_session_seconds,
             )
+        elif stop_watch is not None:
+            result = await stop_watch.run(graph.ainvoke(initial_state))
+            if result is None:
+                print("The session was stopped from the dashboard; nothing more ran.\n")
+                result = {
+                    "session_id": session_id,
+                    "incident_description": args.incident,
+                    "status": "stopped",
+                    "summary": "Stopped from the dashboard.",
+                }
         else:
             result = await graph.ainvoke(initial_state)
 
@@ -1423,13 +1531,21 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         # 9. Log session end
         audit_logger.log_session_end(session_id, tier)
-        if session_factory is not None:
+        # Only a Tier 1 run has a session row; a stopped one was closed by
+        # the dashboard. The update names the workspace (M1-105): without it
+        # the row stayed active after every run.
+        if (
+            session_factory is not None
+            and org_id is not None
+            and result.get("status") != "stopped"
+        ):
             try:
                 async with session_factory() as db:
                     final_status = result.get("status", "completed")
                     if final_status == "timed_out":
                         await SessionRepo.set_status(
                             db,
+                            org_id,
                             uuid.UUID(session_id),
                             status="timed_out",
                             summary=result.get("summary"),
@@ -1438,6 +1554,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     else:
                         await SessionRepo.end_session(
                             db,
+                            org_id,
                             uuid.UUID(session_id),
                             status=final_status,
                             summary=result.get("summary"),
@@ -1461,11 +1578,12 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
     except Exception as exc:
         audit_logger.log_session_end(session_id, tier)
-        if session_factory is not None:
+        if session_factory is not None and org_id is not None:
             try:
                 async with session_factory() as db:
                     await SessionRepo.end_session(
                         db,
+                        org_id,
                         uuid.UUID(session_id),
                         status="failed",
                         summary=str(exc),

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.agent.nodes import _build_workflow_plan
 from backend.agent.workflow_executor import WorkflowExecutor
 from backend.approvals.service import ApprovalResolution
 from backend.audit.logger import AuditEntryType, AuditLogger
@@ -179,3 +180,50 @@ async def test_failure_abort_and_continue(
         assert result.abort_step_id == "find"
     else:
         assert [item.status for item in result.outcomes] == ["failed", "failed"]
+
+
+async def test_step_output_and_error_are_redacted_before_they_are_recorded(
+    tmp_path,
+):
+    """M1-98: a step's output and error are redacted in the session state the
+    way the execute node redacts its tool results, while a later step still
+    resolves its template from the real output."""
+    password = "password=" + "s" * 12
+    token = "ghp_" + "t" * 24
+    calls: list[tuple[str, dict]] = []
+
+    async def caller(_session, tool_name, params):
+        calls.append((tool_name, params))
+        if tool_name == "find_pod":
+            return {"pod": "api-7", "note": f"config loaded, {password}"}
+        raise RuntimeError(f"registry refused {token}")
+
+    executor = WorkflowExecutor(
+        mcp_session=object(),
+        skill_def=_skill(),
+        audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
+        tier=0,
+        tool_caller=caller,
+    )
+    workflow_plan = _build_workflow_plan(executor)
+
+    state = await workflow_plan(
+        {"session_id": SESSION_ID, "incident": {"id": "inc-9", "title": "API down"}}
+    )
+
+    # The second step got the real pod name through its template.
+    assert calls[1] == (
+        "restart_pod",
+        {"pod": "api-7", "title": "Incident: API down"},
+    )
+    first, second = state["tool_calls"]
+    assert first["result"] == {
+        "pod": "api-7",
+        "note": "config loaded, password=[redacted secret]",
+    }
+    assert second["error"] == "registry refused [redacted secret]"
+    outcomes = state["workflow_result"]["outcomes"]
+    assert outcomes[0]["output"]["note"] == "config loaded, password=[redacted secret]"
+    assert outcomes[1]["error"] == "registry refused [redacted secret]"
+    recorded = repr(state)
+    assert "s" * 12 not in recorded and token not in recorded

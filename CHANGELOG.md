@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- A Skill workflow step's output and error text are now redacted like
+  every other tool result before they enter the session record, the
+  model's context or a ticket. A step whose tool echoed an API key, a
+  token or a `password=` value used to keep it in the session's tool
+  calls and workflow result; the same credential-shaped strings are now
+  replaced with `[redacted secret]`. Later steps still receive the real
+  output through their templates, and the audit log is unchanged.
 
 ## [1.3.0] - 2026-11-01
 

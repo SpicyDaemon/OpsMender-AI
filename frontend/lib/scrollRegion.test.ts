@@ -5,7 +5,10 @@
  * In the dashboard the window never scrolls (the layout is `h-screen
  * overflow-hidden`); the page scroller is `main#main-content`, and that is the
  * element the old `scrollIntoView` moved on phones. Every case below checks
- * that element as well as the window.
+ * that element as well as the window. The fixture gives main and the region
+ * the overflow the layout's classes give them, so a helper that looks for the
+ * nearest scrollable ancestor by its computed style finds main in the
+ * no-region case and fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -14,13 +17,13 @@ import { scrollRegionToEnd } from "@/lib/scrollRegion";
 function build({ withRegion = true }: { withRegion?: boolean } = {}) {
   document.body.innerHTML = withRegion
     ? `
-    <main id="main-content">
-      <div data-scroll-region class="overflow-y-auto">
+    <main id="main-content" style="overflow-y: auto">
+      <div data-scroll-region style="overflow-y: auto">
         <div class="list"><div class="entry"></div><div id="marker"></div></div>
       </div>
     </main>`
     : `
-    <main id="main-content">
+    <main id="main-content" style="overflow-y: auto">
       <div class="list"><div class="entry"></div><div id="marker"></div></div>
     </main>`;
   const main = document.getElementById("main-content")!;

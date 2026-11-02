@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A session that cannot act says so in every case. The transcript line
+  that a session runs advisory-only was written only when the incident's
+  service existed and none of its MCP servers or connectors was usable; a
+  session whose incident has no service said nothing. It now says so
+  whenever no tool source is attached. A workflow profile can no longer
+  put the plan after the tier gate and execute, where the plan was never
+  gated or run; saving such an order is refused with the reason, and a
+  profile saved that way earlier fails its sessions with the same reason
+  until an administrator moves Plan above Tier gate under Settings, Session
+  workflow, and saves; sessions that already failed stay failed and have
+  to be started again by hand.
 - A session that cannot run a tool no longer asks for approvals. Without
   a usable MCP server or connector, a Tier 1 plan still created approval
   requests that an operator could approve while nothing could run, and

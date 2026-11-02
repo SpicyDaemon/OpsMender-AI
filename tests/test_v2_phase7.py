@@ -138,6 +138,76 @@ def test_draft_postmortem_lists_the_models_plan_steps():
     assert "Fill this in" not in resolution
 
 
+def test_draft_postmortem_survives_non_string_plan_fields():
+    """The model writes the plan, so a justification or a tool name may be any
+    JSON value; only strings become words, the rest falls back or is skipped,
+    and the draft never raises."""
+    incident = SimpleNamespace(
+        title="API 500s",
+        priority="P1",
+        status="open",
+        created_at=datetime(2026, 10, 30, 9, 0, tzinfo=timezone.utc),
+        resolved_at=None,
+        updated_at=None,
+    )
+    session = SimpleNamespace(
+        id=uuid.uuid4(),
+        started_at=datetime(2026, 10, 30, 9, 5, tzinfo=timezone.utc),
+        ended_at=None,
+        status="completed",
+        summary=None,
+        progress={
+            "plan": [
+                {"tool_name": "get_pods", "tool_parameters": {}, "justification": True},
+                {"tool_name": "get_logs", "tool_parameters": {}, "justification": 2.5},
+                {"tool_name": "restart_pod", "justification": {"why": "x"}},
+                {"tool_name": 7, "justification": "a number is not a tool"},
+                {"tool_name": "  ", "justification": ""},
+            ]
+        },
+    )
+    md = draft_postmortem(incident, [session])
+    resolution = md.split("## Resolution")[1].split("## Lessons learned")[0]
+    assert "- get_pods" in resolution
+    assert "- get_logs" in resolution
+    assert "- restart_pod" in resolution
+    assert "- a number is not a tool" in resolution
+    assert "{'why'" not in resolution and "True" not in resolution
+
+
+def test_draft_postmortem_names_the_tool_that_ran():
+    """A model-written step names the tool it ran in tool_name; an extra
+    tool key the model added must not take its place in the draft."""
+    incident = SimpleNamespace(
+        title="API 500s",
+        priority="P1",
+        status="open",
+        created_at=datetime(2026, 10, 30, 9, 0, tzinfo=timezone.utc),
+        resolved_at=None,
+        updated_at=None,
+    )
+    session = SimpleNamespace(
+        id=uuid.uuid4(),
+        started_at=datetime(2026, 10, 30, 9, 5, tzinfo=timezone.utc),
+        ended_at=None,
+        status="completed",
+        summary=None,
+        progress={
+            "plan": [
+                {
+                    "tool_name": "restart_pod",
+                    "tool": "get_pods",
+                    "tool_parameters": {"pod": "ratings-1"},
+                    "justification": "Restart the crashed ratings pod",
+                }
+            ]
+        },
+    )
+    md = draft_postmortem(incident, [session])
+    assert "- Restart the crashed ratings pod (`restart_pod`)" in md
+    assert "`get_pods`" not in md
+
+
 def test_draft_postmortem_handles_empty_trail():
     incident = SimpleNamespace(
         title="No sessions",

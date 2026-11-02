@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read a plan step's description and tool, the shape of a Skill workflow
   step, so an AI session's own plan (tool name, parameters and
   justification per step) added nothing to the Resolution section. Each
-  such step is now a bullet with its justification and its tool.
+  such step is now a bullet with its justification and the tool it ran;
+  a field the model filled with something other than text is skipped.
 - A session that cannot act says so in every case. The transcript line
   that a session runs advisory-only was written only when the incident's
   service existed and none of its MCP servers or connectors was usable; a

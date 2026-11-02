@@ -19,6 +19,12 @@ def _fmt_ts(value: datetime | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _text(value: Any) -> str:
+    """A step field as words: a non-empty string, else nothing. The model
+    writes the plan, so a field may hold any JSON value."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _plan_bullets(plan: Any) -> list[str]:
     """One bullet per plan step.
 
@@ -30,13 +36,15 @@ def _plan_bullets(plan: Any) -> list[str]:
     if isinstance(plan, list):
         for step in plan:
             if isinstance(step, dict):
-                tool = step.get("tool") or step.get("tool_name")
+                # tool_name first: it is what the gate checked and the
+                # executor ran for a model-written step; a Skill workflow
+                # step carries only tool.
+                tool = _text(step.get("tool_name")) or _text(step.get("tool"))
                 text = (
-                    step.get("description")
-                    or step.get("action")
-                    or step.get("justification")
+                    _text(step.get("description"))
+                    or _text(step.get("action"))
+                    or _text(step.get("justification"))
                     or tool
-                    or ""
                 )
                 if text and tool and tool not in text:
                     bullets.append(f"{text} (`{tool}`)")

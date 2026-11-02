@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Escalation chains left running from before the acknowledgement lock are
+  closed. A chain whose last level had fired before that change kept the
+  status running with no next due time and no finished time; the engine
+  never ticked it, it showed as running for good, and a Slack command
+  without an incident id could pick its incident at any age. The upgrade
+  marks such rows exhausted, finished at the migration time, without an
+  exhaustion notice; the downgrade puts exactly those rows back. Chains
+  started since the lock were never affected.
 
 ## [1.3.0] - 2026-11-01
 

@@ -655,16 +655,29 @@ async def _record_advisory_only_status(
     factory,
     org_id: uuid.UUID,
     session_id: uuid.UUID,
+    *,
+    has_service: bool = True,
 ) -> dict[str, Any]:
-    """Persist a non-error transcript line for a service with no tool sources."""
+    """Persist a non-error transcript line for a session with no tool source.
+
+    A service with no usable MCP server or connector, or a session whose
+    incident has no service at all (M1-108): either way nothing can run, and
+    the transcript says so before the first node runs."""
+    if has_service:
+        content = (
+            "No MCP servers and no integration tools are available for this service, "
+            "so the session runs advisory-only."
+        )
+    else:
+        content = (
+            "This session has no service, so no MCP servers and no integration "
+            "tools are attached and it runs advisory-only."
+        )
     return await _record_status_line(
         factory,
         org_id,
         session_id,
-        content=(
-            "No MCP servers and no integration tools are available for this service, "
-            "so the session runs advisory-only."
-        ),
+        content=content,
         node_context="tool_availability",
     )
 
@@ -856,13 +869,15 @@ async def _run_session_workflow_inner(
             integration_runtime.connector_instructions,
         )
         audit_logger = LiveAuditLogger(factory, org_id=org_id, session_id=session_id)
-        if (
-            mcp_server_ids is not None
-            and not allowed_mcp_server_names
-            and not integration_runtime.descriptors
-        ):
+        # Whenever no tool source is attached the transcript says so (M1-108):
+        # before, only a service with no usable source was announced, and a
+        # session whose incident has no service said nothing.
+        if not allowed_mcp_server_names and not integration_runtime.descriptors:
             status_message = await _record_advisory_only_status(
-                factory, org_id, session_id
+                factory,
+                org_id,
+                session_id,
+                has_service=mcp_server_ids is not None,
             )
             await publish(
                 session_id,

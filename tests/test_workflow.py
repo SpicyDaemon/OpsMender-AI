@@ -171,6 +171,30 @@ class TestGraphStructure:
         with pytest.raises(ValueError):
             validate_workflow_node_order(["plan", "execute", "summarize"])
 
+    def test_validate_workflow_node_order_rejects_plan_after_gate(self):
+        """M1-108: a plan after the gate would never be gated or run."""
+        with pytest.raises(ValueError, match="plan must appear before tier_gate"):
+            validate_workflow_node_order(
+                ["observe", "tier_gate", "execute", "plan", "summarize"]
+            )
+        with pytest.raises(ValueError, match="plan must appear before tier_gate"):
+            build_graph(
+                tier=2,
+                skill_def=_skill_def(),
+                node_order=["diagnose", "tier_gate", "execute", "plan"],
+            )
+        # The plan before the gate, or either one alone, is still accepted.
+        assert validate_workflow_node_order(["plan", "tier_gate", "execute"]) == [
+            "plan",
+            "tier_gate",
+            "execute",
+        ]
+        assert validate_workflow_node_order(["observe", "plan", "summarize"]) == [
+            "observe",
+            "plan",
+            "summarize",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # Stub node tests (no LLM - backward compatibility)

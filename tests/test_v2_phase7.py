@@ -96,6 +96,48 @@ def test_draft_postmortem_assembles_sections_from_trail():
     assert "memory at 99%" in md  # observations -> impact
 
 
+def test_draft_postmortem_lists_the_models_plan_steps():
+    """M1-107: the plan steps the model writes carry ``tool_name`` and
+    ``justification``, not ``description`` and ``tool``; they used to add no
+    bullet, so an AI session's plan left the resolution section empty."""
+    incident = SimpleNamespace(
+        title="API 500s",
+        priority="P1",
+        status="resolved",
+        created_at=datetime(2026, 10, 30, 9, 0, tzinfo=timezone.utc),
+        resolved_at=datetime(2026, 10, 30, 9, 40, tzinfo=timezone.utc),
+        updated_at=None,
+    )
+    session = SimpleNamespace(
+        id=uuid.uuid4(),
+        started_at=datetime(2026, 10, 30, 9, 5, tzinfo=timezone.utc),
+        ended_at=datetime(2026, 10, 30, 9, 20, tzinfo=timezone.utc),
+        status="completed",
+        summary=None,
+        progress={
+            "plan": [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "shop"},
+                    "justification": "Check which pods restart",
+                },
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "ratings-1"},
+                    "justification": "Restart the crashed ratings pod",
+                },
+                {"tool_name": "get_logs", "tool_parameters": {}},
+            ]
+        },
+    )
+    md = draft_postmortem(incident, [session])
+    resolution = md.split("## Resolution")[1].split("## Lessons learned")[0]
+    assert "- Check which pods restart (`get_pods`)" in resolution
+    assert "- Restart the crashed ratings pod (`restart_pod`)" in resolution
+    assert "- get_logs" in resolution
+    assert "Fill this in" not in resolution
+
+
 def test_draft_postmortem_handles_empty_trail():
     incident = SimpleNamespace(
         title="No sessions",

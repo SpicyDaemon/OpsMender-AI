@@ -444,7 +444,7 @@ async def test_a_redirect_drops_the_rest_of_the_plan(tmp_path):
 
 @pytest.mark.parametrize(
     "shape",
-    ["no-executor", "no-audit-logger", "no-gate", "plan-after-execute", "empty-list"],
+    ["no-executor", "no-audit-logger", "no-gate", "empty-list"],
 )
 async def test_a_session_that_cannot_run_a_tool_is_asked_for_an_empty_plan(
     tmp_path, shape
@@ -464,19 +464,6 @@ async def test_a_session_that_cannot_run_a_tool_is_asked_for_an_empty_plan(
                 "audit_logger": log,
                 "plan_tool_names": TOOLS,
                 "node_order": ["observe", "diagnose", "plan", "summarize"],
-            },
-            "plan-after-execute": {
-                "mcp_session": object(),
-                "audit_logger": log,
-                "plan_tool_names": TOOLS,
-                "node_order": [
-                    "observe",
-                    "diagnose",
-                    "tier_gate",
-                    "execute",
-                    "plan",
-                    "summarize",
-                ],
             },
         }[shape]
         llm = _ProbingLLM()

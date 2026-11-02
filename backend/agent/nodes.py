@@ -142,10 +142,14 @@ NEEDS_APPROVAL = "waits for operator approval"
 BLOCKED = "blocked"
 TIER_NAMES = {0: "Autonomous", 1: "Approval Required", 2: "Advisory Only"}
 NO_TOOL_LIST = "(none)"
-NO_TOOL_RULE = (
-    "No tool is offered in this session, so return an empty plan: []. If you "
-    "list an action anyway, its tool and parameters, but not its justification, "
-    "are recorded for a person to see, and nothing runs."
+NO_TOOL_RULE = "No tool is offered in this session, so return an empty plan: []."
+# Added to the no-tool rule only when nothing in the session can run (no
+# usable tool source, M1-103): the gate then records a listed action and asks
+# nobody. A session with an executor and an empty list keeps the plain rule,
+# since an action it lists anyway is gated like any other.
+NO_RUN_RULE = (
+    "If you list an action anyway, its tool and parameters, but not its "
+    "justification, are recorded for a person to see, and nothing runs."
 )
 # The reason the tier gate gives every action of a session that has no
 # usable tool source (M1-103): nothing it plans can run, so nobody is asked.
@@ -648,6 +652,8 @@ def _build_plan_with_tool_names(
     )
     tools_list = "\n".join(lines) if lines else NO_TOOL_LIST
     rules = plan_rules(tier, marks, wait_limit=wait_limit)
+    if not can_run:
+        rules = f"{rules} {NO_RUN_RULE}"
     example = PLAN_EXAMPLE if lines else "[]"
 
     def plan(state: IncidentState) -> dict:
@@ -820,16 +826,23 @@ def _build_tier_gate(
     if not can_run:
 
         def no_run_gate(state: IncidentState) -> dict:
-            blocked = [
-                {
-                    **action,
-                    "block_reason": NO_EXECUTOR_REASON,
-                    "classification": tier_check(
-                        _checked_name(action), tier, skill_def
-                    ).classification,
-                }
-                for action in state.get("plan", [])
-            ]
+            blocked = []
+            for action in state.get("plan", []):
+                enforcement = tier_check(_checked_name(action), tier, skill_def)
+                # An action the policy refuses keeps the policy's reason (a
+                # deny-list match, a blocked tier), as the other gates record
+                # it; one it would allow is blocked because nothing can run.
+                blocked.append(
+                    {
+                        **action,
+                        "block_reason": (
+                            NO_EXECUTOR_REASON
+                            if enforcement.permitted
+                            else enforcement.reason
+                        ),
+                        "classification": enforcement.classification,
+                    }
+                )
             return {
                 "approved_actions": [],
                 "blocked_actions": blocked,

@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import uuid
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from backend.agent.llm import StubLLM
+from backend.db.bootstrap import initialize_sqlite_schema
+from backend.db.models import Organization, Session
 from cli.opsmender import main, _parse_args
 
 
@@ -202,3 +211,157 @@ class TestAnthropicLLM:
                 sys.modules["anthropic"] = saved
             else:
                 sys.modules.pop("anthropic", None)
+
+
+# ---------------------------------------------------------------------------
+# M1-105: Tier 1 with a database, and the server's tools at Tier 2
+# ---------------------------------------------------------------------------
+
+
+def _workspace_config(tmp_path):
+    """A SQLite database with the schema and one organization, and a config
+    file pointing the CLI at it. Returns the config path, the URL and the
+    organization id."""
+    db_path = tmp_path / "cli.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+    async def prepare():
+        engine = create_async_engine(url)
+        await initialize_sqlite_schema(engine)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        org_id = uuid.uuid4()
+        async with factory() as db:
+            db.add(Organization(id=org_id, name="CLI test", slug="cli-test"))
+            await db.commit()
+        await engine.dispose()
+        return org_id
+
+    org_id = asyncio.run(prepare())
+    cfg = tmp_path / ".env"
+    cfg.write_text(
+        f"OPSMENDER_DATABASE_URL={url}\n"
+        f"OPSMENDER_AUDIT_LOG={(tmp_path / 'audit.jsonl').as_posix()}\n"
+    )
+    return cfg, url, org_id
+
+
+def _sessions(url):
+    async def rows():
+        engine = create_async_engine(url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            sessions = (await db.execute(select(Session))).scalars().all()
+        await engine.dispose()
+        return sessions
+
+    return asyncio.run(rows())
+
+
+class TestRunWithWorkspace:
+    def test_tier_1_starts_a_session_in_the_workspace(self, tmp_path, capsys):
+        """Before, the session and the approval service were created without
+        the workspace id, so Tier 1 stopped with "requires a reachable
+        database" even when the database answered."""
+        cfg, url, org_id = _workspace_config(tmp_path)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    str(cfg),
+                    "run",
+                    "--incident",
+                    "pods crashing",
+                    "--tier",
+                    "1",
+                    "--dry-run",
+                ]
+            )
+
+        out, err = capsys.readouterr()
+        assert exc_info.value.code == 0, err
+        assert "requires a reachable database" not in err
+        [session] = _sessions(url)
+        assert session.org_id == org_id and session.tier == 1
+        assert f"Session:  {session.id}" in out
+        assert "INCIDENT RESPONSE COMPLETE" in out
+
+    def test_tier_2_plans_with_the_servers_tools(self, tmp_path, capsys, monkeypatch):
+        """Before, no tool list reached the graph at Tiers 2 and 3, so the
+        plan listed the skill's entries instead of the server's tools."""
+        cfg, url, org_id = _workspace_config(tmp_path)
+        server = SimpleNamespace(name="lab", transport="http")
+        seen: dict = {}
+
+        class FakePool:
+            def __init__(self, session_factory, env_fallback=None):
+                pass
+
+            async def list_servers(self, org_id=None, *, active_only=True):
+                seen["pool_org_id"] = org_id
+                return [server]
+
+            async def get_server(self, org_id=None, name=None):
+                seen["pool_org_id"] = org_id
+                return server
+
+        @contextlib.asynccontextmanager
+        async def fake_connect(config):
+            assert config is server
+            yield object()
+
+        async def fake_list_tools(session):
+            return [
+                SimpleNamespace(
+                    name="restart_pod",
+                    description="Restart one pod",
+                    inputSchema={"properties": {"pod": {"type": "string"}}},
+                ),
+                SimpleNamespace(
+                    name="get_pods",
+                    description="List pods",
+                    inputSchema={"properties": {"namespace": {"type": "string"}}},
+                ),
+            ]
+
+        class FakeGraph:
+            async def ainvoke(self, state, *args, **kwargs):
+                return {"status": "completed", "summary": "ok"}
+
+        def fake_build_graph(**kwargs):
+            seen["graph"] = kwargs
+            return FakeGraph()
+
+        import backend.agent.graph as graph_module
+        import backend.agent.llm as llm_module
+        import cli.opsmender as cli_module
+
+        monkeypatch.setattr(cli_module, "MCPServerPool", FakePool)
+        monkeypatch.setattr(cli_module, "connect", fake_connect)
+        monkeypatch.setattr(cli_module, "list_tools", fake_list_tools)
+        monkeypatch.setattr(graph_module, "build_graph", fake_build_graph)
+        monkeypatch.setattr(llm_module, "AnthropicLLM", lambda **kw: StubLLM())
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(
+                [
+                    "--config",
+                    str(cfg),
+                    "run",
+                    "--incident",
+                    "pods crashing",
+                    "--tier",
+                    "2",
+                ]
+            )
+
+        out, err = capsys.readouterr()
+        assert exc_info.value.code == 0, err
+        # The server was looked up under the workspace, not the fallback.
+        assert seen["pool_org_id"] == org_id
+        graph = seen["graph"]
+        assert graph["tier"] == 2
+        assert graph["plan_tool_names"] == ["get_pods", "restart_pod"]
+        assert "pod" in graph["plan_tool_descriptions"]["restart_pod"]
+        assert "Restart one pod" in graph["plan_tool_descriptions"]["restart_pod"]
+        assert "2 tool(s) offered to the plan from lab." in out

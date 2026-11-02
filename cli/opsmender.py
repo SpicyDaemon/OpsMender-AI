@@ -27,7 +27,7 @@ from backend.db.engine import get_engine, get_session_factory, resolve_database_
 from backend.db.models import Organization
 from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
 from backend.llm import ProviderRegistry
-from backend.mcp.client import connect, list_tools
+from backend.mcp.client import connect, list_tools, tool_plan_description
 from backend.mcp.pool import MCPServerPool
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.workflow.rollback import (
@@ -1192,8 +1192,19 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         db_engine = None
         session_factory = None
 
+    # The workspace the session, its approvals and the server lookup belong
+    # to (M1-105): the single organization of this instance, when the
+    # database answers.
+    org_id: uuid.UUID | None = None
+    if session_factory is not None:
+        try:
+            async with session_factory() as db:
+                org_id = await _resolve_cli_org(db)
+        except Exception:
+            org_id = None
+
     if tier == 1:
-        if session_factory is None:
+        if session_factory is None or org_id is None:
             print(
                 "Tier 1 approval flow requires a reachable database.",
                 file=sys.stderr,
@@ -1203,6 +1214,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             async with session_factory() as db:
                 db_session = await SessionRepo.create(
                     db,
+                    org_id,
                     tier=tier,
                     model_provider="stub" if args.dry_run else "anthropic",
                     model_id=args.model or "claude-sonnet-4-20250514",
@@ -1212,6 +1224,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 session_id = str(db_session.id)
             approval_service = ApprovalService(
                 session_factory,
+                org_id=org_id,
                 timeout_seconds=cfg.approvals.timeout_seconds,
             )
         except Exception as exc:
@@ -1248,7 +1261,8 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     # MCPServerPool so DB-backed servers and `.env` fallbacks both work.
     mcp_session = None
     tier0_sandbox = None
-    tier0_plan_tool_names: list[str] | None = None
+    plan_tool_names: list[str] | None = None
+    plan_tool_descriptions: dict[str, str] | None = None
     mcp_ctx = contextlib.AsyncExitStack()
 
     try:
@@ -1256,8 +1270,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         if not args.dry_run:
             pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
+            # The pool answers from the database only when it knows the
+            # workspace; without it, only the environment fallback is seen.
             if args.mcp_server:
-                server = await pool.get_server(args.mcp_server)
+                server = await pool.get_server(org_id, args.mcp_server)
                 if server is None:
                     print(
                         f"MCP server '{args.mcp_server}' not found in DB or env.",
@@ -1265,7 +1281,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     )
                     return 1
             else:
-                servers = await pool.list_servers(active_only=True)
+                servers = await pool.list_servers(org_id, active_only=True)
                 server = servers[0] if servers else None
 
             if server is not None:
@@ -1279,16 +1295,29 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                         tier0_sandbox = await build_sandbox_for_session(
                             mcp_session, skill_def
                         )
-                        tier0_plan_tool_names = sorted(tier0_sandbox.allowed_tool_names)
+                        plan_tool_names = sorted(tier0_sandbox.allowed_tool_names)
                         print(
                             "Tier 0 sandbox allowlist: "
-                            f"{len(tier0_plan_tool_names)} tool(s) visible to the workflow."
+                            f"{len(plan_tool_names)} tool(s) visible to the workflow."
                         )
-                        if tier0_plan_tool_names:
-                            print(", ".join(tier0_plan_tool_names))
+                        if plan_tool_names:
+                            print(", ".join(plan_tool_names))
                         else:
                             print("(no rollback-safe tools available)")
                         print()
+                    else:
+                        # The plan offers the server's tools, with their
+                        # arguments, as the session runner does (M1-105);
+                        # before, it listed the skill's entries instead.
+                        tools = await list_tools(mcp_session)
+                        plan_tool_names = sorted(tool.name for tool in tools)
+                        plan_tool_descriptions = {
+                            tool.name: tool_plan_description(tool) for tool in tools
+                        }
+                        print(
+                            f"{len(plan_tool_names)} tool(s) offered to the plan "
+                            f"from {server.name}.\n"
+                        )
                 except Exception as exc:
                     print(f"MCP connection failed: {exc}", file=sys.stderr)
                     print("Continuing without MCP (no tool execution).\n")
@@ -1324,7 +1353,8 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             audit_logger=audit_logger if mcp_session else None,
             approval_service=approval_service,
             tier0_time_config=tier0_time_config,
-            plan_tool_names=tier0_plan_tool_names,
+            plan_tool_names=plan_tool_names,
+            plan_tool_descriptions=plan_tool_descriptions,
             tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
         )
 

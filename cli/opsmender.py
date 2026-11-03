@@ -29,6 +29,7 @@ from backend.db.models import Organization
 from backend.db.models import Session as SessionRow
 from backend.db.repos import (
     ApprovalRequestRepo,
+    MCPServerRepo,
     ModelConfigRepo,
     SessionMessageRepo,
     SessionRepo,
@@ -37,6 +38,7 @@ from backend.llm import ProviderRegistry
 from backend.mcp.client import call_tool as mcp_call_tool
 from backend.mcp.client import connect, list_tools, tool_plan_description
 from backend.mcp.pool import MCPServerPool
+from backend.tiers.enforcement import load_skill_for_mcp_server
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
@@ -913,6 +915,9 @@ class _SessionStopWatch:
         # session was overridden to Tier 2"), once a read found it.
         self.ended: str | None = None
         self._task: asyncio.Future | None = None
+        # The calls this run held back, as (tool name, error), so the
+        # printout tells them from a call a server answered with an error.
+        self.held_back: list[tuple[str, str]] = []
 
     @property
     def stopped(self) -> bool:
@@ -997,7 +1002,9 @@ class _SessionStopWatch:
             # audited_tool_call records this as the call's end, so the audit
             # log pairs the start with a "not sent" end.
             if await self.is_stopped():
-                raise SessionStoppedError(f"{self.ended}; {NOT_SENT}")
+                held_back = f"{self.ended}; {NOT_SENT}"
+                self.held_back.append((tool_name, held_back))
+                raise SessionStoppedError(held_back)
             return await inner(session, tool_name, params)
 
         return call
@@ -1097,6 +1104,17 @@ async def _close_cli_session(
         await _to_its_end(close())
     except Exception:
         pass  # DB may not have tables (e.g. local SQLite without migrations)
+
+
+async def _workspace_skill(session_factory, org_id, server_name: str):
+    """The skill the workspace gave *server_name*: its own, or the
+    workspace's global skill, as a dashboard session uses; None when the
+    workspace has neither."""
+    async with session_factory() as db:
+        row = await MCPServerRepo.get_by_name(db, org_id, server_name)
+        return await load_skill_for_mcp_server(
+            db, org_id, None if row is None else row.id
+        )
 
 
 async def _resolve_cli_org(db) -> uuid.UUID:
@@ -1600,14 +1618,20 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
             # The pool answers from the database only when it knows the
             # workspace; without it, only the environment fallback is seen.
-            # A server the workspace registered opens through the pool, which
-            # adds the OAuth token an OAuth-connected server keeps outside its
-            # row (refreshing it first), as the session runner does; a server
-            # from the environment opens as configured.
-            server_org = org_id
+            # A workspace server is used only while it is active, as in a
+            # dashboard session.
             if args.mcp_server:
-                server = await pool.get_server(org_id, args.mcp_server)
+                server = next(
+                    (
+                        found
+                        for found in await pool.list_servers(org_id, active_only=True)
+                        if found.name == args.mcp_server
+                    ),
+                    None,
+                ) or await pool.get_server(None, args.mcp_server)
                 if server is None:
+                    # The run ends here; a Ctrl-C during the close keeps it.
+                    finishing = True
                     if tier == 1:
                         await _close_cli_session(
                             session_factory,
@@ -1618,27 +1642,50 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                             summary=f"MCP server '{args.mcp_server}' not found.",
                         )
                     print(
-                        f"MCP server '{args.mcp_server}' not found in DB or env.",
+                        f"MCP server '{args.mcp_server}' is not an active server "
+                        "of the workspace or the environment.",
                         file=sys.stderr,
                     )
                     return 1
-                # The pool hands an environment server back as configured.
-                if server is await pool.get_server(None, args.mcp_server):
-                    server_org = None
             else:
                 servers = await pool.list_servers(org_id, active_only=True)
                 if not servers:
                     # Nothing registered in the workspace: the servers from
                     # the environment, as the command used before.
                     servers = await pool.list_servers(None, active_only=True)
-                    server_org = None
                 server = servers[0] if servers else None
+            # The pool hands a server from the environment back as configured,
+            # and a workspace server (even one it found only because the
+            # database failed) as a new config. A workspace server opens
+            # through the pool, which adds the OAuth token an OAuth-connected
+            # server keeps outside its row (refreshing it first), and runs
+            # under the skill the workspace gave it, as in a dashboard
+            # session; a server from the environment opens as configured,
+            # under --skill-file.
+            environment = await pool.list_servers(None, active_only=True)
+            server_org = (
+                None
+                if server is None or any(server is env for env in environment)
+                else org_id
+            )
 
             if server is not None:
                 print(
                     f"Connecting to MCP server: {server.name} ({server.transport})..."
                 )
                 try:
+                    if server_org is not None:
+                        # The workspace's policy for its server, not the local
+                        # file; a lookup that fails opens nothing.
+                        workspace_skill = await _workspace_skill(
+                            session_factory, server_org, server.name
+                        )
+                        if workspace_skill is not None:
+                            skill_def = workspace_skill
+                            print(
+                                f"Skill:    the workspace's skill for {server.name}, "
+                                f"in place of {skill_path}"
+                            )
                     mcp_session = await mcp_ctx.enter_async_context(
                         connect(server)
                         if server_org is None
@@ -1806,7 +1853,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             )
 
         # 10. Display results
-        _print_result(result)
+        _print_result(result, stop_watch.held_back if stop_watch is not None else ())
 
         # 11. Optionally write to file
         if args.output:
@@ -1825,20 +1872,21 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         # the close commits.
         if stop_watch is not None:
             stop_watch.interrupt()
-        if not finishing:
-            if started:
-                audit_logger.log_session_end(session_id, tier)
-            if tier == 1:
-                await _close_cli_session(
-                    session_factory,
-                    org_id,
-                    session_id,
-                    tier=tier,
-                    status="stopped",
-                    summary=INTERRUPTED_MESSAGE,
-                )
+        if not finishing and tier == 1:
+            await _close_cli_session(
+                session_factory,
+                org_id,
+                session_id,
+                tier=tier,
+                status="stopped",
+                summary=INTERRUPTED_MESSAGE,
+            )
         if stop_watch is not None:
             await stop_watch.halt()
+        # Logged once the graph has stopped, so every entry it wrote comes
+        # before the session's end.
+        if started and not finishing:
+            audit_logger.log_session_end(session_id, tier)
         raise
     except Exception as exc:
         if not finishing:
@@ -1861,8 +1909,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             await db_engine.dispose()
 
 
-def _print_result(result: dict) -> None:
-    """Print a human-readable summary of the workflow result."""
+def _print_result(result: dict, held_back=()) -> None:
+    """Print a human-readable summary of the workflow result. *held_back*
+    lists the calls a stopped run refused to send, as (tool name, error)."""
     print("=" * 60)
     print("INCIDENT RESPONSE COMPLETE")
     print("=" * 60)
@@ -1879,11 +1928,17 @@ def _print_result(result: dict) -> None:
     approved = result.get("approved_actions", [])
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
-    # Calls a stopped run held back were recorded but never sent, and a
-    # workflow step that was blocked never ran (M1-105).
-    not_sent = [
-        tc for tc in tool_calls if str(tc.get("error") or "").endswith(NOT_SENT)
-    ]
+    # Calls a stopped run held back were recorded but never sent: a record
+    # whose tool and error match one the run refused, each refusal once, so a
+    # server's own error text cannot make a call it received look held back.
+    # A workflow step that was blocked never ran (M1-105).
+    unmatched = list(held_back)
+    not_sent = []
+    for tc in tool_calls:
+        key = (tc.get("tool_name"), tc.get("error"))
+        if key in unmatched:
+            unmatched.remove(key)
+            not_sent.append(tc)
     blocked_steps = [
         tc for tc in tool_calls if tc.get("workflow_step_status") == "blocked"
     ]
@@ -1907,7 +1962,7 @@ def _print_result(result: dict) -> None:
         print("\nExecuted tool calls:")
         for tc in tool_calls:
             name = tc.get("tool_name", "?")
-            if tc in not_sent:
+            if any(tc is held for held in not_sent):
                 print(f"  - {name} [not sent]")
                 continue
             if tc in blocked_steps:

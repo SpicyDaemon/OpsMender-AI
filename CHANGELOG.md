@@ -15,7 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reachable database" even when the database answered; it now resolves
   the instance's workspace first, and looks its MCP servers up under it
   (falling back to the servers in the environment when the workspace has
-  none registered, as before).
+  none registered, as before). A workspace server is used only while it is
+  active, and runs under the skill the workspace gave it (its own, or the
+  workspace's global skill), as in a dashboard session; `--skill-file`
+  governs a server from the environment, and one the workspace gave no
+  skill.
   At Tiers 1 to 3 the plan is now offered the connected server's tools
   with their arguments, as a dashboard session is; before, it listed the
   skill's entries instead. Tier 0 keeps its sandbox allowlist. The Tier 1
@@ -40,9 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows it too. Ctrl-C closes the row as stopped and expires its pending
   approval, also when it lands during a database query, and a run that
   fails expires its approval the same way. The printed summary counts a
-  call the stop held back as not sent and a blocked workflow step as
-  blocked. A server the workspace registered is opened through the pool,
-  so an OAuth-connected server gets its token, as in a dashboard session.
+  call the run held back as not sent (a server's own error text cannot make
+  a call look held back) and a blocked workflow step as blocked. A server
+  the workspace registered is opened through the pool, so an
+  OAuth-connected server gets its token, as in a dashboard session.
 - The AI session page opens at the top on a phone. Keeping the event
   stream and the co-pilot chat scrolled to their newest entry used to
   scroll the whole page on narrow screens, where the panels sit one under

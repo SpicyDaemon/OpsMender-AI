@@ -310,6 +310,8 @@ class TestRunWithWorkspace:
                 pass
 
             async def list_servers(self, org_id=None, *, active_only=True):
+                if org_id is None:
+                    return []  # no server in the environment
                 seen["pool_org_id"] = org_id
                 return [server]
 
@@ -438,8 +440,9 @@ class TestRunWithWorkspace:
 
         out, err = capsys.readouterr()
         assert exc_info.value.code == 0, err
-        assert asked == [org_id, None]
+        assert asked[:2] == [org_id, None]
         assert "Connecting to MCP server: env-lab" in out
+        assert "Connected to env-lab." in out
 
     def test_a_workspace_oauth_server_opens_with_its_token(
         self, tmp_path, capsys, monkeypatch
@@ -618,6 +621,23 @@ operations:
       T2: {enabled: false, mode: blocked}
 ---
 """
+# A workspace's skill for its server: one tool denied at every tier, the
+# other blocked at Tier 1.
+WORKSPACE_SKILL = """---
+version: "1"
+environment: k8s-prod
+operations:
+  - tool: get_pod_logs
+    deny: true
+    notes: "Logs carry customer data"
+  - tool: get_pods
+    classification: safe
+    tiers:
+      T0: {enabled: true, mode: autonomous}
+      T1: {enabled: false, mode: blocked}
+      T2: {enabled: true, mode: autonomous}
+---
+"""
 PLAN_MARK = "planning remediation"
 SUMMARY_MARK = "writing an incident summary"
 DIAGNOSE_MARK = "diagnosing an incident"
@@ -748,6 +768,7 @@ def _ctrl_c(monkeypatch, state):
     async def interruptible(cfg, args):
         task = asyncio.ensure_future(real_run(cfg, args))
         state["main"] = task
+        state["loop"] = asyncio.get_running_loop()
         results = await asyncio.gather(task, return_exceptions=True)
         assert isinstance(results[0], asyncio.CancelledError), results
         return 130
@@ -822,8 +843,14 @@ class TestTier1StopWithTheRealGraph:
         on_connect=None,
         expect=SystemExit,
         incident="x",
+        real_pool=False,
+        prepare=None,
+        tools=("get_pods", "restart_pod"),
     ):
         cfg, url, _org_id = _workspace_config(tmp_path)
+        if prepare is not None:
+            prepare(cfg, url, _org_id)
+        self.connected: list = []
         skill = tmp_path / "SKILL.md"
         skill.write_text(skill_text)
         calls: list[str] = []
@@ -833,6 +860,7 @@ class TestTier1StopWithTheRealGraph:
 
         @contextlib.asynccontextmanager
         async def fake_connect(*args):
+            self.connected.append(args)
             if on_connect is not None:
                 on_connect(_db_path(url))
             # A cancel that on_connect asks for lands here, inside the connect.
@@ -854,12 +882,8 @@ class TestTier1StopWithTheRealGraph:
 
         async def fake_list_tools(session):
             return [
-                SimpleNamespace(
-                    name="get_pods", description="List pods", inputSchema={}
-                ),
-                SimpleNamespace(
-                    name="restart_pod", description="Restart one pod", inputSchema={}
-                ),
+                SimpleNamespace(name=name, description=name, inputSchema={})
+                for name in tools
             ]
 
         async def fake_call(session, tool_name, params):
@@ -880,9 +904,13 @@ class TestTier1StopWithTheRealGraph:
                 return json.dumps(plan) if PLAN_MARK in prompt else "[stub]"
 
         import backend.agent.llm as llm_module
+        import backend.mcp.pool as pool_module
         import cli.opsmender as cli_module
 
-        monkeypatch.setattr(cli_module, "MCPServerPool", FakePool)
+        if real_pool:
+            monkeypatch.setattr(pool_module, "mcp_connect", fake_connect)
+        else:
+            monkeypatch.setattr(cli_module, "MCPServerPool", FakePool)
         monkeypatch.setattr(cli_module, "connect", fake_connect)
         monkeypatch.setattr(cli_module, "list_tools", fake_list_tools)
         monkeypatch.setattr(cli_module, "mcp_call_tool", fake_call)
@@ -1212,6 +1240,7 @@ class TestTier1StopWithTheRealGraph:
         assert data["tool_calls"][1]["block_reason"] == NOT_ASKED
         assert "not sent" in data["tool_calls"][2]["error"]
         # The printout shows the blocked step as blocked, not as run.
+        assert "Blocked:  1" in out
         assert "Executed: 1" in out and "Not sent: 1" in out
         assert f"✗ restart_pod [blocked]: {NOT_ASKED}" in out
         assert "✓ restart_pod" not in out
@@ -1616,6 +1645,314 @@ class TestTier1StopWithTheRealGraph:
         assert _approvals(url) == []
         plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
         assert self.prompts[plan_at + 1 :] == []
+
+    def test_a_workspace_server_runs_under_the_skill_the_workspace_gave_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The workspace's skill for its server denies one tool and blocks the
+        # other at Tier 1; the local skill file allows both. Before, the CLI
+        # opened the workspace's server under the local file, and both ran.
+        from backend.db.repos import MCPServerRepo, SkillRepo
+
+        def register(cfg, url, org_id):
+            async def rows():
+                engine = create_async_engine(url)
+                factory = async_sessionmaker(engine, expire_on_commit=False)
+                async with factory() as db:
+                    row = await MCPServerRepo.create(
+                        db, org_id, name="k8s-prod", transport="stdio", command="k"
+                    )
+                    await SkillRepo.create(
+                        db,
+                        org_id,
+                        name="k8s-prod policy",
+                        content_md=WORKSPACE_SKILL,
+                        mcp_server_id=row.id,
+                    )
+                    await db.commit()
+                await engine.dispose()
+
+            asyncio.run(rows())
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "get_pod_logs",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "read",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "read",
+                },
+            ],
+            real_pool=True,
+            prepare=register,
+            tools=("get_pod_logs", "get_pods"),
+            skill_text=SKILL_T1.replace(
+                "operations:\n",
+                "operations:\n  - tool: get_pod_logs\n    classification: safe\n"
+                "    tiers:\n      T0: {enabled: true, mode: autonomous}\n"
+                "      T1: {enabled: true, mode: autonomous}\n"
+                "      T2: {enabled: true, mode: autonomous}\n",
+            ),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "Connecting to MCP server: k8s-prod" in out
+        assert "the workspace's skill for k8s-prod" in out
+        assert calls == []
+        assert "Blocked:  2" in out
+
+    def test_a_named_server_the_workspace_deactivated_is_not_opened(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from backend.db.repos import MCPServerRepo
+
+        def register(cfg, url, org_id):
+            async def rows():
+                engine = create_async_engine(url)
+                factory = async_sessionmaker(engine, expire_on_commit=False)
+                async with factory() as db:
+                    await MCPServerRepo.create(
+                        db,
+                        org_id,
+                        name="retired",
+                        transport="stdio",
+                        command="k",
+                        is_active=False,
+                    )
+                    await db.commit()
+                await engine.dispose()
+
+            asyncio.run(rows())
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [],
+            real_pool=True,
+            prepare=register,
+            extra=("--mcp-server", "retired"),
+        )
+        out, err = capsys.readouterr()
+        assert code == 1
+        assert "not an active server" in err
+        assert self.connected == []
+        [session] = _sessions(url)
+        assert session.status == "failed" and "retired" in session.summary
+
+    def test_a_failed_workspace_lookup_opens_the_environment_server_as_configured(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The workspace lookup fails, so the pool hands back the environment's
+        # server: it opens as configured, not through the pool under the
+        # workspace, where it does not exist.
+        from backend.db.repos import MCPServerRepo
+
+        def env_server(cfg, url, org_id):
+            servers = [{"name": "k8s", "transport": "stdio", "command": "k8s-mcp"}]
+            cfg.write_text(
+                cfg.read_text() + f"OPSMENDER_MCP_SERVERS_JSON={json.dumps(servers)}\n"
+            )
+
+        async def unreachable(*args, **kwargs):
+            raise RuntimeError("database unreachable")
+
+        monkeypatch.setattr(MCPServerRepo, "list_all", staticmethod(unreachable))
+        code, calls, url = self._run(
+            tmp_path, monkeypatch, [], real_pool=True, prepare=env_server
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "Connected to k8s." in out
+        assert "MCP connection failed" not in err
+
+    @pytest.mark.parametrize("how", ["reply", "raise"])
+    def test_a_server_error_never_reads_as_a_call_held_back(
+        self, tmp_path, monkeypatch, capsys, how
+    ):
+        # The server's own error text ends like a held-back call's; nobody
+        # stopped the run, so the call was sent and is counted as executed.
+        spoof = "the session was stopped; the call was not sent"
+
+        def reply(tool_name, params):
+            return CallToolResult(
+                isError=True, content=[TextContent(type="text", text=spoof)]
+            )
+
+        async def raise_it(tool_name, db_path):
+            raise RuntimeError(spoof)
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            respond=reply if how == "reply" else None,
+            on_call=raise_it if how == "raise" else None,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == ["get_pods"]
+        assert "Executed: 1" in out
+        assert "Not sent" not in out and "[not sent]" not in out
+        assert "✗ get_pods [error]" in out
+
+    def test_a_ctrl_c_sends_nothing_more_while_the_row_closes(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Ctrl-C lands as the model answers the plan, and the close takes a
+        # while: the graph goes on to its tool call meanwhile, which must not
+        # be sent although the row still reads active. The session's end is
+        # the audit log's last entry.
+        import cli.opsmender as cli_module
+
+        state: dict = {"main": None}
+        real_close = cli_module._close_cli_session
+
+        async def slow_close(*args, **kwargs):
+            if kwargs.get("status") == "stopped":
+                await asyncio.sleep(0.5)
+            await real_close(*args, **kwargs)
+
+        def ctrl_c_at_plan(prompt, db_path):
+            if PLAN_MARK in prompt:
+                state["loop"].call_soon_threadsafe(state["main"].cancel)
+
+        monkeypatch.setattr(cli_module, "_close_cli_session", slow_close)
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_prompt=ctrl_c_at_plan,
+        )
+        assert code == 130
+        assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped" and "interrupted" in session.summary
+        entries = _audit(tmp_path)
+        assert entries[-1]["entry_type"] == "session_end"
+        assert [e["entry_type"] for e in entries].count("session_end") == 1
+
+    def test_a_ctrl_c_during_the_tool_calls_read_sends_nothing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Ctrl-C lands while the tool call's own read of the row runs, and the
+        # close takes a while, so that read finds the row still active. The
+        # read must not clear the interruption: the call is not sent.
+        import cli.opsmender as cli_module
+
+        state: dict = {"main": None, "planned": False, "fired": False}
+        real_execute = aiosqlite.Cursor.execute
+        real_close = cli_module._close_cli_session
+
+        async def execute(cursor, sql, parameters=None):
+            if (
+                state["planned"]
+                and not state["fired"]
+                and sql.lstrip().upper().startswith("SELECT")
+                and "FROM SESSIONS" in sql.upper()
+                and _in_frames("_read_row", "is_stopped")
+            ):
+                state["fired"] = True
+                state["loop"].call_soon(state["main"].cancel)
+                # The interruption is set before this read returns.
+                await asyncio.sleep(0.05)
+            return await real_execute(cursor, sql, parameters)
+
+        async def slow_close(*args, **kwargs):
+            if kwargs.get("status") == "stopped":
+                await asyncio.sleep(0.5)
+            await real_close(*args, **kwargs)
+
+        def planned(prompt, db_path):
+            if PLAN_MARK in prompt:
+                state["planned"] = True
+
+        monkeypatch.setattr(aiosqlite.Cursor, "execute", execute)
+        monkeypatch.setattr(cli_module, "_close_cli_session", slow_close)
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_prompt=planned,
+        )
+        assert state["fired"]
+        assert code == 130
+        assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped" and "interrupted" in session.summary
+
+    def test_a_ctrl_c_while_the_row_is_written_closes_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import cli.opsmender as cli_module
+
+        state: dict = {"main": None}
+        real_create = cli_module.SessionMessageRepo.create
+
+        async def ctrl_c_then_create(*args, **kwargs):
+            state["main"].cancel()
+            return await real_create(*args, **kwargs)
+
+        monkeypatch.setattr(
+            cli_module.SessionMessageRepo, "create", staticmethod(ctrl_c_then_create)
+        )
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(tmp_path, monkeypatch, [])
+        assert code == 130
+        assert self.prompts == [] and calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped" and "interrupted" in session.summary
+
+    def test_a_ctrl_c_as_an_unknown_server_closes_the_row_keeps_its_end(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import cli.opsmender as cli_module
+
+        state: dict = {"main": None}
+        real_close = cli_module._close_cli_session
+
+        async def close_as_ctrl_c_lands(*args, **kwargs):
+            if kwargs.get("status") == "failed":
+                state["main"].cancel()
+            await real_close(*args, **kwargs)
+
+        monkeypatch.setattr(cli_module, "_close_cli_session", close_as_ctrl_c_lands)
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path, monkeypatch, [], extra=("--mcp-server", "typo")
+        )
+        assert code == 130
+        [session] = _sessions(url)
+        assert session.status == "failed" and "typo" in session.summary
+
+    def test_a_failure_after_the_run_closed_keeps_its_end(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Nobody stops the run; writing --output fails after the run closed
+        # its row as completed: the row keeps that end and the audit log has
+        # one session end.
+        blocker = tmp_path / "taken"
+        blocker.write_text("a file, not a folder")
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            extra=("--output", str(blocker / "result.json")),
+        )
+        out, err = capsys.readouterr()
+        assert code == 1
+        assert "Workflow failed" in err
+        [session] = _sessions(url)
+        assert (session.status, session.summary) == ("completed", "[stub]")
+        ends = [e for e in _audit(tmp_path) if e["entry_type"] == "session_end"]
+        assert len(ends) == 1
 
     def test_a_stop_during_setup_is_read_before_the_first_model_request(
         self, tmp_path, monkeypatch, capsys

@@ -80,10 +80,11 @@ async def test_a_workflow_step_nobody_was_asked_about_is_blocked_and_the_rest_ru
         calls.append(tool_name)
         return {"content": [{"type": "text", "text": "2 pods"}], "isError": False}
 
+    log = tmp_path / "audit.jsonl"
     executor = WorkflowExecutor(
         mcp_session=object(),
         skill_def=loads(SKILL_T1 + WORKFLOW_T1),
-        audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
+        audit_logger=AuditLogger(log),
         tier=1,
         approval_service=_Declines(),
         tool_caller=caller,
@@ -100,3 +101,8 @@ async def test_a_workflow_step_nobody_was_asked_about_is_blocked_and_the_rest_ru
     assert result.outcomes[1].approval_request_id is None
     assert calls == ["get_pods", "get_pods"]
     assert not result.aborted
+    # The blocked step is in the audit log, as Tool Activity shows it.
+    blocked = [e for e in _entries(log) if e["entry_type"] == "workflow.step.blocked"]
+    assert [(e["tool_name"], e["block_reason"]) for e in blocked] == [
+        ("restart_pod", REASON)
+    ]

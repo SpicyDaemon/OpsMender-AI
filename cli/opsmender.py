@@ -13,7 +13,6 @@ import pathlib
 import sys
 
 import contextlib
-import dataclasses
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -23,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
 from backend.approvals import ApprovalNotAsked, ApprovalService
+from backend.approvals.service import session_end_reason
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.models import Organization
@@ -855,42 +855,63 @@ STOPPED_MESSAGE = (
     "The session was stopped (from the dashboard, or by the app's restart); "
     "nothing more was asked or sent."
 )
-# The block reasons of an approval action the stop kept from running.
-STOPPED_NOT_ASKED = "the session was stopped; the approval was not asked"
-STOPPED_DURING_WAIT = "the session was stopped during the approval wait"
+INTERRUPTED_MESSAGE = (
+    "The run was interrupted in the terminal; its pending approvals expired."
+)
+# The end of a stopped run's error for a tool call it held back.
+NOT_SENT = "the call was not sent"
 
 
 class _SessionStopWatch:
-    """Ends a CLI Tier 1 run when its session is stopped.
+    """Ends a CLI Tier 1 run when its session is stopped or overridden.
 
     The run's session row lives in the workspace, so the dashboard's Stop marks
-    it stopped and expires its pending approvals, but it cannot cancel this
-    process (M1-105). The run reads the row before and after every approval
-    wait, before every tool call and every ``STOP_POLL_SECONDS`` while the
-    model works. Once a read finds the row stopped, nothing more is asked or
-    sent: an approval is not asked and its action is blocked, a tool call is
-    recorded as not sent, and the next model request is refused, which ends
-    the graph. A tool call or a model request already in flight is never cut
-    off; it completes. The graph's state is kept after every step, so the
-    record of a stopped run is the graph's own, as a finished run's is. On a
-    single-process install the app's restart marks every active session
-    stopped, a CLI run's included, and the run honours that the same way."""
+    it stopped and expires its pending approvals, and its Override moves it to
+    another tier for the app to run, but neither can cancel this process
+    (M1-105). The run reads the row before the graph starts, before and after
+    every approval wait, before every tool call and every
+    ``STOP_POLL_SECONDS`` while the model works. Once a read finds the row
+    stopped or at another tier, nothing more is asked or sent: an approval is
+    not asked and its action is blocked, a tool call is recorded as not sent,
+    and the next model request is refused, which ends the graph. A tool call
+    or a model request already in flight is never cut off; it completes. The
+    graph's state is kept after every step, so the record of a stopped run is
+    the graph's own, as a finished run's is. On a single-process install the
+    app's restart marks every active session stopped, a CLI run's included,
+    and the run honours that the same way."""
 
-    def __init__(self, session_factory, org_id: uuid.UUID, session_id: str) -> None:
+    def __init__(
+        self, session_factory, org_id: uuid.UUID, session_id: str, tier: int
+    ) -> None:
         self._factory = session_factory
         self._org_id = org_id
         self._session_id = uuid.UUID(session_id)
-        self.stopped = False
+        self._tier = tier
+        # Why the run may no longer act ("the session was stopped", "the
+        # session was overridden to Tier 2"), once a read found it.
+        self.ended: str | None = None
+
+    @property
+    def stopped(self) -> bool:
+        return self.ended is not None
+
+    def message(self) -> str:
+        if self.ended is not None and "overridden" in self.ended:
+            return (
+                f"{self.ended[0].upper()}{self.ended[1:]} from the dashboard, and "
+                "the app runs it from here; nothing more was asked or sent."
+            )
+        return STOPPED_MESSAGE
 
     async def is_stopped(self) -> bool:
-        if self.stopped:
+        if self.ended is not None:
             return True
         try:
             async with self._factory() as db:
                 row = await SessionRepo.get_by_id(db, self._org_id, self._session_id)
         except Exception:
             return False
-        self.stopped = row is not None and row.status in _SESSION_ENDED
+        self.ended = session_end_reason(row, self._tier)
         return self.stopped
 
     def approvals(self, inner):
@@ -900,15 +921,14 @@ class _SessionStopWatch:
             async def request_and_wait(self, **kwargs):
                 # Once stopped nobody is asked: the gate or the workflow blocks
                 # the action and goes on, so nothing the node recorded is lost.
+                # The service checks again as it writes, for a Stop that lands
+                # in between.
                 if await watch.is_stopped():
-                    raise ApprovalNotAsked(STOPPED_NOT_ASKED)
+                    raise ApprovalNotAsked(f"{watch.ended}; the approval was not asked")
                 resolution = await inner.request_and_wait(**kwargs)
-                # The Stop expires a pending approval; the reason says so. An
-                # approval granted before the stop is refused at its tool call.
-                if await watch.is_stopped() and resolution.request.status == "expired":
-                    resolution = dataclasses.replace(
-                        resolution, block_reason=STOPPED_DURING_WAIT
-                    )
+                # Keep the flag current for the model; an approval granted as
+                # the session stopped is refused at its tool call.
+                await watch.is_stopped()
                 return resolution
 
         return _StopAwareApprovals()
@@ -925,9 +945,7 @@ class _SessionStopWatch:
 
             def invoke(self, prompt):
                 if watch.stopped:
-                    raise SessionStoppedError(
-                        "the session was stopped; the model was not asked"
-                    )
+                    raise SessionStoppedError(f"{watch.ended}; the model was not asked")
                 return inner.invoke(prompt)
 
         return _StopAwareLLM()
@@ -937,16 +955,14 @@ class _SessionStopWatch:
             # audited_tool_call records this as the call's end, so the audit
             # log pairs the start with a "not sent" end.
             if await self.is_stopped():
-                raise SessionStoppedError(
-                    "the session was stopped; the call was not sent"
-                )
+                raise SessionStoppedError(f"{self.ended}; {NOT_SENT}")
             return await inner(session, tool_name, params)
 
         return call
 
     async def run(self, graph, initial_state: dict) -> dict:
         """The graph's result, its status set to stopped when the session was
-        stopped.
+        stopped or overridden.
 
         The graph's state is kept after every step. When the stop ends the
         graph, the result is the last state it reached: its tool calls are the
@@ -955,20 +971,30 @@ class _SessionStopWatch:
         refreshes the stopped flag; the run ends at its next approval, tool
         call or model request, and a stop that lands after the last of those
         is found by the final read. So the run never reports a stopped session
-        as completed or failed, and nothing is cut off."""
+        as completed or failed, and nothing is cut off. A cancellation (Ctrl-C)
+        cancels the graph too, so nothing more is sent while the run closes."""
         latest = {"state": initial_state}
 
         async def follow():
+            # A stop during setup (the model, the MCP connection) is read
+            # before the first model request.
+            if await self.is_stopped():
+                return latest["state"]
             async for state in graph.astream(initial_state, stream_mode="values"):
                 latest["state"] = state
             return latest["state"]
 
         task = asyncio.ensure_future(follow())
-        while True:
-            done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
-            if done:
-                break
-            await self.is_stopped()
+        try:
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
+                if done:
+                    break
+                await self.is_stopped()
+        except asyncio.CancelledError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            raise
         try:
             result = await task
         except Exception:
@@ -979,30 +1005,47 @@ class _SessionStopWatch:
             result = {
                 **result,
                 "status": "stopped",
-                "summary": result.get("summary") or STOPPED_MESSAGE,
+                "summary": result.get("summary") or self.message(),
             }
         return result
 
 
 async def _close_cli_session(
-    session_factory, org_id, session_id: str, *, status: str, summary: str | None
+    session_factory,
+    org_id,
+    session_id: str,
+    *,
+    tier: int,
+    status: str,
+    summary: str | None,
+    expire_approvals: bool = False,
 ) -> None:
     """Close the CLI's Tier 1 session row under the workspace, unless a person
-    (or the app's restart) already ended it: the update skips a stopped or
-    cancelled row, so it can never overwrite the dashboard's Stop."""
+    (or the app's restart) already ended it or an Override gave it to the app:
+    the update skips a stopped or cancelled row and one at another tier, so it
+    never overwrites the dashboard's Stop or the app's run. With
+    ``expire_approvals`` the row's pending approvals expire with it."""
     if session_factory is None or org_id is None:
         return
     try:
         async with session_factory() as db:
-            await db.execute(
+            closed = await db.execute(
                 update(SessionRow)
                 .where(SessionRow.org_id == org_id)
                 .where(SessionRow.id == uuid.UUID(session_id))
                 .where(SessionRow.status.notin_(_SESSION_ENDED))
+                .where(SessionRow.tier == tier)
                 .values(
                     status=status, summary=summary, ended_at=datetime.now(timezone.utc)
                 )
             )
+            if expire_approvals and closed.rowcount:
+                for pending in await ApprovalRequestRepo.list_pending(
+                    db, org_id, session_id=uuid.UUID(session_id)
+                ):
+                    await ApprovalRequestRepo.resolve(
+                        db, org_id, pending.id, status="expired"
+                    )
             await db.commit()
     except Exception:
         pass  # DB may not have tables (e.g. local SQLite without migrations)
@@ -1411,6 +1454,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 session_factory,
                 org_id=org_id,
                 timeout_seconds=cfg.approvals.timeout_seconds,
+                # The run drives the row at this tier; after an Override the
+                # service neither asks nor writes it (M1-105).
+                session_tier=tier,
             )
         except Exception as exc:
             if db_engine is not None:
@@ -1438,6 +1484,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     session_factory,
                     org_id,
                     session_id,
+                    tier=tier,
                     status="failed",
                     summary=f"LLM setup failed: {exc}",
                 )
@@ -1475,6 +1522,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                             session_factory,
                             org_id,
                             session_id,
+                            tier=tier,
                             status="failed",
                             summary=f"MCP server '{args.mcp_server}' not found.",
                         )
@@ -1557,7 +1605,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         if tier == 1 and approval_service is not None:
             # The Tier 1 session row is in the workspace: honour a dashboard
             # Stop (M1-105).
-            stop_watch = _SessionStopWatch(session_factory, org_id, session_id)
+            stop_watch = _SessionStopWatch(session_factory, org_id, session_id, tier)
             approval_service = stop_watch.approvals(approval_service)
             tool_caller = stop_watch.tool_caller(tool_caller or mcp_call_tool)
             llm = stop_watch.llm(llm)
@@ -1594,7 +1642,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         elif stop_watch is not None:
             result = await stop_watch.run(graph, initial_state)
             if stop_watch.stopped:
-                print(f"{STOPPED_MESSAGE}\n")
+                print(f"{stop_watch.message()}\n")
         else:
             result = await graph.ainvoke(initial_state)
 
@@ -1646,12 +1694,13 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         audit_logger.log_session_end(session_id, tier)
         # Only a Tier 1 run has a session row. The close names the workspace
         # (M1-105): without it the row stayed active after every run. A row
-        # the dashboard stopped is left as it is.
+        # the dashboard stopped or overrode is left as it is.
         if tier == 1 and result.get("status") != "stopped":
             await _close_cli_session(
                 session_factory,
                 org_id,
                 session_id,
+                tier=tier,
                 status=result.get("status", "completed"),
                 summary=result.get("summary"),
             )
@@ -1669,11 +1718,32 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         return 0
 
+    except asyncio.CancelledError:
+        # Ctrl-C: the row is closed as stopped and its pending approvals
+        # expire, so nothing is left for a person to approve that no run
+        # would act on (M1-105).
+        audit_logger.log_session_end(session_id, tier)
+        if tier == 1:
+            await _close_cli_session(
+                session_factory,
+                org_id,
+                session_id,
+                tier=tier,
+                status="stopped",
+                summary=INTERRUPTED_MESSAGE,
+                expire_approvals=True,
+            )
+        raise
     except Exception as exc:
         audit_logger.log_session_end(session_id, tier)
         if tier == 1:
             await _close_cli_session(
-                session_factory, org_id, session_id, status="failed", summary=str(exc)
+                session_factory,
+                org_id,
+                session_id,
+                tier=tier,
+                status="failed",
+                summary=str(exc),
             )
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
@@ -1701,12 +1771,18 @@ def _print_result(result: dict) -> None:
     approved = result.get("approved_actions", [])
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
+    # Calls a stopped run held back were recorded but never sent (M1-105).
+    not_sent = [
+        tc for tc in tool_calls if str(tc.get("error") or "").endswith(NOT_SENT)
+    ]
 
     print("\n--- Actions ---")
     print(f"Planned:  {len(approved) + len(blocked)}")
     print(f"Approved: {len(approved)}")
     print(f"Blocked:  {len(blocked)}")
-    print(f"Executed: {len(tool_calls)}")
+    print(f"Executed: {len(tool_calls) - len(not_sent)}")
+    if not_sent:
+        print(f"Not sent: {len(not_sent)}")
 
     if blocked:
         print("\nBlocked actions:")
@@ -1719,6 +1795,9 @@ def _print_result(result: dict) -> None:
         print("\nExecuted tool calls:")
         for tc in tool_calls:
             name = tc.get("tool_name", "?")
+            if tc in not_sent:
+                print(f"  - {name} [not sent]")
+                continue
             status = "error" if tc.get("error") else "ok"
             dur = f" ({tc['duration_ms']}ms)" if tc.get("duration_ms") else ""
             print(f"  {'✓' if status == 'ok' else '✗'} {name} [{status}]{dur}")

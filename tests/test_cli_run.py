@@ -570,19 +570,37 @@ def _stop_in_db(db_path, *, expire=True):
         con.close()
 
 
-def _stop_once_asked(db_path):
+def _override_in_db(db_path):
+    """The dashboard's Override to Tier 2: the pending approvals expire and the
+    row goes back to active at Tier 2 for the app to run."""
+    con = sqlite3.connect(db_path, timeout=10)
+    try:
+        con.execute(
+            "UPDATE approval_requests SET status = 'expired' WHERE status = 'pending'"
+        )
+        con.execute("UPDATE sessions SET status = 'active', tier = 2")
+        con.commit()
+    finally:
+        con.close()
+
+
+def _pending_count(db_path):
+    con = sqlite3.connect(db_path, timeout=10)
+    try:
+        return con.execute(
+            "SELECT count(*) FROM approval_requests WHERE status = 'pending'"
+        ).fetchone()[0]
+    finally:
+        con.close()
+
+
+def _stop_once_asked(db_path, act=None):
     def watch():
         for _ in range(400):
             try:
-                con = sqlite3.connect(db_path, timeout=10)
-                try:
-                    pending = con.execute(
-                        "SELECT count(*) FROM approval_requests WHERE status = 'pending'"
-                    ).fetchone()[0]
-                finally:
-                    con.close()
+                pending = _pending_count(db_path)
                 if pending:
-                    _stop_in_db(db_path)
+                    (act or _stop_in_db)(db_path)
                     return
             except sqlite3.OperationalError:
                 pass
@@ -614,6 +632,8 @@ class TestTier1StopWithTheRealGraph:
         on_call=None,
         respond=None,
         skill_text=SKILL_T1,
+        on_connect=None,
+        expect=SystemExit,
     ):
         cfg, url, _org_id = _workspace_config(tmp_path)
         skill = tmp_path / "SKILL.md"
@@ -635,6 +655,8 @@ class TestTier1StopWithTheRealGraph:
 
         @contextlib.asynccontextmanager
         async def fake_connect(config):
+            if on_connect is not None:
+                on_connect(_db_path(url))
             yield object()
 
         async def fake_list_tools(session):
@@ -673,7 +695,7 @@ class TestTier1StopWithTheRealGraph:
         monkeypatch.setattr(cli_module, "mcp_call_tool", fake_call)
         monkeypatch.setattr(cli_module, "STOP_POLL_SECONDS", poll)
         monkeypatch.setattr(llm_module, "AnthropicLLM", lambda **kw: PlanLLM())
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(expect) as exc_info:
             main(
                 [
                     "--config",
@@ -688,7 +710,7 @@ class TestTier1StopWithTheRealGraph:
                     *extra,
                 ]
             )
-        return exc_info.value.code, calls, url
+        return getattr(exc_info.value, "code", None), calls, url
 
     def test_a_stop_during_an_approval_wait_ends_the_run_as_stopped(
         self, tmp_path, monkeypatch, capsys
@@ -755,9 +777,9 @@ class TestTier1StopWithTheRealGraph:
         entries = [e for e in _audit(tmp_path) if e.get("tool_name") == "get_pods"]
         starts = [e for e in entries if e["entry_type"] == "tool_call_start"]
         ends = [e for e in entries if e["entry_type"] == "tool_call_end"]
-        # Every call that started also ended, as not sent.
-        assert len(starts) == len(ends)
-        assert all("not sent" in json.dumps(e.get("result")) for e in ends)
+        # The call that started also ended, as not sent.
+        assert len(starts) == len(ends) == 1
+        assert "not sent" in json.dumps(ends[0].get("result"))
         # The run ends at the stop: verify and summary ask the model nothing.
         plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
         assert self.prompts[plan_at + 1 :] == []
@@ -902,7 +924,9 @@ class TestTier1StopWithTheRealGraph:
         assert records[1]["error"] is None
         assert "[redacted secret]" in json.dumps(records[1]["result"])
         assert "not sent" in records[2]["error"]
-        assert "get_pods [error]" in out
+        # The printout counts only the calls that were sent.
+        assert "Executed: 2" in out and "Not sent: 1" in out
+        assert "get_pods [error]" in out and "get_pods [not sent]" in out
         plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
         assert self.prompts[plan_at + 1 :] == []
         [session] = _sessions(url)
@@ -1008,19 +1032,234 @@ class TestTier1StopWithTheRealGraph:
                 _stop_in_db(db_path, expire=False)
                 time.sleep(0.4)
 
+        out_file = tmp_path / "result.json"
         code, calls, url = self._run(
             tmp_path,
             monkeypatch,
             [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
             on_prompt=stop_while_diagnosing,
             poll=0.05,
+            extra=("--output", str(out_file)),
         )
         out, err = capsys.readouterr()
         assert code == 0, err
         assert "was stopped" in out
         assert any(DIAGNOSE_MARK in p for p in self.prompts)
         assert not any(PLAN_MARK in p for p in self.prompts)
+        # The model request in flight at the stop completed and is kept.
+        assert json.loads(out_file.read_text())["diagnosis"] == "[stub]"
+        assert "--- Diagnosis ---" in out
         assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_an_override_hands_the_session_to_the_app_and_ends_the_run(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # While the first approval waits, the dashboard's Override moves the
+        # session to Tier 2 for the app to run: the CLI asks and sends nothing
+        # more and leaves the row as the Override set it.
+        db_path = str(tmp_path / "cli.db")
+        watcher = _stop_once_asked(db_path, _override_in_db)
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix a",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "shop"},
+                    "justification": "read",
+                },
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "b"},
+                    "justification": "fix b",
+                },
+            ],
+            extra=("--output", str(out_file)),
+        )
+        watcher.join(timeout=5)
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "overridden to Tier 2 from the dashboard" in out
+        assert calls == []
+        [approval] = _approvals(url)
+        assert approval.status == "expired"
+        [session] = _sessions(url)
+        assert (session.status, session.tier, session.ended_at) == ("active", 2, None)
+        data = json.loads(out_file.read_text())
+        assert data["status"] == "stopped"
+        assert [b["block_reason"] for b in data["blocked_actions"]] == [
+            "the session was overridden to Tier 2 during the approval wait",
+            "the session was overridden to Tier 2; the approval was not asked",
+        ]
+        [record] = data["tool_calls"]
+        assert record["tool_parameters"] == {"namespace": "shop"}
+        assert "not sent" in record["error"]
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
+
+    def test_a_stop_just_before_the_request_is_written_is_kept(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The Stop commits after the CLI's own read and before the approval
+        # request is written: the request is not kept, the row stays stopped
+        # and nothing is sent or asked of the model.
+        from backend.db.repos import ApprovalRequestRepo
+
+        db_path = str(tmp_path / "cli.db")
+        real_create = ApprovalRequestRepo.create
+
+        async def stop_then_create(*args, **kwargs):
+            _stop_in_db(db_path)
+            return await real_create(*args, **kwargs)
+
+        monkeypatch.setattr(
+            ApprovalRequestRepo, "create", staticmethod(stop_then_create)
+        )
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "read",
+                },
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                },
+            ],
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        assert calls == []
+        assert _approvals(url) == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+        data = json.loads(out_file.read_text())
+        [blocked] = data["blocked_actions"]
+        assert blocked["block_reason"] == NOT_ASKED
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
+
+    def test_an_interrupted_run_closes_its_row_and_expires_its_approval(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Ctrl-C cancels the run's task (asyncio.run does that on the first
+        # Ctrl-C). Here the task is cancelled while an approval waits.
+        import cli.opsmender as cli_module
+
+        db_path = str(tmp_path / "cli.db")
+        real_run = cli_module._run_incident
+
+        async def cancelled_once_asked(cfg, args):
+            task = asyncio.ensure_future(real_run(cfg, args))
+            for _ in range(400):
+                if task.done():
+                    break
+                try:
+                    if _pending_count(db_path):
+                        break
+                except sqlite3.OperationalError:
+                    pass
+                await asyncio.sleep(0.05)
+            task.cancel()
+            results = await asyncio.gather(task, return_exceptions=True)
+            assert isinstance(results[0], asyncio.CancelledError), results
+            return 130
+
+        monkeypatch.setattr(cli_module, "_run_incident", cancelled_once_asked)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "read",
+                },
+            ],
+        )
+        assert code == 130
+        assert calls == []
+        [approval] = _approvals(url)
+        assert approval.status == "expired"
+        [session] = _sessions(url)
+        assert session.status == "stopped" and session.ended_at is not None
+        assert "interrupted" in session.summary
+
+    def test_a_stop_during_setup_is_read_before_the_first_model_request(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The Stop lands while the CLI connects to the MCP server, before the
+        # graph starts: the model is never asked.
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_connect=lambda db_path: _stop_in_db(db_path, expire=False),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        assert self.prompts == []
+        assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_real_failure_in_a_run_nobody_stopped_still_fails(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        def outage(prompt, db_path):
+            if PLAN_MARK in prompt:
+                raise RuntimeError("model API outage")
+
+        code, calls, url = self._run(tmp_path, monkeypatch, [], on_prompt=outage)
+        out, err = capsys.readouterr()
+        assert code == 1
+        assert "Workflow failed: model API outage" in err
+        [session] = _sessions(url)
+        assert session.status == "failed" and session.ended_at is not None
+        assert "model API outage" in session.summary
+
+    def test_a_failure_after_a_stop_leaves_the_row_stopped(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The run is stopped at the plan, then writing --output fails (its
+        # folder is a file): the failure close must not overwrite the Stop.
+        def stop_at_plan(prompt, db_path):
+            if PLAN_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+
+        blocker = tmp_path / "taken"
+        blocker.write_text("a file, not a folder")
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [],
+            on_prompt=stop_at_plan,
+            extra=("--output", str(blocker / "result.json")),
+        )
+        out, err = capsys.readouterr()
+        assert code == 1
+        assert "Workflow failed" in err
         [session] = _sessions(url)
         assert session.status == "stopped"
 

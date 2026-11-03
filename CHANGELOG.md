@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is: every call keeps its parameters, a call the server rejected shows as
   failed and credential-shaped output stays redacted. An approval due after
   the stop is not asked; its action is blocked with the stop as the reason.
+  A Stop that commits just as an approval is written is kept: the approval
+  is not left pending and the session is not turned back to awaiting
+  approval. A dashboard Override of the run's session ends the run the
+  same way and leaves the session to the app. Ctrl-C closes the row as
+  stopped and expires its pending approval, and the printed summary counts
+  a call the stop held back as not sent.
 - The AI session page opens at the top on a phone. Keeping the event
   stream and the co-pilot chat scrolled to their newest entry used to
   scroll the whole page on narrow screens, where the panels sit one under

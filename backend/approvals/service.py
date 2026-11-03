@@ -8,15 +8,34 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.db.models import ApprovalRequest
+from backend.db.models import ApprovalRequest, Session
 from backend.db.repos import ApprovalRequestRepo, SessionRepo
 from backend.notifications import (
     CATEGORY_APPROVAL,
     emit_to_users,
     org_user_ids_with_roles,
 )
+
+# Statuses a person set by stopping or cancelling the session.
+SESSION_ENDED_BY_A_PERSON = frozenset({"stopped", "cancelled"})
+
+
+def session_end_reason(session: Session | None, tier: int | None = None) -> str | None:
+    """Why a run may no longer act for *session*, or ``None`` while it may.
+
+    A person ended the session (Stop, or a queued session cancelled), or, for
+    a run that drives the session at *tier*, an Override moved it to another
+    tier and the app runs it from there (M1-105)."""
+    if session is None:
+        return None
+    if session.status in SESSION_ENDED_BY_A_PERSON:
+        return f"the session was {session.status}"
+    if tier is not None and int(session.tier) != tier:
+        return f"the session was overridden to Tier {int(session.tier)}"
+    return None
 
 
 def _utcnow() -> datetime:
@@ -35,6 +54,13 @@ def _as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+class ApprovalNotAsked(Exception):
+    """An approval service declined to ask, because the session it belongs to
+    has ended or was overridden (M1-105). No request was left pending. The
+    tier gate and a workflow step block the action with this exception's text
+    as the reason and go on, so what the same step already recorded is kept."""
 
 
 @dataclass
@@ -64,9 +90,14 @@ class ApprovalService:
         status_notifier: Callable[[uuid.UUID, str], None] | None = None,
         now_fn: Callable[[], datetime] = _utcnow,
         sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        session_tier: int | None = None,
     ) -> None:
+        # ``session_tier`` binds the service to a run that drives its session
+        # at that tier (the CLI's): once an Override moves the session to
+        # another tier, the service neither asks nor writes the session.
         self._session_factory = session_factory
         self._org_id = org_id
+        self._session_tier = session_tier
         self._timeout_seconds = timeout_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._publisher = publisher
@@ -93,9 +124,18 @@ class ApprovalService:
                 justification=justification,
                 expires_at=expires_at,
             )
-            await SessionRepo.set_status(
-                db, self._org_id, session_id, status="awaiting_approval"
-            )
+            # One conditional write, so a Stop that committed after the
+            # caller last read the session is never turned back into
+            # awaiting_approval; then nobody is asked (M1-105).
+            if not await self._set_session_status(
+                db, session_id, status="awaiting_approval"
+            ):
+                await db.rollback()
+                session = await SessionRepo.get_by_id(db, self._org_id, session_id)
+                reason = session_end_reason(session, self._session_tier)
+                raise ApprovalNotAsked(
+                    f"{reason or 'the session has ended'}; the approval was not asked"
+                )
             # Notify everyone who can act on it (admins + operators) that a
             # Tier 1 action is waiting. Best-effort; never blocks the approval.
             session = await SessionRepo.get_by_id(db, self._org_id, session_id)
@@ -161,6 +201,13 @@ class ApprovalService:
                             "data": self._request_payload(request),
                         },
                     )
+                    if next_status is None and request.status == "expired":
+                        session = await SessionRepo.get_by_id(
+                            db, self._org_id, session_id
+                        )
+                        ended = session_end_reason(session, self._session_tier)
+                        if ended is not None:
+                            return self._ended_resolution(request, ended)
                     return ApprovalResolution(
                         request=request,
                         block_reason=self._block_reason(request.status),
@@ -170,6 +217,18 @@ class ApprovalService:
                             else None
                         ),
                     )
+
+                # A Stop or an Override expires the pending requests it can
+                # see; one created as it committed is expired here, so the
+                # wait never outlives the session (M1-105). The next pass
+                # reports it (an answer that landed first is kept).
+                session = await SessionRepo.get_by_id(db, self._org_id, session_id)
+                if session_end_reason(session, self._session_tier) is not None:
+                    await ApprovalRequestRepo.resolve(
+                        db, self._org_id, request.id, status="expired"
+                    )
+                    await db.commit()
+                    continue
 
                 if self._now_fn() >= _as_utc(request.expires_at):
                     await ApprovalRequestRepo.resolve(
@@ -205,31 +264,69 @@ class ApprovalService:
 
             await self._sleep_fn(self._poll_interval_seconds)
 
+    async def _set_session_status(
+        self,
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        *,
+        status: str,
+        ended_at: datetime | None = None,
+    ) -> bool:
+        """Write the session's status unless a person ended it or, for a
+        service bound to a tier, an Override moved it. A single conditional
+        UPDATE, so a Stop that commits in between is never overwritten
+        (M1-105). True when the row was written."""
+        values: dict[str, Any] = {"status": status}
+        if ended_at is not None:
+            values["ended_at"] = ended_at
+        stmt = (
+            update(Session)
+            .where(Session.org_id == self._org_id)
+            .where(Session.id == session_id)
+            .where(Session.status.notin_(SESSION_ENDED_BY_A_PERSON))
+            .values(**values)
+        )
+        if self._session_tier is not None:
+            stmt = stmt.where(Session.tier == self._session_tier)
+        result = await db.execute(stmt)
+        return bool(result.rowcount)
+
     async def _sync_session_status(
         self,
         db: AsyncSession,
         request: ApprovalRequest,
-    ) -> str:
+    ) -> str | None:
+        # A person who stopped the session ended it: the approval the stop
+        # expired, or one answered as it stopped, does not bring it back as
+        # timed out or active, and no new status is announced (M1-105).
         if request.status == "expired":
-            await SessionRepo.set_status(
+            written = await self._set_session_status(
                 db,
-                self._org_id,
                 request.session_id,
                 status="timed_out",
                 ended_at=self._now_fn(),
             )
-            return "timed_out"
+            return "timed_out" if written else None
 
         # approved / rejected / redirected all return the session to "active":
         # the workflow keeps running (execute the approved action, skip the
         # rejected one, or loop back to plan with redirect guidance).
-        await SessionRepo.set_status(
-            db, self._org_id, request.session_id, status="active"
+        written = await self._set_session_status(
+            db, request.session_id, status="active"
         )
-        return "active"
+        return "active" if written else None
 
-    def _notify_session_status(self, session_id: uuid.UUID, status: str) -> None:
-        if self._status_notifier is not None:
+    def _ended_resolution(
+        self, request: ApprovalRequest, ended: str
+    ) -> ApprovalResolution:
+        """The resolution of a wait the session's end cut short."""
+        return ApprovalResolution(
+            request=request,
+            block_reason=f"{ended} during the approval wait",
+        )
+
+    def _notify_session_status(self, session_id: uuid.UUID, status: str | None) -> None:
+        if self._status_notifier is not None and status is not None:
             self._status_notifier(session_id, status)
 
     async def _publish(self, session_id: uuid.UUID, event: dict[str, Any]) -> None:

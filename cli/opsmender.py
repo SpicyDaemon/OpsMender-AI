@@ -17,18 +17,28 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
-from backend.approvals import ApprovalService
+from backend.approvals import ApprovalNotAsked, ApprovalService
+from backend.approvals.service import session_end_reason
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.models import Organization
-from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
+from backend.db.models import Session as SessionRow
+from backend.db.repos import (
+    ApprovalRequestRepo,
+    MCPServerRepo,
+    ModelConfigRepo,
+    SessionMessageRepo,
+    SessionRepo,
+)
 from backend.llm import ProviderRegistry
-from backend.mcp.client import connect, list_tools
+from backend.mcp.client import call_tool as mcp_call_tool
+from backend.mcp.client import connect, list_tools, tool_plan_description
 from backend.mcp.pool import MCPServerPool
+from backend.tiers.enforcement import load_skill_for_mcp_server
 from backend.tiers.sandbox import build_sandbox_for_session
 from backend.workflow.rollback import (
     reconstruct_tool_calls,
@@ -834,6 +844,279 @@ def _bootstrap_model_args(
     return args
 
 
+# How often a CLI Tier 1 run reads its session row for a dashboard Stop.
+STOP_POLL_SECONDS = 2.0
+
+
+# Statuses a person (or the app's restart) set by ending the session.
+_SESSION_ENDED = ("stopped", "cancelled")
+
+
+class SessionStoppedError(Exception):
+    """Raised by a stopped CLI run's tool caller and model. Inside
+    ``audited_tool_call`` it becomes the call's end, with the stop as its
+    error; from the model it ends the graph."""
+
+
+STOPPED_MESSAGE = (
+    "The session was stopped (from the dashboard, or by the app's restart); "
+    "nothing more was asked or sent."
+)
+INTERRUPTED_MESSAGE = (
+    "The run was interrupted in the terminal; its pending approvals expired."
+)
+# Why a run interrupted in the terminal (Ctrl-C) may no longer act.
+INTERRUPTED = "the run was interrupted in the terminal"
+# The end of a stopped run's error for a tool call it held back.
+NOT_SENT = "the call was not sent"
+
+
+async def _to_its_end(coro):
+    """Await *coro* to its end, then pass on a cancellation that came
+    meanwhile. The first Ctrl-C cancels the run's task, and on SQLite a query
+    cut off midway keeps its lock, so the run's own close could not commit
+    after it (M1-105)."""
+    task = asyncio.ensure_future(coro)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+
+
+class _SessionStopWatch:
+    """Ends a CLI Tier 1 run when its session is stopped or overridden.
+
+    The run's session row lives in the workspace, so the dashboard's Stop marks
+    it stopped and expires its pending approvals, and its Override moves it to
+    another tier for the app to run, but neither can cancel this process
+    (M1-105). The run reads the row before the graph starts, before and after
+    every approval wait, before every tool call and every
+    ``STOP_POLL_SECONDS`` while the model works. Once a read finds the row
+    stopped or at another tier, nothing more is asked or sent: an approval is
+    not asked and its action is blocked, a tool call is recorded as not sent,
+    and the next model request is refused, which ends the graph. A tool call
+    or a model request already in flight is never cut off; it completes. The
+    graph's state is kept after every step, so the record of a stopped run is
+    the graph's own, as a finished run's is. On a single-process install the
+    app's restart marks every active session stopped, a CLI run's included,
+    and the run honours that the same way. Ctrl-C ends the run the same way
+    without a read, and the graph is cancelled only once the run's row is
+    closed (``halt``)."""
+
+    def __init__(
+        self, session_factory, org_id: uuid.UUID, session_id: str, tier: int
+    ) -> None:
+        self._factory = session_factory
+        self._org_id = org_id
+        self._session_id = uuid.UUID(session_id)
+        self._tier = tier
+        # Why the run may no longer act ("the session was stopped", "the
+        # session was overridden to Tier 2"), once a read found it.
+        self.ended: str | None = None
+        self._task: asyncio.Future | None = None
+        # The calls this run held back, as (tool name, error), so the
+        # printout tells them from a call a server answered with an error.
+        self.held_back: list[tuple[str, str]] = []
+
+    @property
+    def stopped(self) -> bool:
+        return self.ended is not None
+
+    def message(self) -> str:
+        if self.ended is not None and "overridden" in self.ended:
+            return (
+                f"{self.ended[0].upper()}{self.ended[1:]} from the dashboard, and "
+                "the app runs it from here; nothing more was asked or sent."
+            )
+        return STOPPED_MESSAGE
+
+    async def is_stopped(self) -> bool:
+        if self.ended is not None:
+            return True
+        try:
+            row = await _to_its_end(self._read_row())
+        except Exception:
+            return False
+        # A Ctrl-C may have ended the run while the row was read.
+        if self.ended is None:
+            self.ended = session_end_reason(row, self._tier)
+        return self.stopped
+
+    async def _read_row(self):
+        async with self._factory() as db:
+            return await SessionRepo.get_by_id(db, self._org_id, self._session_id)
+
+    def interrupt(self) -> None:
+        """Ctrl-C: nothing more is asked or sent from here."""
+        if self.ended is None:
+            self.ended = INTERRUPTED
+
+    async def halt(self) -> None:
+        """Cancel the graph of an interrupted run, once its row is closed."""
+        if self._task is not None:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+
+    def approvals(self, inner):
+        watch = self
+
+        class _StopAwareApprovals:
+            async def request_and_wait(self, **kwargs):
+                # Once stopped nobody is asked: the gate or the workflow blocks
+                # the action and goes on, so nothing the node recorded is lost.
+                # The service checks again as it writes, for a Stop that lands
+                # in between.
+                if await watch.is_stopped():
+                    raise ApprovalNotAsked(f"{watch.ended}; the approval was not asked")
+                try:
+                    return await inner.request_and_wait(**kwargs)
+                finally:
+                    # Keep the flag current for the model, after the wait and
+                    # when the service found the session ended as it wrote the
+                    # request; an approval granted as the session stopped is
+                    # refused at its tool call.
+                    await watch.is_stopped()
+
+        return _StopAwareApprovals()
+
+    def llm(self, inner):
+        """The model, refusing a new request once the run is stopped. The
+        flag is read, not the row: the poll and the checks keep it current,
+        and the model is called from a worker thread."""
+        watch = self
+
+        class _StopAwareLLM:
+            def __getattr__(self, name):
+                return getattr(inner, name)
+
+            def invoke(self, prompt):
+                if watch.stopped:
+                    raise SessionStoppedError(f"{watch.ended}; the model was not asked")
+                return inner.invoke(prompt)
+
+        return _StopAwareLLM()
+
+    def tool_caller(self, inner):
+        async def call(session, tool_name, params):
+            # audited_tool_call records this as the call's end, so the audit
+            # log pairs the start with a "not sent" end.
+            if await self.is_stopped():
+                held_back = f"{self.ended}; {NOT_SENT}"
+                self.held_back.append((tool_name, held_back))
+                raise SessionStoppedError(held_back)
+            return await inner(session, tool_name, params)
+
+        return call
+
+    async def run(self, graph, initial_state: dict) -> dict:
+        """The graph's result, its status set to stopped when the session was
+        stopped or overridden.
+
+        The graph's state is kept after every step. When the stop ends the
+        graph, the result is the last state it reached: its tool calls are the
+        execute node's records (parameters kept, output redacted, a call the
+        server rejected shown as failed), as in a finished run. The poll only
+        refreshes the stopped flag; the run ends at its next approval, tool
+        call or model request, and a stop that lands after the last of those
+        is found by the final read. So the run never reports a stopped session
+        as completed or failed, and nothing is cut off. A cancellation (Ctrl-C)
+        ends the run without a read; the graph keeps running until ``halt``,
+        so none of its queries is cut off before the run's row is closed."""
+        latest = {"state": initial_state}
+
+        async def follow():
+            # A stop during setup (the model, the MCP connection) is read
+            # before the first model request.
+            if await self.is_stopped():
+                return latest["state"]
+            async for state in graph.astream(initial_state, stream_mode="values"):
+                latest["state"] = state
+            return latest["state"]
+
+        task = asyncio.ensure_future(follow())
+        self._task = task
+        try:
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
+                if done:
+                    break
+                await self.is_stopped()
+        except asyncio.CancelledError:
+            self.interrupt()
+            raise
+        try:
+            result = await task
+        except Exception:
+            if not await self.is_stopped():
+                raise
+            result = latest["state"]
+        if await self.is_stopped():
+            result = {
+                **result,
+                "status": "stopped",
+                "summary": result.get("summary") or self.message(),
+            }
+        return result
+
+
+async def _close_cli_session(
+    session_factory,
+    org_id,
+    session_id: str,
+    *,
+    tier: int,
+    status: str,
+    summary: str | None,
+) -> None:
+    """Close the CLI's Tier 1 session row under the workspace and expire its
+    pending approvals, so nothing is left for a person to approve that no run
+    would act on. A row a person (or the app's restart) already ended, or one
+    an Override gave to the app, is left alone: the update skips a stopped or
+    cancelled row and one at another tier, so it never overwrites the
+    dashboard's Stop or the app's run. A Ctrl-C during the close lets it
+    finish first."""
+    if session_factory is None or org_id is None:
+        return
+
+    async def close() -> None:
+        async with session_factory() as db:
+            closed = await db.execute(
+                update(SessionRow)
+                .where(SessionRow.org_id == org_id)
+                .where(SessionRow.id == uuid.UUID(session_id))
+                .where(SessionRow.status.notin_(_SESSION_ENDED))
+                .where(SessionRow.tier == tier)
+                .values(
+                    status=status, summary=summary, ended_at=datetime.now(timezone.utc)
+                )
+            )
+            if closed.rowcount:
+                for pending in await ApprovalRequestRepo.list_pending(
+                    db, org_id, session_id=uuid.UUID(session_id)
+                ):
+                    await ApprovalRequestRepo.resolve(
+                        db, org_id, pending.id, status="expired"
+                    )
+            await db.commit()
+
+    try:
+        await _to_its_end(close())
+    except Exception:
+        pass  # DB may not have tables (e.g. local SQLite without migrations)
+
+
+async def _workspace_skill(session_factory, org_id, server_name: str):
+    """The skill the workspace gave *server_name*: its own, or the
+    workspace's global skill, as a dashboard session uses; None when the
+    workspace has neither."""
+    async with session_factory() as db:
+        row = await MCPServerRepo.get_by_name(db, org_id, server_name)
+        return await load_skill_for_mcp_server(
+            db, org_id, None if row is None else row.id
+        )
+
+
 async def _resolve_cli_org(db) -> uuid.UUID:
     result = await db.execute(
         select(Organization).order_by(Organization.created_at).limit(1)
@@ -1169,6 +1452,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         print(f"Skill file not found: {skill_path}", file=sys.stderr)
         return 1
     skill_def = load_skill_def(skill_path)
+    # The skill the saved state names: this file, or the workspace's skill
+    # when that governs the run instead (M1-105).
+    skill_source = str(skill_path)
 
     # 2. Determine tier
     tier = args.tier if args.tier is not None else cfg.tiers.get("default", 2)
@@ -1192,28 +1478,88 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         db_engine = None
         session_factory = None
 
+    # The workspace the session, its approvals and the server lookup belong
+    # to (M1-105): the single organization of this instance, when the
+    # database answers. A dry run outside Tier 1 opens no server and writes
+    # no row, so it does not ask.
+    org_id: uuid.UUID | None = None
+    if session_factory is not None and (tier == 1 or not args.dry_run):
+        try:
+            async with session_factory() as db:
+                # Only a workspace that exists: on a fresh SQLite database the
+                # organization is created by the first `opsmender serve`, and a
+                # session written under a placeholder id would be lost to it.
+                org = (
+                    await db.execute(
+                        select(Organization).order_by(Organization.created_at).limit(1)
+                    )
+                ).scalar_one_or_none()
+                org_id = org.id if org is not None else None
+        except Exception:
+            org_id = None
+
     if tier == 1:
-        if session_factory is None:
+        if session_factory is None or org_id is None:
+            if db_engine is not None:
+                await db_engine.dispose()
             print(
-                "Tier 1 approval flow requires a reachable database.",
+                "Tier 1 approval flow requires a reachable database with a "
+                "workspace (start `opsmender serve` once to create it).",
                 file=sys.stderr,
             )
             return 1
-        try:
+        created: list[str] = []
+
+        async def open_row() -> None:
             async with session_factory() as db:
-                db_session = await SessionRepo.create(
+                row = await SessionRepo.create(
                     db,
+                    org_id,
                     tier=tier,
                     model_provider="stub" if args.dry_run else "anthropic",
                     model_id=args.model or "claude-sonnet-4-20250514",
                 )
+                row_id = str(row.id)
+                # The incident is the session's briefing, as for a session the
+                # dashboard starts without an incident: the session page shows
+                # what the run is about, and the app's run after an Override
+                # works on it (M1-105).
+                await SessionMessageRepo.create(
+                    db,
+                    org_id,
+                    session_id=row.id,
+                    role="user",
+                    content=args.incident,
+                    node_context="initial_briefing",
+                )
                 await db.commit()
-                await db.refresh(db_session)
-                session_id = str(db_session.id)
+            created.append(row_id)
+
+        try:
+            await _to_its_end(open_row())
+            session_id = created[0]
             approval_service = ApprovalService(
                 session_factory,
+                org_id=org_id,
                 timeout_seconds=cfg.approvals.timeout_seconds,
+                # The run drives the row at this tier; after an Override the
+                # service neither asks nor writes it (M1-105).
+                session_tier=tier,
             )
+        except asyncio.CancelledError:
+            # Ctrl-C as the row was written: it is closed as interrupted.
+            if created:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    created[0],
+                    tier=tier,
+                    status="stopped",
+                    summary=INTERRUPTED_MESSAGE,
+                )
+            if db_engine is not None:
+                await db_engine.dispose()
+            raise
         except Exception as exc:
             if db_engine is not None:
                 await db_engine.dispose()
@@ -1235,6 +1581,17 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         try:
             llm = AnthropicLLM(**model_kwargs)
         except (ImportError, EnvironmentError) as exc:
+            if tier == 1:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    session_id,
+                    tier=tier,
+                    status="failed",
+                    summary=f"LLM setup failed: {exc}",
+                )
+            if db_engine is not None:
+                await db_engine.dispose()
             print(f"LLM setup failed: {exc}", file=sys.stderr)
             return 1
 
@@ -1248,47 +1605,122 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     # MCPServerPool so DB-backed servers and `.env` fallbacks both work.
     mcp_session = None
     tier0_sandbox = None
-    tier0_plan_tool_names: list[str] | None = None
+    plan_tool_names: list[str] | None = None
+    plan_tool_descriptions: dict[str, str] | None = None
     mcp_ctx = contextlib.AsyncExitStack()
+    stop_watch = None
+    # How far the run got: its session start is in the audit log, and its own
+    # end (the session end and the close) has begun. An interruption or a
+    # failure after that leaves the run's end as it is.
+    started = False
+    finishing = False
 
     try:
         await mcp_ctx.__aenter__()
 
         if not args.dry_run:
             pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
+            # The pool answers from the database only when it knows the
+            # workspace; without it, only the environment fallback is seen.
+            # A workspace server is used only while it is active, as in a
+            # dashboard session.
             if args.mcp_server:
-                server = await pool.get_server(args.mcp_server)
+                server = next(
+                    (
+                        found
+                        for found in await pool.list_servers(org_id, active_only=True)
+                        if found.name == args.mcp_server
+                    ),
+                    None,
+                ) or await pool.get_server(None, args.mcp_server)
                 if server is None:
+                    # The run ends here; a Ctrl-C during the close keeps it.
+                    finishing = True
+                    if tier == 1:
+                        await _close_cli_session(
+                            session_factory,
+                            org_id,
+                            session_id,
+                            tier=tier,
+                            status="failed",
+                            summary=f"MCP server '{args.mcp_server}' not found.",
+                        )
                     print(
-                        f"MCP server '{args.mcp_server}' not found in DB or env.",
+                        f"MCP server '{args.mcp_server}' is not an active server "
+                        "of the workspace or the environment.",
                         file=sys.stderr,
                     )
                     return 1
             else:
-                servers = await pool.list_servers(active_only=True)
+                servers = await pool.list_servers(org_id, active_only=True)
+                if not servers:
+                    # Nothing registered in the workspace: the servers from
+                    # the environment, as the command used before.
+                    servers = await pool.list_servers(None, active_only=True)
                 server = servers[0] if servers else None
+            # The pool hands a server from the environment back as configured,
+            # and a workspace server (even one it found only because the
+            # database failed) as a new config. A workspace server opens
+            # through the pool, which adds the OAuth token an OAuth-connected
+            # server keeps outside its row (refreshing it first), and runs
+            # under the skill the workspace gave it, as in a dashboard
+            # session; a server from the environment opens as configured,
+            # under --skill-file.
+            environment = await pool.list_servers(None, active_only=True)
+            server_org = (
+                None
+                if server is None or any(server is env for env in environment)
+                else org_id
+            )
 
             if server is not None:
                 print(
                     f"Connecting to MCP server: {server.name} ({server.transport})..."
                 )
                 try:
-                    mcp_session = await mcp_ctx.enter_async_context(connect(server))
+                    if server_org is not None:
+                        # The workspace's policy for its server, not the local
+                        # file; a lookup that fails opens nothing.
+                        workspace_skill = await _workspace_skill(
+                            session_factory, server_org, server.name
+                        )
+                        if workspace_skill is not None:
+                            skill_def = workspace_skill
+                            skill_source = f"the workspace's skill for {server.name}"
+                            print(f"Skill:    {skill_source}, in place of {skill_path}")
+                    mcp_session = await mcp_ctx.enter_async_context(
+                        connect(server)
+                        if server_org is None
+                        else pool.connect(server_org, server.name)
+                    )
                     print(f"Connected to {server.name}.\n")
                     if tier == 0:
                         tier0_sandbox = await build_sandbox_for_session(
                             mcp_session, skill_def
                         )
-                        tier0_plan_tool_names = sorted(tier0_sandbox.allowed_tool_names)
+                        plan_tool_names = sorted(tier0_sandbox.allowed_tool_names)
                         print(
                             "Tier 0 sandbox allowlist: "
-                            f"{len(tier0_plan_tool_names)} tool(s) visible to the workflow."
+                            f"{len(plan_tool_names)} tool(s) visible to the workflow."
                         )
-                        if tier0_plan_tool_names:
-                            print(", ".join(tier0_plan_tool_names))
+                        if plan_tool_names:
+                            print(", ".join(plan_tool_names))
                         else:
                             print("(no rollback-safe tools available)")
                         print()
+                    else:
+                        # The plan offers the server's tools, with their
+                        # arguments, as the session runner does (M1-105);
+                        # before, it listed the skill's entries instead.
+                        tools = await list_tools(mcp_session)
+                        plan_tool_names = sorted(tool.name for tool in tools)
+                        plan_tool_descriptions = {
+                            tool.name: tool_plan_description(tool) for tool in tools
+                        }
+                        print(
+                            f"{len(plan_tool_names)} tool(s) offered to the plan "
+                            f"from {server.name}.\n"
+                        )
                 except Exception as exc:
                     print(f"MCP connection failed: {exc}", file=sys.stderr)
                     print("Continuing without MCP (no tool execution).\n")
@@ -1296,6 +1728,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         # 6. Log session start
         audit_logger.log_session_start(session_id, tier)
+        started = True
 
         # 7. Build and invoke the workflow graph.
         # Tier 0 sessions get hard per-node + session wall clocks - see
@@ -1316,6 +1749,15 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 f"{tier0_time_config.max_node_seconds}s per node\n"
             )
 
+        tool_caller = tier0_sandbox.call_tool if tier0_sandbox is not None else None
+        if tier == 1 and approval_service is not None:
+            # The Tier 1 session row is in the workspace: honour a dashboard
+            # Stop (M1-105).
+            stop_watch = _SessionStopWatch(session_factory, org_id, session_id, tier)
+            approval_service = stop_watch.approvals(approval_service)
+            tool_caller = stop_watch.tool_caller(tool_caller or mcp_call_tool)
+            llm = stop_watch.llm(llm)
+
         graph = build_graph(
             tier=tier,
             skill_def=skill_def,
@@ -1324,8 +1766,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             audit_logger=audit_logger if mcp_session else None,
             approval_service=approval_service,
             tier0_time_config=tier0_time_config,
-            plan_tool_names=tier0_plan_tool_names,
-            tool_caller=tier0_sandbox.call_tool if tier0_sandbox is not None else None,
+            plan_tool_names=plan_tool_names,
+            plan_tool_descriptions=plan_tool_descriptions,
+            tool_caller=tool_caller,
         )
 
         print(
@@ -1336,7 +1779,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             "session_id": session_id,
             "tier": tier,
             "incident_description": args.incident,
-            "skill_definition_path": str(skill_path),
+            "skill_definition_path": skill_source,
         }
         if tier0_time_config is not None:
             result = await ainvoke_with_session_timeout(
@@ -1344,6 +1787,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 initial_state,
                 seconds=tier0_time_config.max_session_seconds,
             )
+        elif stop_watch is not None:
+            result = await stop_watch.run(graph, initial_state)
+            if stop_watch.stopped:
+                print(f"{stop_watch.message()}\n")
         else:
             result = await graph.ainvoke(initial_state)
 
@@ -1392,32 +1839,23 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 )
 
         # 9. Log session end
+        finishing = True
         audit_logger.log_session_end(session_id, tier)
-        if session_factory is not None:
-            try:
-                async with session_factory() as db:
-                    final_status = result.get("status", "completed")
-                    if final_status == "timed_out":
-                        await SessionRepo.set_status(
-                            db,
-                            uuid.UUID(session_id),
-                            status="timed_out",
-                            summary=result.get("summary"),
-                            ended_at=datetime.now(timezone.utc),
-                        )
-                    else:
-                        await SessionRepo.end_session(
-                            db,
-                            uuid.UUID(session_id),
-                            status=final_status,
-                            summary=result.get("summary"),
-                        )
-                    await db.commit()
-            except Exception:
-                pass  # DB may not have tables (e.g. local SQLite without migrations)
+        # Only a Tier 1 run has a session row. The close names the workspace
+        # (M1-105): without it the row stayed active after every run. A row
+        # the dashboard stopped or overrode is left as it is.
+        if tier == 1 and result.get("status") != "stopped":
+            await _close_cli_session(
+                session_factory,
+                org_id,
+                session_id,
+                tier=tier,
+                status=result.get("status", "completed"),
+                summary=result.get("summary"),
+            )
 
         # 10. Display results
-        _print_result(result)
+        _print_result(result, stop_watch.held_back if stop_watch is not None else ())
 
         # 11. Optionally write to file
         if args.output:
@@ -1429,20 +1867,42 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         return 0
 
+    except asyncio.CancelledError:
+        # Ctrl-C (M1-105): nothing more is asked or sent, and the row is
+        # closed as stopped with its pending approvals expired before the
+        # graph is cancelled, so none of the graph's queries is cut off before
+        # the close commits.
+        if stop_watch is not None:
+            stop_watch.interrupt()
+        if not finishing and tier == 1:
+            await _close_cli_session(
+                session_factory,
+                org_id,
+                session_id,
+                tier=tier,
+                status="stopped",
+                summary=INTERRUPTED_MESSAGE,
+            )
+        if stop_watch is not None:
+            await stop_watch.halt()
+        # Logged once the graph has stopped, so every entry it wrote comes
+        # before the session's end.
+        if started and not finishing:
+            audit_logger.log_session_end(session_id, tier)
+        raise
     except Exception as exc:
-        audit_logger.log_session_end(session_id, tier)
-        if session_factory is not None:
-            try:
-                async with session_factory() as db:
-                    await SessionRepo.end_session(
-                        db,
-                        uuid.UUID(session_id),
-                        status="failed",
-                        summary=str(exc),
-                    )
-                    await db.commit()
-            except Exception:
-                pass  # DB may not have tables
+        if not finishing:
+            if started:
+                audit_logger.log_session_end(session_id, tier)
+            if tier == 1:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    session_id,
+                    tier=tier,
+                    status="failed",
+                    summary=str(exc),
+                )
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
     finally:
@@ -1451,8 +1911,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             await db_engine.dispose()
 
 
-def _print_result(result: dict) -> None:
-    """Print a human-readable summary of the workflow result."""
+def _print_result(result: dict, held_back=()) -> None:
+    """Print a human-readable summary of the workflow result. *held_back*
+    lists the calls a stopped run refused to send, as (tool name, error)."""
     print("=" * 60)
     print("INCIDENT RESPONSE COMPLETE")
     print("=" * 60)
@@ -1469,12 +1930,30 @@ def _print_result(result: dict) -> None:
     approved = result.get("approved_actions", [])
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
+    # Calls a stopped run held back were recorded but never sent: a record
+    # whose tool and error match one the run refused, each refusal once. A
+    # run sends nothing after its first refusal, so its refusals are the last
+    # records with their tool and error; matching from the end, a call a
+    # server answered with the same text, which came before them, keeps its
+    # own label. A workflow step that was blocked never ran (M1-105).
+    unmatched = list(held_back)
+    not_sent = []
+    for tc in reversed(tool_calls):
+        key = (tc.get("tool_name"), tc.get("error"))
+        if key in unmatched:
+            unmatched.remove(key)
+            not_sent.append(tc)
+    blocked_steps = [
+        tc for tc in tool_calls if tc.get("workflow_step_status") == "blocked"
+    ]
 
     print("\n--- Actions ---")
     print(f"Planned:  {len(approved) + len(blocked)}")
     print(f"Approved: {len(approved)}")
-    print(f"Blocked:  {len(blocked)}")
-    print(f"Executed: {len(tool_calls)}")
+    print(f"Blocked:  {len(blocked) + len(blocked_steps)}")
+    print(f"Executed: {len(tool_calls) - len(not_sent) - len(blocked_steps)}")
+    if not_sent:
+        print(f"Not sent: {len(not_sent)}")
 
     if blocked:
         print("\nBlocked actions:")
@@ -1487,6 +1966,12 @@ def _print_result(result: dict) -> None:
         print("\nExecuted tool calls:")
         for tc in tool_calls:
             name = tc.get("tool_name", "?")
+            if any(tc is held for held in not_sent):
+                print(f"  - {name} [not sent]")
+                continue
+            if tc in blocked_steps:
+                print(f"  ✗ {name} [blocked]: {tc.get('block_reason') or 'unknown'}")
+                continue
             status = "error" if tc.get("error") else "ok"
             dur = f" ({tc['duration_ms']}ms)" if tc.get("duration_ms") else ""
             print(f"  {'✓' if status == 'ok' else '✗'} {name} [{status}]{dur}")

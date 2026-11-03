@@ -30,7 +30,7 @@ from typing import Any
 from backend.agent.llm import LLM
 from backend.agent.state import IncidentState
 from backend.agent.writing_style import PLAIN_WRITING
-from backend.approvals import ApprovalService
+from backend.approvals import ApprovalNotAsked, ApprovalService
 from backend.agent.grounding import (
     GROUNDING_RULE,
     NO_ACTION_VERIFICATION,
@@ -912,11 +912,25 @@ def _build_tier_gate(
             enforcement = tier_check(tool_name, tier, skill_def)
 
             if enforcement.requires_approval:
-                resolution = await approval_service.request_and_wait(
-                    session_id=session_id,
-                    action=action,
-                    justification=action.get("justification"),
-                )
+                try:
+                    resolution = await approval_service.request_and_wait(
+                        session_id=session_id,
+                        action=action,
+                        justification=action.get("justification"),
+                    )
+                except ApprovalNotAsked as exc:
+                    # The session ended, so nobody was asked: the action is
+                    # blocked and the rest of the plan is still gated.
+                    blocked.append(
+                        {
+                            **action,
+                            "block_reason": str(exc),
+                            "classification": enforcement.classification,
+                        }
+                    )
+                    if audit is not None:
+                        await audit(str(session_id), blocked[-1])
+                    continue
                 req_status = resolution.request.status
                 approval_requests.append(
                     {

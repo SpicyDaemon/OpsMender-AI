@@ -27,7 +27,12 @@ from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.models import Organization
 from backend.db.models import Session as SessionRow
-from backend.db.repos import ApprovalRequestRepo, ModelConfigRepo, SessionRepo
+from backend.db.repos import (
+    ApprovalRequestRepo,
+    ModelConfigRepo,
+    SessionMessageRepo,
+    SessionRepo,
+)
 from backend.llm import ProviderRegistry
 from backend.mcp.client import call_tool as mcp_call_tool
 from backend.mcp.client import connect, list_tools, tool_plan_description
@@ -858,8 +863,23 @@ STOPPED_MESSAGE = (
 INTERRUPTED_MESSAGE = (
     "The run was interrupted in the terminal; its pending approvals expired."
 )
+# Why a run interrupted in the terminal (Ctrl-C) may no longer act.
+INTERRUPTED = "the run was interrupted in the terminal"
 # The end of a stopped run's error for a tool call it held back.
 NOT_SENT = "the call was not sent"
+
+
+async def _to_its_end(coro):
+    """Await *coro* to its end, then pass on a cancellation that came
+    meanwhile. The first Ctrl-C cancels the run's task, and on SQLite a query
+    cut off midway keeps its lock, so the run's own close could not commit
+    after it (M1-105)."""
+    task = asyncio.ensure_future(coro)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await asyncio.gather(task, return_exceptions=True)
+        raise
 
 
 class _SessionStopWatch:
@@ -878,7 +898,9 @@ class _SessionStopWatch:
     graph's state is kept after every step, so the record of a stopped run is
     the graph's own, as a finished run's is. On a single-process install the
     app's restart marks every active session stopped, a CLI run's included,
-    and the run honours that the same way."""
+    and the run honours that the same way. Ctrl-C ends the run the same way
+    without a read, and the graph is cancelled only once the run's row is
+    closed (``halt``)."""
 
     def __init__(
         self, session_factory, org_id: uuid.UUID, session_id: str, tier: int
@@ -890,6 +912,7 @@ class _SessionStopWatch:
         # Why the run may no longer act ("the session was stopped", "the
         # session was overridden to Tier 2"), once a read found it.
         self.ended: str | None = None
+        self._task: asyncio.Future | None = None
 
     @property
     def stopped(self) -> bool:
@@ -907,12 +930,28 @@ class _SessionStopWatch:
         if self.ended is not None:
             return True
         try:
-            async with self._factory() as db:
-                row = await SessionRepo.get_by_id(db, self._org_id, self._session_id)
+            row = await _to_its_end(self._read_row())
         except Exception:
             return False
-        self.ended = session_end_reason(row, self._tier)
+        # A Ctrl-C may have ended the run while the row was read.
+        if self.ended is None:
+            self.ended = session_end_reason(row, self._tier)
         return self.stopped
+
+    async def _read_row(self):
+        async with self._factory() as db:
+            return await SessionRepo.get_by_id(db, self._org_id, self._session_id)
+
+    def interrupt(self) -> None:
+        """Ctrl-C: nothing more is asked or sent from here."""
+        if self.ended is None:
+            self.ended = INTERRUPTED
+
+    async def halt(self) -> None:
+        """Cancel the graph of an interrupted run, once its row is closed."""
+        if self._task is not None:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
 
     def approvals(self, inner):
         watch = self
@@ -925,11 +964,14 @@ class _SessionStopWatch:
                 # in between.
                 if await watch.is_stopped():
                     raise ApprovalNotAsked(f"{watch.ended}; the approval was not asked")
-                resolution = await inner.request_and_wait(**kwargs)
-                # Keep the flag current for the model; an approval granted as
-                # the session stopped is refused at its tool call.
-                await watch.is_stopped()
-                return resolution
+                try:
+                    return await inner.request_and_wait(**kwargs)
+                finally:
+                    # Keep the flag current for the model, after the wait and
+                    # when the service found the session ended as it wrote the
+                    # request; an approval granted as the session stopped is
+                    # refused at its tool call.
+                    await watch.is_stopped()
 
         return _StopAwareApprovals()
 
@@ -972,7 +1014,8 @@ class _SessionStopWatch:
         call or model request, and a stop that lands after the last of those
         is found by the final read. So the run never reports a stopped session
         as completed or failed, and nothing is cut off. A cancellation (Ctrl-C)
-        cancels the graph too, so nothing more is sent while the run closes."""
+        ends the run without a read; the graph keeps running until ``halt``,
+        so none of its queries is cut off before the run's row is closed."""
         latest = {"state": initial_state}
 
         async def follow():
@@ -985,6 +1028,7 @@ class _SessionStopWatch:
             return latest["state"]
 
         task = asyncio.ensure_future(follow())
+        self._task = task
         try:
             while True:
                 done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
@@ -992,8 +1036,7 @@ class _SessionStopWatch:
                     break
                 await self.is_stopped()
         except asyncio.CancelledError:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+            self.interrupt()
             raise
         try:
             result = await task
@@ -1018,16 +1061,18 @@ async def _close_cli_session(
     tier: int,
     status: str,
     summary: str | None,
-    expire_approvals: bool = False,
 ) -> None:
-    """Close the CLI's Tier 1 session row under the workspace, unless a person
-    (or the app's restart) already ended it or an Override gave it to the app:
-    the update skips a stopped or cancelled row and one at another tier, so it
-    never overwrites the dashboard's Stop or the app's run. With
-    ``expire_approvals`` the row's pending approvals expire with it."""
+    """Close the CLI's Tier 1 session row under the workspace and expire its
+    pending approvals, so nothing is left for a person to approve that no run
+    would act on. A row a person (or the app's restart) already ended, or one
+    an Override gave to the app, is left alone: the update skips a stopped or
+    cancelled row and one at another tier, so it never overwrites the
+    dashboard's Stop or the app's run. A Ctrl-C during the close lets it
+    finish first."""
     if session_factory is None or org_id is None:
         return
-    try:
+
+    async def close() -> None:
         async with session_factory() as db:
             closed = await db.execute(
                 update(SessionRow)
@@ -1039,7 +1084,7 @@ async def _close_cli_session(
                     status=status, summary=summary, ended_at=datetime.now(timezone.utc)
                 )
             )
-            if expire_approvals and closed.rowcount:
+            if closed.rowcount:
                 for pending in await ApprovalRequestRepo.list_pending(
                     db, org_id, session_id=uuid.UUID(session_id)
                 ):
@@ -1047,6 +1092,9 @@ async def _close_cli_session(
                         db, org_id, pending.id, status="expired"
                     )
             await db.commit()
+
+    try:
+        await _to_its_end(close())
     except Exception:
         pass  # DB may not have tables (e.g. local SQLite without migrations)
 
@@ -1438,18 +1486,36 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        try:
+        created: list[str] = []
+
+        async def open_row() -> None:
             async with session_factory() as db:
-                db_session = await SessionRepo.create(
+                row = await SessionRepo.create(
                     db,
                     org_id,
                     tier=tier,
                     model_provider="stub" if args.dry_run else "anthropic",
                     model_id=args.model or "claude-sonnet-4-20250514",
                 )
+                row_id = str(row.id)
+                # The incident is the session's briefing, as for a session the
+                # dashboard starts without an incident: the session page shows
+                # what the run is about, and the app's run after an Override
+                # works on it (M1-105).
+                await SessionMessageRepo.create(
+                    db,
+                    org_id,
+                    session_id=row.id,
+                    role="user",
+                    content=args.incident,
+                    node_context="initial_briefing",
+                )
                 await db.commit()
-                await db.refresh(db_session)
-                session_id = str(db_session.id)
+            created.append(row_id)
+
+        try:
+            await _to_its_end(open_row())
+            session_id = created[0]
             approval_service = ApprovalService(
                 session_factory,
                 org_id=org_id,
@@ -1458,6 +1524,20 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 # service neither asks nor writes it (M1-105).
                 session_tier=tier,
             )
+        except asyncio.CancelledError:
+            # Ctrl-C as the row was written: it is closed as interrupted.
+            if created:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    created[0],
+                    tier=tier,
+                    status="stopped",
+                    summary=INTERRUPTED_MESSAGE,
+                )
+            if db_engine is not None:
+                await db_engine.dispose()
+            raise
         except Exception as exc:
             if db_engine is not None:
                 await db_engine.dispose()
@@ -1506,6 +1586,12 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
     plan_tool_names: list[str] | None = None
     plan_tool_descriptions: dict[str, str] | None = None
     mcp_ctx = contextlib.AsyncExitStack()
+    stop_watch = None
+    # How far the run got: its session start is in the audit log, and its own
+    # end (the session end and the close) has begun. An interruption or a
+    # failure after that leaves the run's end as it is.
+    started = False
+    finishing = False
 
     try:
         await mcp_ctx.__aenter__()
@@ -1514,6 +1600,11 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             pool = MCPServerPool(session_factory, env_fallback=cfg.mcp_servers)
             # The pool answers from the database only when it knows the
             # workspace; without it, only the environment fallback is seen.
+            # A server the workspace registered opens through the pool, which
+            # adds the OAuth token an OAuth-connected server keeps outside its
+            # row (refreshing it first), as the session runner does; a server
+            # from the environment opens as configured.
+            server_org = org_id
             if args.mcp_server:
                 server = await pool.get_server(org_id, args.mcp_server)
                 if server is None:
@@ -1531,12 +1622,16 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                         file=sys.stderr,
                     )
                     return 1
+                # The pool hands an environment server back as configured.
+                if server is await pool.get_server(None, args.mcp_server):
+                    server_org = None
             else:
                 servers = await pool.list_servers(org_id, active_only=True)
                 if not servers:
                     # Nothing registered in the workspace: the servers from
                     # the environment, as the command used before.
                     servers = await pool.list_servers(None, active_only=True)
+                    server_org = None
                 server = servers[0] if servers else None
 
             if server is not None:
@@ -1544,7 +1639,11 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                     f"Connecting to MCP server: {server.name} ({server.transport})..."
                 )
                 try:
-                    mcp_session = await mcp_ctx.enter_async_context(connect(server))
+                    mcp_session = await mcp_ctx.enter_async_context(
+                        connect(server)
+                        if server_org is None
+                        else pool.connect(server_org, server.name)
+                    )
                     print(f"Connected to {server.name}.\n")
                     if tier == 0:
                         tier0_sandbox = await build_sandbox_for_session(
@@ -1580,6 +1679,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
         # 6. Log session start
         audit_logger.log_session_start(session_id, tier)
+        started = True
 
         # 7. Build and invoke the workflow graph.
         # Tier 0 sessions get hard per-node + session wall clocks - see
@@ -1601,7 +1701,6 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             )
 
         tool_caller = tier0_sandbox.call_tool if tier0_sandbox is not None else None
-        stop_watch = None
         if tier == 1 and approval_service is not None:
             # The Tier 1 session row is in the workspace: honour a dashboard
             # Stop (M1-105).
@@ -1691,6 +1790,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 )
 
         # 9. Log session end
+        finishing = True
         audit_logger.log_session_end(session_id, tier)
         # Only a Tier 1 run has a session row. The close names the workspace
         # (M1-105): without it the row stayed active after every run. A row
@@ -1719,32 +1819,40 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         return 0
 
     except asyncio.CancelledError:
-        # Ctrl-C: the row is closed as stopped and its pending approvals
-        # expire, so nothing is left for a person to approve that no run
-        # would act on (M1-105).
-        audit_logger.log_session_end(session_id, tier)
-        if tier == 1:
-            await _close_cli_session(
-                session_factory,
-                org_id,
-                session_id,
-                tier=tier,
-                status="stopped",
-                summary=INTERRUPTED_MESSAGE,
-                expire_approvals=True,
-            )
+        # Ctrl-C (M1-105): nothing more is asked or sent, and the row is
+        # closed as stopped with its pending approvals expired before the
+        # graph is cancelled, so none of the graph's queries is cut off before
+        # the close commits.
+        if stop_watch is not None:
+            stop_watch.interrupt()
+        if not finishing:
+            if started:
+                audit_logger.log_session_end(session_id, tier)
+            if tier == 1:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    session_id,
+                    tier=tier,
+                    status="stopped",
+                    summary=INTERRUPTED_MESSAGE,
+                )
+        if stop_watch is not None:
+            await stop_watch.halt()
         raise
     except Exception as exc:
-        audit_logger.log_session_end(session_id, tier)
-        if tier == 1:
-            await _close_cli_session(
-                session_factory,
-                org_id,
-                session_id,
-                tier=tier,
-                status="failed",
-                summary=str(exc),
-            )
+        if not finishing:
+            if started:
+                audit_logger.log_session_end(session_id, tier)
+            if tier == 1:
+                await _close_cli_session(
+                    session_factory,
+                    org_id,
+                    session_id,
+                    tier=tier,
+                    status="failed",
+                    summary=str(exc),
+                )
         print(f"\nWorkflow failed: {exc}", file=sys.stderr)
         return 1
     finally:
@@ -1771,16 +1879,20 @@ def _print_result(result: dict) -> None:
     approved = result.get("approved_actions", [])
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
-    # Calls a stopped run held back were recorded but never sent (M1-105).
+    # Calls a stopped run held back were recorded but never sent, and a
+    # workflow step that was blocked never ran (M1-105).
     not_sent = [
         tc for tc in tool_calls if str(tc.get("error") or "").endswith(NOT_SENT)
+    ]
+    blocked_steps = [
+        tc for tc in tool_calls if tc.get("workflow_step_status") == "blocked"
     ]
 
     print("\n--- Actions ---")
     print(f"Planned:  {len(approved) + len(blocked)}")
     print(f"Approved: {len(approved)}")
-    print(f"Blocked:  {len(blocked)}")
-    print(f"Executed: {len(tool_calls) - len(not_sent)}")
+    print(f"Blocked:  {len(blocked) + len(blocked_steps)}")
+    print(f"Executed: {len(tool_calls) - len(not_sent) - len(blocked_steps)}")
     if not_sent:
         print(f"Not sent: {len(not_sent)}")
 
@@ -1797,6 +1909,9 @@ def _print_result(result: dict) -> None:
             name = tc.get("tool_name", "?")
             if tc in not_sent:
                 print(f"  - {name} [not sent]")
+                continue
+            if tc in blocked_steps:
+                print(f"  ✗ {name} [blocked]: {tc.get('block_reason') or 'unknown'}")
                 continue
             status = "error" if tc.get("error") else "ok"
             dur = f" ({tc['duration_ms']}ms)" if tc.get("duration_ms") else ""

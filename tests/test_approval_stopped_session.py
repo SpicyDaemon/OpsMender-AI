@@ -184,6 +184,54 @@ async def test_a_stop_that_missed_the_request_still_ends_the_wait(factory):
     assert row.status == "stopped"
 
 
+async def test_an_override_that_missed_the_request_still_ends_the_wait(factory):
+    # The Override committed as the request was written, so it expired
+    # nothing: a service bound to Tier 1 sees the row at Tier 2, expires the
+    # request itself and returns long before the approval would time out.
+    org_id, session_id = await _session(factory)
+    service = ApprovalService(
+        factory,
+        org_id=org_id,
+        timeout_seconds=900,
+        poll_interval_seconds=0.02,
+        session_tier=1,
+    )
+
+    async def override_row_only():
+        while True:
+            async with factory() as db:
+                pending = (await db.execute(select(ApprovalRequest))).scalars().all()
+            if pending:
+                break
+            await asyncio.sleep(0.02)
+        async with factory() as db:
+            await db.execute(
+                Session.__table__.update()
+                .where(Session.id == session_id)
+                .values(status="active", tier=2)
+            )
+            await db.commit()
+
+    overrider = asyncio.ensure_future(override_row_only())
+    resolution = await asyncio.wait_for(
+        service.request_and_wait(
+            session_id=session_id,
+            action={"tool_name": "restart_pod", "tool_parameters": {}},
+        ),
+        timeout=10,
+    )
+    await overrider
+
+    assert resolution.request.status == "expired"
+    assert (
+        resolution.block_reason
+        == "the session was overridden to Tier 2 during the approval wait"
+    )
+    async with factory() as db:
+        row = await SessionRepo.get_by_id(db, org_id, session_id)
+    assert (row.status, row.tier) == ("active", 2)
+
+
 async def test_a_service_bound_to_a_tier_leaves_an_overridden_session_alone(factory):
     # The dashboard's Override moves the session to Tier 2 for the app to run.
     # A service that drives it at Tier 1 (the CLI's) ends its wait, writes

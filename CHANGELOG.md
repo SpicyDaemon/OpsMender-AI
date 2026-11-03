@@ -34,9 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A Stop that commits just as an approval is written is kept: the approval
   is not left pending and the session is not turned back to awaiting
   approval. A dashboard Override of the run's session ends the run the
-  same way and leaves the session to the app. Ctrl-C closes the row as
-  stopped and expires its pending approval, and the printed summary counts
-  a call the stop held back as not sent.
+  same way and leaves the session to the app, whose run works on the
+  incident: the CLI records it as the session's briefing, as the dashboard
+  does for a session started without an incident, so the session page
+  shows it too. Ctrl-C closes the row as stopped and expires its pending
+  approval, also when it lands during a database query, and a run that
+  fails expires its approval the same way. The printed summary counts a
+  call the stop held back as not sent and a blocked workflow step as
+  blocked. A server the workspace registered is opened through the pool,
+  so an OAuth-connected server gets its token, as in a dashboard session.
 - The AI session page opens at the top on a phone. Keeping the event
   stream and the co-pilot chat scrolled to their newest entry used to
   scroll the whole page on narrow screens, where the panels sit one under

@@ -6,11 +6,13 @@ import asyncio
 import contextlib
 import json
 import sqlite3
+import sys
 import threading
 import time
 import uuid
 from types import SimpleNamespace
 
+import aiosqlite
 import pytest
 from mcp.types import CallToolResult, TextContent
 from sqlalchemy import select
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from backend.agent.llm import StubLLM
 from backend.db.bootstrap import initialize_sqlite_schema
 from backend.db.models import ApprovalRequest, Organization, Session
+from backend.db.repos import ApprovalRequestRepo, SessionRepo
 from backend.mcp.client import tool_plan_description
 from cli.opsmender import main, _parse_args
 
@@ -314,10 +317,15 @@ class TestRunWithWorkspace:
                 seen["pool_org_id"] = org_id
                 return server
 
+            @contextlib.asynccontextmanager
+            async def connect(self, org_id, name):
+                seen["opened"] = (org_id, name)
+                yield object()
+
         @contextlib.asynccontextmanager
         async def fake_connect(config):
-            assert config is server
-            yield object()
+            raise AssertionError("a workspace server opens through the pool")
+            yield
 
         async def fake_list_tools(session):
             seen["tools"] = [
@@ -367,8 +375,10 @@ class TestRunWithWorkspace:
 
         out, err = capsys.readouterr()
         assert exc_info.value.code == 0, err
-        # The server was looked up under the workspace, not the fallback.
+        # The server was looked up under the workspace, not the fallback, and
+        # opened through the pool, which adds an OAuth-connected server's token.
         assert seen["pool_org_id"] == org_id
+        assert seen["opened"] == (org_id, "lab")
         graph = seen["graph"]
         assert graph["tier"] == 2
         assert graph["plan_tool_names"] == ["get_pods", "restart_pod"]
@@ -430,6 +440,89 @@ class TestRunWithWorkspace:
         assert exc_info.value.code == 0, err
         assert asked == [org_id, None]
         assert "Connecting to MCP server: env-lab" in out
+
+    def test_a_workspace_oauth_server_opens_with_its_token(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """An OAuth-connected server keeps its token outside its row, and only
+        the pool adds it. Before, the run opened the row as it was, with no
+        token, so the server refused it; and a server named from the
+        environment still opens as configured."""
+        from datetime import datetime, timedelta, timezone
+
+        import backend.agent.graph as graph_module
+        import backend.agent.llm as llm_module
+        import backend.mcp.pool as pool_module
+        import cli.opsmender as cli_module
+        from backend.db.repos import MCPServerOAuthTokenRepo, MCPServerRepo
+
+        monkeypatch.setenv("OPSMENDER_SECRET_KEY", "cli-test-secret-key-0123456789")
+        cfg, url, org_id = _workspace_config(tmp_path)
+
+        async def register():
+            engine = create_async_engine(url)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as db:
+                row = await MCPServerRepo.create(
+                    db,
+                    org_id,
+                    name="atlassian",
+                    transport="http",
+                    url="https://mcp.example.test/mcp",
+                    token=None,
+                    is_active=True,
+                )
+                await MCPServerOAuthTokenRepo.upsert(
+                    db,
+                    org_id,
+                    mcp_server_id=row.id,
+                    access_token="oauth-access",
+                    refresh_token=None,
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+                )
+                await db.commit()
+            await engine.dispose()
+
+        asyncio.run(register())
+        env_servers = [{"name": "k8s", "transport": "stdio", "command": "k8s-mcp"}]
+        cfg.write_text(
+            cfg.read_text() + f"OPSMENDER_MCP_SERVERS_JSON={json.dumps(env_servers)}\n"
+        )
+        opened: list = []
+
+        @contextlib.asynccontextmanager
+        async def fake_connect(config):
+            opened.append((config.name, config.token))
+            yield object()
+
+        async def fake_list_tools(session):
+            return [SimpleNamespace(name="get_pods", description="", inputSchema={})]
+
+        class FakeGraph:
+            async def ainvoke(self, state, *args, **kwargs):
+                return {"status": "completed", "summary": "ok"}
+
+        monkeypatch.setattr(pool_module, "mcp_connect", fake_connect)
+        monkeypatch.setattr(cli_module, "connect", fake_connect)
+        monkeypatch.setattr(cli_module, "list_tools", fake_list_tools)
+        monkeypatch.setattr(graph_module, "build_graph", lambda **kw: FakeGraph())
+        monkeypatch.setattr(llm_module, "AnthropicLLM", lambda **kw: StubLLM())
+
+        for extra, expected in (
+            ([], ("atlassian", "oauth-access")),
+            (["--mcp-server", "atlassian"], ("atlassian", "oauth-access")),
+            (["--mcp-server", "k8s"], ("k8s", None)),
+        ):
+            opened.clear()
+            with pytest.raises(SystemExit) as exc_info:
+                main(
+                    ["--config", str(cfg), "run", "--incident", "x", "--tier", "2"]
+                    + extra
+                )
+            out, err = capsys.readouterr()
+            assert exc_info.value.code == 0, err
+            assert opened == [expected], extra
+            assert "MCP connection failed" not in err
 
     def test_tier_1_refuses_a_database_without_a_workspace(self, tmp_path, capsys):
         """A fresh SQLite database has the schema but no organization until
@@ -613,7 +706,101 @@ def _stop_once_asked(db_path, act=None):
 
 def _audit(tmp_path):
     path = tmp_path / "audit.jsonl"
+    if not path.exists():
+        return []
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _app_run_description(url, session):
+    """The incident description the app's run of *session* starts from."""
+    from backend.api.session_runner import (
+        _build_incident_description,
+        _resolve_incident_and_messages,
+    )
+
+    async def build():
+        engine = create_async_engine(url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        incident, messages = await _resolve_incident_and_messages(factory, session)
+        await engine.dispose()
+        return _build_incident_description(incident, messages)
+
+    return asyncio.run(build())
+
+
+def _in_frames(*names):
+    """Whether the running code was called from a function named *names*."""
+    frame = sys._getframe(1)
+    while frame is not None:
+        if frame.f_code.co_name in names:
+            return True
+        frame = frame.f_back
+    return False
+
+
+def _ctrl_c(monkeypatch, state):
+    """Run the CLI's run in a task the test cancels as asyncio.run does on
+    the first Ctrl-C; ``state["main"]`` is that task."""
+    import cli.opsmender as cli_module
+
+    real_run = cli_module._run_incident
+
+    async def interruptible(cfg, args):
+        task = asyncio.ensure_future(real_run(cfg, args))
+        state["main"] = task
+        results = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(results[0], asyncio.CancelledError), results
+        return 130
+
+    monkeypatch.setattr(cli_module, "_run_incident", interruptible)
+
+
+def test_the_close_leaves_a_stopped_or_overridden_row_alone(tmp_path):
+    # The CLI's close skips a row the dashboard stopped and one an Override
+    # gave to the app at another tier, and leaves the approvals of the app's
+    # run alone.
+    import cli.opsmender as cli_module
+    from datetime import datetime, timedelta, timezone
+
+    cfg, url, org_id = _workspace_config(tmp_path)
+
+    async def scenario():
+        engine = create_async_engine(url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as db:
+            stopped = await SessionRepo.create(db, org_id, tier=1, status="stopped")
+            overridden = await SessionRepo.create(db, org_id, tier=2)
+            await ApprovalRequestRepo.create(
+                db,
+                org_id,
+                session_id=overridden.id,
+                action={"tool_name": "restart_pod", "tool_parameters": {}},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+        for row in (stopped, overridden):
+            await cli_module._close_cli_session(
+                factory,
+                org_id,
+                str(row.id),
+                tier=1,
+                status="failed",
+                summary="the CLI failed",
+            )
+        async with factory() as db:
+            rows = {r.id: r for r in (await db.execute(select(Session))).scalars()}
+            approvals = (await db.execute(select(ApprovalRequest))).scalars().all()
+        await engine.dispose()
+        return rows[stopped.id], rows[overridden.id], approvals
+
+    stopped, overridden, approvals = asyncio.run(scenario())
+    assert (stopped.status, stopped.ended_at) == ("stopped", None)
+    assert (overridden.status, overridden.tier, overridden.ended_at) == (
+        "active",
+        2,
+        None,
+    )
+    assert [a.status for a in approvals] == ["pending"]
 
 
 class TestTier1StopWithTheRealGraph:
@@ -634,6 +821,7 @@ class TestTier1StopWithTheRealGraph:
         skill_text=SKILL_T1,
         on_connect=None,
         expect=SystemExit,
+        incident="x",
     ):
         cfg, url, _org_id = _workspace_config(tmp_path)
         skill = tmp_path / "SKILL.md"
@@ -642,6 +830,14 @@ class TestTier1StopWithTheRealGraph:
         prompts: list[str] = []
         self.prompts = prompts
         server = SimpleNamespace(name="lab", transport="http")
+
+        @contextlib.asynccontextmanager
+        async def fake_connect(*args):
+            if on_connect is not None:
+                on_connect(_db_path(url))
+            # A cancel that on_connect asks for lands here, inside the connect.
+            await asyncio.sleep(0)
+            yield object()
 
         class FakePool:
             def __init__(self, session_factory, env_fallback=None):
@@ -653,11 +849,8 @@ class TestTier1StopWithTheRealGraph:
             async def get_server(self, org_id=None, name=None):
                 return server if name == "lab" else None
 
-        @contextlib.asynccontextmanager
-        async def fake_connect(config):
-            if on_connect is not None:
-                on_connect(_db_path(url))
-            yield object()
+            def connect(self, org_id, name):
+                return fake_connect(org_id, name)
 
         async def fake_list_tools(session):
             return [
@@ -702,7 +895,7 @@ class TestTier1StopWithTheRealGraph:
                     str(cfg),
                     "run",
                     "--incident",
-                    "x",
+                    incident,
                     "--tier",
                     "1",
                     "--skill-file",
@@ -1018,6 +1211,10 @@ class TestTier1StopWithTheRealGraph:
         assert data["tool_calls"][0]["tool_parameters"] == {"namespace": "shop"}
         assert data["tool_calls"][1]["block_reason"] == NOT_ASKED
         assert "not sent" in data["tool_calls"][2]["error"]
+        # The printout shows the blocked step as blocked, not as run.
+        assert "Executed: 1" in out and "Not sent: 1" in out
+        assert f"✗ restart_pod [blocked]: {NOT_ASKED}" in out
+        assert "✓ restart_pod" not in out
         [session] = _sessions(url)
         assert session.status == "stopped"
 
@@ -1083,6 +1280,7 @@ class TestTier1StopWithTheRealGraph:
                 },
             ],
             extra=("--output", str(out_file)),
+            incident="checkout pods crashlooping in shop",
         )
         watcher.join(timeout=5)
         out, err = capsys.readouterr()
@@ -1093,6 +1291,11 @@ class TestTier1StopWithTheRealGraph:
         assert approval.status == "expired"
         [session] = _sessions(url)
         assert (session.status, session.tier, session.ended_at) == ("active", 2, None)
+        # The app's run works on the CLI's incident, which is the session's
+        # briefing; before, the app's run had no incident at all.
+        assert "checkout pods crashlooping in shop" in _app_run_description(
+            url, session
+        )
         data = json.loads(out_file.read_text())
         assert data["status"] == "stopped"
         assert [b["block_reason"] for b in data["blocked_actions"]] == [
@@ -1204,6 +1407,215 @@ class TestTier1StopWithTheRealGraph:
         [session] = _sessions(url)
         assert session.status == "stopped" and session.ended_at is not None
         assert "interrupted" in session.summary
+
+    @pytest.mark.parametrize("query", ["approval_wait", "stop_poll"])
+    def test_a_ctrl_c_during_a_query_still_closes_the_row(
+        self, tmp_path, monkeypatch, capsys, query
+    ):
+        # Ctrl-C lands while a query runs: the approval wait's read of its
+        # request, or the stop watch's own read of the row. On SQLite a query
+        # cut off midway keeps its lock, so the close could not commit after
+        # it, and the row stayed awaiting approval with its approval pending.
+        db_path = str(tmp_path / "cli.db")
+        state: dict = {"main": None, "fired": False}
+        if query == "approval_wait":
+            table, callers = "FROM APPROVAL_REQUESTS", ("request_and_wait",)
+        else:
+            table, callers = "FROM SESSIONS", ("is_stopped", "_read_row")
+        real_execute = aiosqlite.Cursor.execute
+
+        async def execute(cursor, sql, parameters=None):
+            if (
+                not state["fired"]
+                and state["main"] is not None
+                and sql.lstrip().upper().startswith("SELECT")
+                and table in sql.upper()
+                and _in_frames(*callers)
+                and _pending_count(db_path)
+            ):
+                state["fired"] = True
+                state["main"].cancel()
+            return await real_execute(cursor, sql, parameters)
+
+        monkeypatch.setattr(aiosqlite.Cursor, "execute", execute)
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {},
+                    "justification": "read",
+                },
+            ],
+            poll=0.05 if query == "stop_poll" else 60.0,
+        )
+        assert state["fired"]
+        assert code == 130
+        assert calls == []
+        [approval] = _approvals(url)
+        assert approval.status == "expired"
+        [session] = _sessions(url)
+        assert session.status == "stopped" and "interrupted" in session.summary
+
+    def test_a_ctrl_c_as_the_run_closes_keeps_its_end(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Ctrl-C lands as the finished run closes its row: the close completes,
+        # the row keeps its own end, and the audit log has one session end.
+        import cli.opsmender as cli_module
+
+        state: dict = {"main": None}
+        real_close = cli_module._close_cli_session
+
+        async def close_as_ctrl_c_lands(*args, **kwargs):
+            if kwargs.get("status") == "completed":
+                state["main"].cancel()
+            await real_close(*args, **kwargs)
+
+        monkeypatch.setattr(cli_module, "_close_cli_session", close_as_ctrl_c_lands)
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+        )
+        assert code == 130
+        assert calls == ["get_pods"]
+        [session] = _sessions(url)
+        assert (session.status, session.summary) == ("completed", "[stub]")
+        ends = [e for e in _audit(tmp_path) if e["entry_type"] == "session_end"]
+        assert len(ends) == 1
+
+    def test_a_ctrl_c_before_the_run_starts_closes_its_row_without_an_end(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Ctrl-C lands while the CLI connects to the MCP server: the row is
+        # closed as interrupted, and the audit log gets no session end for a
+        # session it never started.
+        state: dict = {"main": None}
+        _ctrl_c(monkeypatch, state)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_connect=lambda db_path: state["main"].cancel(),
+        )
+        assert code == 130
+        assert self.prompts == [] and calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped" and "interrupted" in session.summary
+        assert [e["entry_type"] for e in _audit(tmp_path)] == []
+
+    def test_a_failure_during_an_approval_wait_expires_the_approval(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The wait's poll fails (the database is locked, say): the run fails,
+        # and its approval expires with the row, so approving it later cannot
+        # reopen a run nobody drives.
+        import cli.opsmender as cli_module
+        from backend.approvals.service import ApprovalService
+
+        async def locked(seconds):
+            raise RuntimeError("database is locked")
+
+        class FailingPoll(ApprovalService):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, sleep_fn=locked, **kwargs)
+
+        monkeypatch.setattr(cli_module, "ApprovalService", FailingPoll)
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                }
+            ],
+        )
+        out, err = capsys.readouterr()
+        assert code == 1
+        assert "database is locked" in err
+        [approval] = _approvals(url)
+        assert approval.status == "expired"
+        [session] = _sessions(url)
+        assert session.status == "failed"
+
+    def test_a_stop_during_the_only_approval_asks_the_model_nothing_more(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The plan's only action waits for approval when the Stop lands. No
+        # tool call follows to read the row, so the read after the wait is
+        # what keeps the model from being asked for the summary.
+        import cli.opsmender as cli_module
+
+        db_path = str(tmp_path / "cli.db")
+        watcher = _stop_once_asked(db_path)
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                }
+            ],
+            extra=("--output", str(out_file)),
+        )
+        watcher.join(timeout=5)
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == []
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
+        data = json.loads(out_file.read_text())
+        assert data["summary"] == cli_module.STOPPED_MESSAGE
+
+    @pytest.mark.parametrize("act", ["stop", "override"])
+    def test_a_stop_the_service_finds_as_it_writes_asks_the_model_nothing_more(
+        self, tmp_path, monkeypatch, capsys, act
+    ):
+        # The Stop (or the Override) commits after the CLI's read and before
+        # the service writes the request, and the plan's only action is that
+        # approval: the service refuses to ask, and the model must not be
+        # asked for the summary either.
+        db_path = str(tmp_path / "cli.db")
+        real_create = ApprovalRequestRepo.create
+
+        async def act_then_create(*args, **kwargs):
+            (_stop_in_db if act == "stop" else _override_in_db)(db_path)
+            return await real_create(*args, **kwargs)
+
+        monkeypatch.setattr(
+            ApprovalRequestRepo, "create", staticmethod(act_then_create)
+        )
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "a"},
+                    "justification": "fix",
+                }
+            ],
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == []
+        assert _approvals(url) == []
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
 
     def test_a_stop_during_setup_is_read_before_the_first_model_request(
         self, tmp_path, monkeypatch, capsys

@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every active session as stopped, a CLI run's included, and that run then
   stops the same way. A tool call or a model request already in flight
   completes; nothing is cut off mid-call.
+- The AI session page opens at the top on a phone. Keeping the event
+  stream and the co-pilot chat scrolled to their newest entry used to
+  scroll the whole page on narrow screens, where the panels sit one under
+  the other, so a responder who opened a session from a chat link landed
+  below the title, the Live pill, Stop and the approval waiting for them.
+  Each list now scrolls only itself. The Memories used panel no longer
+  draws over the stream or the chat on a phone; it follows the two panels.
+  The desktop split view is unchanged.
 - Escalation chains left running from before the acknowledgement lock are
   closed. A chain whose last level had fired before that change kept the
   status running with no next due time and no finished time; the engine

@@ -26,7 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   placeholder id. On a single-process install the app's restart marks
   every active session as stopped, a CLI run's included, and that run then
   stops the same way. A tool call or a model request already in flight
-  completes; nothing is cut off mid-call.
+  completes; nothing is cut off mid-call. A stopped run's record, printed
+  and written with `--output`, is the workflow's own, as a finished run's
+  is: every call keeps its parameters, a call the server rejected shows as
+  failed and credential-shaped output stays redacted. An approval due after
+  the stop is not asked; its action is blocked with the stop as the reason.
 - The AI session page opens at the top on a phone. Keeping the event
   stream and the co-pilot chat scrolled to their newest entry used to
   scroll the whole page on narrow screens, where the panels sit one under

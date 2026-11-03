@@ -40,6 +40,13 @@ def _as_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+class ApprovalNotAsked(Exception):
+    """An approval service declined to ask, because the session it belongs to
+    has ended (M1-105). No request was created. The tier gate and a workflow
+    step block the action with this exception's text as the reason and go on,
+    so what the same step already recorded is kept."""
+
+
 @dataclass
 class ApprovalResolution:
     """Final resolution for one approval request.

@@ -527,6 +527,29 @@ operations:
 """
 PLAN_MARK = "planning remediation"
 SUMMARY_MARK = "writing an incident summary"
+DIAGNOSE_MARK = "diagnosing an incident"
+NOT_ASKED = "the session was stopped; the approval was not asked"
+# A read, an approval step and the same read again, all at Tier 1.
+WORKFLOW_T1 = """## Workflow
+```yaml
+steps:
+  - id: look
+    description: List the pods
+    tool: get_pods
+    inputs:
+      namespace: shop
+  - id: fix
+    description: Restart the pod
+    tool: restart_pod
+    inputs:
+      pod: ratings-1
+  - id: look_again
+    description: List the pods again
+    tool: get_pods
+    inputs:
+      namespace: shop
+```
+"""
 
 
 def _db_path(url):
@@ -576,9 +599,9 @@ def _audit(tmp_path):
 
 
 class TestTier1StopWithTheRealGraph:
-    """M1-105 fix review: the stop checks raise inside LangGraph nodes, which
-    wrap what a node raises, so these run the real compiled graph with only
-    the model, the MCP connection and the tool call faked."""
+    """M1-105 fix review: the stop is honoured inside LangGraph nodes, so
+    these run the real compiled graph with only the model, the MCP connection
+    and the tool call faked."""
 
     def _run(
         self,
@@ -589,10 +612,12 @@ class TestTier1StopWithTheRealGraph:
         extra=(),
         poll=60.0,
         on_call=None,
+        respond=None,
+        skill_text=SKILL_T1,
     ):
         cfg, url, _org_id = _workspace_config(tmp_path)
         skill = tmp_path / "SKILL.md"
-        skill.write_text(SKILL_T1)
+        skill.write_text(skill_text)
         calls: list[str] = []
         prompts: list[str] = []
         self.prompts = prompts
@@ -626,6 +651,8 @@ class TestTier1StopWithTheRealGraph:
             calls.append(tool_name)
             if on_call is not None:
                 await on_call(tool_name, _db_path(url))
+            if respond is not None:
+                return respond(tool_name, params)
             return CallToolResult(
                 isError=False, content=[TextContent(type="text", text="ok")]
             )
@@ -671,6 +698,7 @@ class TestTier1StopWithTheRealGraph:
         # and LangGraph's wrapping of that error must still end as stopped.
         db_path = str(tmp_path / "cli.db")
         watcher = _stop_once_asked(db_path)
+        out_file = tmp_path / "result.json"
         code, calls, url = self._run(
             tmp_path,
             monkeypatch,
@@ -686,6 +714,7 @@ class TestTier1StopWithTheRealGraph:
                     "justification": "fix",
                 },
             ],
+            extra=("--output", str(out_file)),
         )
         watcher.join(timeout=5)
         out, err = capsys.readouterr()
@@ -694,6 +723,14 @@ class TestTier1StopWithTheRealGraph:
         assert calls == []  # nothing ran, the autonomous read included
         [approval] = _approvals(url)
         assert approval.status == "expired"
+        data = json.loads(out_file.read_text())
+        assert data["status"] == "stopped"
+        [blocked] = data["blocked_actions"]
+        assert (
+            blocked["block_reason"]
+            == "the session was stopped during the approval wait"
+        )
+        assert "not sent" in data["tool_calls"][0]["error"]
         [session] = _sessions(url)
         assert session.status == "stopped"
 
@@ -804,6 +841,188 @@ class TestTier1StopWithTheRealGraph:
         assert "get_pods [ok]" in out
         plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
         assert self.prompts[plan_at + 1 :] == []
+
+    def test_a_stopped_run_records_its_calls_as_a_finished_run_does(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The stop lands during the second of three reads. The record is the
+        # execute node's own: the call the server rejected shows as failed,
+        # credential-shaped output is redacted, the third call is not sent,
+        # and every call keeps its parameters.
+        secret = "AKIA" + "ABCDEFGHIJKLMNOP"
+        seen: list[str] = []
+
+        async def stop_during_second(tool_name, db_path):
+            seen.append(tool_name)
+            if len(seen) == 2:
+                _stop_in_db(db_path, expire=False)
+
+        def respond(tool_name, params):
+            if params.get("namespace") == "a":
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text="namespace a not found")],
+                )
+            return CallToolResult(
+                isError=False, content=[TextContent(type="text", text=f"key {secret}")]
+            )
+
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": ns},
+                    "justification": ns,
+                }
+                for ns in ("a", "b", "c")
+            ],
+            on_call=stop_during_second,
+            respond=respond,
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        assert calls == ["get_pods", "get_pods"]
+        written = out_file.read_text()
+        assert secret not in written
+        data = json.loads(written)
+        assert data["status"] == "stopped"
+        records = data["tool_calls"]
+        assert [r["tool_parameters"] for r in records] == [
+            {"namespace": "a"},
+            {"namespace": "b"},
+            {"namespace": "c"},
+        ]
+        assert records[0]["error"].startswith("the tool reported an error")
+        assert "namespace a not found" in records[0]["error"]
+        assert records[1]["error"] is None
+        assert "[redacted secret]" in json.dumps(records[1]["result"])
+        assert "not sent" in records[2]["error"]
+        assert "get_pods [error]" in out
+        plan_at = next(i for i, p in enumerate(self.prompts) if PLAN_MARK in p)
+        assert self.prompts[plan_at + 1 :] == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_stop_before_an_approval_blocks_it_without_a_request(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The stop lands while the model plans: the approval is never asked
+        # (no request row), the action is blocked with the stop as its reason,
+        # and the read the gate let through is recorded as not sent.
+        def stop_at_plan(prompt, db_path):
+            if PLAN_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "restart_pod",
+                    "tool_parameters": {"pod": "ratings-1"},
+                    "justification": "fix",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "shop"},
+                    "justification": "read",
+                },
+            ],
+            on_prompt=stop_at_plan,
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == []
+        assert _approvals(url) == []
+        data = json.loads(out_file.read_text())
+        assert data["status"] == "stopped"
+        [blocked] = data["blocked_actions"]
+        assert blocked["tool_name"] == "restart_pod"
+        assert blocked["block_reason"] == NOT_ASKED
+        [record] = data["tool_calls"]
+        assert record["tool_parameters"] == {"namespace": "shop"}
+        assert "not sent" in record["error"]
+        assert f"restart_pod: {NOT_ASKED}" in out
+        blocked_entries = [
+            e for e in _audit(tmp_path) if e["entry_type"] == "tool_call_blocked"
+        ]
+        assert [e["tool_name"] for e in blocked_entries] == ["restart_pod"]
+
+    def test_a_stop_during_a_skill_workflow_keeps_the_steps_that_ran(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The stop lands during the workflow's first step: that step's result
+        # stays in the record, the approval step is blocked without a request
+        # and the last step is not sent.
+        async def stop_during_first(tool_name, db_path):
+            if len(calls_seen) == 0:
+                _stop_in_db(db_path, expire=False)
+            calls_seen.append(tool_name)
+
+        calls_seen: list[str] = []
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [],
+            on_call=stop_during_first,
+            skill_text=SKILL_T1 + WORKFLOW_T1,
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert calls == ["get_pods"]
+        assert _approvals(url) == []
+        data = json.loads(out_file.read_text())
+        assert data["status"] == "stopped"
+        steps = [
+            (r["workflow_step_id"], r["workflow_step_status"])
+            for r in data["tool_calls"]
+        ]
+        assert steps == [
+            ("look", "completed"),
+            ("fix", "blocked"),
+            ("look_again", "failed"),
+        ]
+        assert data["tool_calls"][0]["tool_parameters"] == {"namespace": "shop"}
+        assert data["tool_calls"][1]["block_reason"] == NOT_ASKED
+        assert "not sent" in data["tool_calls"][2]["error"]
+        [session] = _sessions(url)
+        assert session.status == "stopped"
+
+    def test_a_stop_only_the_poll_sees_ends_the_run_before_the_next_request(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Nothing reads the row between the diagnosis and the plan, so only
+        # the poll can find this stop: it lands while the model writes the
+        # diagnosis, and the plan is never asked for.
+        def stop_while_diagnosing(prompt, db_path):
+            if DIAGNOSE_MARK in prompt:
+                _stop_in_db(db_path, expire=False)
+                time.sleep(0.4)
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "a"}],
+            on_prompt=stop_while_diagnosing,
+            poll=0.05,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "was stopped" in out
+        assert any(DIAGNOSE_MARK in p for p in self.prompts)
+        assert not any(PLAN_MARK in p for p in self.prompts)
+        assert calls == []
+        [session] = _sessions(url)
+        assert session.status == "stopped"
 
     def test_a_tool_call_in_flight_is_never_cut_off(
         self, tmp_path, monkeypatch, capsys

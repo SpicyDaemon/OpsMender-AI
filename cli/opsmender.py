@@ -13,6 +13,7 @@ import pathlib
 import sys
 
 import contextlib
+import dataclasses
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -21,7 +22,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.audit.logger import AuditEntry, AuditLogger
-from backend.approvals import ApprovalService
+from backend.approvals import ApprovalNotAsked, ApprovalService
 from backend.config_loader import Config
 from backend.db.engine import get_engine, get_session_factory, resolve_database_url
 from backend.db.models import Organization
@@ -845,14 +846,18 @@ _SESSION_ENDED = ("stopped", "cancelled")
 
 
 class SessionStoppedError(Exception):
-    """The CLI run's session was stopped (from the dashboard, or by the app's
-    restart, which marks every active session stopped)."""
+    """Raised by a stopped CLI run's tool caller and model. Inside
+    ``audited_tool_call`` it becomes the call's end, with the stop as its
+    error; from the model it ends the graph."""
 
 
 STOPPED_MESSAGE = (
     "The session was stopped (from the dashboard, or by the app's restart); "
     "nothing more was asked or sent."
 )
+# The block reasons of an approval action the stop kept from running.
+STOPPED_NOT_ASKED = "the session was stopped; the approval was not asked"
+STOPPED_DURING_WAIT = "the session was stopped during the approval wait"
 
 
 class _SessionStopWatch:
@@ -863,12 +868,13 @@ class _SessionStopWatch:
     process (M1-105). The run reads the row before and after every approval
     wait, before every tool call and every ``STOP_POLL_SECONDS`` while the
     model works. Once a read finds the row stopped, nothing more is asked or
-    sent: an approval wait raises out of the graph, a tool call is recorded as
-    not sent, and the next model request is refused, which ends the run. A
-    tool call or a model request already in flight is never cut off; it
-    completes, and the audit log keeps its start and end. On a single-process
-    install the app's restart marks every active session stopped, a CLI run's
-    included, and the run honours that the same way."""
+    sent: an approval is not asked and its action is blocked, a tool call is
+    recorded as not sent, and the next model request is refused, which ends
+    the graph. A tool call or a model request already in flight is never cut
+    off; it completes. The graph's state is kept after every step, so the
+    record of a stopped run is the graph's own, as a finished run's is. On a
+    single-process install the app's restart marks every active session
+    stopped, a CLI run's included, and the run honours that the same way."""
 
     def __init__(self, session_factory, org_id: uuid.UUID, session_id: str) -> None:
         self._factory = session_factory
@@ -887,22 +893,22 @@ class _SessionStopWatch:
         self.stopped = row is not None and row.status in _SESSION_ENDED
         return self.stopped
 
-    async def check(self) -> None:
-        # A plain exception, not a cancellation: LangGraph turns a
-        # CancelledError raised inside a node into NodeCancelledError, and
-        # audited_tool_call records an exception as the call's end, so the
-        # audit log never shows a call that started and did not end.
-        if await self.is_stopped():
-            raise SessionStoppedError("the session was stopped; the call was not sent")
-
     def approvals(self, inner):
         watch = self
 
         class _StopAwareApprovals:
             async def request_and_wait(self, **kwargs):
-                await watch.check()
+                # Once stopped nobody is asked: the gate or the workflow blocks
+                # the action and goes on, so nothing the node recorded is lost.
+                if await watch.is_stopped():
+                    raise ApprovalNotAsked(STOPPED_NOT_ASKED)
                 resolution = await inner.request_and_wait(**kwargs)
-                await watch.check()
+                # The Stop expires a pending approval; the reason says so. An
+                # approval granted before the stop is refused at its tool call.
+                if await watch.is_stopped() and resolution.request.status == "expired":
+                    resolution = dataclasses.replace(
+                        resolution, block_reason=STOPPED_DURING_WAIT
+                    )
                 return resolution
 
         return _StopAwareApprovals()
@@ -928,20 +934,36 @@ class _SessionStopWatch:
 
     def tool_caller(self, inner):
         async def call(session, tool_name, params):
-            await self.check()
+            # audited_tool_call records this as the call's end, so the audit
+            # log pairs the start with a "not sent" end.
+            if await self.is_stopped():
+                raise SessionStoppedError(
+                    "the session was stopped; the call was not sent"
+                )
             return await inner(session, tool_name, params)
 
         return call
 
-    async def run(self, awaitable):
+    async def run(self, graph, initial_state: dict) -> dict:
         """The graph's result, its status set to stopped when the session was
-        stopped, or None when the stop ended the graph before it had a result.
+        stopped.
 
-        The poll only refreshes the stopped flag; the run ends at its next
-        approval, tool call or model request, and a stop that lands after the
-        last of those is found by the final read. So the run never reports a
-        stopped session as completed or failed, and nothing is cut off."""
-        task = asyncio.ensure_future(awaitable)
+        The graph's state is kept after every step. When the stop ends the
+        graph, the result is the last state it reached: its tool calls are the
+        execute node's records (parameters kept, output redacted, a call the
+        server rejected shown as failed), as in a finished run. The poll only
+        refreshes the stopped flag; the run ends at its next approval, tool
+        call or model request, and a stop that lands after the last of those
+        is found by the final read. So the run never reports a stopped session
+        as completed or failed, and nothing is cut off."""
+        latest = {"state": initial_state}
+
+        async def follow():
+            async for state in graph.astream(initial_state, stream_mode="values"):
+                latest["state"] = state
+            return latest["state"]
+
+        task = asyncio.ensure_future(follow())
         while True:
             done, _ = await asyncio.wait({task}, timeout=STOP_POLL_SECONDS)
             if done:
@@ -949,37 +971,17 @@ class _SessionStopWatch:
             await self.is_stopped()
         try:
             result = await task
-        except BaseException:
+        except Exception:
             if not await self.is_stopped():
                 raise
-            return None
-        if await self.is_stopped() and isinstance(result, dict):
-            result = {**result, "status": "stopped"}
-        return result
-
-
-def _tool_calls_from_audit(audit_logger, session_id: str) -> list[dict]:
-    """The tool calls of a run the stop ended early, from its audit log: every
-    call that ended, with its result or its error ("not sent" for a call the
-    stop refused). The graph's own record of the node that saw the stop is
-    lost with the graph's state; the audit log has every call."""
-    calls: list[dict] = []
-    for entry in audit_logger.read_by_session(session_id):
-        entry_type = getattr(entry.entry_type, "value", entry.entry_type)
-        if entry_type != "tool_call_end":
-            continue
-        result = entry.result if isinstance(entry.result, dict) else {}
-        error = result.get("error")
-        calls.append(
-            {
-                "tool_name": entry.tool_name,
-                "tool_parameters": entry.tool_parameters,
-                "result": None if error else result,
-                "error": error,
-                "duration_ms": entry.duration_ms,
+            result = latest["state"]
+        if await self.is_stopped():
+            result = {
+                **result,
+                "status": "stopped",
+                "summary": result.get("summary") or STOPPED_MESSAGE,
             }
-        )
-    return calls
+        return result
 
 
 async def _close_cli_session(
@@ -1590,17 +1592,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                 seconds=tier0_time_config.max_session_seconds,
             )
         elif stop_watch is not None:
-            result = await stop_watch.run(graph.ainvoke(initial_state))
+            result = await stop_watch.run(graph, initial_state)
             if stop_watch.stopped:
                 print(f"{STOPPED_MESSAGE}\n")
-            if result is None:
-                result = {
-                    "session_id": session_id,
-                    "incident_description": args.incident,
-                    "status": "stopped",
-                    "summary": STOPPED_MESSAGE,
-                    "tool_calls": _tool_calls_from_audit(audit_logger, session_id),
-                }
         else:
             result = await graph.ainvoke(initial_state)
 

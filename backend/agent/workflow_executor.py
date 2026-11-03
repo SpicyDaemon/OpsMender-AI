@@ -9,7 +9,7 @@ import re
 import uuid
 from typing import Any
 
-from backend.approvals import ApprovalService
+from backend.approvals import ApprovalNotAsked, ApprovalService
 from backend.audit.executor import audited_tool_call
 from backend.audit.logger import AuditEntryType
 from backend.skills.parser import SkillDefinition, WorkflowStep
@@ -257,11 +257,32 @@ class WorkflowExecutor:
                     "safety_class": enforcement.classification,
                     "tier_override": step.tier_override,
                 }
-                resolution = await self._approval_service.request_and_wait(
-                    session_id=uuid.UUID(session_id),
-                    action=action,
-                    justification=step.description or None,
-                )
+                try:
+                    resolution = await self._approval_service.request_and_wait(
+                        session_id=uuid.UUID(session_id),
+                        action=action,
+                        justification=step.description or None,
+                    )
+                except ApprovalNotAsked as exc:
+                    # The session ended, so nobody was asked: the step is
+                    # blocked and the steps already run stay in the result.
+                    outcome = WorkflowStepOutcome(
+                        step_id=step.id,
+                        description=step.description,
+                        tool=step.tool,
+                        inputs=inputs,
+                        status="blocked",
+                        classification=enforcement.classification,
+                        block_reason=str(exc),
+                        effective_tier=effective_tier,
+                    )
+                    result.outcomes.append(outcome)
+                    await self._log_step(
+                        AuditEntryType.WORKFLOW_STEP_BLOCKED,
+                        session_id=session_id,
+                        outcome=outcome,
+                    )
+                    continue
                 approval_request_id = str(resolution.request.id)
                 if resolution.request.status != "approved":
                     guidance = (resolution.guidance or "").strip()

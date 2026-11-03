@@ -1452,6 +1452,9 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
         print(f"Skill file not found: {skill_path}", file=sys.stderr)
         return 1
     skill_def = load_skill_def(skill_path)
+    # The skill the saved state names: this file, or the workspace's skill
+    # when that governs the run instead (M1-105).
+    skill_source = str(skill_path)
 
     # 2. Determine tier
     tier = args.tier if args.tier is not None else cfg.tiers.get("default", 2)
@@ -1477,9 +1480,10 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
 
     # The workspace the session, its approvals and the server lookup belong
     # to (M1-105): the single organization of this instance, when the
-    # database answers.
+    # database answers. A dry run outside Tier 1 opens no server and writes
+    # no row, so it does not ask.
     org_id: uuid.UUID | None = None
-    if session_factory is not None:
+    if session_factory is not None and (tier == 1 or not args.dry_run):
         try:
             async with session_factory() as db:
                 # Only a workspace that exists: on a fresh SQLite database the
@@ -1682,10 +1686,8 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
                         )
                         if workspace_skill is not None:
                             skill_def = workspace_skill
-                            print(
-                                f"Skill:    the workspace's skill for {server.name}, "
-                                f"in place of {skill_path}"
-                            )
+                            skill_source = f"the workspace's skill for {server.name}"
+                            print(f"Skill:    {skill_source}, in place of {skill_path}")
                     mcp_session = await mcp_ctx.enter_async_context(
                         connect(server)
                         if server_org is None
@@ -1777,7 +1779,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             "session_id": session_id,
             "tier": tier,
             "incident_description": args.incident,
-            "skill_definition_path": str(skill_path),
+            "skill_definition_path": skill_source,
         }
         if tier0_time_config is not None:
             result = await ainvoke_with_session_timeout(
@@ -1929,12 +1931,14 @@ def _print_result(result: dict, held_back=()) -> None:
     blocked = result.get("blocked_actions", [])
     tool_calls = result.get("tool_calls", [])
     # Calls a stopped run held back were recorded but never sent: a record
-    # whose tool and error match one the run refused, each refusal once, so a
-    # server's own error text cannot make a call it received look held back.
-    # A workflow step that was blocked never ran (M1-105).
+    # whose tool and error match one the run refused, each refusal once. A
+    # run sends nothing after its first refusal, so its refusals are the last
+    # records with their tool and error; matching from the end, a call a
+    # server answered with the same text, which came before them, keeps its
+    # own label. A workflow step that was blocked never ran (M1-105).
     unmatched = list(held_back)
     not_sent = []
-    for tc in tool_calls:
+    for tc in reversed(tool_calls):
         key = (tc.get("tool_name"), tc.get("error"))
         if key in unmatched:
             unmatched.remove(key)

@@ -155,6 +155,34 @@ class TestRunDryRun:
         assert first["entry_type"] == "session_start"
         assert last["entry_type"] == "session_end"
 
+    def test_a_dry_run_outside_tier_1_never_asks_the_database(self, tmp_path, capsys):
+        # A dry run at Tier 0, 2 or 3 opens no server and writes no session
+        # row, so it has no use for the workspace (M1-105). Before, it looked
+        # the workspace up anyway: on SQLite that created the database file,
+        # and with a local Postgres every dry run waited on it.
+        db_file = tmp_path / "never.db"
+        cfg_file = tmp_path / ".env"
+        cfg_file.write_text(
+            f"OPSMENDER_DATABASE_URL=sqlite+aiosqlite:///{db_file.as_posix()}\n"
+            f"OPSMENDER_AUDIT_LOG={(tmp_path / 'audit.jsonl').as_posix()}\n"
+        )
+        for tier in ("0", "2", "3"):
+            with pytest.raises(SystemExit) as exc_info:
+                main(
+                    [
+                        "--config",
+                        str(cfg_file),
+                        "run",
+                        "--incident",
+                        "x",
+                        "--tier",
+                        tier,
+                        "--dry-run",
+                    ]
+                )
+            assert exc_info.value.code == 0, tier
+        assert not db_file.exists()
+
     def test_invalid_tier_fails(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
             main(
@@ -638,6 +666,15 @@ operations:
       T2: {enabled: true, mode: autonomous}
 ---
 """
+# The local skill file with get_pod_logs allowed at every tier, so only the
+# workspace's skill can refuse it.
+LOGS_ALLOWED = SKILL_T1.replace(
+    "operations:\n",
+    "operations:\n  - tool: get_pod_logs\n    classification: safe\n"
+    "    tiers:\n      T0: {enabled: true, mode: autonomous}\n"
+    "      T1: {enabled: true, mode: autonomous}\n"
+    "      T2: {enabled: true, mode: autonomous}\n",
+)
 PLAN_MARK = "planning remediation"
 SUMMARY_MARK = "writing an incident summary"
 DIAGNOSE_MARK = "diagnosing an incident"
@@ -822,6 +859,47 @@ def test_the_close_leaves_a_stopped_or_overridden_row_alone(tmp_path):
         None,
     )
     assert [a.status for a in approvals] == ["pending"]
+
+
+def _register_server(name, *, command="k", skill=None):
+    """A prepare hook for the real-graph runs: the workspace registers the
+    server *name*, with *skill* as its own skill when given."""
+    from backend.db.repos import MCPServerRepo, SkillRepo
+
+    def register(cfg, url, org_id):
+        async def rows():
+            engine = create_async_engine(url)
+            factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with factory() as db:
+                row = await MCPServerRepo.create(
+                    db, org_id, name=name, transport="stdio", command=command
+                )
+                if skill is not None:
+                    await SkillRepo.create(
+                        db,
+                        org_id,
+                        name=f"{name} policy",
+                        content_md=skill,
+                        mcp_server_id=row.id,
+                    )
+                await db.commit()
+            await engine.dispose()
+
+        asyncio.run(rows())
+
+    return register
+
+
+# Two reads the workspace's skill refuses: get_pod_logs is denied and get_pods
+# is blocked at Tier 1.
+BOTH_READS = [
+    {
+        "tool_name": "get_pod_logs",
+        "tool_parameters": {"pod": "a"},
+        "justification": "read",
+    },
+    {"tool_name": "get_pods", "tool_parameters": {}, "justification": "read"},
+]
 
 
 class TestTier1StopWithTheRealGraph:
@@ -1652,53 +1730,17 @@ class TestTier1StopWithTheRealGraph:
         # The workspace's skill for its server denies one tool and blocks the
         # other at Tier 1; the local skill file allows both. Before, the CLI
         # opened the workspace's server under the local file, and both ran.
-        from backend.db.repos import MCPServerRepo, SkillRepo
-
-        def register(cfg, url, org_id):
-            async def rows():
-                engine = create_async_engine(url)
-                factory = async_sessionmaker(engine, expire_on_commit=False)
-                async with factory() as db:
-                    row = await MCPServerRepo.create(
-                        db, org_id, name="k8s-prod", transport="stdio", command="k"
-                    )
-                    await SkillRepo.create(
-                        db,
-                        org_id,
-                        name="k8s-prod policy",
-                        content_md=WORKSPACE_SKILL,
-                        mcp_server_id=row.id,
-                    )
-                    await db.commit()
-                await engine.dispose()
-
-            asyncio.run(rows())
-
+        # The state --output writes names the skill that governed the run.
+        out_file = tmp_path / "result.json"
         code, calls, url = self._run(
             tmp_path,
             monkeypatch,
-            [
-                {
-                    "tool_name": "get_pod_logs",
-                    "tool_parameters": {"pod": "a"},
-                    "justification": "read",
-                },
-                {
-                    "tool_name": "get_pods",
-                    "tool_parameters": {},
-                    "justification": "read",
-                },
-            ],
+            BOTH_READS,
             real_pool=True,
-            prepare=register,
+            prepare=_register_server("k8s-prod", skill=WORKSPACE_SKILL),
             tools=("get_pod_logs", "get_pods"),
-            skill_text=SKILL_T1.replace(
-                "operations:\n",
-                "operations:\n  - tool: get_pod_logs\n    classification: safe\n"
-                "    tiers:\n      T0: {enabled: true, mode: autonomous}\n"
-                "      T1: {enabled: true, mode: autonomous}\n"
-                "      T2: {enabled: true, mode: autonomous}\n",
-            ),
+            skill_text=LOGS_ALLOWED,
+            extra=("--output", str(out_file)),
         )
         out, err = capsys.readouterr()
         assert code == 0, err
@@ -1706,6 +1748,87 @@ class TestTier1StopWithTheRealGraph:
         assert "the workspace's skill for k8s-prod" in out
         assert calls == []
         assert "Blocked:  2" in out
+        saved = json.loads(out_file.read_text(encoding="utf-8"))
+        assert saved["skill_definition_path"] == "the workspace's skill for k8s-prod"
+
+    def test_a_workspace_server_named_like_an_environment_server_keeps_its_skill(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The workspace and the environment both have a "k8s". The run tells
+        # the workspace's server from the environment's by identity, not by
+        # name, so it opens through the pool under the workspace's skill.
+        register = _register_server("k8s", command="ws-k8s", skill=WORKSPACE_SKILL)
+
+        def prepare(cfg, url, org_id):
+            register(cfg, url, org_id)
+            servers = [{"name": "k8s", "transport": "stdio", "command": "env-k8s"}]
+            cfg.write_text(
+                cfg.read_text() + f"OPSMENDER_MCP_SERVERS_JSON={json.dumps(servers)}\n"
+            )
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            BOTH_READS,
+            real_pool=True,
+            prepare=prepare,
+            tools=("get_pod_logs", "get_pods"),
+            skill_text=LOGS_ALLOWED,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        [(opened,)] = self.connected
+        assert opened.command == "ws-k8s"
+        assert "the workspace's skill for k8s" in out
+        assert calls == []
+        assert "Blocked:  2" in out
+
+    def test_a_workspace_server_with_no_skill_runs_under_the_skill_file(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The workspace gave its server no skill and has no global one, so
+        # --skill-file governs the run, and the saved state names that file.
+        out_file = tmp_path / "result.json"
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [{"tool_name": "get_pods", "tool_parameters": {}, "justification": "read"}],
+            real_pool=True,
+            prepare=_register_server("k8s-prod"),
+            extra=("--output", str(out_file)),
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "Connected to k8s-prod." in out
+        assert "the workspace's skill" not in out
+        assert calls == ["get_pods"]
+        saved = json.loads(out_file.read_text(encoding="utf-8"))
+        assert saved["skill_definition_path"] == str(tmp_path / "SKILL.md")
+
+    def test_a_failed_workspace_skill_lookup_opens_nothing(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The workspace's skill for its server cannot be read: the run opens
+        # nothing, rather than the server under the local file.
+        from backend.db.repos import SkillRepo
+
+        async def hiccup(*args, **kwargs):
+            raise RuntimeError("database hiccup")
+
+        monkeypatch.setattr(SkillRepo, "get_for_mcp_server", staticmethod(hiccup))
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            BOTH_READS,
+            real_pool=True,
+            prepare=_register_server("k8s-prod", skill=WORKSPACE_SKILL),
+            tools=("get_pod_logs", "get_pods"),
+            skill_text=LOGS_ALLOWED,
+        )
+        out, err = capsys.readouterr()
+        assert "MCP connection failed: database hiccup" in err
+        assert self.connected == []
+        assert calls == []
 
     def test_a_named_server_the_workspace_deactivated_is_not_opened(
         self, tmp_path, monkeypatch, capsys
@@ -1800,6 +1923,41 @@ class TestTier1StopWithTheRealGraph:
         assert "Executed: 1" in out
         assert "Not sent" not in out and "[not sent]" not in out
         assert "✗ get_pods [error]" in out
+
+    def test_a_server_error_before_a_held_back_call_keeps_its_own_label(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The server answers the first call with the held-back text as a
+        # person presses Stop, and the run holds back the second call of the
+        # same tool. The call the server received reads as an error and the
+        # one never sent as not sent, in the order they were planned.
+        spoof = "the session was stopped; the call was not sent"
+
+        async def stop_and_fail(tool_name, db_path):
+            _stop_in_db(db_path)
+            raise RuntimeError(spoof)
+
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "a"},
+                    "justification": "a",
+                },
+                {
+                    "tool_name": "get_pods",
+                    "tool_parameters": {"namespace": "b"},
+                    "justification": "b",
+                },
+            ],
+            on_call=stop_and_fail,
+        )
+        out, err = capsys.readouterr()
+        assert calls == ["get_pods"]
+        assert "Executed: 1" in out and "Not sent: 1" in out
+        assert out.index("✗ get_pods [error]") < out.index("- get_pods [not sent]")
 
     def test_a_ctrl_c_sends_nothing_more_while_the_row_closes(
         self, tmp_path, monkeypatch, capsys

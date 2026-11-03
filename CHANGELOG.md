@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active, and runs under the skill the workspace gave it (its own, or the
   workspace's global skill), as in a dashboard session; `--skill-file`
   governs a server from the environment, and one the workspace gave no
-  skill.
+  skill. The state `--output` writes names the skill that governed the
+  run.
   At Tiers 1 to 3 the plan is now offered the connected server's tools
   with their arguments, as a dashboard session is; before, it listed the
   skill's entries instead. Tier 0 keeps its sandbox allowlist. The Tier 1

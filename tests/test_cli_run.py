@@ -861,9 +861,10 @@ def test_the_close_leaves_a_stopped_or_overridden_row_alone(tmp_path):
     assert [a.status for a in approvals] == ["pending"]
 
 
-def _register_server(name, *, command="k", skill=None):
+def _register_server(name, *, command="k", skill=None, global_skill=None):
     """A prepare hook for the real-graph runs: the workspace registers the
-    server *name*, with *skill* as its own skill when given."""
+    server *name*, with *skill* as its own skill and *global_skill* as the
+    workspace's global skill when given."""
     from backend.db.repos import MCPServerRepo, SkillRepo
 
     def register(cfg, url, org_id):
@@ -881,6 +882,14 @@ def _register_server(name, *, command="k", skill=None):
                         name=f"{name} policy",
                         content_md=skill,
                         mcp_server_id=row.id,
+                    )
+                if global_skill is not None:
+                    await SkillRepo.create(
+                        db,
+                        org_id,
+                        name="workspace policy",
+                        content_md=global_skill,
+                        assignment="global",
                     )
                 await db.commit()
             await engine.dispose()
@@ -1751,17 +1760,20 @@ class TestTier1StopWithTheRealGraph:
         saved = json.loads(out_file.read_text(encoding="utf-8"))
         assert saved["skill_definition_path"] == "the workspace's skill for k8s-prod"
 
+    @pytest.mark.parametrize("env_command", ["ws-k8s", "env-k8s"])
     def test_a_workspace_server_named_like_an_environment_server_keeps_its_skill(
-        self, tmp_path, monkeypatch, capsys
+        self, tmp_path, monkeypatch, capsys, env_command
     ):
-        # The workspace and the environment both have a "k8s". The run tells
-        # the workspace's server from the environment's by identity, not by
-        # name, so it opens through the pool under the workspace's skill.
+        # The workspace and the environment both have a "k8s", with the same
+        # settings (an operator who registered the .env server to give it a
+        # skill) or with different ones. The run tells the workspace's server
+        # from the environment's by identity, not by name or equal settings,
+        # so it opens through the pool under the workspace's skill.
         register = _register_server("k8s", command="ws-k8s", skill=WORKSPACE_SKILL)
 
         def prepare(cfg, url, org_id):
             register(cfg, url, org_id)
-            servers = [{"name": "k8s", "transport": "stdio", "command": "env-k8s"}]
+            servers = [{"name": "k8s", "transport": "stdio", "command": env_command}]
             cfg.write_text(
                 cfg.read_text() + f"OPSMENDER_MCP_SERVERS_JSON={json.dumps(servers)}\n"
             )
@@ -1780,6 +1792,26 @@ class TestTier1StopWithTheRealGraph:
         [(opened,)] = self.connected
         assert opened.command == "ws-k8s"
         assert "the workspace's skill for k8s" in out
+        assert calls == []
+        assert "Blocked:  2" in out
+
+    def test_a_workspace_server_runs_under_the_workspaces_global_skill(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The server has no skill of its own, so the workspace's global skill
+        # governs it, as in a dashboard session, not the local file.
+        code, calls, url = self._run(
+            tmp_path,
+            monkeypatch,
+            BOTH_READS,
+            real_pool=True,
+            prepare=_register_server("k8s-prod", global_skill=WORKSPACE_SKILL),
+            tools=("get_pod_logs", "get_pods"),
+            skill_text=LOGS_ALLOWED,
+        )
+        out, err = capsys.readouterr()
+        assert code == 0, err
+        assert "the workspace's skill for k8s-prod" in out
         assert calls == []
         assert "Blocked:  2" in out
 

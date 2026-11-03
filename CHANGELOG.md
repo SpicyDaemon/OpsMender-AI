@@ -15,23 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reachable database" even when the database answered; it now resolves
   the instance's workspace first, and looks its MCP servers up under it
   (falling back to the servers in the environment when the workspace has
-  none registered, as before). A workspace server is used only while it is
+  no active server, as before; with `--mcp-server`, when it has no active
+  server of that name). A workspace server is used only while it is
   active, and runs under the skill the workspace gave it (its own, or the
   workspace's global skill), as in a dashboard session; `--skill-file`
   governs a server from the environment, and one the workspace gave no
-  skill. The state `--output` writes names the skill that governed the
-  run.
+  skill. The state `--output` writes says which skill governed the run:
+  the `--skill-file` path, or the workspace's skill for that server.
   At Tiers 1 to 3 the plan is now offered the connected server's tools
   with their arguments, as a dashboard session is; before, it listed the
   skill's entries instead. Tier 0 keeps its sandbox allowlist. The Tier 1
   session row is closed when the run ends, a dashboard Stop ends the run
   before its next approval or tool call (and an approval wait no longer
   turns a stopped session back into a timed-out or active one), and a
-  database with no workspace yet refuses Tier 1 instead of writing under a
-  placeholder id. On a single-process install the app's restart marks
+  database with no workspace yet refuses Tier 1 with a message to start
+  `opsmender serve` once. On a single-process install the app's restart marks
   every active session as stopped, a CLI run's included, and that run then
-  stops the same way. A tool call or a model request already in flight
-  completes; nothing is cut off mid-call. A stopped run's record, printed
+  stops the same way. A tool call or a model request in flight when a
+  Stop or Override lands completes; nothing is cut off mid-call. A stopped run's record, printed
   and written with `--output`, is the workflow's own, as a finished run's
   is: every call keeps its parameters, a call the server rejected shows as
   failed and credential-shaped output stays redacted. An approval due after
@@ -43,8 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   incident: the CLI records it as the session's briefing, as the dashboard
   does for a session started without an incident, so the session page
   shows it too. Ctrl-C closes the row as stopped and expires its pending
-  approval, also when it lands during a database query, and a run that
-  fails expires its approval the same way. The printed summary counts a
+  approval, also when it lands during one of the run's own reads or writes
+  of the row, and then cancels the run, so a call still in flight is cut
+  off. On SQLite, a Ctrl-C during a setup query (the server or skill
+  lookup, or the pool opening a workspace server) can leave the row active
+  until a Stop or the app's restart ends it. A run that fails expires its
+  approval the same way. The printed summary counts a
   call the run held back as not sent (a server's own error text cannot make
   a call look held back) and a blocked workflow step as blocked. A server
   the workspace registered is opened through the pool, so an

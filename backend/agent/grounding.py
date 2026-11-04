@@ -13,6 +13,11 @@ runs after the model: it puts the stored state first and appends a correction
 when the text claims a resolution, an acknowledgement or actions that the
 record does not show. The correction is deterministic; it never rewrites the
 model's words, it answers them.
+
+M1-110 leaves two shapes of clause out of the no-actions check, each matched
+against the whole clause so that a clause which also claims something is
+read as before: a negated list of what is not configured, and a suggested
+command in a code span. See ``_negated_existence`` and ``_suggested_spans``.
 """
 
 from __future__ import annotations
@@ -205,6 +210,303 @@ def _clauses(text: str) -> list[str]:
     return clauses
 
 
+# M1-110: two shapes of clause the no-actions check leaves alone. Each is
+# matched against the whole clause, so a clause that goes on to claim
+# something (a verb after the list, a result after the command) is not one
+# of them and is read by the rules above, as on main.
+#
+# 1. A negated list of what is not configured (the 2026-10-27 rerun's "no
+#    liveness or readiness probes, monitoring, or alerts are configured for
+#    the productpage deployment"): "no", "there is no", "<the deployment>
+#    has no" or "no evidence of", then items made only of the nouns and
+#    describing words below, then at most a closing that says they are not
+#    there and a place that starts with a preposition. The item words are
+#    an allowlist, so a result ("failing", "timed out") never fits; the
+#    subject and the place hold no verb, pronoun, "-ed" or "-ing" word and
+#    no time ("before this session"), so no claim word stands in the
+#    clause outside the items' nouns and the closing ("the deployment we
+#    rolled back" does not fit).
+_INFRA_NOUN = frozenset(
+    "probe probes probing monitoring monitor monitors alert alerts alerting "
+    "dashboard dashboards check checks metrics tracing logging slo slos sli slis "
+    "liveness readiness startup".split()
+)
+_INFRA_MODIFIER = frozenset(
+    "synthetic http https tcp grpc exec external internal uptime custom automated "
+    "dedicated centralized centralised prometheus prometheus-based alertmanager "
+    "grafana datadog kubernetes k8s health healthcheck black-box blackbox "
+    "out-of-the-box built-in application service endpoint latency error "
+    "error-rate apm basic explicit separate scheduled periodic "
+    "continuous kubelet pod container cluster node log any such".split()
+)
+_EXISTENCE_LEAD = re.compile(
+    r"^(?:(?P<subject>(?:[\w-]+ ){1,4})(?:currently )?(?:has|have|had) |"
+    r"(?:there|here) (?:is|are|was|were) )?"
+    r"no (?:(?:evidence|record|sign|mention)s? of (?:any )?)?"
+)
+_EXISTENCE_CLOSE = re.compile(
+    r"^(?:(?:(?:are|is|were|was|has been|have been|had been) "
+    r"(?:(?:currently|yet|ever|also) )?)?"
+    r"(?:configured|defined|set up|in place|present|available|attached|"
+    r"installed|wired up)|exists?|existed|appears? to exist)\b ?"
+)
+# A closing that says the items did not run. After a list it needs "or" or
+# "nor" before the last item: "no checks, alerts, dashboards, probes ran on
+# all pods" and "no dashboards, and http probes were run" can be two
+# clauses run together.
+_EXISTENCE_RAN = re.compile(
+    r"^(?:(?:were|was|have been|has been) (?:run|performed|executed|attempted)|"
+    r"ran|happened|took place)\b ?"
+)
+_EXISTENCE_PREP = frozenset("for on in of across at within to during".split())
+_EXISTENCE_END = re.compile(r"(?: (?:at all|whatsoever|yet|today|at present|so far))+$")
+_LIST_JOIN = frozenset({"or", "and", "nor"})
+_DETERMINER = frozenset(
+    "the a an all any each every its their our your this these those some".split()
+)
+# A word that may stand in the subject or the place: a plain word that is
+# not a pronoun, a verb form, a claim word or a list noun.
+_PLACE_WORD = re.compile(r"^[a-z0-9][\w.-]*$")
+_NOT_PLACE_WORD = re.compile(
+    r"^(?:i|we|you|they|he|she|it|who|which|that|whose|is|are|was|were|be|been|"
+    r"has|have|had|do|does|did|will|would|can|could|should|may|might|must|no|"
+    r"not|and|or|but|so|then|\w+ed|\w+ing|"
+    # A past tense without "-ed" ("the pods the agent took down").
+    r"took|brought|got|made|went|came|put|kept|left|sent|held|built|found|saw|"
+    r"ran|began|broke|drove|gave|knew|shut|spun|tore|wrote|"
+    # A time ("before this session", "previously"): what was not there then
+    # may be there now, because of the session.
+    r"before|until|till|since|after|previously|prior|earlier|initially|"
+    r"originally|formerly|anymore|longer|now|then|yet)$"
+)
+
+
+def _place_word(word: str) -> bool:
+    return bool(
+        _PLACE_WORD.match(word)
+        and not _NOT_PLACE_WORD.match(word)
+        and word not in _INFRA_NOUN
+    )
+
+
+def _negated_existence(clause: str) -> bool:
+    """Whether the whole clause is a negated list of what is not configured
+    (shape 1 above)."""
+    text = clause.replace("`", "").strip().rstrip(".!*_ ").strip()
+    text = _EXISTENCE_END.sub("", text)
+    lead = _EXISTENCE_LEAD.match(text)
+    if lead is None:
+        return False
+    subject = (lead.group("subject") or "").split()
+    if not all(_place_word(w) for w in subject):
+        return False
+    tokens = re.findall(r"[,/]|[\w-]+|\S", text[lead.end() :])
+    i, n = 0, len(tokens)
+    items, join = 0, ""
+    while True:
+        start = i
+        while i < n and (tokens[i] in _INFRA_NOUN or tokens[i] in _INFRA_MODIFIER):
+            i += 1
+        if i == start:
+            return False
+        items += 1
+        if i < n and tokens[i] in (",", "/"):
+            i += 1
+            join = tokens[i] if i < n and tokens[i] in _LIST_JOIN else ""
+            if join:
+                i += 1
+            continue
+        if i < n and tokens[i] in _LIST_JOIN:
+            join = tokens[i]
+            i += 1
+            continue
+        break
+    rest = " ".join(tokens[i:])
+    closing = _EXISTENCE_CLOSE.match(rest)
+    if closing is None:
+        closing = _EXISTENCE_RAN.match(rest)
+        if closing is not None and items > 1 and join not in ("or", "nor"):
+            return False
+    place = rest[closing.end() :].split() if closing else rest.split()
+    if place and place[0] not in _EXISTENCE_PREP:
+        return False
+    # Every claim word ends in "-ed" or "-ing", is "ran" or is a list noun,
+    # and none of those is a place word, so no claim word stands in the
+    # subject or the place.
+    return all(w in _EXISTENCE_PREP or _place_word(w) for w in place)
+
+
+# 2. A suggested command (the rerun's "use `bookinfo-lab probe details
+#    productpage` and `bookinfo-lab probe logs productpage` to verify the
+#    health of the service"): "use" or "run" opening the clause, perhaps
+#    after a lead-in, a condition or a modal ("you can use"), then the
+#    commands in spans, at most a target ("on the affected pods"), and then
+#    a purpose that is an instruction ("to verify ...") or a condition. A
+#    condition names what the step waits for ("once tier 2 is granted",
+#    "after approval"). The condition and the purpose hold no result
+#    ("returned", "were healthy", "again"), no one acting ("we", "the
+#    agent") and no colon, comma, bracket or dash; the spans hold no result,
+#    "#" comment, colon, comma or bracket; and no result, report or someone
+#    acting comes within two clauses before or after ("it passed",
+#    "productpage reported 503", "2/3 pods ready", "we pinged the pods",
+#    "Output: ..."), nor a heading such as "Commands run:" above it. Also
+#    a span named as the suggested or recommended command. A bare span is
+#    not one: a list of commands under "Commands run:" looks the same. Only
+#    a probe or monitoring noun inside those spans is left alone; the words
+#    around the spans are read as before, and a past tense inside a span
+#    ("`pod restarted`") is still read.
+_COMMAND_NOUN = frozenset({"probe", "probes", "probing", "monitor", "monitoring"})
+_RESULT_WORD = frozenset(
+    "returned returns showed shows reported reports passed passes passing failed "
+    "fails failing succeeded succeeds gave gives printed output outputs responded "
+    "responds answered answers completed finished exited ran runs executed came "
+    "says said stayed remained saw seen observed noticed found again still "
+    "earlier already previously".split()
+)
+_SPAN_RE = r"`[^`\n]*`"
+_SUGGESTION = re.compile(
+    r"^(?:(?:then|next|please|also|now|first|finally|afterwards|optionally)[,\s]+)*"
+    r"(?:(?P<condition>(?:when|once|after|if|before|until)\s[^;:]{1,80}?),\s*)?"
+    r"(?:(?:you|we|the on-call(?: engineer)?|an? (?:operator|engineer|person|"
+    r"responder)|someone|on-call)\s+(?:can|could|should|may|might|will need to|"
+    r"needs? to|need to)\s+)?"
+    r"(?:use|run|try|execute)\s+"
+    r"(?P<commands>"
+    + _SPAN_RE
+    + r"(?:\s*(?:,\s*and|,\s*or|,|and|or)\s*"
+    + _SPAN_RE
+    + r")*)"
+    r"(?:\s+(?:on|against|for|in|with|from|across|inside|within)\s+"
+    r"(?P<target>[^`,;:.!]*?))?"
+    r"(?:\s*,?\s*(?:first|now|next|manually|instead))?"
+    r"(?:\s*,?\s*(?P<purpose>(?:to|and then|then|and|so you can|so that you can|"
+    r"in order to)\s+"
+    r"(?:verify|check|confirm|see|inspect|validate|review|look|watch|monitor|"
+    r"compare|diagnose|make sure|ensure|find out|determine|identify|get|gather|"
+    r"collect|show|list|test|read|tail)\b.*"
+    r"|(?:once|when|after|if|before|until|unless)\s.*))?"
+    r"\s*[.!]?$"
+)
+# A clause right after a suggestion that reports on it ("it passed", "the
+# probe returned 200") says the command ran, so the suggestion is not one.
+_REPORTED_AFTER = re.compile(
+    r"^(?:(?:it|its|this|that|they|their|these|both|all|each|running it|"
+    r"(?:the |its )?(?:commands?|probes?|checks?|outputs?|results?|runs?|"
+    r"responses?))\b.*\b(?:"
+    + "|".join(sorted(_RESULT_WORD))
+    + r")\b|(?:the |its )?(?:outputs?|results?|responses?)\s*:)"
+)
+# A clause that reports a result whatever its subject ("productpage
+# responded 200 on all pods", "health was ok").
+_RESULT_VERB = re.compile(
+    r"\b(?:returned|responded|answered|passed|succeeded|completed|finished|"
+    r"exited|printed|came back|(?:was|were) (?:ok|okay|healthy|green|ready|up|"
+    r"clean|fine|good|normal|stable))\b"
+)
+# What a condition waits for; anything else ("after we got 503s") may be a
+# report of something that happened.
+_GATE = re.compile(
+    r"\b(?:tier\s*\d|approval|approved|approves|granted|grants|permission|"
+    r"access)\b"
+)
+_CONDITION_WORD = re.compile(r"^\s*(?:once|when|after|if|before|until|unless)\b")
+# Someone who acts, in the condition or the purpose ("to verify the pods the
+# agent restarted", "after we got 503s"): it may report what happened.
+_ACTOR = re.compile(
+    r"\b(?:we|i|our|us|they|the agent|the session|opsmender|the operator|"
+    r"the team|someone)\b"
+)
+# A clause near a suggestion that opens with someone doing something ("we
+# saw HTTP 200 from all three pods", "I observed 503s").
+_ACTOR_LED = re.compile(
+    r"^(?:we|i|the agent|the session|opsmender|the operator|the team)\s+\w+"
+)
+# A heading over what was done ("Commands run:", "**Actions taken:**",
+# "Steps taken this session:"): every suggestion after it may be a record
+# of a step that ran.
+_RUN_HEADING = re.compile(
+    r"^(?:(?:commands?|actions?|steps?|checks?|probes?)\s+(?:that were\s+)?"
+    r"(?:run|ran|taken|executed|performed|done|completed|applied)|executed|"
+    r"performed|ran|done|completed|applied)(?:\s+[\w-]+){0,3}\s*:"
+)
+# Other results a neighbouring clause may report: a timeout, a ratio of
+# pods, a status code, "healthy again", "are reporting".
+_NEARBY_RESULT = re.compile(
+    r"\b(?:timed out|\d+/\d+|http \d{3}|\d{3}s?\b(?= on| from| for)|healthy again|"
+    r"back to normal|reporting|failing)\b"
+)
+_NAMED_SUGGESTION = re.compile(
+    r"^(?:the )?(?:suggested|recommended|proposed)\s+(?:next\s+)?"
+    r"(?:commands?|steps?|checks?)\s*(?:is|are|would be|:)\s*"
+    r"(?P<commands>"
+    + _SPAN_RE
+    + r"(?:\s*(?:,\s*and|,\s*or|,|and|or)\s*"
+    + _SPAN_RE
+    + r")*)"
+    r"\s*[.!]?$"
+)
+
+
+def _suggested_spans(
+    clause: str, nearby: tuple[str, ...] = ()
+) -> list[tuple[int, int]]:
+    """Where the commands of a suggestion lie in the clause (shape 2 above),
+    or nothing when the clause is not one or one of the clauses near it
+    reports a result."""
+    for other in nearby:
+        if (
+            _REPORTED_AFTER.match(other)
+            or _RESULT_VERB.search(other)
+            or _ACTOR_LED.match(other)
+            or _RESULT_WORD & set(re.findall(r"[\w-]+", other))
+            or _NEARBY_RESULT.search(other)
+        ):
+            return []
+    for pattern in (_SUGGESTION, _NAMED_SUGGESTION):
+        match = pattern.match(clause)
+        if match is None:
+            continue
+        given = match.groupdict()
+        conditions = [given.get("condition") or ""]
+        if _CONDITION_WORD.match(given.get("purpose") or ""):
+            conditions.append(given.get("purpose") or "")
+        if any(c and not _GATE.search(c) for c in conditions):
+            continue
+        purpose = (given.get("purpose") or "") + " " + (given.get("condition") or "")
+        commands = match.group("commands")
+        words = set(re.findall(r"[\w-]+", purpose + " " + commands))
+        inside = " ".join(re.findall(r"`([^`\n]*)`", commands))
+        if re.search(r"[:,()]| - ", purpose) or re.search(r"#|: |, |[()]", inside):
+            continue
+        if (
+            _ACTOR.search(purpose)
+            or _RESULT_VERB.search(purpose)
+            or _RESULT_WORD & words
+        ):
+            continue
+        target = (match.groupdict().get("target") or "").split()
+        for k, word in enumerate(target):
+            if word in _RESULT_WORD:
+                break
+            if word in _EXISTENCE_PREP or _place_word(word):
+                continue
+            after_determiner = k > 0 and target[k - 1] in _DETERMINER
+            if (
+                re.fullmatch(r"\w+ed", word)
+                and after_determiner
+                and not (
+                    _ACTION.search(word)
+                    or _CLOSURE.search(word)
+                    or word in _RESULT_WORD
+                )
+            ):
+                continue
+            break
+        else:
+            return [match.span("commands")]
+    return []
+
+
 def _asserted(clause: str, match: re.Match[str]) -> bool:
     """Whether the clause asserts the matched word: no negation in the few
     words before it ("not resolved", "nothing was restarted"), and no
@@ -229,8 +531,24 @@ def _claims(
     """True when the summary asserts ``pattern`` somewhere. With
     ``about_the_incident``, a closure word about another thing that closes or
     comes back (a circuit breaker, a port, a connection) is not a claim."""
-    for clause in _clauses(text):
+    clauses = _clauses(text)
+    after_heading = False
+    for index, clause in enumerate(clauses):
+        after_heading = after_heading or bool(_RUN_HEADING.match(clause))
+        quiet: list[tuple[int, int]] = []
+        if pattern is _ACTION:
+            if _negated_existence(clause):
+                continue
+            if not after_heading:
+                nearby = (
+                    clauses[max(0, index - 2) : index] + clauses[index + 1 : index + 3]
+                )
+                quiet = _suggested_spans(clause, tuple(nearby))
         for match in pattern.finditer(clause):
+            if match.group(0) in _COMMAND_NOUN and any(
+                start <= match.start() < end for start, end in quiet
+            ):
+                continue
             if not _asserted(clause, match):
                 continue
             if about_the_incident and _about_something_else(clause[: match.start()]):

@@ -92,7 +92,10 @@ depth limit.
 Each service has:
 
 - Name and slug.
-- Owning team.
+- Owning team. Changing it moves the service's live incidents to the new
+  team: the channels scoped to the old team get one notice that each
+  incident moved, nobody is paged, and an incident reassigned to a team
+  of its own stays there.
 - Fixed priority: `P0`, `P1`, `P2`, or `P3`. New services start at `P1`.
 - Enabled state.
 - An intake URL, shown in full once, when it's created or rotated. It carries

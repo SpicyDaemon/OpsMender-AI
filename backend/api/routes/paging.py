@@ -86,6 +86,7 @@ from backend.db.models import User
 from backend.db.repos import (
     EscalationChainRepo,
     EscalationStepRepo,
+    IncidentRepo,
     IngestTokenRepo,
     IntegrationConnectorRepo,
     MCPServerRepo,
@@ -499,6 +500,37 @@ async def create_service(
         ) from exc
 
 
+async def _move_live_incident_cards(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    service_id: uuid.UUID,
+    *,
+    previous_team_id: uuid.UUID,
+) -> None:
+    """After a committed change of a service's owning team, the live incidents
+    of that service that no reassignment holds elsewhere belong to the new
+    team. Edit their cards as a service handoff does (M1-137, finding L-07):
+    the channels scoped to the team they left get one sanitized notice that
+    the incident moved, and nobody is paged. A resolved or merged incident
+    keeps its last card, and an incident reassigned to a team of its own is
+    not moved by its service."""
+    from backend.api.routes.incidents import _refresh_channel_cards
+
+    incidents = await IncidentRepo.list_all(
+        db,
+        org_id,
+        service_id=service_id,
+        exclude_statuses=("resolved", "merged"),
+        limit=1000,
+    )
+    for incident in incidents:
+        if incident.team_id is not None:
+            continue
+        await _refresh_channel_cards(
+            db, incident.id, org_id, previous_team_id=previous_team_id
+        )
+
+
 @router.put(
     "/services/{service_id}",
     response_model=ServiceResponse,
@@ -516,14 +548,21 @@ async def update_service(
         and await TeamRepo.get_by_id(db, org_id, body.team_id) is None
     ):
         raise HTTPException(status_code=400, detail="Owning team not found")
+    current_service = await ServiceRepo.get_by_id(db, org_id, service_id)
+    if current_service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    # The team that handled the service's incidents before this change; its
+    # channels get one notice that each live incident moved (M1-137).
+    previous_team_id = (
+        current_service.team_id
+        if body.team_id is not None and body.team_id != current_service.team_id
+        else None
+    )
     mcp_server_ids = None
     if body.mcp_server_ids is not None:
         mcp_server_ids = await _validate_mcp_servers(db, org_id, body.mcp_server_ids)
     model_config_ids = None
     if body.model_config_ids is not None:
-        current_service = await ServiceRepo.get_by_id(db, org_id, service_id)
-        if current_service is None:
-            raise HTTPException(status_code=404, detail="Service not found")
         existing_model_ids: set[uuid.UUID] = set()
         for raw_id in current_service.model_config_ids or []:
             try:
@@ -572,6 +611,10 @@ async def update_service(
     if updated is None:
         raise HTTPException(status_code=404, detail="Service not found")
     await db.commit()
+    if previous_team_id is not None:
+        await _move_live_incident_cards(
+            db, org_id, service_id, previous_team_id=previous_team_id
+        )
     (response,) = await _service_responses(
         db, org_id, [updated], include_tool_source_overlaps=True
     )

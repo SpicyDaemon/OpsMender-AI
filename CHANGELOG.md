@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Changing a service's owning team now moves the cards of its live
+  incidents the way a service handoff does. The channels scoped to the team
+  the incidents left get one notice that each incident moved to another
+  team, naming no service, team or responder, and nobody is paged. Before,
+  the service edit changed which team handled the incidents but told their
+  channels nothing, so the old team's card stayed live (finding L-07 of the
+  2026-11-04 live retest). A resolved or merged incident keeps its last
+  card, and an incident reassigned to a team of its own is not moved by its
+  service.
 - The grounding correction no longer answers a summary that rightly says
   nothing is configured, or that suggests a command. The 2026-10-27 rerun's
   P0 Tier 2 summary drew "no actions, probes or checks ran in this session"

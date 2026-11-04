@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The grounding correction no longer answers a summary that rightly says
+  nothing is configured, or that suggests a command. The 2026-10-27 rerun's
+  P0 Tier 2 summary drew "no actions, probes or checks ran in this session"
+  for "no liveness or readiness probes, monitoring, or alerts are
+  configured" ("monitoring" sat more than four words after "no") and for
+  "use `bookinfo-lab probe details` ... to verify" ("probe" inside the
+  suggested command). Two shapes of clause are now left out of that check,
+  each matched against the whole clause: a negated list of probes,
+  monitoring, alerts and the like, made only of known words, with at most
+  a closing such as "are configured" and a place; and "use" or "run"
+  followed by commands in code spans, with at most a target and an
+  instruction ("to verify ...") or a condition that names what it waits
+  for ("once tier 2 is granted"), or a span named as the suggested
+  command. A clause that goes on to claim anything is read as before, and
+  so is a suggestion with a result or someone acting in it, a result
+  within two clauses of it ("it passed", "productpage responded 200"), or
+  a heading such as "Commands run:" above it. A result written in words
+  the correction does not know ("all three replicas came up green") after
+  a suggested command is no longer caught through the command's "probe";
+  it was caught only that way before. Nothing else changes.
 - `opsmender run` starts at Tier 1 and plans with the server's tools.
   At Tier 1 the command created its session and approval service without
   the workspace id, so it stopped with "Tier 1 approval flow requires a

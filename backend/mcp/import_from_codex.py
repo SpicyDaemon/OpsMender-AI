@@ -8,7 +8,7 @@ only). Per-server entries live under ``[mcp_servers.<name>]``:
 
     [mcp_servers.kube-prod]
     command = "npx"
-    args = ["-y", "@anthropic/mcp-server-k8s"]
+    args = ["-y", "<mcp-server-package>"]
     env_vars = ["KUBECONFIG"]
 
     [mcp_servers.kube-prod.env]

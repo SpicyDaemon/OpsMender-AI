@@ -197,8 +197,7 @@ def _resolve_node_command(command: str) -> str:
     # 3. Not found - fail with a helpful message.
     raise MCPClientError(
         f"'{command}' is not installed or not on PATH.\n\n"
-        "npx-based MCP servers (e.g. @anthropic/mcp-server-k8s) require "
-        "Node.js.\n"
+        "npx-based MCP servers require Node.js.\n"
         "  • Docker image: Node is bundled automatically.\n"
         "  • Local / binary install: install Node.js LTS from "
         "https://nodejs.org and ensure 'npx' is on your PATH.\n"

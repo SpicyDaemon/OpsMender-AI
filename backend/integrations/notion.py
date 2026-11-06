@@ -23,6 +23,12 @@ from backend.integrations.registry import register_adapter
 
 class NotionAdapter(IntegrationAdapter):
     kind = "notion"
+
+    def argument_alternatives(self, connector, action):
+        # A page is created under a parent page or in a data source, and
+        # text is appended as markdown or as ready-made blocks.
+        return frozenset({"parent_page_id", "data_source_id", "markdown", "children"})
+
     capabilities = (
         IntegrationCapability("test_connection", "Validate Notion access."),
         IntegrationCapability("read_doc", "Read a page as markdown."),
@@ -81,7 +87,7 @@ class NotionAdapter(IntegrationAdapter):
             detail=f"Notion credentials accepted ({response.status_code})."
         )
 
-    async def read_doc(self, connector, auth, page_id):
+    async def read_doc(self, connector, auth, page_id: str):
         response, failure = await self._request(
             connector,
             auth,
@@ -94,11 +100,11 @@ class NotionAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        parent_page_id=None,
-        data_source_id=None,
-        markdown=None,
-        properties=None,
+        title: str,
+        parent_page_id: str | None = None,
+        data_source_id: str | None = None,
+        markdown: str | None = None,
+        properties: dict[str, Any] | None = None,
     ):
         parent_page_id = parent_page_id or connector.config.get("parent_page_id")
         data_source_id = data_source_id or connector.config.get("data_source_id")
@@ -135,9 +141,9 @@ class NotionAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        page_id,
-        markdown=None,
-        children=None,
+        page_id: str,
+        markdown: str | None = None,
+        children: list[dict[str, Any]] | None = None,
     ):
         if children is None:
             text = required(markdown, "markdown")

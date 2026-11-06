@@ -76,19 +76,21 @@ class StatuspageAdapter(IntegrationAdapter):
             detail=f"Status page credentials accepted ({response.status_code})."
         )
 
-    async def list_components(self, connector, auth, page_id=None):
+    async def list_components(self, connector, auth, page_id: str | None = None):
         response, failure = await self._request(
             connector, auth, "GET", self._path(connector, page_id, "/components")
         )
         return failure or IntegrationResult.success(components=response.json())
 
-    async def list_incidents(self, connector, auth, page_id=None):
+    async def list_incidents(self, connector, auth, page_id: str | None = None):
         response, failure = await self._request(
             connector, auth, "GET", self._path(connector, page_id, "/incidents")
         )
         return failure or IntegrationResult.success(incidents=response.json())
 
-    async def get_incident(self, connector, auth, incident_id, page_id=None):
+    async def get_incident(
+        self, connector, auth, incident_id: str, page_id: str | None = None
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -105,13 +107,13 @@ class StatuspageAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        name,
-        body,
-        page_id=None,
-        status="investigating",
-        impact_override=None,
-        component_ids=None,
-        deliver_notifications=True,
+        name: str,
+        body: str,
+        page_id: str | None = None,
+        status: str = "investigating",
+        impact_override: str | None = None,
+        component_ids: list[str] | None = None,
+        deliver_notifications: bool = True,
     ):
         incident: dict[str, Any] = {
             "name": required(name, "name"),

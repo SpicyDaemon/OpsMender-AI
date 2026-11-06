@@ -49,33 +49,33 @@ class ZendeskAdapter(IntegrationAdapter):
         IntegrationCapability("test_connection", "Validate Zendesk credentials."),
         IntegrationCapability(
             "get_ticket",
-            "Read a ticket. Parameters: ticket_id.",
+            "Read a ticket.",
         ),
         IntegrationCapability(
             "list_tickets",
-            "List tickets. Parameters: optional status, assignee_id, page.",
+            "List tickets.",
         ),
         IntegrationCapability(
             "create_ticket",
-            "Create a ticket. Parameters: subject, description, optional priority and type.",
+            "Create a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "update_ticket",
-            "Update a ticket. Parameters: ticket_id, fields dict.",
+            "Update a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "comment_ticket",
-            "Add a comment to a ticket. Parameters: ticket_id, body, optional public bool.",
+            "Add a comment to a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "link_ticket_to_incident",
-            "Add an OpsMender incident link comment. Parameters: ticket_id, incident_id, incident_url.",
+            "Add an OpsMender incident link comment.",
             classification="caution",
             mutating=True,
         ),
@@ -98,7 +98,7 @@ class ZendeskAdapter(IntegrationAdapter):
             detail=f"Zendesk credentials accepted ({user.get('name', 'user')})."
         )
 
-    async def get_ticket(self, connector, auth, ticket_id):
+    async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _zendesk_base(connector)
         tid = required(ticket_id, "ticket_id")
         async with self._factory() as client:
@@ -111,7 +111,12 @@ class ZendeskAdapter(IntegrationAdapter):
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
     async def list_tickets(
-        self, connector, auth, status=None, assignee_id=None, page=1
+        self,
+        connector,
+        auth,
+        status: str | None = None,
+        assignee_id: int | str | None = None,
+        page: int = 1,
     ):
         base = _zendesk_base(connector)
         params: dict[str, Any] = {"page": page, "per_page": 25}
@@ -135,7 +140,13 @@ class ZendeskAdapter(IntegrationAdapter):
         )
 
     async def create_ticket(
-        self, connector, auth, subject, description, priority=None, type=None
+        self,
+        connector,
+        auth,
+        subject: str,
+        description: str,
+        priority: str | None = None,
+        type: str | None = None,
     ):
         base = _zendesk_base(connector)
         ticket: dict[str, Any] = {
@@ -156,7 +167,9 @@ class ZendeskAdapter(IntegrationAdapter):
             return response_error("Zendesk", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def update_ticket(self, connector, auth, ticket_id, fields):
+    async def update_ticket(
+        self, connector, auth, ticket_id: int | str, fields: dict[str, Any]
+    ):
         base = _zendesk_base(connector)
         tid = required(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
@@ -171,7 +184,9 @@ class ZendeskAdapter(IntegrationAdapter):
             return response_error("Zendesk", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def comment_ticket(self, connector, auth, ticket_id, body, public=True):
+    async def comment_ticket(
+        self, connector, auth, ticket_id: int | str, body: str, public: bool = True
+    ):
         base = _zendesk_base(connector)
         tid = required(ticket_id, "ticket_id")
         comment_body = required(body, "body")
@@ -190,7 +205,7 @@ class ZendeskAdapter(IntegrationAdapter):
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
     async def link_ticket_to_incident(
-        self, connector, auth, ticket_id, incident_id, incident_url
+        self, connector, auth, ticket_id: int | str, incident_id: str, incident_url: str
     ):
         body = (
             f"Linked to OpsMender incident {required(incident_id, 'incident_id')}."
@@ -229,33 +244,33 @@ class FreshserviceAdapter(IntegrationAdapter):
         IntegrationCapability("test_connection", "Validate Freshservice credentials."),
         IntegrationCapability(
             "get_ticket",
-            "Read a ticket. Parameters: ticket_id.",
+            "Read a ticket.",
         ),
         IntegrationCapability(
             "list_tickets",
-            "List tickets. Parameters: optional status, priority, page.",
+            "List tickets.",
         ),
         IntegrationCapability(
             "create_ticket",
-            "Create a ticket. Parameters: subject, description, email, optional priority.",
+            "Create a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "update_ticket",
-            "Update a ticket. Parameters: ticket_id, fields dict.",
+            "Update a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "comment_ticket",
-            "Add a note to a ticket. Parameters: ticket_id, body, optional private bool.",
+            "Add a note to a ticket.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "link_ticket_to_incident",
-            "Add an OpsMender link note. Parameters: ticket_id, incident_id, incident_url.",
+            "Add an OpsMender link note.",
             classification="caution",
             mutating=True,
         ),
@@ -279,7 +294,7 @@ class FreshserviceAdapter(IntegrationAdapter):
             detail=f"Freshservice credentials accepted ({name.strip() or 'user'})."
         )
 
-    async def get_ticket(self, connector, auth, ticket_id):
+    async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _freshservice_base(connector)
         tid = required(ticket_id, "ticket_id")
         async with self._factory() as client:
@@ -291,7 +306,14 @@ class FreshserviceAdapter(IntegrationAdapter):
             return response_error("Freshservice", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def list_tickets(self, connector, auth, status=None, priority=None, page=1):
+    async def list_tickets(
+        self,
+        connector,
+        auth,
+        status: int | str | None = None,
+        priority: int | str | None = None,
+        page: int = 1,
+    ):
         base = _freshservice_base(connector)
         params: dict[str, Any] = {"page": page, "per_page": 25}
         if status:
@@ -310,7 +332,13 @@ class FreshserviceAdapter(IntegrationAdapter):
         return IntegrationResult.success(tickets=body.get("tickets", []))
 
     async def create_ticket(
-        self, connector, auth, subject, description, email, priority=None
+        self,
+        connector,
+        auth,
+        subject: str,
+        description: str,
+        email: str,
+        priority: int | str | None = None,
     ):
         base = _freshservice_base(connector)
         payload: dict[str, Any] = {
@@ -331,7 +359,9 @@ class FreshserviceAdapter(IntegrationAdapter):
             return response_error("Freshservice", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def update_ticket(self, connector, auth, ticket_id, fields):
+    async def update_ticket(
+        self, connector, auth, ticket_id: int | str, fields: dict[str, Any]
+    ):
         base = _freshservice_base(connector)
         tid = required(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
@@ -346,7 +376,9 @@ class FreshserviceAdapter(IntegrationAdapter):
             return response_error("Freshservice", r)
         return IntegrationResult.success(ticket=r.json().get("ticket"))
 
-    async def comment_ticket(self, connector, auth, ticket_id, body, private=True):
+    async def comment_ticket(
+        self, connector, auth, ticket_id: int | str, body: str, private: bool = True
+    ):
         base = _freshservice_base(connector)
         tid = required(ticket_id, "ticket_id")
         async with self._factory() as client:
@@ -360,7 +392,7 @@ class FreshserviceAdapter(IntegrationAdapter):
         return IntegrationResult.success(note=r.json().get("note"))
 
     async def link_ticket_to_incident(
-        self, connector, auth, ticket_id, incident_id, incident_url
+        self, connector, auth, ticket_id: int | str, incident_id: str, incident_url: str
     ):
         body = (
             f"Linked to OpsMender incident {required(incident_id, 'incident_id')}."
@@ -394,33 +426,33 @@ class AsanaAdapter(IntegrationAdapter):
         IntegrationCapability("test_connection", "Validate Asana credentials."),
         IntegrationCapability(
             "get_task",
-            "Read a task. Parameters: task_id.",
+            "Read a task.",
         ),
         IntegrationCapability(
             "list_tasks",
-            "List tasks in a project. Parameters: project_id, optional completed.",
+            "List tasks in a project.",
         ),
         IntegrationCapability(
             "create_task",
-            "Create a task. Parameters: name, projects list, optional notes and assignee.",
+            "Create a task.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "update_task",
-            "Update a task. Parameters: task_id, fields dict.",
+            "Update a task.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "comment_task",
-            "Add a comment to a task. Parameters: task_id, text.",
+            "Add a comment to a task.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "link_task_to_incident",
-            "Add an OpsMender incident link story. Parameters: task_id, incident_id, incident_url.",
+            "Add an OpsMender incident link story.",
             classification="caution",
             mutating=True,
         ),
@@ -443,7 +475,7 @@ class AsanaAdapter(IntegrationAdapter):
             detail=f"Asana credentials accepted ({user.get('name', 'user')})."
         )
 
-    async def get_task(self, connector, auth, task_id):
+    async def get_task(self, connector, auth, task_id: str):
         base = _asana_base(connector)
         tid = required(task_id, "task_id")
         async with self._factory() as client:
@@ -456,7 +488,9 @@ class AsanaAdapter(IntegrationAdapter):
             return response_error("Asana", r)
         return IntegrationResult.success(task=r.json().get("data"))
 
-    async def list_tasks(self, connector, auth, project_id=None, completed=False):
+    async def list_tasks(
+        self, connector, auth, project_id: str | None = None, completed: bool = False
+    ):
         base = _asana_base(connector)
         pid = required(project_id or connector.config.get("project_id"), "project_id")
         params = {
@@ -477,7 +511,13 @@ class AsanaAdapter(IntegrationAdapter):
         return IntegrationResult.success(tasks=r.json().get("data", []))
 
     async def create_task(
-        self, connector, auth, name, projects=None, notes=None, assignee=None
+        self,
+        connector,
+        auth,
+        name: str,
+        projects: list[str] | None = None,
+        notes: str | None = None,
+        assignee: str | None = None,
     ):
         base = _asana_base(connector)
         task: dict[str, Any] = {"name": required(name, "name")}
@@ -502,7 +542,7 @@ class AsanaAdapter(IntegrationAdapter):
             return response_error("Asana", r)
         return IntegrationResult.success(task=r.json().get("data"))
 
-    async def update_task(self, connector, auth, task_id, fields):
+    async def update_task(self, connector, auth, task_id: str, fields: dict[str, Any]):
         base = _asana_base(connector)
         tid = required(task_id, "task_id")
         if not isinstance(fields, dict) or not fields:
@@ -517,7 +557,7 @@ class AsanaAdapter(IntegrationAdapter):
             return response_error("Asana", r)
         return IntegrationResult.success(task=r.json().get("data"))
 
-    async def comment_task(self, connector, auth, task_id, text):
+    async def comment_task(self, connector, auth, task_id: str, text: str):
         base = _asana_base(connector)
         tid = required(task_id, "task_id")
         async with self._factory() as client:
@@ -531,7 +571,7 @@ class AsanaAdapter(IntegrationAdapter):
         return IntegrationResult.success(story=r.json().get("data"))
 
     async def link_task_to_incident(
-        self, connector, auth, task_id, incident_id, incident_url
+        self, connector, auth, task_id: str, incident_id: str, incident_url: str
     ):
         text = (
             f"Linked to OpsMender incident {required(incident_id, 'incident_id')}."

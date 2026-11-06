@@ -22,6 +22,11 @@ from backend.integrations.registry import register_adapter
 
 class LinearAdapter(IntegrationAdapter):
     kind = "linear"
+
+    def argument_alternatives(self, connector, action):
+        # Listing may span every team; creating needs one.
+        return frozenset({"team_id"}) if action == "list_issues" else frozenset()
+
     capabilities = (
         IntegrationCapability("test_connection", "Validate Linear access."),
         IntegrationCapability("get_issue", "Read an issue."),
@@ -89,7 +94,7 @@ class LinearAdapter(IntegrationAdapter):
             detail=f"Linear credentials accepted ({data['viewer'].get('name', 'user')})."
         )
 
-    async def get_issue(self, connector, auth, issue_id):
+    async def get_issue(self, connector, auth, issue_id: str):
         data, failure = await self._graphql(
             connector,
             auth,
@@ -103,7 +108,12 @@ class LinearAdapter(IntegrationAdapter):
         return failure or IntegrationResult.success(issue=data["issue"])
 
     async def list_issues(
-        self, connector, auth, first=50, team_id=None, assignee_id=None
+        self,
+        connector,
+        auth,
+        first: int = 50,
+        team_id: str | None = None,
+        assignee_id: str | None = None,
     ):
         filters: dict[str, Any] = {}
         if team_id or connector.config.get("team_id"):
@@ -128,11 +138,11 @@ class LinearAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        team_id=None,
-        description=None,
-        priority=None,
-        assignee_id=None,
+        title: str,
+        team_id: str | None = None,
+        description: str | None = None,
+        priority: int | None = None,
+        assignee_id: str | None = None,
     ):
         issue_input: dict[str, Any] = {
             "teamId": required(team_id or connector.config.get("team_id"), "team_id"),
@@ -162,7 +172,9 @@ class LinearAdapter(IntegrationAdapter):
             return IntegrationResult.failure("Linear did not create the issue")
         return failure or IntegrationResult.success(issue=payload["issue"])
 
-    async def update_issue(self, connector, auth, issue_id, fields):
+    async def update_issue(
+        self, connector, auth, issue_id: str, fields: dict[str, Any]
+    ):
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         data, failure = await self._graphql(

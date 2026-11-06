@@ -70,7 +70,7 @@ class GoogleDocsAdapter(IntegrationAdapter):
             detail=f"Google Drive credentials accepted ({response.status_code})."
         )
 
-    async def read_doc(self, connector, auth, document_id):
+    async def read_doc(self, connector, auth, document_id: str):
         document_id = quote(required(document_id, "document_id"), safe="")
         response, failure = await self._request(
             connector,
@@ -84,8 +84,8 @@ class GoogleDocsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        document_id,
-        mime_type="text/plain",
+        document_id: str,
+        mime_type: str = "text/plain",
     ):
         document_id = quote(required(document_id, "document_id"), safe="")
         mime_type = required(mime_type, "mime_type")

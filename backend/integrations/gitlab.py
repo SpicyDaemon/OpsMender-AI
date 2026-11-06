@@ -37,46 +37,46 @@ class GitLabAdapter(IntegrationAdapter):
         ),
         IntegrationCapability(
             "get_file",
-            "Read a repository file. Parameters: project, path, optional ref.",
+            "Read a repository file.",
         ),
         IntegrationCapability(
             "list_issues",
-            "List project issues. Parameters: project, optional state.",
+            "List project issues.",
         ),
         IntegrationCapability(
             "create_issue",
-            "Create an issue. Parameters: project, title, optional description and labels.",
+            "Create an issue.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "comment_issue",
-            "Comment on an issue. Parameters: project, issue_iid, body.",
+            "Comment on an issue.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "create_merge_request",
-            "Create a merge request. Parameters: project, title, source_branch, target_branch, optional description.",
+            "Create a merge request.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "merge_merge_request",
-            "Merge a merge request. Parameters: project, merge_request_iid, optional sha.",
+            "Merge a merge request.",
             classification="destructive",
             mutating=True,
             always_requires_approval=True,
         ),
         IntegrationCapability(
             "link_commit_to_incident",
-            "Link a commit to an OpsMender incident. Parameters: incident_id, project, sha.",
+            "Link a commit to an OpsMender incident.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "link_merge_request_to_incident",
-            "Link a merge request to an OpsMender incident. Parameters: incident_id, project, merge_request_iid.",
+            "Link a merge request to an OpsMender incident.",
             classification="caution",
             mutating=True,
         ),
@@ -159,7 +159,7 @@ class GitLabAdapter(IntegrationAdapter):
             )
         )
 
-    async def get_project(self, connector, auth, project=None):
+    async def get_project(self, connector, auth, project: str | None = None):
         project = self._project(connector, project)
         response, failure = await self._request(
             connector,
@@ -179,7 +179,9 @@ class GitLabAdapter(IntegrationAdapter):
             }
         )
 
-    async def get_file(self, connector, auth, path, project=None, ref="HEAD"):
+    async def get_file(
+        self, connector, auth, path: str, project: str | None = None, ref: str = "HEAD"
+    ):
         project = self._project(connector, project)
         response, failure = await self._request(
             connector,
@@ -206,7 +208,9 @@ class GitLabAdapter(IntegrationAdapter):
             }
         )
 
-    async def list_issues(self, connector, auth, project=None, state="opened"):
+    async def list_issues(
+        self, connector, auth, project: str | None = None, state: str = "opened"
+    ):
         project = self._project(connector, project)
         response, failure = await self._request(
             connector,
@@ -233,10 +237,10 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        project=None,
-        description=None,
-        labels=None,
+        title: str,
+        project: str | None = None,
+        description: str | None = None,
+        labels: list[str] | str | None = None,
     ):
         project = self._project(connector, project)
         payload = {"title": _required(title, "title")}
@@ -266,9 +270,9 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        issue_iid,
-        body,
-        project=None,
+        issue_iid: int,
+        body: str,
+        project: str | None = None,
     ):
         project = self._project(connector, project)
         response, failure = await self._request(
@@ -289,12 +293,12 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        source_branch,
-        target_branch,
-        project=None,
-        description=None,
-        remove_source_branch=False,
+        title: str,
+        source_branch: str,
+        target_branch: str,
+        project: str | None = None,
+        description: str | None = None,
+        remove_source_branch: bool = False,
     ):
         project = self._project(connector, project)
         response, failure = await self._request(
@@ -325,9 +329,9 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        merge_request_iid,
-        project=None,
-        sha=None,
+        merge_request_iid: int,
+        project: str | None = None,
+        sha: str | None = None,
     ):
         project = self._project(connector, project)
         payload = {}
@@ -349,9 +353,9 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        incident_id,
-        sha,
-        project=None,
+        incident_id: str,
+        sha: str,
+        project: str | None = None,
     ):
         project = self._project(connector, project)
         response, failure = await self._request(
@@ -379,9 +383,9 @@ class GitLabAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        incident_id,
-        merge_request_iid,
-        project=None,
+        incident_id: str,
+        merge_request_iid: int,
+        project: str | None = None,
     ):
         project = self._project(connector, project)
         response, failure = await self._request(

@@ -27,6 +27,19 @@ infrastructure connectors at **Admin → Integrations**.
 
 The **Custom HTTP** kind is the reference adapter in the foundation.
 
+Every action states its arguments to the AI: the name, the type and whether
+it is required, for example `Arguments: issue_key (string, required).` for
+Jira's `get_issue`. The same list appears next to each of the connector's
+tools in Skill Studio. An argument that falls back to the connector's
+configuration shows that value, as in `namespace (string, default
+"production")`, and is required when the connector has none: a Jenkins
+connector with no default job needs the job in every call. A call with an
+argument the action does not take, without a required one, or with the wrong
+kind of value (the text "false" for a true/false flag) is refused before it
+reaches the provider, and the refusal names the arguments that exist. The
+check happens when the action runs, so at Tier 1 a call that does not fit is
+refused after it was approved.
+
 ### Using integrations without an MCP server
 
 MCP is optional when a Service's active native integration connectors already

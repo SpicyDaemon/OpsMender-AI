@@ -114,7 +114,9 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             detail=f"Azure DevOps connection accepted ({response.status_code})."
         )
 
-    async def get_repository(self, connector, auth, project=None, repository=None):
+    async def get_repository(
+        self, connector, auth, project: str | None = None, repository: str | None = None
+    ):
         project = self._project(connector, project)
         repository = self._repo(connector, repository)
         response, failure = await self._request(
@@ -130,10 +132,10 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        path,
-        project=None,
-        repository=None,
-        ref="main",
+        path: str,
+        project: str | None = None,
+        repository: str | None = None,
+        ref: str = "main",
     ):
         project = self._project(connector, project)
         repository = self._repo(connector, repository)
@@ -164,9 +166,9 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        project=None,
-        repository=None,
-        status="active",
+        project: str | None = None,
+        repository: str | None = None,
+        status: str = "active",
     ):
         project = self._project(connector, project)
         repository = self._repo(connector, repository)
@@ -189,12 +191,12 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        source_branch,
-        target_branch,
-        project=None,
-        repository=None,
-        description=None,
+        title: str,
+        source_branch: str,
+        target_branch: str,
+        project: str | None = None,
+        repository: str | None = None,
+        description: str | None = None,
     ):
         project = self._project(connector, project)
         repository = self._repo(connector, repository)
@@ -218,12 +220,12 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pull_request_id,
-        project=None,
-        repository=None,
-        last_merge_source_commit=None,
-        delete_source_branch=False,
-        squash=False,
+        pull_request_id: int,
+        project: str | None = None,
+        repository: str | None = None,
+        last_merge_source_commit: str | None = None,
+        delete_source_branch: bool = False,
+        squash: bool = False,
     ):
         project = self._project(connector, project)
         repository = self._repo(connector, repository)
@@ -247,7 +249,9 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(merge=response.json())
 
-    async def get_work_item(self, connector, auth, work_item_id, project=None):
+    async def get_work_item(
+        self, connector, auth, work_item_id: int, project: str | None = None
+    ):
         project = self._project(connector, project)
         response, failure = await self._request(
             connector,
@@ -273,11 +277,11 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        project=None,
-        work_item_type="Task",
-        description=None,
-        fields=None,
+        title: str,
+        project: str | None = None,
+        work_item_type: str = "Task",
+        description: str | None = None,
+        fields: dict[str, Any] | None = None,
     ):
         project = self._project(connector, project)
         values = dict(fields or {})
@@ -300,9 +304,9 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        work_item_id,
-        fields,
-        project=None,
+        work_item_id: int,
+        fields: dict[str, Any],
+        project: str | None = None,
     ):
         project = self._project(connector, project)
         if not isinstance(fields, dict) or not fields:

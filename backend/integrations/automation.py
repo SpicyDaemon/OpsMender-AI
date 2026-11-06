@@ -93,7 +93,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             detail=f"Terraform Cloud connection accepted ({response.status_code})."
         )
 
-    async def list_workspaces(self, connector, auth, organization=None):
+    async def list_workspaces(self, connector, auth, organization: str | None = None):
         organization = quote(self._organization(connector, organization), safe="")
         response, failure = await self._request(
             connector,
@@ -105,7 +105,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             workspaces=response.json().get("data", [])
         )
 
-    async def get_workspace(self, connector, auth, workspace_id):
+    async def get_workspace(self, connector, auth, workspace_id: str):
         response, failure = await self._request(
             connector,
             auth,
@@ -116,7 +116,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             workspace=response.json().get("data")
         )
 
-    async def list_runs(self, connector, auth, workspace_id=None):
+    async def list_runs(self, connector, auth, workspace_id: str | None = None):
         workspace_id = required(
             workspace_id or connector.config.get("workspace_id"), "workspace_id"
         )
@@ -131,7 +131,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             runs=response.json().get("data", [])
         )
 
-    async def get_run(self, connector, auth, run_id):
+    async def get_run(self, connector, auth, run_id: str):
         response, failure = await self._request(
             connector,
             auth,
@@ -144,10 +144,10 @@ class TerraformCloudAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        workspace_id=None,
-        message=None,
-        refresh_only=False,
-        variables=None,
+        workspace_id: str | None = None,
+        message: str | None = None,
+        refresh_only: bool = False,
+        variables: dict[str, Any] | None = None,
     ):
         workspace_id = required(
             workspace_id or connector.config.get("workspace_id"), "workspace_id"
@@ -177,7 +177,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(run=response.json().get("data"))
 
-    async def apply(self, connector, auth, run_id, comment=None):
+    async def apply(self, connector, auth, run_id: str, comment: str | None = None):
         payload = {"comment": comment or "Approved through OpsMender"}
         response, failure = await self._request(
             connector,
@@ -267,14 +267,14 @@ class ArgoCDAdapter(IntegrationAdapter):
             applications=response.json().get("items", [])
         )
 
-    async def get_application(self, connector, auth, application=None):
+    async def get_application(self, connector, auth, application: str | None = None):
         application = quote(self._application(connector, application), safe="")
         response, failure = await self._request(
             connector, auth, "GET", f"/api/v1/applications/{application}"
         )
         return failure or IntegrationResult.success(application=response.json())
 
-    async def get_diff(self, connector, auth, application=None):
+    async def get_diff(self, connector, auth, application: str | None = None):
         application = quote(self._application(connector, application), safe="")
         response, failure = await self._request(
             connector,
@@ -290,10 +290,10 @@ class ArgoCDAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        application=None,
-        revision=None,
-        prune=False,
-        dry_run=False,
+        application: str | None = None,
+        revision: str | None = None,
+        prune: bool = False,
+        dry_run: bool = False,
     ):
         application = quote(self._application(connector, application), safe="")
         payload: dict[str, Any] = {"prune": bool(prune), "dryRun": bool(dry_run)}
@@ -308,7 +308,9 @@ class ArgoCDAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(operation=response.json())
 
-    async def rollback(self, connector, auth, history_id, application=None):
+    async def rollback(
+        self, connector, auth, history_id: int, application: str | None = None
+    ):
         application = quote(self._application(connector, application), safe="")
         response, failure = await self._request(
             connector,
@@ -377,7 +379,9 @@ class AnsibleControllerAdapter(IntegrationAdapter):
             detail=f"Ansible controller connection accepted ({response.status_code})."
         )
 
-    async def list_job_templates(self, connector, auth, name=None, page_size=100):
+    async def list_job_templates(
+        self, connector, auth, name: str | None = None, page_size: int = 100
+    ):
         params: dict[str, Any] = {"page_size": min(max(int(page_size), 1), 200)}
         if name:
             params["name__icontains"] = name
@@ -392,7 +396,7 @@ class AnsibleControllerAdapter(IntegrationAdapter):
             job_templates=response.json().get("results", [])
         )
 
-    async def get_job_template(self, connector, auth, template_id):
+    async def get_job_template(self, connector, auth, template_id: int):
         response, failure = await self._request(
             connector,
             auth,
@@ -401,7 +405,7 @@ class AnsibleControllerAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(job_template=response.json())
 
-    async def get_job(self, connector, auth, job_id):
+    async def get_job(self, connector, auth, job_id: int):
         response, failure = await self._request(
             connector, auth, "GET", f"/api/v2/jobs/{int(job_id)}/"
         )
@@ -411,11 +415,11 @@ class AnsibleControllerAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        template_id,
-        extra_vars=None,
-        inventory=None,
-        limit=None,
-        job_tags=None,
+        template_id: int,
+        extra_vars: dict[str, Any] | str | None = None,
+        inventory: int | None = None,
+        limit: str | None = None,
+        job_tags: str | None = None,
     ):
         payload: dict[str, Any] = {}
         if extra_vars:

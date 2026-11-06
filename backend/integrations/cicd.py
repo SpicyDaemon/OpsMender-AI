@@ -85,7 +85,7 @@ class JenkinsAdapter(IntegrationAdapter):
             detail=f"Jenkins connection accepted ({response.status_code})."
         )
 
-    async def get_job(self, connector, auth, job=None):
+    async def get_job(self, connector, auth, job: str | None = None):
         response, failure = await self._request(
             connector,
             auth,
@@ -97,7 +97,13 @@ class JenkinsAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(job=response.json())
 
-    async def get_build(self, connector, auth, build_number="lastBuild", job=None):
+    async def get_build(
+        self,
+        connector,
+        auth,
+        build_number: int | str = "lastBuild",
+        job: str | None = None,
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -107,7 +113,13 @@ class JenkinsAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(build=response.json())
 
-    async def trigger_build(self, connector, auth, job=None, parameters=None):
+    async def trigger_build(
+        self,
+        connector,
+        auth,
+        job: str | None = None,
+        parameters: dict[str, Any] | None = None,
+    ):
         suffix = "buildWithParameters" if parameters else "build"
         response, failure = await self._request(
             connector,
@@ -175,7 +187,13 @@ class CircleCIAdapter(IntegrationAdapter):
             detail=f"CircleCI credentials accepted ({response.status_code})."
         )
 
-    async def list_pipelines(self, connector, auth, project_slug=None, branch=None):
+    async def list_pipelines(
+        self,
+        connector,
+        auth,
+        project_slug: str | None = None,
+        branch: str | None = None,
+    ):
         project = quote(self._project(connector, project_slug), safe="")
         response, failure = await self._request(
             connector,
@@ -188,7 +206,7 @@ class CircleCIAdapter(IntegrationAdapter):
             pipelines=response.json().get("items", [])
         )
 
-    async def get_pipeline(self, connector, auth, pipeline_id):
+    async def get_pipeline(self, connector, auth, pipeline_id: str):
         response, failure = await self._request(
             connector,
             auth,
@@ -197,7 +215,9 @@ class CircleCIAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(pipeline=response.json())
 
-    async def get_job(self, connector, auth, job_number, project_slug=None):
+    async def get_job(
+        self, connector, auth, job_number: int, project_slug: str | None = None
+    ):
         project = quote(self._project(connector, project_slug), safe="")
         response, failure = await self._request(
             connector,
@@ -211,10 +231,10 @@ class CircleCIAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        project_slug=None,
-        branch=None,
-        tag=None,
-        parameters=None,
+        project_slug: str | None = None,
+        branch: str | None = None,
+        tag: str | None = None,
+        parameters: dict[str, Any] | None = None,
     ):
         if branch and tag:
             raise ValueError("Choose branch or tag, not both")
@@ -306,7 +326,9 @@ class AzurePipelinesAdapter(IntegrationAdapter):
             detail=f"Azure Pipelines connection accepted ({response.status_code})."
         )
 
-    async def list_pipelines(self, connector, auth, project=None, top=100):
+    async def list_pipelines(
+        self, connector, auth, project: str | None = None, top: int = 100
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -318,7 +340,9 @@ class AzurePipelinesAdapter(IntegrationAdapter):
             pipelines=response.json().get("value", [])
         )
 
-    async def get_pipeline(self, connector, auth, pipeline_id, project=None):
+    async def get_pipeline(
+        self, connector, auth, pipeline_id: int, project: str | None = None
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -328,7 +352,14 @@ class AzurePipelinesAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(pipeline=response.json())
 
-    async def list_runs(self, connector, auth, pipeline_id, project=None, top=100):
+    async def list_runs(
+        self,
+        connector,
+        auth,
+        pipeline_id: int,
+        project: str | None = None,
+        top: int = 100,
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -340,7 +371,9 @@ class AzurePipelinesAdapter(IntegrationAdapter):
             runs=response.json().get("value", [])
         )
 
-    async def get_run(self, connector, auth, pipeline_id, run_id, project=None):
+    async def get_run(
+        self, connector, auth, pipeline_id: int, run_id: int, project: str | None = None
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -358,11 +391,11 @@ class AzurePipelinesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pipeline_id,
-        project=None,
-        branch=None,
-        variables=None,
-        template_parameters=None,
+        pipeline_id: int,
+        project: str | None = None,
+        branch: str | None = None,
+        variables: dict[str, Any] | None = None,
+        template_parameters: dict[str, Any] | None = None,
     ):
         payload: dict[str, Any] = {}
         if branch:

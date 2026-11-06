@@ -359,6 +359,31 @@ SNS message still opens an incident titled from its Subject or message.
 External `acknowledged` states remain open until an OpsMender responder takes
 ownership.
 
+**CI failures.** A pipeline pages by posting a small payload to the service's
+intake URL from a step that runs only on failure, for example from a GitHub
+Actions step with `if: failure()`, a GitLab job with `when: on_failure`, a
+Jenkins post-build step or an Argo CD notification:
+`{"title":"ci failed: build #42","description":"<run URL>","severity":"high","id":"ci-42","status":"firing"}`.
+
+A GitHub repository webhook can post to the same URL directly. Give it the
+content type `application/json` (the intake reads JSON only) and subscribe it
+to **Workflow runs**; its Secret field is not used, the intake URL's own token
+is what admits a delivery. A delivery with GitHub's `X-GitHub-Event` header
+and GitHub's own body is read for what it is: a run whose conclusion is
+`failure`, `timed_out` or `startup_failure` opens one incident named after the
+workflow, repository and branch, keyed by the run, so a redelivery or a failed
+re-run joins it while it is open (after it is resolved, a new failure of that
+run opens a new incident). The setup `ping`, a push or any other event, a run
+that has not ended and a run with any other conclusion are acknowledged and
+open nothing; GitHub reports a run that was stopped, by a person or by a
+concurrency rule, as `cancelled`. A run that later passes does not resolve its
+incident. Use the webhook or the workflow's own step, not both, or give the
+step the id `github-actions-run-${{ github.run_id }}` so the two join one
+incident. Every delivery counts toward the intake's rate limit (60 a minute
+per URL unless `OPSMENDER_INGEST_RATE_LIMIT` says otherwise), and a run sends
+three. An ingest token created for another provider's format is not read this
+way.
+
 For provider-scoped ingest tokens, the same external fingerprint can refer to
 an incident already owned by another service. The first incident keeps its
 owner and paging policy. The people on the Escalation Chain the receiving

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A GitHub repository webhook pointed at a service's alert intake URL now
+  pages only for a workflow run that failed. GitHub sends its setup ping,
+  pushes and every step of a run's life to the URL, and each became an
+  untitled incident: one failed run made three, and the ping a fourth
+  (finding I-06 of the 2026-11-05 live round). A delivery that carries
+  GitHub's event header and GitHub's body is now read for what it is. A
+  run whose conclusion is `failure`, `timed_out` or `startup_failure`
+  opens one incident named after the workflow, the repository and the
+  branch, with the run's link; a redelivery or a failed re-run of the same
+  run joins it while it is open. The ping, a push or any other GitHub
+  event, a run that has not ended and a run that passed or was cancelled
+  are acknowledged and open nothing. A payload with a title of its own,
+  and anything without GitHub's header, is parsed as before, and so is
+  every delivery on an ingest token tied to another provider's format.
 - The GitLab connection test now checks the connector's default project.
   It read the token's account, which a token limited to one project may
   not do, so a token that read and wrote its project through the connector

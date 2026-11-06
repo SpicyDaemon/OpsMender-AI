@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import secrets
 import uuid
 from typing import Any
@@ -38,6 +39,7 @@ from backend.api.schemas import (
 from backend.db.models import IngestToken, User
 from backend.db.repos import IngestLogRepo, IngestTokenRepo, ServiceRepo
 from backend.ingest.adapters.universal import _MAX_JSON_DEPTH, _exceeds_depth
+from backend.ingest.github_actions import github_delivery
 from backend.ingest.llm_extractor import (
     apply_shape_cache,
     compute_shape_hash,
@@ -186,6 +188,35 @@ async def _read_body(request: Request, limit: int) -> bytes:
     return bytes(body)
 
 
+def _github_native(
+    request: Request, token: IngestToken, payload: Any
+) -> Any | IngestResponse:
+    """A native GitHub webhook delivery, reduced to what it means (M1-142).
+
+    A failed workflow run becomes the canonical alert payload; a setup ping,
+    every other step of a run's life and every other GitHub event are
+    acknowledged with no incident. Anything else comes back unchanged.
+
+    Only for a token whose alerts the universal parser reads (a service's
+    intake URL always is one): a token tied to another provider's format
+    would refuse the canonical payload, so its deliveries stay as they were.
+    An acknowledged delivery leaves a log line and no delivery-log row:
+    those rows are counted as inbound alerts by the noise report, and a
+    passing pipeline is not noise.
+    """
+    if token.provider not in {"auto", "generic"}:
+        return payload
+    delivery = github_delivery(request.headers.get("X-GitHub-Event"), payload)
+    if delivery is None:
+        return payload
+    if delivery.alert is not None:
+        return delivery.alert
+    logging.getLogger(__name__).info(
+        "ingest: token=%s %s; no incident", token.id, delivery.ignored
+    )
+    return IngestResponse(success=True, incident_id=None, dedup_action="skipped")
+
+
 async def _intake_payload(
     request: Request, db: AsyncSession, token: IngestToken
 ) -> dict[str, Any] | JSONResponse:
@@ -313,6 +344,9 @@ async def service_intake_webhook(
     payload = await _intake_payload(request, db, token)
     if isinstance(payload, JSONResponse):
         return payload
+    payload = _github_native(request, token, payload)
+    if isinstance(payload, IngestResponse):
+        return payload
 
     # Commit before giving back the SQLite turn ingest_incident takes at its
     # dedup lookup (O-20): a parse failure keeps its log row, and the incident
@@ -412,6 +446,9 @@ async def ingest_webhook(
     # Parse body
     payload = await _intake_payload(request, db, token)
     if isinstance(payload, JSONResponse):
+        return payload
+    payload = _github_native(request, token, payload)
+    if isinstance(payload, IngestResponse):
         return payload
 
     # Run ingest and commit before giving back the SQLite turn (O-20), so a

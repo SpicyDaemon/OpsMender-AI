@@ -502,7 +502,15 @@ _CONFIG_FIELDS: dict[str, tuple[IntegrationFieldSpec, ...]] = {
             options=(("cloud", "Cloud"), ("on_prem", "On-premises")),
             default="cloud",
         ),
-        _config("space_id", "Default space ID", placeholder="OPS"),
+        _config(
+            "space_id",
+            "Default space ID",
+            placeholder="98765",
+            helper=(
+                "Cloud: the numeric space id, for example 98765. "
+                "On-premises: the space key, for example OPS."
+            ),
+        ),
     ),
     "servicenow": (
         _config("table", "Default table", placeholder="incident", default="incident"),

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Confluence connection test now checks the connector's default space.
+  It listed one space the account can see and never looked at the
+  configured one, so a connector whose default space does not exist tested
+  healthy and failed later, when a page was written (finding I-05 of the
+  2026-11-04 live round). Test now reads the configured space after the
+  sign-in check: a space the provider does not have, or the account cannot
+  read, is an error that names only that space, with a hint when a space
+  key is entered where Cloud expects the numeric id. With no default space
+  the result says none was checked, and the form now says which kind of id
+  each edition takes. A provider's error text in any connector's message is
+  now cut at 300 characters, and an error given as a list (Confluence's
+  own shape) is read instead of dropped.
 - A Jira or Confluence connector on an Atlassian Cloud site whose API
   token has no account email now says so. Jira's form marks the email
   optional, and without it the token was sent as a bearer token, which

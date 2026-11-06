@@ -564,12 +564,58 @@ class ConfluenceAdapter(IntegrationAdapter):
         )
 
     async def test_connection(self, connector, auth):
-        path = "/spaces" if self._cloud(connector) else "/space"
+        cloud = self._cloud(connector)
         response, failure = await self._request(
-            connector, auth, "GET", path, params={"limit": 1}
+            connector,
+            auth,
+            "GET",
+            "/spaces" if cloud else "/space",
+            params={"limit": 1},
         )
-        return failure or IntegrationResult.success(
-            detail=f"Confluence connection accepted ({response.status_code})."
+        if failure:
+            return failure
+        accepted = f"Confluence connection accepted ({response.status_code})."
+        space = str(connector.config.get("space_id") or "").strip()
+        if not space:
+            return IntegrationResult.success(
+                detail=f"{accepted} No default space is set, so none was checked."
+            )
+        # The account can sign in; the default space is what pages are
+        # written to, so a wrong one must not read as healthy (M1-141). Only
+        # the configured space is named, never another the account can see.
+        found, missing = await self._request(
+            connector,
+            auth,
+            "GET",
+            f"/spaces/{quote(space, safe='')}"
+            if cloud
+            else f"/space/{quote(space, safe='')}",
+        )
+        if missing:
+            hint = (
+                " On Cloud the default space is the numeric space id, not the key."
+                if cloud and not space.isdigit()
+                else ""
+            )
+            return IntegrationResult.failure(
+                "Confluence accepted the credentials, but the default space "
+                f"'{space}' was not found or this account cannot read it "
+                f"({missing.error}).{hint}"
+            )
+        try:
+            data = found.json()
+        except ValueError:
+            data = None
+        if not isinstance(data, dict) or not (data.get("id") or data.get("key")):
+            # A page that is not the space (a proxy's sign-in page, an empty
+            # answer) is not proof that the space is readable.
+            return IntegrationResult.failure(
+                "Confluence accepted the credentials, but the answer for the "
+                f"default space '{space}' was not a space. Check the base URL."
+            )
+        label = data.get("name") or data.get("key") or space
+        return IntegrationResult.success(
+            detail=f"{accepted} Default space '{label}' is readable."
         )
 
     async def read_doc(self, connector, auth, page_id: str):

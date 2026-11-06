@@ -212,6 +212,9 @@ async def test_jira_and_confluence_cloud_contracts_use_adf_and_storage():
         confluence_requests.append(request)
         if request.url.path.endswith("/spaces"):
             return httpx.Response(200, json={"results": []})
+        if request.url.path.endswith("/spaces/123"):
+            # The connection test reads the configured default space (M1-141).
+            return httpx.Response(200, json={"id": "123", "name": "Ops"})
         if request.url.path.endswith("/pages/100"):
             return httpx.Response(200, json={"id": "100", "title": "Runbook"})
         if request.url.path.endswith("/pages"):
@@ -248,7 +251,7 @@ async def test_jira_and_confluence_cloud_contracts_use_adf_and_storage():
             {"title": "Postmortem", "content": "<p>Details</p>"},
         )
     ).ok
-    write_body = json.loads(confluence_requests[2].content)
+    write_body = json.loads(confluence_requests[3].content)
     assert write_body["body"]["representation"] == "storage"
 
 

@@ -184,8 +184,11 @@ token needs no email.
   `OPSMENDER_PUBLIC_URL` is set, and `GET /incidents/{id}/integration-links`
   reports, for a synced ticket, the ticket status last agreed with Jira, the
   direction of the last sync and its time.
-- Confluence config uses `{"space_id":"..."}`. It can read runbooks and
-  create/update postmortem pages.
+- Confluence config uses `{"space_id":"..."}`: on Cloud the numeric space
+  id, on-premises the space key. It can read a page by its id and
+  create/update postmortem pages. **Test** signs in and then reads that
+  default space, so a space that does not exist or that the account cannot
+  read shows as an error; with no default space it says none was checked.
 
 ### ServiceNow
 

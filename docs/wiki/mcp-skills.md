@@ -237,6 +237,37 @@ operations:
       T2: {enabled: true, mode: advisory}
 ```
 
+### A read-only wrapper with a CLI's name
+
+The guardrail looks at a tool's name before its arguments or its own tier
+policy. A wrapper you wrote that only ever runs `kubectl get` is still called
+`kubectl`: at Tier 2 it is blocked, at Tier 1 every read asks for approval,
+and at Tier 0 it is blocked, even when its Skill entry classifies it `safe`.
+A `terraform` tool that only plans, or a `helm` tool that only reads a
+release's status, is treated the same way.
+
+Name a bounded tool after what it does, and let its schema make the name true:
+
+| Instead of | Name the tools | And bound them in the server |
+| --- | --- | --- |
+| `kubectl` | `kubectl_get`, `kubectl_describe`, `kubectl_logs` | a fixed list of resource kinds, and a namespace the server sets, not the caller |
+| `terraform` | `terraform_plan` | one working directory, no extra arguments |
+| `helm` | `helm_status`, `helm_history` | a release name checked against a pattern |
+
+Those names are ordinary tools: with an entry of `classification: safe` and
+`T2: {enabled: true, mode: autonomous}` (not `advisory`, which only
+suggests), a Tier 2 session reads live state through them. Keep every change in a
+tool of its own (`kubectl_rollout_restart`, `kubectl_scale`,
+`terraform_apply`) with a `caution` or `destructive` entry, so the tier and
+approval rules apply to the change and not to the reads. A name still caught
+by an affix stays guarded: `kubectl_exec` ends with `_exec` and `run_kubectl`
+starts with `run_`.
+
+The other way is to keep the name and set `allow_generic: true` on its exact
+entry, as above. Do that only for a tool whose arguments cannot widen what it
+does; a tool that passes its arguments to the command line is a shell, whatever
+it is called.
+
 ## Action classification & deny lists
 
 Each tool carries a classification for risk labeling: `safe` (read-only /

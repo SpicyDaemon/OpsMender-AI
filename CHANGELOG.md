@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The MCP Skills guide now says how to name a read-only wrapper so that a
+  Tier 2 session can use it. A tool called `kubectl`, `terraform` or `helm`
+  is a generic command tool by its name, whatever it does and whatever
+  class its Skill entry gives it: in the 2026-11-05 live round a wrapper
+  that only read deployments was blocked at Tier 2 for that reason
+  (finding I-08), while one named `kubectl_logs` passed the gate and
+  reached its server. The guide lists names that are ordinary tools, how
+  to bound them in the server, what their Skill entry must say, and when
+  `allow_generic` is the better choice. The rule itself is unchanged.
 - The Kubernetes template is gone from the New MCP Server dialog, and no
   example names its package any more. The template, `.env.example`, the
   image's comments and a setup error all pointed at

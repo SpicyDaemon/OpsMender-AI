@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import time
 from typing import Any, Callable
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 import jwt
@@ -15,6 +15,10 @@ from backend.integrations.base import (
     IntegrationAdapter,
     IntegrationCapability,
     IntegrationResult,
+)
+from backend.integrations.http import (
+    path_segment,
+    path_value,
 )
 from backend.integrations.registry import register_adapter
 
@@ -134,7 +138,7 @@ class GitHubAdapter(IntegrationAdapter):
         )
         response = await client.post(
             f"{self._base_url(connector)}/app/installations/"
-            f"{quote(installation_id, safe='')}/access_tokens",
+            f"{path_segment(installation_id, 'installation_id')}/access_tokens",
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {app_jwt}",
@@ -201,7 +205,10 @@ class GitHubAdapter(IntegrationAdapter):
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
-            connector, auth, "GET", f"/repos/{quote(owner)}/{quote(repo)}"
+            connector,
+            auth,
+            "GET",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}",
         )
         if failure:
             return failure
@@ -229,8 +236,8 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/contents/"
-            f"{quote(_required(path, 'path'), safe='/')}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/contents/"
+            f"{path_value(path, 'path')}",
             params={"ref": ref} if ref else None,
         )
         if failure:
@@ -263,7 +270,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues",
             params={"state": state, "per_page": 100},
         )
         if failure:
@@ -300,7 +307,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues",
             json_body=payload,
         )
         if failure:
@@ -328,7 +335,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues/{int(issue_number)}/comments",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues/{int(issue_number)}/comments",
             json_body={"body": _required(body, "body")},
         )
         if failure:
@@ -355,7 +362,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls",
             json_body={
                 "title": _required(title, "title"),
                 "head": _required(head, "head"),
@@ -393,7 +400,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "PUT",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls/{int(pull_number)}/merge",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls/{int(pull_number)}/merge",
             json_body=payload,
         )
         if failure:
@@ -414,8 +421,8 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/commits/"
-            f"{quote(_required(sha, 'sha'), safe='')}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/commits/"
+            f"{path_segment(sha, 'sha')}",
         )
         if failure:
             return failure
@@ -446,7 +453,7 @@ class GitHubAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls/{int(pull_number)}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls/{int(pull_number)}",
         )
         if failure:
             return failure

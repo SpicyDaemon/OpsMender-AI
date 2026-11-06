@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import ssl
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
@@ -15,8 +15,40 @@ from backend.integrations.base import (
     IntegrationCapability,
     IntegrationResult,
 )
-from backend.integrations.http import required, response_error
+from backend.integrations.http import (
+    path_segment,
+    required,
+    response_error,
+)
 from backend.integrations.registry import register_adapter
+
+
+# A namespace, pod or deployment name is a DNS name (lowercase letters,
+# digits, '-' and '.', starting and ending with a letter or digit): nothing
+# else can be one, and no such name can change the path it is put into
+# (M1-147).
+_DNS_LABEL = r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?"
+_DNS_SUBDOMAIN = rf"{_DNS_LABEL}(?:\.{_DNS_LABEL})*"
+
+
+def _object_name(value: Any, name: str) -> str:
+    """A Kubernetes object name as a URL path segment."""
+    text = path_segment(value, name)
+    pattern = _DNS_LABEL if name == "namespace" else _DNS_SUBDOMAIN
+    limit = 63 if name == "namespace" else 253
+    if len(text) > limit or not re.fullmatch(pattern, text):
+        shown = str(value).strip()
+        shown = shown if len(shown) <= 80 else shown[:80] + "..."
+        characters = (
+            "lowercase letters, digits and '-'"
+            if name == "namespace"
+            else ("lowercase letters, digits, '-' and '.'")
+        )
+        raise ValueError(
+            f"{name} must be a Kubernetes name ({characters}), "
+            f"such as 'ratings-v1', not {shown!r}."
+        )
+    return text
 
 
 class KubernetesAdapter(IntegrationAdapter):
@@ -130,7 +162,7 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/api/v1/namespaces/{quote(namespace, safe='')}/pods",
+            f"/api/v1/namespaces/{_object_name(namespace, 'namespace')}/pods",
             params=params,
         )
         return failure or IntegrationResult.success(
@@ -143,8 +175,8 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/api/v1/namespaces/{quote(namespace, safe='')}/pods/"
-            f"{quote(required(pod, 'pod'), safe='')}",
+            f"/api/v1/namespaces/{_object_name(namespace, 'namespace')}/pods/"
+            f"{_object_name(pod, 'pod')}",
         )
         return failure or IntegrationResult.success(pod=response.json())
 
@@ -171,8 +203,8 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/api/v1/namespaces/{quote(namespace, safe='')}/pods/"
-            f"{quote(required(pod, 'pod'), safe='')}/log",
+            f"/api/v1/namespaces/{_object_name(namespace, 'namespace')}/pods/"
+            f"{_object_name(pod, 'pod')}/log",
             params=params,
         )
         return failure or IntegrationResult.success(
@@ -197,7 +229,7 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/api/v1/namespaces/{quote(namespace, safe='')}/events",
+            f"/api/v1/namespaces/{_object_name(namespace, 'namespace')}/events",
             params=params,
         )
         return failure or IntegrationResult.success(
@@ -220,7 +252,7 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/apis/apps/v1/namespaces/{quote(namespace, safe='')}/deployments",
+            f"/apis/apps/v1/namespaces/{_object_name(namespace, 'namespace')}/deployments",
             params=params,
         )
         return failure or IntegrationResult.success(
@@ -235,8 +267,8 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/apis/apps/v1/namespaces/{quote(namespace, safe='')}/deployments/"
-            f"{quote(required(deployment, 'deployment'), safe='')}",
+            f"/apis/apps/v1/namespaces/{_object_name(namespace, 'namespace')}/deployments/"
+            f"{_object_name(deployment, 'deployment')}",
         )
         return failure or IntegrationResult.success(deployment=response.json())
 
@@ -249,8 +281,8 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "PATCH",
-            f"/apis/apps/v1/namespaces/{quote(namespace, safe='')}/deployments/"
-            f"{quote(required(deployment, 'deployment'), safe='')}",
+            f"/apis/apps/v1/namespaces/{_object_name(namespace, 'namespace')}/deployments/"
+            f"{_object_name(deployment, 'deployment')}",
             headers={"Content-Type": "application/strategic-merge-patch+json"},
             json={
                 "spec": {
@@ -285,8 +317,8 @@ class KubernetesAdapter(IntegrationAdapter):
             connector,
             auth,
             "DELETE",
-            f"/api/v1/namespaces/{quote(namespace, safe='')}/pods/"
-            f"{quote(required(pod, 'pod'), safe='')}",
+            f"/api/v1/namespaces/{_object_name(namespace, 'namespace')}/pods/"
+            f"{_object_name(pod, 'pod')}",
             params=params,
         )
         return failure or IntegrationResult.success(deletion=response.json())

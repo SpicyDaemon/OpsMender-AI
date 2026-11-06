@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote
 
 
 from backend.db.models import IntegrationConnector
@@ -15,6 +14,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
 )
@@ -92,7 +92,7 @@ class NotionAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/pages/{quote(required(page_id, 'page_id'))}/markdown",
+            f"/pages/{path_segment(page_id, 'page_id')}/markdown",
         )
         return failure or IntegrationResult.success(document=response.json())
 
@@ -165,7 +165,7 @@ class NotionAdapter(IntegrationAdapter):
             connector,
             auth,
             "PATCH",
-            f"/blocks/{quote(required(page_id, 'page_id'))}/children",
+            f"/blocks/{path_segment(page_id, 'page_id')}/children",
             json={"children": children},
         )
         return failure or IntegrationResult.success(blocks=response.json())

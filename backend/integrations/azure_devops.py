@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote
 
 
 from backend.db.models import IntegrationConnector
@@ -16,6 +15,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
 )
@@ -65,7 +65,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
         if connector.base_url:
             return connector.base_url.rstrip("/")
         organization = required(connector.config.get("organization"), "organization")
-        return f"https://dev.azure.com/{quote(organization, safe='')}"
+        return f"https://dev.azure.com/{path_segment(organization, 'organization')}"
 
     @staticmethod
     def _headers(
@@ -123,7 +123,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(project)}/_apis/git/repositories/{quote(repository)}",
+            f"/{path_segment(project, 'project')}/_apis/git/repositories/{path_segment(repository, 'repository')}",
             params={"api-version": "7.1"},
         )
         return failure or IntegrationResult.success(repository=response.json())
@@ -143,7 +143,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(project)}/_apis/git/repositories/{quote(repository)}/items",
+            f"/{path_segment(project, 'project')}/_apis/git/repositories/{path_segment(repository, 'repository')}/items",
             params={
                 "api-version": "7.1",
                 "path": required(path, "path"),
@@ -176,8 +176,8 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(project)}/_apis/git/repositories/"
-            f"{quote(repository)}/pullrequests",
+            f"/{path_segment(project, 'project')}/_apis/git/repositories/"
+            f"{path_segment(repository, 'repository')}/pullrequests",
             params={
                 "api-version": "7.1",
                 "searchCriteria.status": status,
@@ -204,8 +204,8 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/{quote(project)}/_apis/git/repositories/"
-            f"{quote(repository)}/pullrequests",
+            f"/{path_segment(project, 'project')}/_apis/git/repositories/"
+            f"{path_segment(repository, 'repository')}/pullrequests",
             params={"api-version": "7.1"},
             json={
                 "title": required(title, "title"),
@@ -242,8 +242,8 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "PATCH",
-            f"/{quote(project)}/_apis/git/repositories/"
-            f"{quote(repository)}/pullrequests/{int(pull_request_id)}",
+            f"/{path_segment(project, 'project')}/_apis/git/repositories/"
+            f"{path_segment(repository, 'repository')}/pullrequests/{int(pull_request_id)}",
             params={"api-version": "7.1"},
             json=payload,
         )
@@ -257,7 +257,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(project)}/_apis/wit/workitems/{int(work_item_id)}",
+            f"/{path_segment(project, 'project')}/_apis/wit/workitems/{int(work_item_id)}",
             params={"api-version": "7.1", "$expand": "relations"},
         )
         return failure or IntegrationResult.success(work_item=response.json())
@@ -292,8 +292,8 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/{quote(project)}/_apis/wit/workitems/"
-            f"${quote(required(work_item_type, 'work_item_type'))}",
+            f"/{path_segment(project, 'project')}/_apis/wit/workitems/"
+            f"${path_segment(work_item_type, 'work_item_type')}",
             params={"api-version": "7.1"},
             headers={"Content-Type": "application/json-patch+json"},
             json=self._patch(values),
@@ -315,7 +315,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
             connector,
             auth,
             "PATCH",
-            f"/{quote(project)}/_apis/wit/workitems/{int(work_item_id)}",
+            f"/{path_segment(project, 'project')}/_apis/wit/workitems/{int(work_item_id)}",
             params={"api-version": "7.1"},
             headers={"Content-Type": "application/json-patch+json"},
             json=self._patch(fields),

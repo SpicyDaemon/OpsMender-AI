@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
@@ -17,6 +16,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
     untrusted_certificate,
@@ -84,7 +84,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
         )
 
     async def test_connection(self, connector, auth):
-        organization = quote(self._organization(connector), safe="")
+        organization = path_segment(self._organization(connector), "organization")
         response, failure = await self._request(
             connector,
             auth,
@@ -97,7 +97,9 @@ class TerraformCloudAdapter(IntegrationAdapter):
         )
 
     async def list_workspaces(self, connector, auth, organization: str | None = None):
-        organization = quote(self._organization(connector, organization), safe="")
+        organization = path_segment(
+            self._organization(connector, organization), "organization"
+        )
         response, failure = await self._request(
             connector,
             auth,
@@ -113,7 +115,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/workspaces/{quote(required(workspace_id, 'workspace_id'), safe='')}",
+            f"/workspaces/{path_segment(workspace_id, 'workspace_id')}",
         )
         return failure or IntegrationResult.success(
             workspace=response.json().get("data")
@@ -139,7 +141,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/runs/{quote(required(run_id, 'run_id'), safe='')}",
+            f"/runs/{path_segment(run_id, 'run_id')}",
         )
         return failure or IntegrationResult.success(run=response.json().get("data"))
 
@@ -186,7 +188,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/runs/{quote(required(run_id, 'run_id'), safe='')}/actions/apply",
+            f"/runs/{path_segment(run_id, 'run_id')}/actions/apply",
             json=payload,
         )
         return failure or IntegrationResult.success(
@@ -268,7 +270,7 @@ class ArgoCDAdapter(IntegrationAdapter):
         path = "/api/v1/applications"
         params: dict[str, Any] | None = {"fields": "items.metadata.name"}
         if application:
-            path += f"/{quote(application, safe='')}"
+            path += f"/{path_segment(application, 'application')}"
             params = None
         try:
             async with self._factory() as client:
@@ -346,14 +348,18 @@ class ArgoCDAdapter(IntegrationAdapter):
         )
 
     async def get_application(self, connector, auth, application: str | None = None):
-        application = quote(self._application(connector, application), safe="")
+        application = path_segment(
+            self._application(connector, application), "application"
+        )
         response, failure = await self._request(
             connector, auth, "GET", f"/api/v1/applications/{application}"
         )
         return failure or IntegrationResult.success(application=response.json())
 
     async def get_diff(self, connector, auth, application: str | None = None):
-        application = quote(self._application(connector, application), safe="")
+        application = path_segment(
+            self._application(connector, application), "application"
+        )
         response, failure = await self._request(
             connector,
             auth,
@@ -373,7 +379,9 @@ class ArgoCDAdapter(IntegrationAdapter):
         prune: bool = False,
         dry_run: bool = False,
     ):
-        application = quote(self._application(connector, application), safe="")
+        application = path_segment(
+            self._application(connector, application), "application"
+        )
         payload: dict[str, Any] = {"prune": bool(prune), "dryRun": bool(dry_run)}
         if revision:
             payload["revision"] = revision
@@ -389,7 +397,9 @@ class ArgoCDAdapter(IntegrationAdapter):
     async def rollback(
         self, connector, auth, history_id: int, application: str | None = None
     ):
-        application = quote(self._application(connector, application), safe="")
+        application = path_segment(
+            self._application(connector, application), "application"
+        )
         response, failure = await self._request(
             connector,
             auth,

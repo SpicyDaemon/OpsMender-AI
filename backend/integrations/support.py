@@ -15,6 +15,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    numeric_id,
     required,
     response_error,
 )
@@ -100,7 +101,7 @@ class ZendeskAdapter(IntegrationAdapter):
 
     async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _zendesk_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         async with self._factory() as client:
             r = await client.get(
                 f"{base}/api/v2/tickets/{tid}.json",
@@ -171,7 +172,7 @@ class ZendeskAdapter(IntegrationAdapter):
         self, connector, auth, ticket_id: int | str, fields: dict[str, Any]
     ):
         base = _zendesk_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         async with self._factory() as client:
@@ -188,7 +189,7 @@ class ZendeskAdapter(IntegrationAdapter):
         self, connector, auth, ticket_id: int | str, body: str, public: bool = True
     ):
         base = _zendesk_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         comment_body = required(body, "body")
         async with self._factory() as client:
             r = await client.put(
@@ -296,7 +297,7 @@ class FreshserviceAdapter(IntegrationAdapter):
 
     async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _freshservice_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         async with self._factory() as client:
             r = await client.get(
                 f"{base}/api/v2/tickets/{tid}",
@@ -363,7 +364,7 @@ class FreshserviceAdapter(IntegrationAdapter):
         self, connector, auth, ticket_id: int | str, fields: dict[str, Any]
     ):
         base = _freshservice_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         async with self._factory() as client:
@@ -380,7 +381,7 @@ class FreshserviceAdapter(IntegrationAdapter):
         self, connector, auth, ticket_id: int | str, body: str, private: bool = True
     ):
         base = _freshservice_base(connector)
-        tid = required(ticket_id, "ticket_id")
+        tid = numeric_id(ticket_id, "ticket_id")
         async with self._factory() as client:
             r = await client.post(
                 f"{base}/api/v2/tickets/{tid}/notes",
@@ -477,7 +478,7 @@ class AsanaAdapter(IntegrationAdapter):
 
     async def get_task(self, connector, auth, task_id: str):
         base = _asana_base(connector)
-        tid = required(task_id, "task_id")
+        tid = numeric_id(task_id, "task_id")
         async with self._factory() as client:
             r = await client.get(
                 f"{base}/tasks/{tid}",
@@ -544,7 +545,7 @@ class AsanaAdapter(IntegrationAdapter):
 
     async def update_task(self, connector, auth, task_id: str, fields: dict[str, Any]):
         base = _asana_base(connector)
-        tid = required(task_id, "task_id")
+        tid = numeric_id(task_id, "task_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         async with self._factory() as client:
@@ -559,7 +560,7 @@ class AsanaAdapter(IntegrationAdapter):
 
     async def comment_task(self, connector, auth, task_id: str, text: str):
         base = _asana_base(connector)
-        tid = required(task_id, "task_id")
+        tid = numeric_id(task_id, "task_id")
         async with self._factory() as client:
             r = await client.post(
                 f"{base}/tasks/{tid}/stories",

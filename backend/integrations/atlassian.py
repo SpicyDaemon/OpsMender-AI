@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote as url_quote
+from urllib.parse import urlparse
 
 
 from backend.db.models import IntegrationConnector
@@ -16,10 +18,33 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    numeric_id,
+    path_segment,
+    path_value,
     required,
     response_error,
 )
 from backend.integrations.registry import register_adapter
+
+
+# A Jira issue is named by its key (OPS-12) or its numeric id; any other word
+# in that place is a sibling route of the issue API (createmeta, picker,
+# bulk), which a read tool must not reach (M1-147).
+_ISSUE_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,254}-[0-9]+|[0-9]+")
+# The REST API versions Jira serves.
+_JIRA_API_VERSION = re.compile(r"[0-9]{1,2}|latest")
+
+
+def _issue_key(value: Any) -> str:
+    text = path_segment(value, "issue_key")
+    if not _ISSUE_KEY.fullmatch(text):
+        shown = str(value).strip()
+        shown = shown if len(shown) <= 80 else shown[:80] + "..."
+        raise ValueError(
+            f"issue_key must be an issue key such as 'OPS-12' or a numeric "
+            f"issue id, not {shown!r}."
+        )
+    return text
 
 
 def _basic(username: str, password: str) -> str:
@@ -166,9 +191,9 @@ class BitbucketAdapter(IntegrationAdapter):
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
-            f"/repositories/{quote(scope)}/{quote(repo)}"
+            f"/repositories/{path_segment(scope, 'workspace')}/{path_segment(repo, 'repo')}"
             if self._edition(connector) == "cloud"
-            else f"/projects/{quote(scope)}/repos/{quote(repo)}"
+            else f"/projects/{path_segment(scope, 'project')}/repos/{path_segment(repo, 'repo')}"
         )
         response, failure = await self._request(connector, auth, "GET", path)
         return failure or IntegrationResult.success(repository=response.json())
@@ -184,11 +209,11 @@ class BitbucketAdapter(IntegrationAdapter):
         ref: str = "main",
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
-        file_path = quote(required(path, "path"), safe="/")
+        file_path = path_value(path, "path")
         endpoint = (
-            f"/repositories/{quote(scope)}/{quote(repo)}/src/{quote(ref)}/{file_path}"
+            f"/repositories/{path_segment(scope, 'workspace')}/{path_segment(repo, 'repo')}/src/{path_value(ref, 'ref')}/{file_path}"
             if self._edition(connector) == "cloud"
-            else f"/projects/{quote(scope)}/repos/{quote(repo)}/raw/{file_path}"
+            else f"/projects/{path_segment(scope, 'project')}/repos/{path_segment(repo, 'repo')}/raw/{file_path}"
         )
         params = None if self._edition(connector) == "cloud" else {"at": ref}
         response, failure = await self._request(
@@ -210,7 +235,7 @@ class BitbucketAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repositories/{quote(workspace)}/{quote(repo)}/issues",
+            f"/repositories/{path_segment(workspace, 'workspace')}/{path_segment(repo, 'repo')}/issues",
         )
         return failure or IntegrationResult.success(
             issues=response.json().get("values", [])
@@ -234,7 +259,7 @@ class BitbucketAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repositories/{quote(workspace)}/{quote(repo)}/issues",
+            f"/repositories/{path_segment(workspace, 'workspace')}/{path_segment(repo, 'repo')}/issues",
             json={
                 "title": required(title, "title"),
                 "content": {"raw": content or ""},
@@ -252,9 +277,9 @@ class BitbucketAdapter(IntegrationAdapter):
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
-            f"/repositories/{quote(scope)}/{quote(repo)}/pullrequests"
+            f"/repositories/{path_segment(scope, 'workspace')}/{path_segment(repo, 'repo')}/pullrequests"
             if self._edition(connector) == "cloud"
-            else f"/projects/{quote(scope)}/repos/{quote(repo)}/pull-requests"
+            else f"/projects/{path_segment(scope, 'project')}/repos/{path_segment(repo, 'repo')}/pull-requests"
         )
         response, failure = await self._request(connector, auth, "GET", path)
         data = response.json() if response else {}
@@ -277,9 +302,9 @@ class BitbucketAdapter(IntegrationAdapter):
         scope, repo = self._scope(connector, workspace, project, repo)
         cloud = self._edition(connector) == "cloud"
         path = (
-            f"/repositories/{quote(scope)}/{quote(repo)}/pullrequests"
+            f"/repositories/{path_segment(scope, 'workspace')}/{path_segment(repo, 'repo')}/pullrequests"
             if cloud
-            else f"/projects/{quote(scope)}/repos/{quote(repo)}/pull-requests"
+            else f"/projects/{path_segment(scope, 'project')}/repos/{path_segment(repo, 'repo')}/pull-requests"
         )
         payload = (
             {
@@ -320,10 +345,10 @@ class BitbucketAdapter(IntegrationAdapter):
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
-            f"/repositories/{quote(scope)}/{quote(repo)}/pullrequests/"
+            f"/repositories/{path_segment(scope, 'workspace')}/{path_segment(repo, 'repo')}/pullrequests/"
             f"{int(pull_request_id)}/merge"
             if self._edition(connector) == "cloud"
-            else f"/projects/{quote(scope)}/repos/{quote(repo)}/pull-requests/"
+            else f"/projects/{path_segment(scope, 'project')}/repos/{path_segment(repo, 'repo')}/pull-requests/"
             f"{int(pull_request_id)}/merge"
         )
         response, failure = await self._request(connector, auth, "POST", path)
@@ -363,11 +388,19 @@ class JiraAdapter(IntegrationAdapter):
     @staticmethod
     def _base(connector):
         root = required(connector.base_url, "base_url").rstrip("/")
+        if "/rest/api/" in root:
+            return root
         edition = str(connector.config.get("edition") or "cloud")
-        version = str(
-            connector.config.get("api_version") or ("3" if edition == "cloud" else "2")
+        version = path_segment(
+            connector.config.get("api_version") or ("3" if edition == "cloud" else "2"),
+            "api_version",
         )
-        return root if "/rest/api/" in root else f"{root}/rest/api/{version}"
+        if not _JIRA_API_VERSION.fullmatch(version):
+            raise ValueError(
+                f"api_version must be a Jira REST API version such as '3', "
+                f"'2' or 'latest', not {version[:80]!r}."
+            )
+        return f"{root}/rest/api/{version}"
 
     async def _request(self, connector, auth, method, path, **kwargs):
         async with self._factory() as client:
@@ -394,7 +427,7 @@ class JiraAdapter(IntegrationAdapter):
 
     async def get_issue(self, connector, auth, issue_key: str):
         response, failure = await self._request(
-            connector, auth, "GET", f"/issue/{quote(required(issue_key, 'issue_key'))}"
+            connector, auth, "GET", f"/issue/{_issue_key(issue_key)}"
         )
         return failure or IntegrationResult.success(issue=response.json())
 
@@ -435,7 +468,7 @@ class JiraAdapter(IntegrationAdapter):
         if incident_id and issue_key:
             root = required(connector.base_url, "base_url").rstrip("/")
             root = root.split("/rest/api/", 1)[0]
-            url = f"{root}/browse/{quote(str(issue_key))}"
+            url = f"{root}/browse/{url_quote(str(issue_key), safe='')}"
             data["integration_link"] = {
                 "incident_id": incident_id,
                 "reference_type": "ticket",
@@ -456,7 +489,7 @@ class JiraAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/issue/{quote(required(issue_key, 'issue_key'))}/comment",
+            f"/issue/{_issue_key(issue_key)}/comment",
             json={"body": value},
         )
         return failure or IntegrationResult.success(comment=response.json())
@@ -466,7 +499,7 @@ class JiraAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/issue/{quote(required(issue_key, 'issue_key'))}/transitions",
+            f"/issue/{_issue_key(issue_key)}/transitions",
         )
         return failure or IntegrationResult.success(
             transitions=response.json().get("transitions", [])
@@ -479,7 +512,7 @@ class JiraAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/issue/{quote(required(issue_key, 'issue_key'))}/transitions",
+            f"/issue/{_issue_key(issue_key)}/transitions",
             json={"transition": {"id": str(transition_id)}},
         )
         return failure or IntegrationResult.success(
@@ -565,18 +598,22 @@ class ConfluenceAdapter(IntegrationAdapter):
 
     async def test_connection(self, connector, auth):
         cloud = self._cloud(connector)
+        collection = "/spaces" if cloud else "/space"
+        space = str(connector.config.get("space_id") or "").strip()
+        space_path = (
+            f"{collection}/{path_segment(space, 'space_id')}" if space else None
+        )
         response, failure = await self._request(
             connector,
             auth,
             "GET",
-            "/spaces" if cloud else "/space",
+            collection,
             params={"limit": 1},
         )
         if failure:
             return failure
         accepted = f"Confluence connection accepted ({response.status_code})."
-        space = str(connector.config.get("space_id") or "").strip()
-        if not space:
+        if space_path is None:
             return IntegrationResult.success(
                 detail=f"{accepted} No default space is set, so none was checked."
             )
@@ -587,9 +624,7 @@ class ConfluenceAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/spaces/{quote(space, safe='')}"
-            if cloud
-            else f"/space/{quote(space, safe='')}",
+            space_path,
         )
         if missing:
             hint = (
@@ -620,10 +655,10 @@ class ConfluenceAdapter(IntegrationAdapter):
 
     async def read_doc(self, connector, auth, page_id: str):
         if self._cloud(connector):
-            path = f"/pages/{quote(required(page_id, 'page_id'))}"
+            path = f"/pages/{numeric_id(page_id, 'page_id')}"
             params = {"body-format": "storage"}
         else:
-            path = f"/content/{quote(required(page_id, 'page_id'))}"
+            path = f"/content/{numeric_id(page_id, 'page_id')}"
             params = {"expand": "body.storage,version"}
         response, failure = await self._request(
             connector, auth, "GET", path, params=params
@@ -642,6 +677,7 @@ class ConfluenceAdapter(IntegrationAdapter):
         version: int | None = None,
     ):
         space = required(space_id or connector.config.get("space_id"), "space_id")
+        page = numeric_id(page_id, "page_id") if page_id is not None else None
         if self._cloud(connector):
             payload = {
                 "spaceId": space,
@@ -649,15 +685,13 @@ class ConfluenceAdapter(IntegrationAdapter):
                 "title": required(title, "title"),
                 "body": {"representation": "storage", "value": content},
             }
-            if parent_id:
-                payload["parentId"] = parent_id
+            if parent_id is not None:
+                payload["parentId"] = numeric_id(parent_id, "parent_id")
             method, path = (
-                ("PUT", f"/pages/{quote(str(page_id))}")
-                if page_id
-                else ("POST", "/pages")
+                ("PUT", f"/pages/{page}") if page is not None else ("POST", "/pages")
             )
-            if page_id:
-                payload["id"] = str(page_id)
+            if page is not None:
+                payload["id"] = page
                 payload["version"] = {"number": int(version or 1) + 1}
         else:
             payload = {
@@ -672,12 +706,12 @@ class ConfluenceAdapter(IntegrationAdapter):
                 },
             }
             method, path = (
-                ("PUT", f"/content/{quote(str(page_id))}")
-                if page_id
+                ("PUT", f"/content/{page}")
+                if page is not None
                 else ("POST", "/content")
             )
-            if page_id:
-                payload["id"] = str(page_id)
+            if page is not None:
+                payload["id"] = page
                 payload["version"] = {"number": int(version or 1) + 1}
         response, failure = await self._request(
             connector, auth, method, path, json=payload

@@ -40,6 +40,15 @@ reaches the provider, and the refusal names the arguments that exist. The
 check happens when the action runs, so at Tier 1 a call that does not fit is
 refused after it was approved.
 
+For arguments that name a resource in the request path, pass the resource
+name or ID. The connector rejects parent traversal and names the argument
+before sending a request. Use a namespace such as `production`, a pod such
+as `ratings-v1`, a Jira issue key such as `OPS-12`, or a numeric Confluence
+page ID. Use slash-separated names where the provider expects them, such as
+the GitLab project `platform/api`, the file `src/app.py`, or the Jenkins
+job `release/build`. Enter the names as written and let the connector
+encode the URL.
+
 ### Using integrations without an MCP server
 
 MCP is optional when a Service's active native integration connectors already

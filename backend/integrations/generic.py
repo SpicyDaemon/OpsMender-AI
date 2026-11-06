@@ -12,6 +12,7 @@ from backend.integrations.base import (
     IntegrationCapability,
     IntegrationResult,
 )
+from backend.integrations.http import validate_path
 from backend.integrations.registry import register_adapter
 
 
@@ -62,6 +63,9 @@ class GenericHTTPAdapter(IntegrationAdapter):
         if not connector.base_url:
             return IntegrationResult.failure("Base URL is required")
         path = str(connector.config.get("health_path") or "")
+        path_only = path.split("?", 1)[0].split("#", 1)[0]
+        if path_only:
+            validate_path(path_only, "health_path", allow_slash=True)
         url = connector.base_url.rstrip("/") + (f"/{path.lstrip('/')}" if path else "")
         request_auth = None
         if connector.auth_type == "basic":

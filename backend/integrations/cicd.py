@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (
@@ -15,6 +14,8 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_parts,
+    path_segment,
     required,
     response_error,
 )
@@ -54,10 +55,8 @@ class JenkinsAdapter(IntegrationAdapter):
 
     @staticmethod
     def _job_path(connector: IntegrationConnector, job: str | None) -> str:
-        raw = required(job or connector.config.get("job"), "job")
-        return "".join(
-            f"/job/{quote(part, safe='')}" for part in raw.strip("/").split("/")
-        )
+        raw = job or connector.config.get("job")
+        return "".join(f"/job/{part}" for part in path_parts(raw, "job"))
 
     async def _request(self, connector, auth, method, path, **kwargs):
         async with self._factory() as client:
@@ -109,7 +108,7 @@ class JenkinsAdapter(IntegrationAdapter):
             auth,
             "GET",
             f"{self._job_path(connector, job)}/"
-            f"{quote(str(build_number), safe='')}/api/json",
+            f"{path_segment(str(build_number), 'build_number')}/api/json",
         )
         return failure or IntegrationResult.success(build=response.json())
 
@@ -194,7 +193,9 @@ class CircleCIAdapter(IntegrationAdapter):
         project_slug: str | None = None,
         branch: str | None = None,
     ):
-        project = quote(self._project(connector, project_slug), safe="")
+        project = path_segment(
+            self._project(connector, project_slug), "project_slug", allow_slash=True
+        )
         response, failure = await self._request(
             connector,
             auth,
@@ -211,14 +212,16 @@ class CircleCIAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/pipeline/{quote(required(pipeline_id, 'pipeline_id'), safe='')}",
+            f"/pipeline/{path_segment(pipeline_id, 'pipeline_id')}",
         )
         return failure or IntegrationResult.success(pipeline=response.json())
 
     async def get_job(
         self, connector, auth, job_number: int, project_slug: str | None = None
     ):
-        project = quote(self._project(connector, project_slug), safe="")
+        project = path_segment(
+            self._project(connector, project_slug), "project_slug", allow_slash=True
+        )
         response, failure = await self._request(
             connector,
             auth,
@@ -238,7 +241,9 @@ class CircleCIAdapter(IntegrationAdapter):
     ):
         if branch and tag:
             raise ValueError("Choose branch or tag, not both")
-        project = quote(self._project(connector, project_slug), safe="")
+        project = path_segment(
+            self._project(connector, project_slug), "project_slug", allow_slash=True
+        )
         payload: dict[str, Any] = {}
         if branch:
             payload["branch"] = branch
@@ -280,7 +285,7 @@ class AzurePipelinesAdapter(IntegrationAdapter):
         if connector.base_url:
             return connector.base_url.rstrip("/")
         organization = required(connector.config.get("organization"), "organization")
-        return f"https://dev.azure.com/{quote(organization, safe='')}"
+        return f"https://dev.azure.com/{path_segment(organization, 'organization')}"
 
     @staticmethod
     def _headers(
@@ -311,7 +316,7 @@ class AzurePipelinesAdapter(IntegrationAdapter):
         )
 
     def _path(self, connector, project, suffix):
-        project = quote(self._project(connector, project), safe="")
+        project = path_segment(self._project(connector, project), "project")
         return f"/{project}/_apis/pipelines{suffix}"
 
     async def test_connection(self, connector, auth):

@@ -100,14 +100,24 @@ class GiteaAdapter(IntegrationAdapter):
             detail=f"Gitea credentials accepted ({response.status_code})."
         )
 
-    async def get_repository(self, connector, auth, owner=None, repo=None):
+    async def get_repository(
+        self, connector, auth, owner: str | None = None, repo: str | None = None
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector, auth, "GET", f"/repos/{quote(owner)}/{quote(repo)}"
         )
         return failure or IntegrationResult.success(repository=response.json())
 
-    async def get_file(self, connector, auth, path, owner=None, repo=None, ref=None):
+    async def get_file(
+        self,
+        connector,
+        auth,
+        path: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        ref: str | None = None,
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector,
@@ -134,7 +144,14 @@ class GiteaAdapter(IntegrationAdapter):
             }
         )
 
-    async def list_issues(self, connector, auth, owner=None, repo=None, state="open"):
+    async def list_issues(
+        self,
+        connector,
+        auth,
+        owner: str | None = None,
+        repo: str | None = None,
+        state: str = "open",
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector,
@@ -146,7 +163,14 @@ class GiteaAdapter(IntegrationAdapter):
         return failure or IntegrationResult.success(issues=response.json())
 
     async def create_issue(
-        self, connector, auth, title, owner=None, repo=None, body=None, labels=None
+        self,
+        connector,
+        auth,
+        title: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        body: str | None = None,
+        labels: list[int] | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         payload: dict[str, Any] = {"title": required(title, "title")}
@@ -164,7 +188,13 @@ class GiteaAdapter(IntegrationAdapter):
         return failure or IntegrationResult.success(issue=response.json())
 
     async def comment_issue(
-        self, connector, auth, issue_number, body, owner=None, repo=None
+        self,
+        connector,
+        auth,
+        issue_number: int,
+        body: str,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -177,7 +207,12 @@ class GiteaAdapter(IntegrationAdapter):
         return failure or IntegrationResult.success(comment=response.json())
 
     async def list_pull_requests(
-        self, connector, auth, owner=None, repo=None, state="open"
+        self,
+        connector,
+        auth,
+        owner: str | None = None,
+        repo: str | None = None,
+        state: str = "open",
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -193,12 +228,12 @@ class GiteaAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        head,
-        base,
-        owner=None,
-        repo=None,
-        body=None,
+        title: str,
+        head: str,
+        base: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        body: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -219,12 +254,12 @@ class GiteaAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pull_number,
-        owner=None,
-        repo=None,
-        merge_style="merge",
-        title=None,
-        message=None,
+        pull_number: int,
+        owner: str | None = None,
+        repo: str | None = None,
+        merge_style: str = "merge",
+        title: str | None = None,
+        message: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         payload: dict[str, Any] = {"Do": merge_style}
@@ -244,7 +279,13 @@ class GiteaAdapter(IntegrationAdapter):
         )
 
     async def link_commit_to_incident(
-        self, connector, auth, incident_id, sha, owner=None, repo=None
+        self,
+        connector,
+        auth,
+        incident_id: str,
+        sha: str,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -270,7 +311,13 @@ class GiteaAdapter(IntegrationAdapter):
         )
 
     async def link_pull_request_to_incident(
-        self, connector, auth, incident_id, pull_number, owner=None, repo=None
+        self,
+        connector,
+        auth,
+        incident_id: str,
+        pull_number: int,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(

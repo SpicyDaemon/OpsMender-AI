@@ -15,7 +15,11 @@ from backend.db.repos import (
     SkillRepo,
     TicketSyncStateRepo,
 )
-from backend.integrations.base import IntegrationCapability
+from backend.integrations.base import (
+    IntegrationArgument,
+    IntegrationCapability,
+    describe_arguments,
+)
 from backend.integrations.registry import get_adapter
 from backend.skills.parser import (
     OperationClassification,
@@ -31,6 +35,7 @@ class IntegrationToolDescriptor:
     connector_id: uuid.UUID
     capability: IntegrationCapability
     authored_operation: OperationClassification | None = None
+    arguments: tuple[IntegrationArgument, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -314,16 +319,25 @@ class IntegrationToolRuntime:
                         else _authored_policy(authored_definition, name)
                     )
                 )
+                # The planner must see the exact keyword arguments: without
+                # them it guessed (issue_id_or_key for issue_key) and every
+                # native read failed in the adapter (M1-138).
+                # An argument that falls back to this connector's
+                # configuration shows that value as its default, and is
+                # required when the connector has none.
+                arguments = adapter.arguments_for(capability.action, connector)
+                contract = describe_arguments(arguments)
                 descriptors.append(
                     IntegrationToolDescriptor(
                         name=name,
                         description=(
                             f"{capability.description} Connector: "
-                            f"{connector.name} ({connector.kind})."
+                            f"{connector.name} ({connector.kind}). {contract}"
                         ),
                         connector_id=connector.id,
                         capability=capability,
                         authored_operation=authored_operation,
+                        arguments=arguments,
                     )
                 )
         return cls(

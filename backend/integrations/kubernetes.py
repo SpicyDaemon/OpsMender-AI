@@ -21,6 +21,7 @@ from backend.integrations.registry import register_adapter
 
 class KubernetesAdapter(IntegrationAdapter):
     kind = "kubernetes"
+    argument_fallbacks = {"namespace": "default"}
     capabilities = (
         IntegrationCapability("test_connection", "Validate Kubernetes API access."),
         IntegrationCapability("list_pods", "List pods in a namespace."),
@@ -114,10 +115,10 @@ class KubernetesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        namespace=None,
-        label_selector=None,
-        field_selector=None,
-        limit=100,
+        namespace: str | None = None,
+        label_selector: str | None = None,
+        field_selector: str | None = None,
+        limit: int = 100,
     ):
         namespace = self._namespace(connector, namespace)
         params: dict[str, Any] = {"limit": min(max(int(limit), 1), 500)}
@@ -136,7 +137,7 @@ class KubernetesAdapter(IntegrationAdapter):
             pods=response.json().get("items", [])
         )
 
-    async def get_pod(self, connector, auth, pod, namespace=None):
+    async def get_pod(self, connector, auth, pod: str, namespace: str | None = None):
         namespace = self._namespace(connector, namespace)
         response, failure = await self._request(
             connector,
@@ -151,12 +152,12 @@ class KubernetesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pod,
-        namespace=None,
-        container=None,
-        tail_lines=200,
-        previous=False,
-        timestamps=True,
+        pod: str,
+        namespace: str | None = None,
+        container: str | None = None,
+        tail_lines: int = 200,
+        previous: bool = False,
+        timestamps: bool = True,
     ):
         namespace = self._namespace(connector, namespace)
         params: dict[str, Any] = {
@@ -184,9 +185,9 @@ class KubernetesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        namespace=None,
-        field_selector=None,
-        limit=100,
+        namespace: str | None = None,
+        field_selector: str | None = None,
+        limit: int = 100,
     ):
         namespace = self._namespace(connector, namespace)
         params: dict[str, Any] = {"limit": min(max(int(limit), 1), 500)}
@@ -207,9 +208,9 @@ class KubernetesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        namespace=None,
-        label_selector=None,
-        limit=100,
+        namespace: str | None = None,
+        label_selector: str | None = None,
+        limit: int = 100,
     ):
         namespace = self._namespace(connector, namespace)
         params: dict[str, Any] = {"limit": min(max(int(limit), 1), 500)}
@@ -226,7 +227,9 @@ class KubernetesAdapter(IntegrationAdapter):
             deployments=response.json().get("items", [])
         )
 
-    async def get_deployment(self, connector, auth, deployment, namespace=None):
+    async def get_deployment(
+        self, connector, auth, deployment: str, namespace: str | None = None
+    ):
         namespace = self._namespace(connector, namespace)
         response, failure = await self._request(
             connector,
@@ -237,7 +240,9 @@ class KubernetesAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(deployment=response.json())
 
-    async def restart_deployment(self, connector, auth, deployment, namespace=None):
+    async def restart_deployment(
+        self, connector, auth, deployment: str, namespace: str | None = None
+    ):
         namespace = self._namespace(connector, namespace)
         restarted_at = datetime.now(timezone.utc).isoformat()
         response, failure = await self._request(
@@ -266,9 +271,9 @@ class KubernetesAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pod,
-        namespace=None,
-        grace_period_seconds=None,
+        pod: str,
+        namespace: str | None = None,
+        grace_period_seconds: int | None = None,
     ):
         namespace = self._namespace(connector, namespace)
         params = (

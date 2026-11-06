@@ -24,6 +24,7 @@ from backend.integrations.registry import register_adapter
 
 class ServiceNowAdapter(IntegrationAdapter):
     kind = "servicenow"
+    argument_fallbacks = {"table": "incident"}
     capabilities = (
         IntegrationCapability("test_connection", "Validate ServiceNow access."),
         IntegrationCapability("get_record", "Read a table record."),
@@ -99,7 +100,7 @@ class ServiceNowAdapter(IntegrationAdapter):
             detail=f"ServiceNow connection accepted ({response.status_code})."
         )
 
-    async def get_record(self, connector, auth, sys_id, table=None):
+    async def get_record(self, connector, auth, sys_id: str, table: str | None = None):
         table = self._table(connector, table)
         response, failure = await self._request(
             connector,
@@ -115,9 +116,9 @@ class ServiceNowAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        fields,
-        table=None,
-        incident_id=None,
+        fields: dict[str, Any],
+        table: str | None = None,
+        incident_id: str | None = None,
     ):
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
@@ -152,7 +153,14 @@ class ServiceNowAdapter(IntegrationAdapter):
             }
         return IntegrationResult.success(**data)
 
-    async def update_record(self, connector, auth, sys_id, fields, table=None):
+    async def update_record(
+        self,
+        connector,
+        auth,
+        sys_id: str,
+        fields: dict[str, Any],
+        table: str | None = None,
+    ):
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
         table = self._table(connector, table)

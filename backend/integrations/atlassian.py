@@ -55,6 +55,12 @@ def _atlassian_headers(
 
 class BitbucketAdapter(IntegrationAdapter):
     kind = "bitbucket"
+
+    def argument_alternatives(self, connector, action):
+        # Cloud addresses a repository by workspace, Data Center by project.
+        cloud = self._edition(connector) == "cloud"
+        return frozenset({"project" if cloud else "workspace"})
+
     capabilities = (
         IntegrationCapability("test_connection", "Validate Bitbucket access."),
         IntegrationCapability("get_repository", "Read repository metadata."),
@@ -126,7 +132,12 @@ class BitbucketAdapter(IntegrationAdapter):
         )
 
     async def get_repository(
-        self, connector, auth, workspace=None, project=None, repo=None
+        self,
+        connector,
+        auth,
+        workspace: str | None = None,
+        project: str | None = None,
+        repo: str | None = None,
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
@@ -141,11 +152,11 @@ class BitbucketAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        path,
-        workspace=None,
-        project=None,
-        repo=None,
-        ref="main",
+        path: str,
+        workspace: str | None = None,
+        project: str | None = None,
+        repo: str | None = None,
+        ref: str = "main",
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         file_path = quote(required(path, "path"), safe="/")
@@ -162,7 +173,9 @@ class BitbucketAdapter(IntegrationAdapter):
             file={"path": path, "ref": ref, "content": response.text}
         )
 
-    async def list_issues(self, connector, auth, workspace=None, repo=None):
+    async def list_issues(
+        self, connector, auth, workspace: str | None = None, repo: str | None = None
+    ):
         if self._edition(connector) != "cloud":
             return IntegrationResult.failure(
                 "Bitbucket Data Center does not provide the Cloud issue tracker API"
@@ -179,7 +192,13 @@ class BitbucketAdapter(IntegrationAdapter):
         )
 
     async def create_issue(
-        self, connector, auth, title, workspace=None, repo=None, content=None
+        self,
+        connector,
+        auth,
+        title: str,
+        workspace: str | None = None,
+        repo: str | None = None,
+        content: str | None = None,
     ):
         if self._edition(connector) != "cloud":
             return IntegrationResult.failure(
@@ -199,7 +218,12 @@ class BitbucketAdapter(IntegrationAdapter):
         return failure or IntegrationResult.success(issue=response.json())
 
     async def list_pull_requests(
-        self, connector, auth, workspace=None, project=None, repo=None
+        self,
+        connector,
+        auth,
+        workspace: str | None = None,
+        project: str | None = None,
+        repo: str | None = None,
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
@@ -217,13 +241,13 @@ class BitbucketAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        source_branch,
-        target_branch,
-        workspace=None,
-        project=None,
-        repo=None,
-        description=None,
+        title: str,
+        source_branch: str,
+        target_branch: str,
+        workspace: str | None = None,
+        project: str | None = None,
+        repo: str | None = None,
+        description: str | None = None,
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         cloud = self._edition(connector) == "cloud"
@@ -264,10 +288,10 @@ class BitbucketAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pull_request_id,
-        workspace=None,
-        project=None,
-        repo=None,
+        pull_request_id: int,
+        workspace: str | None = None,
+        project: str | None = None,
+        repo: str | None = None,
     ):
         scope, repo = self._scope(connector, workspace, project, repo)
         path = (
@@ -296,6 +320,7 @@ def _adf(text: str) -> dict[str, Any]:
 
 class JiraAdapter(IntegrationAdapter):
     kind = "jira"
+    argument_fallbacks = {"issue_type": "Task"}
     capabilities = (
         IntegrationCapability("test_connection", "Validate Jira access."),
         IntegrationCapability("get_issue", "Read an issue."),
@@ -342,7 +367,7 @@ class JiraAdapter(IntegrationAdapter):
             detail=f"Jira credentials accepted ({response.json().get('displayName', 'user')})."
         )
 
-    async def get_issue(self, connector, auth, issue_key):
+    async def get_issue(self, connector, auth, issue_key: str):
         response, failure = await self._request(
             connector, auth, "GET", f"/issue/{quote(required(issue_key, 'issue_key'))}"
         )
@@ -352,11 +377,11 @@ class JiraAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        summary,
-        project_key=None,
-        issue_type=None,
-        description=None,
-        incident_id=None,
+        summary: str,
+        project_key: str | None = None,
+        issue_type: str | None = None,
+        description: str | None = None,
+        incident_id: str | None = None,
     ):
         fields = {
             "project": {
@@ -400,7 +425,7 @@ class JiraAdapter(IntegrationAdapter):
             }
         return IntegrationResult.success(**data)
 
-    async def comment_issue(self, connector, auth, issue_key, body):
+    async def comment_issue(self, connector, auth, issue_key: str, body: str):
         value = _adf(required(body, "body")) if self._cloud(connector) else body
         response, failure = await self._request(
             connector,
@@ -411,7 +436,7 @@ class JiraAdapter(IntegrationAdapter):
         )
         return failure or IntegrationResult.success(comment=response.json())
 
-    async def list_transitions(self, connector, auth, issue_key):
+    async def list_transitions(self, connector, auth, issue_key: str):
         response, failure = await self._request(
             connector,
             auth,
@@ -422,7 +447,9 @@ class JiraAdapter(IntegrationAdapter):
             transitions=response.json().get("transitions", [])
         )
 
-    async def transition_issue(self, connector, auth, issue_key, transition_id):
+    async def transition_issue(
+        self, connector, auth, issue_key: str, transition_id: str
+    ):
         response, failure = await self._request(
             connector,
             auth,
@@ -520,7 +547,7 @@ class ConfluenceAdapter(IntegrationAdapter):
             detail=f"Confluence connection accepted ({response.status_code})."
         )
 
-    async def read_doc(self, connector, auth, page_id):
+    async def read_doc(self, connector, auth, page_id: str):
         if self._cloud(connector):
             path = f"/pages/{quote(required(page_id, 'page_id'))}"
             params = {"body-format": "storage"}
@@ -536,12 +563,12 @@ class ConfluenceAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        content,
-        space_id=None,
-        page_id=None,
-        parent_id=None,
-        version=None,
+        title: str,
+        content: str,
+        space_id: str | None = None,
+        page_id: str | None = None,
+        parent_id: str | None = None,
+        version: int | None = None,
     ):
         space = required(space_id or connector.config.get("space_id"), "space_id")
         if self._cloud(connector):

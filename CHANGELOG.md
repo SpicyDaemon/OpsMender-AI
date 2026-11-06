@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An AI session can now call the built-in integration tools with the
+  right arguments. The plan showed each tool's description and, for most
+  kinds, nothing about its arguments (five kinds listed names without
+  types), so the model guessed their names (`issue_id_or_key` for Jira's
+  `issue_key`, `job_name` for Jenkins' `job`, `name` for a Kubernetes
+  `pod`) and every such call failed inside the connector. In the
+  2026-11-04 live round the Jira, Confluence, Jenkins, Kubernetes and Argo
+  CD reads that take an argument failed this way (finding I-02). Every
+  action of every connector now states its arguments in the plan, as MCP
+  tools' already were, and in Skill Studio's list of the connector's tools:
+  the name, the type, and either that it is required or the value the
+  connector supplies when it is left out (`namespace (string, default
+  "production")`). An argument the connector has no default for is shown
+  as required. A call that does not fit is refused before it reaches the
+  provider, with the arguments that do exist; a flag sent as the text
+  "false" is refused instead of being read as true, and an argument sent
+  as null counts as left out. An argument is checked when the action runs,
+  so at Tier 1 a call that does not fit is refused after its approval.
 - Changing a service's owning team now moves the cards of its live
   incidents the way a service handoff does. The channels scoped to the team
   the incidents left get one notice that each incident moved to another

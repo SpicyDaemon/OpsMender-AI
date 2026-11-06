@@ -35,50 +35,50 @@ class GitHubAdapter(IntegrationAdapter):
         ),
         IntegrationCapability(
             "get_repository",
-            "Read repository metadata. Parameters: owner, repo.",
+            "Read repository metadata.",
         ),
         IntegrationCapability(
             "get_file",
-            "Read a repository file. Parameters: owner, repo, path, optional ref.",
+            "Read a repository file.",
         ),
         IntegrationCapability(
             "list_issues",
-            "List repository issues. Parameters: owner, repo, optional state.",
+            "List repository issues.",
         ),
         IntegrationCapability(
             "create_issue",
-            "Create an issue. Parameters: owner, repo, title, optional body and labels.",
+            "Create an issue.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "comment_issue",
-            "Comment on an issue or pull request. Parameters: owner, repo, issue_number, body.",
+            "Comment on an issue or pull request.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "create_pull_request",
-            "Create a pull request. Parameters: owner, repo, title, head, base, optional body and draft.",
+            "Create a pull request.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "merge_pull_request",
-            "Merge a pull request. Parameters: owner, repo, pull_number, optional sha and merge_method.",
+            "Merge a pull request.",
             classification="destructive",
             mutating=True,
             always_requires_approval=True,
         ),
         IntegrationCapability(
             "link_commit_to_incident",
-            "Link a commit to an OpsMender incident. Parameters: incident_id, owner, repo, sha.",
+            "Link a commit to an OpsMender incident.",
             classification="caution",
             mutating=True,
         ),
         IntegrationCapability(
             "link_pull_request_to_incident",
-            "Link a pull request to an OpsMender incident. Parameters: incident_id, owner, repo, pull_number.",
+            "Link a pull request to an OpsMender incident.",
             classification="caution",
             mutating=True,
         ),
@@ -196,7 +196,9 @@ class GitHubAdapter(IntegrationAdapter):
             detail=f"GitHub credentials accepted ({identity})."
         )
 
-    async def get_repository(self, connector, auth, owner=None, repo=None):
+    async def get_repository(
+        self, connector, auth, owner: str | None = None, repo: str | None = None
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector, auth, "GET", f"/repos/{quote(owner)}/{quote(repo)}"
@@ -213,7 +215,15 @@ class GitHubAdapter(IntegrationAdapter):
             }
         )
 
-    async def get_file(self, connector, auth, path, owner=None, repo=None, ref=None):
+    async def get_file(
+        self,
+        connector,
+        auth,
+        path: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        ref: str | None = None,
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector,
@@ -240,7 +250,14 @@ class GitHubAdapter(IntegrationAdapter):
             }
         )
 
-    async def list_issues(self, connector, auth, owner=None, repo=None, state="open"):
+    async def list_issues(
+        self,
+        connector,
+        auth,
+        owner: str | None = None,
+        repo: str | None = None,
+        state: str = "open",
+    ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
             connector,
@@ -267,11 +284,11 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        owner=None,
-        repo=None,
-        body=None,
-        labels=None,
+        title: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        body: str | None = None,
+        labels: list[str] | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         payload = {"title": _required(title, "title")}
@@ -301,10 +318,10 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        issue_number,
-        body,
-        owner=None,
-        repo=None,
+        issue_number: int,
+        body: str,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -325,13 +342,13 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        title,
-        head,
-        base,
-        owner=None,
-        repo=None,
-        body=None,
-        draft=False,
+        title: str,
+        head: str,
+        base: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        body: str | None = None,
+        draft: bool = False,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -362,11 +379,11 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        pull_number,
-        owner=None,
-        repo=None,
-        sha=None,
-        merge_method="merge",
+        pull_number: int,
+        owner: str | None = None,
+        repo: str | None = None,
+        sha: str | None = None,
+        merge_method: str = "merge",
     ):
         owner, repo = self._repo(connector, owner, repo)
         payload = {"merge_method": merge_method}
@@ -387,10 +404,10 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        incident_id,
-        sha,
-        owner=None,
-        repo=None,
+        incident_id: str,
+        sha: str,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
@@ -419,10 +436,10 @@ class GitHubAdapter(IntegrationAdapter):
         self,
         connector,
         auth,
-        incident_id,
-        pull_number,
-        owner=None,
-        repo=None,
+        incident_id: str,
+        pull_number: int,
+        owner: str | None = None,
+        repo: str | None = None,
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(

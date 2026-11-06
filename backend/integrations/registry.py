@@ -245,6 +245,11 @@ _AUTH_FIELDS: dict[str, dict[str, tuple[IntegrationFieldSpec, ...]]] = {
                 "Atlassian account email",
                 kind="text",
                 required=False,
+                helper=(
+                    "Required for Jira Cloud: the account the API token belongs "
+                    "to. Leave blank only for a Server or Data Center personal "
+                    "access token."
+                ),
             ),
             API_TOKEN,
             _credential(

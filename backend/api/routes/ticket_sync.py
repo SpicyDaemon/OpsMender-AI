@@ -162,6 +162,20 @@ async def receive_ticket_sync(
             status_code=409,
             detail="Merged incidents cannot be updated by ticket sync",
         )
+    agreed = status_map.get(sync_state.last_synced_status or "")
+    if (
+        agreed is not None
+        and str(agreed).strip().casefold() == external_status.strip().casefold()
+    ):
+        # The ticket has not moved since the two sides last agreed: this is
+        # an edit of the ticket or the echo of OpsMender's own push, not a
+        # status change. Acting on it would resolve again an incident that
+        # was reopened here while its ticket stayed Done (M1-140).
+        return TicketSyncWebhookResponse(
+            incident_id=sync_state.incident_id,
+            status=incident.status,
+            updated=False,
+        )
     previous = incident.status
     updated = previous != incident_status
     if updated:
@@ -191,7 +205,12 @@ async def receive_ticket_sync(
                 sync_state.incident_id,
                 reason=f"Incident resolved by ticket sync ({connector.kind})",
             )
-    await TicketSyncStateRepo.mark_synced(db, sync_state, direction="inbound")
+    # The status the ticket and the incident now agree on: the incident's
+    # ticket link shows it, and the outbound guard that never moves a ticket
+    # backwards compares against it (M1-140).
+    await TicketSyncStateRepo.mark_synced(
+        db, sync_state, direction="inbound", internal_status=incident_status
+    )
     await db.commit()
     return TicketSyncWebhookResponse(
         incident_id=sync_state.incident_id,

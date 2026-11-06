@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Jira or Confluence connector on an Atlassian Cloud site whose API
+  token has no account email now says so. Jira's form marks the email
+  optional, and without it the token was sent as a bearer token, which
+  Cloud answers with a bare 403 that reads like a missing permission
+  (finding I-01 of the 2026-11-04 live round). On an `atlassian.net` site
+  the connection test and every action now stop before any request with
+  the reason, and the Jira form says when the email is needed. A site of
+  your own keeps its bearer token whatever its edition setting, and so
+  does Bitbucket.
+- A ticket that ticket sync opens for an incident now starts with a link
+  back to the incident, when a public address is configured
+  (`OPSMENDER_PUBLIC_URL`). The incident's ticket link reports where the
+  ticket stands: `GET /incidents/{id}/integration-links` carries a
+  `ticket_sync` object with the ticket status last agreed with the
+  provider, the direction and the time, for a connector that still syncs.
+  A change that arrives from the ticket is recorded as that status, so the
+  rule that never moves a ticket backwards compares against what the
+  ticket last reported, and a delivery whose status is the one already
+  agreed changes nothing: an edit of a Done ticket no longer resolves an
+  incident that was reopened in OpsMender, and the echo of an
+  acknowledgement no longer moves the incident (finding I-04).
 - A ticket moved to In Progress in Jira or ServiceNow now puts its linked
   incident in progress. With the default status map the signed delivery
   was accepted and the incident stored `acknowledged`, which is not a

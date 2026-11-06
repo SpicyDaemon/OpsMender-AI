@@ -170,7 +170,10 @@ Choose the on-premises edition in the Edition field when applicable.
   sync**, map `open` / `in_progress` / `resolved` to Jira status names or
   transition IDs, and set **Ticket-sync webhook secret** in Credentials. Configure
   Jira to POST to the displayed `/webhooks/ticket-sync/{connector_id}` URL
-  with an `X-Hub-Signature` HMAC-SHA256 header.
+  with an `X-Hub-Signature` HMAC-SHA256 header. An inbound ticket status
+  becomes `open`, `in_progress` or `resolved` on the incident; the map's
+  `acknowledged` entry is only pushed outward, so a ticket status that only
+  it names reads as `in_progress`.
 - Confluence config uses `{"space_id":"..."}`. It can read runbooks and
   create/update postmortem pages.
 

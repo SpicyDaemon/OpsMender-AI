@@ -54,11 +54,33 @@ def normalized_status_map(kind: str, value: Any) -> dict[str, str]:
     return base
 
 
+# The statuses an incident can hold, in lifecycle order. ``acknowledged`` is in
+# the outbound map because an acknowledgement is pushed to the ticket, but it
+# is an event, not a status an incident stores.
+INCIDENT_STATUSES: tuple[str, ...] = ("open", "in_progress", "resolved")
+
+
 def reverse_status(status_map: dict[str, Any], external_status: str) -> str | None:
+    """The incident status an external ticket status stands for.
+
+    Only a status an incident can hold is returned. The default maps send
+    both ``acknowledged`` and ``in_progress`` to the same ticket status, and
+    the first match used to win, so a ticket moved to In Progress stored
+    ``acknowledged`` on the incident (M1-139). A ticket status that only
+    ``acknowledged`` maps to reads as work in progress; nobody is recorded as
+    having acknowledged the incident.
+    """
     target = str(external_status).strip().casefold()
-    for internal, external in status_map.items():
-        if str(external).strip().casefold() == target:
-            return internal
+    matches = {
+        internal
+        for internal, external in status_map.items()
+        if str(external).strip().casefold() == target
+    }
+    for status in INCIDENT_STATUSES:
+        if status in matches:
+            return status
+    if "acknowledged" in matches:
+        return "in_progress"
     return None
 
 

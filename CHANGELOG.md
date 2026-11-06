@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A ticket moved to In Progress in Jira or ServiceNow now puts its linked
+  incident in progress. With the default status map the signed delivery
+  was accepted and the incident stored `acknowledged`, which is not a
+  status an incident can hold: the map sends both the acknowledgement and
+  "in progress" to the same ticket status, and the reverse lookup took the
+  first (finding I-03 of the 2026-11-04 live round). An inbound ticket
+  status now always becomes open, in progress or resolved; one that only
+  the acknowledgement maps to reads as in progress, and nobody is recorded
+  as having acknowledged the incident. An incident the old lookup already
+  stored as `acknowledged` is not changed by the upgrade: set its status
+  to in progress with `PATCH /incidents/{id}` to repair it.
 - An AI session can now call the built-in integration tools with the
   right arguments. The plan showed each tool's description and, for most
   kinds, nothing about its arguments (five kinds listed names without

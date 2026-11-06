@@ -130,6 +130,10 @@ pull-request create/merge, and commit/pull-request links to incidents.
   `/api/v4`.
 - PAT authentication asks for **Token**; OAuth asks for **Access token**.
 - **Default project** accepts a path such as `group/project`.
+- **Test** reads the default project when one is set, so a token limited to
+  that project passes and a token that cannot see it fails with the project
+  named. With no default project it reads the token's account, which a
+  project-only token may not do.
 
 Capabilities include project/file reads, issue list/create/comment,
 merge-request create/merge, and commit/merge-request links to incidents.

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The GitLab connection test now checks the connector's default project.
+  It read the token's account, which a token limited to one project may
+  not do, so a token that read and wrote its project through the connector
+  tested as "GitLab HTTP 403" (2026-11-05 live follow-up). With a default
+  project set, Test reads that project: the scoped token passes, wrong
+  credentials fail, and a token that cannot see the project fails with the
+  project named. With no default project the account check is kept, and
+  its 403 now suggests setting one.
 - The Argo CD connection test now passes for a working token and fails
   for a wrong one. It read `/api/v1/version`, which Argo CD does not serve,
   so a valid scoped token tested as an error (404 on v3.6.1, finding I-09

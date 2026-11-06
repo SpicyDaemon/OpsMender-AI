@@ -148,8 +148,45 @@ class GitLabAdapter(IntegrationAdapter):
         return response, None
 
     async def test_connection(self, connector, auth):
+        project = str(connector.config.get("project") or "").strip()
+        if project:
+            # A token limited to one project may not read the account, yet it
+            # reads and writes that project: test what the connector will use
+            # (M1-146).
+            response, failure = await self._request(
+                connector, auth, "GET", f"/projects/{quote(project, safe='')}"
+            )
+            if failure is None:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = None
+                if not isinstance(data, dict) or not data.get("id"):
+                    return IntegrationResult.failure(
+                        "The base URL answered, but not with a GitLab project. "
+                        "Check the base URL."
+                    )
+                found = data.get("path_with_namespace") or project
+                return IntegrationResult.success(
+                    detail=f"GitLab credentials accepted for project {found}."
+                )
+            if (failure.error or "").startswith("GitLab HTTP 404"):
+                return IntegrationResult.failure(
+                    f"GitLab does not show the project '{project}' to this "
+                    f"token ({failure.error}). Check the project path and that "
+                    "the token covers it."
+                )
+            return failure
         response, failure = await self._request(connector, auth, "GET", "/user")
         if failure:
+            reason = (failure.error or "").rstrip(". ")
+            if reason.startswith("GitLab HTTP 403"):
+                # The token may be account-wide and lack a scope, or limited
+                # to a project: only the second is cured by a default project.
+                return IntegrationResult.failure(
+                    f"{reason}. If this token is limited to one project, set "
+                    "the connector's default project and test again."
+                )
             return failure
         data = response.json()
         return IntegrationResult.success(

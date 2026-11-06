@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -14,6 +15,7 @@ from backend.db.repos import (
     ServiceRepo,
     TicketSyncStateRepo,
 )
+from backend.bots.incident_card import incident_link
 from backend.integrations.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -203,7 +205,18 @@ def schedule_ticket_status_sync(
 def _create_params(kind: str, incident) -> tuple[str, dict[str, Any]]:
     """The adapter action + kwargs to open a ticket for *incident*."""
     summary = incident.title or f"Incident {incident.id}"
-    description = incident.description or ""
+    # The way back from the ticket, first so a length limit cannot cut it
+    # off: the incident's page asks for a sign-in, so the link is safe in a
+    # ticket other people can read. Only with a public address configured;
+    # a link to the local default would be dead in the provider (M1-140).
+    backlink = (
+        f"OpsMender incident: {incident_link(incident.id)}"
+        if os.environ.get("OPSMENDER_PUBLIC_URL")
+        else ""
+    )
+    description = "\n\n".join(
+        part for part in (backlink, incident.description or "") if part
+    )
     if kind == "servicenow":
         return "create_record", {
             "fields": {

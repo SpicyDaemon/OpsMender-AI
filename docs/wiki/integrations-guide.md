@@ -162,7 +162,11 @@ approval.
 
 Enter the Cloud site or on-premises instance URL. Cloud API-token authentication
 uses the Atlassian account email and API token fields; OAuth uses Access token.
-Choose the on-premises edition in the Edition field when applicable.
+Choose the on-premises edition in the Edition field when applicable. On an
+Atlassian Cloud site (`*.atlassian.net`) the email is required: an API token
+only works as the password of its account, and a connector without it stops
+with that reason before any request. A Server or Data Center personal access
+token needs no email.
 
 - Jira config commonly includes `{"project_key":"OPS","issue_type":"Task"}`.
   It can read/create/comment on issues and list/apply transitions.
@@ -173,7 +177,13 @@ Choose the on-premises edition in the Edition field when applicable.
   with an `X-Hub-Signature` HMAC-SHA256 header. An inbound ticket status
   becomes `open`, `in_progress` or `resolved` on the incident; the map's
   `acknowledged` entry is only pushed outward, so a ticket status that only
-  it names reads as `in_progress`.
+  it names reads as `in_progress`. A delivery whose ticket status is the one
+  already agreed changes nothing, so editing a ticket, or Jira reporting back
+  a change OpsMender itself made, does not move the incident. A ticket that
+  ticket sync opens starts with a link back to its incident when
+  `OPSMENDER_PUBLIC_URL` is set, and `GET /incidents/{id}/integration-links`
+  reports, for a synced ticket, the ticket status last agreed with Jira, the
+  direction of the last sync and its time.
 - Confluence config uses `{"space_id":"..."}`. It can read runbooks and
   create/update postmortem pages.
 

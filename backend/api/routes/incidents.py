@@ -43,6 +43,7 @@ from backend.api.schemas import (
     IncidentTimelineResponse,
     IncidentIntegrationLinkListResponse,
     IncidentIntegrationLinkResponse,
+    IncidentTicketSyncSummary,
     IncidentUpdate,
     SessionListResponse,
     SessionResponse,
@@ -170,10 +171,44 @@ async def list_incident_integration_links(
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     rows = await IncidentIntegrationLinkRepo.list_for_incident(db, org_id, incident_id)
-    return IncidentIntegrationLinkListResponse(
-        items=[IncidentIntegrationLinkResponse.model_validate(row) for row in rows],
-        total=len(rows),
-    )
+    # A ticket that ticket sync keeps in step carries the status last agreed
+    # with the provider, in both vocabularies (M1-140).
+    from backend.db.repos import IntegrationConnectorRepo, TicketSyncStateRepo
+    from backend.services.ticket_sync import normalized_status_map
+
+    states = {
+        (state.integration_connector_id, state.external_ticket_id): state
+        for state in await TicketSyncStateRepo.list_for_incident(
+            db, org_id, incident_id
+        )
+    }
+    items = []
+    for row in rows:
+        item = IncidentIntegrationLinkResponse.model_validate(row)
+        state = states.get((row.connector_id, row.external_id))
+        connector = (
+            await IntegrationConnectorRepo.get_by_id(db, org_id, row.connector_id)
+            if state is not None
+            else None
+        )
+        if (
+            state is not None
+            and connector is not None
+            and connector.is_enabled
+            and connector.config.get("ticket_sync_enabled")
+        ):
+            # The ticket's status in the provider's words. The state row is
+            # created with the ticket, so until a status has been agreed
+            # there is nothing to report.
+            synced = state.last_synced_status is not None
+            status_map = normalized_status_map(connector.kind, state.status_map)
+            item.ticket_sync = IncidentTicketSyncSummary(
+                ticket_status=status_map.get(state.last_synced_status or ""),
+                direction=state.sync_direction if synced else None,
+                synced_at=state.last_synced_at if synced else None,
+            )
+        items.append(item)
+    return IncidentIntegrationLinkListResponse(items=items, total=len(items))
 
 
 async def _notify_channels(

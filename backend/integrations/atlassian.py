@@ -27,6 +27,28 @@ def _basic(username: str, password: str) -> str:
     return f"Basic {token}"
 
 
+_CLOUD_EMAIL_NEEDED = (
+    "An Atlassian Cloud API token needs the email of the account it belongs "
+    "to. Fill in the email field; leave it blank only for a Server or Data "
+    "Center personal access token, with the edition set to match."
+)
+
+
+def _needs_account_email(connector: IntegrationConnector) -> bool:
+    """A Jira or Confluence connector on an Atlassian Cloud site.
+
+    Judged by the site's host, not by the edition setting: the form saves
+    "cloud" as the edition unless it is changed, so the setting says little,
+    and a Data Center site saved that way must keep its bearer token.
+    Bitbucket shares these headers and its Cloud access tokens are bearer
+    tokens with no account email.
+    """
+    if connector.kind not in {"jira", "confluence"}:
+        return False
+    host = (urlparse(str(connector.base_url or "")).hostname or "").lower()
+    return host.endswith((".atlassian.net", ".jira.com"))
+
+
 def _atlassian_headers(
     connector: IntegrationConnector,
     auth: dict[str, Any],
@@ -46,11 +68,14 @@ def _atlassian_headers(
     if connector.config.get("edition") in {"server", "data_center", "on_prem"}:
         return {"Authorization": f"Bearer {token}"}
     email = auth.get("email")
-    return (
-        {"Authorization": _basic(str(email), token)}
-        if email
-        else {"Authorization": f"Bearer {token}"}
-    )
+    if email:
+        return {"Authorization": _basic(str(email), token)}
+    if _needs_account_email(connector):
+        # A Cloud API token only works as the password of its account. Sent
+        # as a bearer token it draws a bare 403, which reads like a missing
+        # permission (M1-140).
+        raise ValueError(_CLOUD_EMAIL_NEEDED)
+    return {"Authorization": f"Bearer {token}"}
 
 
 class BitbucketAdapter(IntegrationAdapter):

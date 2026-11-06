@@ -1104,9 +1104,11 @@ class TicketSyncState(Base):
     sync_direction: Mapped[str] = mapped_column(
         String(20), default="outbound", nullable=False
     )
-    # Last OpsMender lifecycle status pushed onto the ticket (open/acknowledged/
-    # in_progress/resolved). Powers the no-backward-move guardrail. NULL until
-    # the first outbound sync.
+    # The lifecycle status the ticket and the incident last agreed on, in
+    # either direction (open/acknowledged/in_progress/resolved; the
+    # acknowledgement only from an outbound push). Powers the
+    # no-backward-move guardrail and tells an unchanged ticket from a moved
+    # one. NULL until the first sync.
     last_synced_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status_map: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

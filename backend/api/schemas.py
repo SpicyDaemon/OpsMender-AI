@@ -1512,6 +1512,17 @@ class IntegrationTestResponse(BaseModel):
     latency_ms: Optional[int] = None
 
 
+class IncidentTicketSyncSummary(BaseModel):
+    """Where a synced ticket stands, as last agreed with the provider.
+
+    All three are empty until the first sync in either direction.
+    """
+
+    ticket_status: Optional[str]
+    direction: Optional[str]
+    synced_at: Optional[datetime]
+
+
 class IncidentIntegrationLinkResponse(BaseModel):
     id: uuid.UUID
     incident_id: uuid.UUID
@@ -1522,6 +1533,8 @@ class IncidentIntegrationLinkResponse(BaseModel):
     title: Optional[str]
     reference_meta: dict[str, Any]
     created_at: datetime
+    # Set for a ticket that ticket sync keeps in step with the incident.
+    ticket_sync: Optional[IncidentTicketSyncSummary] = None
 
     model_config = {"from_attributes": True}
 

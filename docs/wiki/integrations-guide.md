@@ -261,6 +261,24 @@ token. Config may set `{"application":"production-service"}`. Application
 health, sync state, and managed-resource diff reads are safe. Sync and rollback
 always require Operator Approval.
 
+**Test** reads the default application with the token, or lists the
+applications the token can see when no default is set, and accepts only Argo
+CD's own answer. A rejected token, an application the token may not read and
+an address that is not Argo CD's API (the web interface, a proxy) each get
+their own message. A scoped account needs `get` on its applications (and
+`sync` to synchronize them) in Argo CD's RBAC policy.
+
+The Argo CD connector always verifies the server's certificate and has no
+switch to turn that off. `argocd-server` ships with a self-signed certificate,
+which fails **Test** with a message saying so; a certificate issued for
+another name than the one in the base URL, or an expired one, gets its own
+message. For a self-signed or private certificate, either give the server a
+certificate from an authority OpsMender trusts, or start OpsMender with
+`SSL_CERT_FILE` pointing at a bundle that contains your certificate authority
+(or the server's own certificate) together with the public authorities: the
+variable replaces the default bundle, it does not add to it. An action in a
+session that meets the same certificate still reports the raw error.
+
 ### Ansible Automation
 
 Enter the AWX or Ansible Automation Controller URL. Use

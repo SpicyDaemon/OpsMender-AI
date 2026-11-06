@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (
@@ -15,6 +15,8 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
+    path_value,
     required,
     response_error,
 )
@@ -105,7 +107,10 @@ class GiteaAdapter(IntegrationAdapter):
     ):
         owner, repo = self._repo(connector, owner, repo)
         response, failure = await self._request(
-            connector, auth, "GET", f"/repos/{quote(owner)}/{quote(repo)}"
+            connector,
+            auth,
+            "GET",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}",
         )
         return failure or IntegrationResult.success(repository=response.json())
 
@@ -123,8 +128,8 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/contents/"
-            f"{quote(required(path, 'path'), safe='/')}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/contents/"
+            f"{path_value(path, 'path')}",
             params={"ref": ref} if ref else None,
         )
         if failure:
@@ -157,7 +162,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues",
             params={"state": state, "limit": 100},
         )
         return failure or IntegrationResult.success(issues=response.json())
@@ -182,7 +187,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues",
             json=payload,
         )
         return failure or IntegrationResult.success(issue=response.json())
@@ -201,7 +206,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/issues/{int(issue_number)}/comments",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/issues/{int(issue_number)}/comments",
             json={"body": required(body, "body")},
         )
         return failure or IntegrationResult.success(comment=response.json())
@@ -219,7 +224,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls",
             params={"state": state, "limit": 100},
         )
         return failure or IntegrationResult.success(pull_requests=response.json())
@@ -240,7 +245,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls",
             json={
                 "title": required(title, "title"),
                 "head": required(head, "head"),
@@ -271,7 +276,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls/{int(pull_number)}/merge",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls/{int(pull_number)}/merge",
             json=payload,
         )
         return failure or IntegrationResult.success(
@@ -292,8 +297,8 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/git/commits/"
-            f"{quote(required(sha, 'sha'), safe='')}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/git/commits/"
+            f"{path_segment(sha, 'sha')}",
         )
         if failure:
             return failure
@@ -324,7 +329,7 @@ class GiteaAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/repos/{quote(owner)}/{quote(repo)}/pulls/{int(pull_number)}",
+            f"/repos/{path_segment(owner, 'owner')}/{path_segment(repo, 'repo')}/pulls/{int(pull_number)}",
         )
         if failure:
             return failure

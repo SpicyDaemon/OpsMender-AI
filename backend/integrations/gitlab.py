@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from typing import Any, Callable
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
@@ -13,6 +13,10 @@ from backend.integrations.base import (
     IntegrationAdapter,
     IntegrationCapability,
     IntegrationResult,
+)
+from backend.integrations.http import (
+    path_parts,
+    path_segment,
 )
 from backend.integrations.registry import register_adapter
 
@@ -154,7 +158,10 @@ class GitLabAdapter(IntegrationAdapter):
             # reads and writes that project: test what the connector will use
             # (M1-146).
             response, failure = await self._request(
-                connector, auth, "GET", f"/projects/{quote(project, safe='')}"
+                connector,
+                auth,
+                "GET",
+                f"/projects/{path_segment(project, 'project', allow_slash=True)}",
             )
             if failure is None:
                 try:
@@ -202,7 +209,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/projects/{quote(project, safe='')}",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}",
         )
         if failure:
             return failure
@@ -220,12 +227,14 @@ class GitLabAdapter(IntegrationAdapter):
         self, connector, auth, path: str, project: str | None = None, ref: str = "HEAD"
     ):
         project = self._project(connector, project)
+        # GitLab takes the whole file path as one encoded segment.
+        file_path = "%2F".join(path_parts(path, "path"))
         response, failure = await self._request(
             connector,
             auth,
             "GET",
-            f"/projects/{quote(project, safe='')}/repository/files/"
-            f"{quote(_required(path, 'path'), safe='')}",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/repository/files/"
+            f"{file_path}",
             params={"ref": ref or "HEAD"},
         )
         if failure:
@@ -253,7 +262,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/projects/{quote(project, safe='')}/issues",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/issues",
             params={"state": state, "per_page": 100},
         )
         if failure:
@@ -289,7 +298,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/projects/{quote(project, safe='')}/issues",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/issues",
             json_body=payload,
         )
         if failure:
@@ -316,7 +325,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/projects/{quote(project, safe='')}/issues/{int(issue_iid)}/notes",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/issues/{int(issue_iid)}/notes",
             json_body={"body": _required(body, "body")},
         )
         if failure:
@@ -342,7 +351,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/projects/{quote(project, safe='')}/merge_requests",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/merge_requests",
             json_body={
                 "title": _required(title, "title"),
                 "source_branch": _required(source_branch, "source_branch"),
@@ -378,7 +387,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "PUT",
-            f"/projects/{quote(project, safe='')}/merge_requests/"
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/merge_requests/"
             f"{int(merge_request_iid)}/merge",
             json_body=payload,
         )
@@ -399,8 +408,8 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/projects/{quote(project, safe='')}/repository/commits/"
-            f"{quote(_required(sha, 'sha'), safe='')}",
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/repository/commits/"
+            f"{path_segment(sha, 'sha')}",
         )
         if failure:
             return failure
@@ -429,7 +438,7 @@ class GitLabAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/projects/{quote(project, safe='')}/merge_requests/"
+            f"/projects/{path_segment(project, 'project', allow_slash=True)}/merge_requests/"
             f"{int(merge_request_iid)}",
         )
         if failure:

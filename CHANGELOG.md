@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Native integration tools reject traversal in request paths before
+  contacting the provider. Kubernetes pod deletion requires a valid pod
+  name, so a dot or slash cannot turn it into a collection request. Jira
+  issue keys and numeric page, ticket and task IDs are checked against the
+  provider's expected format. Nested file paths, GitLab project names and
+  Jenkins folder jobs still use their provider's URL format.
+
 - The MCP Skills guide now says how to name a read-only wrapper so that a
   Tier 2 session can use it. A tool called `kubectl`, `terraform` or `helm`
   is a generic command tool by its name, whatever it does and whatever

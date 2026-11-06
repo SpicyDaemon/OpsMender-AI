@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (
@@ -14,6 +13,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
 )
@@ -66,7 +66,9 @@ class StatuspageAdapter(IntegrationAdapter):
         )
 
     def _path(self, connector, page_id, suffix):
-        return f"/pages/{quote(self._page(connector, page_id), safe='')}{suffix}"
+        return (
+            f"/pages/{path_segment(self._page(connector, page_id), 'page_id')}{suffix}"
+        )
 
     async def test_connection(self, connector, auth):
         response, failure = await self._request(
@@ -98,7 +100,7 @@ class StatuspageAdapter(IntegrationAdapter):
             self._path(
                 connector,
                 page_id,
-                f"/incidents/{quote(required(incident_id, 'incident_id'), safe='')}",
+                f"/incidents/{path_segment(incident_id, 'incident_id')}",
             ),
         )
         return failure or IntegrationResult.success(incident=response.json())

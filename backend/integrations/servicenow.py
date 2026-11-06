@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote as url_quote
 
 
 from backend.db.models import IntegrationConnector
@@ -16,6 +16,7 @@ from backend.integrations.base import (
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
 )
@@ -93,7 +94,7 @@ class ServiceNowAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(table)}",
+            f"/{path_segment(table, 'table')}",
             params={"sysparm_limit": 1, "sysparm_fields": "sys_id"},
         )
         return failure or IntegrationResult.success(
@@ -106,7 +107,7 @@ class ServiceNowAdapter(IntegrationAdapter):
             connector,
             auth,
             "GET",
-            f"/{quote(table)}/{quote(required(sys_id, 'sys_id'))}",
+            f"/{path_segment(table, 'table')}/{path_segment(sys_id, 'sys_id')}",
         )
         return failure or IntegrationResult.success(
             record=response.json().get("result", {})
@@ -127,7 +128,7 @@ class ServiceNowAdapter(IntegrationAdapter):
             connector,
             auth,
             "POST",
-            f"/{quote(table)}",
+            f"/{path_segment(table, 'table')}",
             json=fields,
         )
         if failure:
@@ -138,7 +139,7 @@ class ServiceNowAdapter(IntegrationAdapter):
         if incident_id and ticket_id:
             root = required(connector.base_url, "base_url").rstrip("/")
             target = f"{table}.do?sys_id={ticket_id}"
-            url = f"{root}/nav_to.do?uri={quote(target, safe='')}"
+            url = f"{root}/nav_to.do?uri={url_quote(target, safe='')}"
             data["integration_link"] = {
                 "incident_id": incident_id,
                 "reference_type": "ticket",
@@ -168,7 +169,7 @@ class ServiceNowAdapter(IntegrationAdapter):
             connector,
             auth,
             "PATCH",
-            f"/{quote(table)}/{quote(required(sys_id, 'sys_id'))}",
+            f"/{path_segment(table, 'table')}/{path_segment(sys_id, 'sys_id')}",
             json=fields,
         )
         return failure or IntegrationResult.success(

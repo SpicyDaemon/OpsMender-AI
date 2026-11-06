@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from typing import Any
-from urllib.parse import quote
 
 from backend.integrations.base import (
     IntegrationAdapter,
@@ -15,6 +14,7 @@ from backend.integrations.google_auth import service_account_access_token
 from backend.integrations.http import (
     HttpClientFactory,
     default_http_client,
+    path_segment,
     required,
     response_error,
 )
@@ -71,7 +71,7 @@ class GoogleDocsAdapter(IntegrationAdapter):
         )
 
     async def read_doc(self, connector, auth, document_id: str):
-        document_id = quote(required(document_id, "document_id"), safe="")
+        document_id = path_segment(document_id, "document_id")
         response, failure = await self._request(
             connector,
             auth,
@@ -87,7 +87,7 @@ class GoogleDocsAdapter(IntegrationAdapter):
         document_id: str,
         mime_type: str = "text/plain",
     ):
-        document_id = quote(required(document_id, "document_id"), safe="")
+        document_id = path_segment(document_id, "document_id")
         mime_type = required(mime_type, "mime_type")
         response, failure = await self._request(
             connector,

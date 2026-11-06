@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import ssl
 from typing import Any, Callable
+from urllib.parse import quote, unquote
 
 import httpx
 
@@ -20,6 +22,97 @@ def required(value: Any, name: str) -> str:
     text = str(value or "").strip()
     if not text:
         raise ValueError(f"{name} is required")
+    return text
+
+
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _refused(name: str, text: str) -> ValueError:
+    shown = text if len(text) <= 80 else text[:80] + "..."
+    return ValueError(
+        f"{name} cannot be {shown!r}: use a valid path with no traversal, "
+        "unexpected separators or control characters."
+    )
+
+
+def _has_controls(text: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in text)
+
+
+def _path_text(value: Any, name: str) -> str:
+    if _has_controls(str(value)):
+        raise _refused(name, str(value))
+    return required(value, name)
+
+
+def _unsafe(text: str, *, allow_slash: bool = False) -> bool:
+    """Recognize traversal through decoding and path-parameter stripping."""
+    for _ in range(4):
+        if "\\" in text or ("/" in text and not allow_slash) or _has_controls(text):
+            return True
+        if any(
+            part.partition(";")[0].strip() in {".", ".."} for part in text.split("/")
+        ):
+            return True
+        decoded = unquote(text)
+        if decoded == text:
+            return False
+        text = decoded
+    # Bound the work on heavily nested input. Normal paths stabilize sooner.
+    return True
+
+
+def validate_path(value: Any, name: str, *, allow_slash: bool = False) -> str:
+    """Check a path before constructing a provider URL."""
+    text = _path_text(value, name)
+    if _unsafe(text, allow_slash=allow_slash):
+        raise _refused(name, text)
+    return text
+
+
+def path_segment(value: Any, name: str, *, allow_slash: bool = False) -> str:
+    """One URL path segment made from a caller's value (M1-147).
+
+    Percent-encode separators and reject dot segments. The HTTP client can
+    fold a bare dot segment before sending the request, which turned
+    "delete the pod named ." into "delete every pod of the namespace".
+    """
+    return quote(validate_path(value, name, allow_slash=allow_slash), safe="")
+
+
+def path_parts(value: Any, name: str = "value") -> list[str]:
+    """The encoded segments of a path of several parts: a file path, a
+    branch name, a job inside folders.
+
+    Empty parts and ``.`` parts are dropped, since neither can move the
+    path; a ``..`` part is refused, and so is a value with nothing else.
+    Each part is encoded as it stands, spaces included, so the value can
+    go deeper but never back up or sideways.
+    """
+    text = str(value or "")
+    if not text.strip():
+        raise ValueError(f"{name} is required")
+    parts = [part for part in text.split("/") if part not in {"", "."}]
+    if not parts or any(_unsafe(part) for part in parts):
+        raise _refused(name, text)
+    return [quote(part, safe="") for part in parts]
+
+
+def path_value(value: Any, name: str = "value") -> str:
+    """A path of several segments as one string (see ``path_parts``)."""
+    return "/".join(path_parts(value, name))
+
+
+def numeric_id(value: Any, name: str = "id") -> str:
+    """A provider's numeric identifier as a path segment.
+
+    A ticket, task or page id is digits; a word in its place would reach a
+    sibling route of the same API (``tickets/recent``, ``tickets/update_many``).
+    """
+    text = _path_text(value, name)
+    if not _DIGITS.fullmatch(text):
+        raise ValueError(f"{name} must be a number, not {text[:80]!r}.")
     return text
 
 

@@ -9,7 +9,7 @@
 # Result: one image, one port (8000), one process (uvicorn).
 # FastAPI serves /api/* (all existing routes) and falls through to the static
 # Next build for everything else. Node.js is on PATH so npx-based MCP servers
-# (e.g. `npx -y @anthropic/mcp-server-k8s`) work out of the box.
+# work out of the box.
 
 # ── Stage 1: frontend (static export) ───────────────────────────────────────
 FROM node:24-alpine AS frontend-builder
@@ -84,8 +84,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js - copied from the node-runtime stage so npx-based MCP servers
-# (e.g. `npx -y @anthropic/mcp-server-k8s`) work without the user having
-# to install Node separately.
+# work without the user having to install Node separately.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \

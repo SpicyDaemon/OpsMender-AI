@@ -1325,7 +1325,7 @@ type EnvPair = { key: string; value: string };
 type MCPFormState = {
   name: string;
   transport: MCPTransport;
-  // Single command string (e.g. "npx -y @anthropic/mcp-server-k8s").
+  // Single command string (e.g. "npx -y <mcp-server-package>").
   // Split client-side on whitespace into command + args before POST,
   // so the backend contract (command + args) stays unchanged.
   command: string;
@@ -1358,19 +1358,6 @@ type MCPServerTemplate = {
 };
 
 const MCP_SERVER_TEMPLATES: MCPServerTemplate[] = [
-  {
-    id: "k8s_stdio",
-    name: "Kubernetes",
-    description:
-      "Local stdio server for cluster inspection via the Anthropic k8s MCP package.",
-    transport: "stdio",
-    suggestedName: "k8s-prod",
-    command: "npx",
-    args: ["-y", "@anthropic/mcp-server-k8s"],
-    tokenStrategy: "none",
-    docsHref: "https://www.npmjs.com/package/@anthropic/mcp-server-k8s",
-    docsLabel: "Package docs",
-  },
   {
     id: "postgres_stdio",
     name: "Postgres",
@@ -1654,7 +1641,7 @@ function MCPServerModal({
                 id="mcp-command"
                 value={form.command}
                 onChange={(e) => setField("command", e.target.value)}
-                placeholder="npx -y @anthropic/mcp-server-k8s"
+                placeholder="npx -y <mcp-server-package>"
                 className="font-mono text-xs"
                 required
               />
@@ -2023,7 +2010,7 @@ function ImportMCPJsonModal({
             rows={10}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder='{\n  "mcpServers": {\n    "k8s": {\n      "command": "npx",\n      "args": ["-y", "@anthropic/mcp-server-k8s"]\n    }\n  }\n}'
+            placeholder={'{\n  "mcpServers": {\n    "my-server": {\n      "command": "npx",\n      "args": ["-y", "<mcp-server-package>"]\n    }\n  }\n}'}
             className="font-mono text-xs"
           />
         </div>

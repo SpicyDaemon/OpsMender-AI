@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Kubernetes template is gone from the New MCP Server dialog, and no
+  example names its package any more. The template, `.env.example`, the
+  image's comments and a setup error all pointed at
+  `@anthropic/mcp-server-k8s`, which the npm registry does not have, so
+  the pre-filled server could never start (finding I-07 of the 2026-11-05
+  live round). The examples now carry a placeholder for a package your
+  team has vetted, and the integrations guide says that the built-in
+  Kubernetes connector needs no MCP server and how to add one for what the
+  connector does not read. A server already saved with that command is
+  not changed.
 - A GitHub repository webhook pointed at a service's alert intake URL now
   pages only for a workflow run that failed. GitHub sends its setup ping,
   pushes and every step of a run's life to the URL, and each became an

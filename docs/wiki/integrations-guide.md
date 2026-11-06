@@ -229,6 +229,15 @@ Read capabilities cover pods, recent logs, events, and deployments. Deployment
 rollout restart and pod deletion are mutating tools: they are blocked in Tier 0
 and Tier 2, and require Operator Approval in Tier 1.
 
+This connector needs no MCP server. OpsMender does not ship or recommend a
+Kubernetes MCP package: an earlier example named one that the npm registry
+does not have. To reach objects the connector does not read (services, config,
+mesh routing), add an MCP server your team has vetted under AI Agent, MCP
+Servers, give it a kubeconfig for a service account with only the rights you
+want the AI to have, and add `KUBECONFIG` with the file's path under its
+Environment Variables. The Services page warns when a service has both this
+connector and an MCP server whose name, command or URL mentions Kubernetes.
+
 ### Jenkins
 
 Enter the Jenkins controller URL. Credentials use

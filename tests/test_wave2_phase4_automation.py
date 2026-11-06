@@ -123,8 +123,6 @@ async def test_argocd_reads_application_state_and_runs_guarded_operations():
         seen.append(request)
         assert request.headers["authorization"] == "Bearer argo-token"
         path = request.url.path
-        if path.endswith("/api/v1/version"):
-            return httpx.Response(200, json={"Version": "v3"})
         if path.endswith("/api/v1/applications"):
             return httpx.Response(200, json={"items": [{"metadata": {"name": "api"}}]})
         if path.endswith("/api/v1/applications/api/managed-resources"):
@@ -137,10 +135,13 @@ async def test_argocd_reads_application_state_and_runs_guarded_operations():
             return httpx.Response(
                 200,
                 json={
+                    # The connection test checks that the answer is this
+                    # application (M1-145).
+                    "metadata": {"name": "api"},
                     "status": {
                         "sync": {"status": "Synced"},
                         "health": {"status": "Healthy"},
-                    }
+                    },
                 },
             )
         raise AssertionError(f"unexpected request: {request.method} {request.url}")

@@ -6,6 +6,8 @@ import base64
 from typing import Any
 from urllib.parse import quote
 
+import httpx
+
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (
     IntegrationAdapter,
@@ -17,6 +19,7 @@ from backend.integrations.http import (
     default_http_client,
     required,
     response_error,
+    untrusted_certificate,
 )
 from backend.integrations.registry import register_adapter
 
@@ -252,11 +255,86 @@ class ArgoCDAdapter(IntegrationAdapter):
         )
 
     async def test_connection(self, connector, auth):
-        response, failure = await self._request(
-            connector, auth, "GET", "/api/v1/version"
-        )
-        return failure or IntegrationResult.success(
-            detail=f"Argo CD connection accepted ({response.status_code})."
+        """Prove the token on a route that needs it.
+
+        The old probe read ``/api/v1/version``, which Argo CD does not serve
+        (404 on v3.6.1), so a working token tested as an error; the route
+        that does exist, ``/api/version``, answers without a token and would
+        have passed a wrong one. The answer has to be Argo CD's own: a page
+        from a proxy or from the web interface is not proof of anything
+        (M1-145).
+        """
+        application = str(connector.config.get("application") or "").strip()
+        path = "/api/v1/applications"
+        params: dict[str, Any] | None = {"fields": "items.metadata.name"}
+        if application:
+            path += f"/{quote(application, safe='')}"
+            params = None
+        try:
+            async with self._factory() as client:
+                response = await client.get(
+                    f"{self._base(connector)}{path}",
+                    headers=self._headers(auth),
+                    params=params,
+                )
+        except httpx.ConnectError as exc:
+            untrusted = untrusted_certificate("Argo CD", exc)
+            if untrusted is None:
+                raise
+            return untrusted
+        status = response.status_code
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            # Argo CD answers every API request, refusals included, with a
+            # JSON object.
+            return IntegrationResult.failure(
+                "The base URL does not answer as an Argo CD API server "
+                f"(HTTP {status}, not JSON). Enter the address of argocd-server."
+            )
+        if status >= 400:
+            reason = response_error("Argo CD", response).error
+            if status == 401:
+                return IntegrationResult.failure(
+                    f"Argo CD rejected the token ({reason}). Create a new "
+                    "token and save it in the connector."
+                )
+            if application and status in (403, 404):
+                # Argo CD answers 403 both for an application that does not
+                # exist and for one the token may not read.
+                return IntegrationResult.failure(
+                    "Argo CD accepted the token, but the application "
+                    f"'{application}' was not found or the token may not read "
+                    f"it ({reason})."
+                )
+            return IntegrationResult.failure(reason)
+        if application:
+            metadata = body.get("metadata")
+            name = metadata.get("name") if isinstance(metadata, dict) else None
+            if name != application:
+                return IntegrationResult.failure(
+                    "The base URL answered, but not with the application "
+                    f"'{application}'. Enter the address of argocd-server."
+                )
+            return IntegrationResult.success(
+                detail=(
+                    f"Argo CD accepted the token; application '{application}' "
+                    "is readable."
+                )
+            )
+        if "items" not in body:
+            return IntegrationResult.failure(
+                "The base URL answered, but not with Argo CD's application "
+                "list. Enter the address of argocd-server."
+            )
+        count = len(body.get("items") or [])
+        return IntegrationResult.success(
+            detail=(
+                f"Argo CD accepted the token; {count} application(s) are "
+                "visible to it. No default application is set."
+            )
         )
 
     async def list_applications(self, connector, auth):

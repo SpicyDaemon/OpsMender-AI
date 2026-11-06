@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Argo CD connection test now passes for a working token and fails
+  for a wrong one. It read `/api/v1/version`, which Argo CD does not serve,
+  so a valid scoped token tested as an error (404 on v3.6.1, finding I-09
+  of the 2026-11-05 live round); the version route that does exist answers
+  without a token and could not have told the two apart. Test now reads
+  the connector's default application with the token, or lists the
+  applications the token can see when none is set, and accepts only Argo
+  CD's own answer: a rejected token, an application the token may not
+  read, and an address that is not Argo CD's API (a web page, a proxy's
+  refusal) each get their own message. A certificate OpsMender cannot
+  verify (Argo CD's default is self-signed) now gets a message that says
+  whether it is untrusted, issued for another name or expired, and what
+  to change, instead of raw OpenSSL text (finding I-10); certificate
+  verification stays on for this connector.
 - The Confluence connection test now checks the connector's default space.
   It listed one space the account can see and never looked at the
   configured one, so a connector whose default space does not exist tested

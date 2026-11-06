@@ -236,7 +236,11 @@ mesh routing), add an MCP server your team has vetted under AI Agent, MCP
 Servers, give it a kubeconfig for a service account with only the rights you
 want the AI to have, and add `KUBECONFIG` with the file's path under its
 Environment Variables. The Services page warns when a service has both this
-connector and an MCP server whose name, command or URL mentions Kubernetes.
+connector and an MCP server whose name, command or URL mentions Kubernetes. A
+tool of that server named `kubectl`, `helm` or the like counts as a generic
+command tool whatever it does: see
+[A read-only wrapper with a CLI's name](mcp-skills.md#a-read-only-wrapper-with-a-clis-name)
+for the names a Tier 2 session can use.
 
 ### Jenkins
 

@@ -15,6 +15,8 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
+    default_http_client,
     path_parts,
     path_segment,
 )
@@ -91,9 +93,7 @@ class GitLabAdapter(IntegrationAdapter):
         *,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
     ) -> None:
-        self._http_client_factory = http_client_factory or (
-            lambda: httpx.AsyncClient(timeout=20, follow_redirects=True)
-        )
+        self._http_client_factory = http_client_factory or default_http_client
 
     @staticmethod
     def _base_url(connector: IntegrationConnector) -> str:
@@ -108,13 +108,9 @@ class GitLabAdapter(IntegrationAdapter):
         return _required(project or connector.config.get("project"), "project")
 
     @staticmethod
-    def _headers(
-        connector: IntegrationConnector, auth: dict[str, Any]
-    ) -> dict[str, str]:
+    def _headers(auth: dict[str, Any]) -> dict[str, str]:
         token = _required(auth.get("token") or auth.get("access_token"), "token")
-        if connector.auth_type == "oauth":
-            return {"Authorization": f"Bearer {token}"}
-        return {"PRIVATE-TOKEN": token}
+        return {"Authorization": f"Bearer {token}"}
 
     @staticmethod
     def _error(response: httpx.Response) -> str:
@@ -139,13 +135,13 @@ class GitLabAdapter(IntegrationAdapter):
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
     ) -> tuple[httpx.Response | None, IntegrationResult | None]:
-        async with self._http_client_factory() as client:
+        async with connector_http_client(self._http_client_factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base_url(connector)}{path}",
                 params=params,
                 json=json_body,
-                headers=self._headers(connector, auth),
+                headers=self._headers(auth),
             )
         if response.status_code >= 400:
             return None, IntegrationResult.failure(self._error(response))
@@ -303,10 +299,18 @@ class GitLabAdapter(IntegrationAdapter):
         )
         if failure:
             return failure
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError:
+            data = None
+        issue_id = data.get("iid") if isinstance(data, dict) else None
+        if response.status_code != 201 or type(issue_id) is not int or issue_id <= 0:
+            return IntegrationResult.failure(
+                f"GitLab HTTP {response.status_code} did not confirm a created issue."
+            )
         return IntegrationResult.success(
             issue={
-                "iid": data.get("iid"),
+                "iid": issue_id,
                 "title": data.get("title"),
                 "web_url": data.get("web_url"),
             }

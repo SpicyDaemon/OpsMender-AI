@@ -14,6 +14,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     path_segment,
@@ -70,7 +71,7 @@ class TerraformCloudAdapter(IntegrationAdapter):
         )
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -243,7 +244,7 @@ class ArgoCDAdapter(IntegrationAdapter):
         )
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -273,7 +274,7 @@ class ArgoCDAdapter(IntegrationAdapter):
             path += f"/{path_segment(application, 'application')}"
             params = None
         try:
-            async with self._factory() as client:
+            async with connector_http_client(self._factory()) as client:
                 response = await client.get(
                     f"{self._base(connector)}{path}",
                     headers=self._headers(auth),
@@ -448,7 +449,7 @@ class AnsibleControllerAdapter(IntegrationAdapter):
         return {"Authorization": f"Basic {encoded}"}
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",

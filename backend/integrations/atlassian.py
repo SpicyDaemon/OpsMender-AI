@@ -16,6 +16,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     numeric_id,
@@ -158,7 +159,7 @@ class BitbucketAdapter(IntegrationAdapter):
         return required(project or connector.config.get("project"), "project"), repo
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -403,7 +404,7 @@ class JiraAdapter(IntegrationAdapter):
         return f"{root}/rest/api/{version}"
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -583,7 +584,7 @@ class ConfluenceAdapter(IntegrationAdapter):
         return root if root.endswith("/rest/api") else root + "/rest/api"
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",

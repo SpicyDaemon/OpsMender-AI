@@ -12,6 +12,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     required,
@@ -68,7 +69,7 @@ class LinearAdapter(IntegrationAdapter):
         query: str,
         variables: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any] | None, IntegrationResult | None]:
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.post(
                 self._endpoint(connector),
                 headers=self._headers(connector, auth),

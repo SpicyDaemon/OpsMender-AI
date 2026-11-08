@@ -424,6 +424,12 @@ OpsMender can expose selected incident workflows through external chat platforms
 
 Credentials are write-only: OpsMender shows whether credentials exist and which keys are stored, but it never returns raw credential values.
 
+Use the provider's direct API address for the connector base URL. If the
+server responds with a redirect, Test and AI Session requests fail and show
+the destination scheme and host when available. Verify the destination with
+your provider or administrator, then enter the direct API address and test
+the connection again.
+
 ### Telegram
 
 Telegram currently supports incident lookup, session status, and approval commands:

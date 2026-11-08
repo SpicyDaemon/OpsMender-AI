@@ -12,7 +12,11 @@ from backend.integrations.base import (
     IntegrationCapability,
     IntegrationResult,
 )
-from backend.integrations.http import validate_path
+from backend.integrations.http import (
+    connector_http_client,
+    default_http_client,
+    validate_path,
+)
 from backend.integrations.registry import register_adapter
 
 
@@ -32,7 +36,7 @@ class GenericHTTPAdapter(IntegrationAdapter):
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
     ) -> None:
         self._http_client_factory = http_client_factory or (
-            lambda: httpx.AsyncClient(timeout=10, follow_redirects=True)
+            lambda: default_http_client(timeout=10)
         )
 
     @staticmethod
@@ -73,7 +77,7 @@ class GenericHTTPAdapter(IntegrationAdapter):
                 str(auth.get("username") or ""),
                 str(auth.get("password") or ""),
             )
-        async with self._http_client_factory() as client:
+        async with connector_http_client(self._http_client_factory()) as client:
             response = await client.get(
                 url,
                 headers=self._headers(connector, auth),

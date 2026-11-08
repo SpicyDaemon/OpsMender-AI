@@ -24,7 +24,7 @@ def _adapter():
 
     async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        token = request.headers.get("private-token")
+        token = request.headers.get("authorization", "").removeprefix("Bearer ")
         path = request.url.raw_path.decode().split("?", 1)[0]
         if token not in {SCOPED, ACCOUNT}:
             return httpx.Response(401, json={"message": "401 Unauthorized"})

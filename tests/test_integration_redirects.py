@@ -26,6 +26,13 @@ CONFIG = {
 DESTINATION = "https://other.example.test/new-api"
 
 
+def _redirect_message(status, origin):
+    return (
+        f"Connector received HTTP {status} redirect to {origin}. "
+        "Set the connector base URL to the provider's direct API address."
+    )
+
+
 async def _call(
     kind, handler, action="test_connection", *, auth_type=None, auth=None, **arguments
 ):
@@ -68,9 +75,7 @@ async def test_connection_rejects_redirect(kind):
     )
     assert [request.url.host for request in requests] == [first_host]
     assert not result.ok
-    assert "HTTP 302" in result.error
-    assert "https://other.example.test" in result.error
-    assert "base URL" in result.error
+    assert result.error == _redirect_message(302, "https://other.example.test")
 
 
 @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
@@ -83,8 +88,7 @@ async def test_redirected_jenkins_build_is_not_queued(status):
     result, requests = await _call("jenkins", redirect, "trigger_build")
     assert [request.method for request in requests] == ["POST"]
     assert not result.ok
-    assert f"HTTP {status}" in result.error
-    assert "https://provider.example.test" in result.error
+    assert result.error == _redirect_message(status, "https://provider.example.test")
 
 
 async def test_redirect_diagnostic_omits_location_credentials():
@@ -102,8 +106,7 @@ async def test_redirect_diagnostic_omits_location_credentials():
     result, requests = await _call("gitlab", redirect)
     assert len(requests) == 1
     assert not result.ok
-    assert "https://other.example.test:8443" in result.error
-    assert "private-" not in result.error
+    assert result.error == _redirect_message(307, "https://other.example.test:8443")
 
 
 @pytest.mark.parametrize(
@@ -132,7 +135,7 @@ async def test_token_exchange_rejects_redirect(
         ("POST", expected_path)
     ]
     assert not result.ok
-    assert "https://other.example.test" in result.error
+    assert result.error == _redirect_message(302, "https://other.example.test")
 
 
 async def test_gitlab_does_not_forward_bearer_on_redirect():

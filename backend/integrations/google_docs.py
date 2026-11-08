@@ -12,6 +12,7 @@ from backend.integrations.base import (
 )
 from backend.integrations.google_auth import service_account_access_token
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     path_segment,
@@ -44,7 +45,7 @@ class GoogleDocsAdapter(IntegrationAdapter):
         return await service_account_access_token(client, auth, scopes=_SCOPES)
 
     async def _request(self, connector, auth, method, url, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             token = await self._token(client, connector, auth)
             response = await client.request(
                 method,

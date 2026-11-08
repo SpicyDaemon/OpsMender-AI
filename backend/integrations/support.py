@@ -13,6 +13,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     numeric_id,
@@ -87,7 +88,7 @@ class ZendeskAdapter(IntegrationAdapter):
 
     async def test_connection(self, connector, auth):
         base = _zendesk_base(connector)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/users/me.json",
                 headers=_zendesk_headers(connector, auth),
@@ -102,7 +103,7 @@ class ZendeskAdapter(IntegrationAdapter):
     async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _zendesk_base(connector)
         tid = numeric_id(ticket_id, "ticket_id")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/tickets/{tid}.json",
                 headers=_zendesk_headers(connector, auth),
@@ -125,7 +126,7 @@ class ZendeskAdapter(IntegrationAdapter):
             params["status"] = status
         if assignee_id:
             params["assignee_id"] = assignee_id
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/tickets.json",
                 headers=_zendesk_headers(connector, auth),
@@ -158,7 +159,7 @@ class ZendeskAdapter(IntegrationAdapter):
             ticket["priority"] = priority
         if type:
             ticket["type"] = type
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.post(
                 f"{base}/api/v2/tickets.json",
                 headers=_zendesk_headers(connector, auth),
@@ -175,7 +176,7 @@ class ZendeskAdapter(IntegrationAdapter):
         tid = numeric_id(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.put(
                 f"{base}/api/v2/tickets/{tid}.json",
                 headers=_zendesk_headers(connector, auth),
@@ -191,7 +192,7 @@ class ZendeskAdapter(IntegrationAdapter):
         base = _zendesk_base(connector)
         tid = numeric_id(ticket_id, "ticket_id")
         comment_body = required(body, "body")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.put(
                 f"{base}/api/v2/tickets/{tid}.json",
                 headers=_zendesk_headers(connector, auth),
@@ -282,7 +283,7 @@ class FreshserviceAdapter(IntegrationAdapter):
 
     async def test_connection(self, connector, auth):
         base = _freshservice_base(connector)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/agents/me",
                 headers=_freshservice_headers(connector, auth),
@@ -298,7 +299,7 @@ class FreshserviceAdapter(IntegrationAdapter):
     async def get_ticket(self, connector, auth, ticket_id: int | str):
         base = _freshservice_base(connector)
         tid = numeric_id(ticket_id, "ticket_id")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/tickets/{tid}",
                 headers=_freshservice_headers(connector, auth),
@@ -321,7 +322,7 @@ class FreshserviceAdapter(IntegrationAdapter):
             params["status"] = status
         if priority:
             params["priority"] = _FS_PRIORITY.get(str(priority).lower(), priority)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/api/v2/tickets",
                 headers=_freshservice_headers(connector, auth),
@@ -350,7 +351,7 @@ class FreshserviceAdapter(IntegrationAdapter):
         }
         if priority:
             payload["priority"] = _FS_PRIORITY.get(str(priority).lower(), 2)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.post(
                 f"{base}/api/v2/tickets",
                 headers=_freshservice_headers(connector, auth),
@@ -367,7 +368,7 @@ class FreshserviceAdapter(IntegrationAdapter):
         tid = numeric_id(ticket_id, "ticket_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.put(
                 f"{base}/api/v2/tickets/{tid}",
                 headers=_freshservice_headers(connector, auth),
@@ -382,7 +383,7 @@ class FreshserviceAdapter(IntegrationAdapter):
     ):
         base = _freshservice_base(connector)
         tid = numeric_id(ticket_id, "ticket_id")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.post(
                 f"{base}/api/v2/tickets/{tid}/notes",
                 headers=_freshservice_headers(connector, auth),
@@ -464,7 +465,7 @@ class AsanaAdapter(IntegrationAdapter):
 
     async def test_connection(self, connector, auth):
         base = _asana_base(connector)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/users/me",
                 headers=_asana_headers(connector, auth),
@@ -479,7 +480,7 @@ class AsanaAdapter(IntegrationAdapter):
     async def get_task(self, connector, auth, task_id: str):
         base = _asana_base(connector)
         tid = numeric_id(task_id, "task_id")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/tasks/{tid}",
                 headers=_asana_headers(connector, auth),
@@ -501,7 +502,7 @@ class AsanaAdapter(IntegrationAdapter):
         }
         if completed:
             params.pop("completed_since", None)
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.get(
                 f"{base}/tasks",
                 headers=_asana_headers(connector, auth),
@@ -533,7 +534,7 @@ class AsanaAdapter(IntegrationAdapter):
             task["notes"] = notes
         if assignee:
             task["assignee"] = assignee
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.post(
                 f"{base}/tasks",
                 headers=_asana_headers(connector, auth),
@@ -548,7 +549,7 @@ class AsanaAdapter(IntegrationAdapter):
         tid = numeric_id(task_id, "task_id")
         if not isinstance(fields, dict) or not fields:
             raise ValueError("fields is required")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.put(
                 f"{base}/tasks/{tid}",
                 headers=_asana_headers(connector, auth),
@@ -561,7 +562,7 @@ class AsanaAdapter(IntegrationAdapter):
     async def comment_task(self, connector, auth, task_id: str, text: str):
         base = _asana_base(connector)
         tid = numeric_id(task_id, "task_id")
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             r = await client.post(
                 f"{base}/tasks/{tid}/stories",
                 headers=_asana_headers(connector, auth),

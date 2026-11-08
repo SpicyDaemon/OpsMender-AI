@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Native connectors refuse HTTP redirects and show the destination origin.
+  Use the provider's direct API address in connector settings. Jenkins
+  build triggers and GitLab issue creation require confirmation from the
+  provider before reporting success.
+
 - Native integration tools reject traversal in request paths before
   contacting the provider. Kubernetes pod deletion requires a valid pod
   name, so a dot or slash cannot turn it into a collection request. Jira

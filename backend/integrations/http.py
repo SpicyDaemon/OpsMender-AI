@@ -14,8 +14,36 @@ from backend.integrations.base import IntegrationResult
 HttpClientFactory = Callable[[], httpx.AsyncClient]
 
 
-def default_http_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=20, follow_redirects=True)
+def default_http_client(
+    *, timeout: float = 20, verify: bool | ssl.SSLContext = True
+) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=timeout, verify=verify, follow_redirects=False)
+
+
+def connector_http_client(client: httpx.AsyncClient) -> httpx.AsyncClient:
+    """Apply the redirect policy even when the caller supplies the client."""
+    client.follow_redirects = False
+    client.event_hooks["response"].insert(0, _reject_redirect)
+    return client
+
+
+async def _reject_redirect(response: httpx.Response) -> None:
+    if not response.is_redirect:
+        return
+    location = response.headers.get("Location")
+    destination = ""
+    if location and len(location) <= 2048:
+        try:
+            target = response.request.url.join(location)
+            if target.scheme in {"http", "https"} and target.host:
+                # Display only the origin. Every other component can hold secrets.
+                destination = f" to {target.scheme}://{target.netloc.decode('ascii')}"
+        except (ValueError, httpx.InvalidURL):
+            pass
+    raise ValueError(
+        f"Connector received HTTP {response.status_code} redirect{destination}. "
+        "Set the connector base URL to the provider's direct API address."
+    )
 
 
 def required(value: Any, name: str) -> str:

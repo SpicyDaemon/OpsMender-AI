@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
+from urllib.parse import urlsplit
 
 from backend.db.models import IntegrationConnector
 from backend.integrations.base import (
@@ -12,6 +14,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     path_parts,
@@ -59,7 +62,7 @@ class JenkinsAdapter(IntegrationAdapter):
         return "".join(f"/job/{part}" for part in path_parts(raw, "job"))
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -127,9 +130,18 @@ class JenkinsAdapter(IntegrationAdapter):
             f"{self._job_path(connector, job)}/{suffix}",
             data=parameters or None,
         )
-        return failure or IntegrationResult.success(
+        if failure:
+            return failure
+        queue_url = response.headers.get("Location", "")
+        if response.status_code != 201 or not re.search(
+            r"/queue/item/[0-9]+/?$", urlsplit(queue_url).path
+        ):
+            return IntegrationResult.failure(
+                f"Jenkins HTTP {response.status_code} did not confirm a queued build."
+            )
+        return IntegrationResult.success(
             queued=True,
-            queue_url=response.headers.get("location"),
+            queue_url=queue_url,
             status_code=response.status_code,
         )
 
@@ -167,7 +179,7 @@ class CircleCIAdapter(IntegrationAdapter):
         )
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",
@@ -302,7 +314,7 @@ class AzurePipelinesAdapter(IntegrationAdapter):
         return required(project or connector.config.get("project"), "project")
 
     async def _request(self, connector, auth, method, path, **kwargs):
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",

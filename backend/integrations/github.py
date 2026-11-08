@@ -17,6 +17,8 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
+    default_http_client,
     path_segment,
     path_value,
 )
@@ -93,9 +95,7 @@ class GitHubAdapter(IntegrationAdapter):
         *,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
     ) -> None:
-        self._http_client_factory = http_client_factory or (
-            lambda: httpx.AsyncClient(timeout=20, follow_redirects=True)
-        )
+        self._http_client_factory = http_client_factory or default_http_client
 
     @staticmethod
     def _base_url(connector: IntegrationConnector) -> str:
@@ -170,7 +170,7 @@ class GitHubAdapter(IntegrationAdapter):
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
     ) -> tuple[httpx.Response | None, IntegrationResult | None]:
-        async with self._http_client_factory() as client:
+        async with connector_http_client(self._http_client_factory()) as client:
             token = await self._token(client, connector, auth)
             response = await client.request(
                 method,

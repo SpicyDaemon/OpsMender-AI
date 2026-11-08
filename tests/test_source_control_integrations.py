@@ -338,7 +338,9 @@ async def test_gitlab_pat_and_oauth_use_encoded_v4_contracts():
             {"merge_request_iid": 3, "sha": "head"},
         )
     ).ok
-    assert all(request.headers.get("private-token") == "gl-token" for request in seen)
+    assert all(
+        request.headers.get("authorization") == "Bearer gl-token" for request in seen
+    )
 
     oauth_seen: dict[str, str] = {}
 

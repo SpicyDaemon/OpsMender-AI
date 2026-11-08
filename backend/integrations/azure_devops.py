@@ -13,6 +13,7 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
     HttpClientFactory,
     default_http_client,
     path_segment,
@@ -89,7 +90,7 @@ class AzureDevOpsAdapter(IntegrationAdapter):
     async def _request(self, connector, auth, method, path, **kwargs):
         headers = self._headers(connector, auth)
         headers.update(kwargs.pop("headers", {}))
-        async with self._factory() as client:
+        async with connector_http_client(self._factory()) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",

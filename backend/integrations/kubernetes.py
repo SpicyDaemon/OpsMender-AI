@@ -16,6 +16,8 @@ from backend.integrations.base import (
     IntegrationResult,
 )
 from backend.integrations.http import (
+    connector_http_client,
+    default_http_client,
     path_segment,
     required,
     response_error,
@@ -116,12 +118,12 @@ class KubernetesAdapter(IntegrationAdapter):
             context = ssl.create_default_context()
             context.load_verify_locations(cadata=str(ca_cert))
             verify = context
-        return httpx.AsyncClient(timeout=20, follow_redirects=True, verify=verify)
+        return default_http_client(verify=verify)
 
     async def _request(self, connector, auth, method, path, **kwargs):
         headers = self._headers(connector, auth)
         headers.update(kwargs.pop("headers", {}))
-        async with self._client(connector, auth) as client:
+        async with connector_http_client(self._client(connector, auth)) as client:
             response = await client.request(
                 method,
                 f"{self._base(connector)}{path}",

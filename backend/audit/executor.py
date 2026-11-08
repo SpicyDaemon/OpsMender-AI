@@ -22,6 +22,7 @@ import time
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from backend.audit.logger import AuditLogger
+from backend.audit.tool_results import protect_tool_result
 from backend.mcp.client import call_tool
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import EnforcementResult, check as tier_check
@@ -129,7 +130,6 @@ async def audited_tool_call(
     try:
         caller = tool_caller or call_tool
         mcp_result = await caller(session, tool_name, params)
-        elapsed_ms = int((time.monotonic() - start) * 1000)
 
         if isinstance(mcp_result, dict):
             result_dict = mcp_result
@@ -148,57 +148,42 @@ async def audited_tool_call(
                 ],
                 "isError": bool(getattr(mcp_result, "isError", False)),
             }
-
-        # 4. Post-log ───────────────────────────────────────────────
-        pending_log = logger.log_tool_call_end(
-            session_id,
-            tier,
-            tool_name,
-            result=result_dict,
-            duration_ms=elapsed_ms,
-            classification=classification,
-        )
-        if inspect.isawaitable(pending_log):
-            await pending_log
-
-        # A server that answers with isError rejected the call (a wrong
-        # argument, a missing resource); it did not run (M1-91).
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        audit_result = protect_tool_result({"error": str(exc) or "Tool call failed."})
+        result_dict = None
+        error = audit_result.get("error") or audit_result["content"][0]["text"]
+    else:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        result_dict = audit_result = protect_tool_result(result_dict)
+        # A server that answers with isError rejected the call (M1-91).
         error = None
         if result_dict.get("isError"):
+            content = result_dict.get("content")
             texts = [
                 str(item.get("text") or "")
-                for item in result_dict.get("content") or []
+                for item in (content if isinstance(content, list) else [])
                 if isinstance(item, dict)
             ]
             detail = " ".join(text.strip() for text in texts if text.strip())[:500]
             error = "the tool reported an error" + (f": {detail}" if detail else "")
 
-        return AuditedToolResult(
-            permitted=True,
-            enforcement=enforcement,
-            result=result_dict,
-            error=error,
-            duration_ms=elapsed_ms,
-        )
+    # 4. Post-log the same protected result returned to the caller.
+    pending_log = logger.log_tool_call_end(
+        session_id,
+        tier,
+        tool_name,
+        result=audit_result,
+        duration_ms=elapsed_ms,
+        classification=classification,
+    )
+    if inspect.isawaitable(pending_log):
+        await pending_log
 
-    except Exception as exc:
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        error_str = str(exc)
-
-        pending_log = logger.log_tool_call_end(
-            session_id,
-            tier,
-            tool_name,
-            result={"error": error_str},
-            duration_ms=elapsed_ms,
-            classification=classification,
-        )
-        if inspect.isawaitable(pending_log):
-            await pending_log
-
-        return AuditedToolResult(
-            permitted=True,
-            enforcement=enforcement,
-            error=error_str,
-            duration_ms=elapsed_ms,
-        )
+    return AuditedToolResult(
+        permitted=True,
+        enforcement=enforcement,
+        result=result_dict,
+        error=error,
+        duration_ms=elapsed_ms,
+    )

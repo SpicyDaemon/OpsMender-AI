@@ -16,11 +16,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_org, get_current_user, require_role
 from backend.api.deps import get_db
-from backend.api.schemas import AuditListResponse
-from backend.db.models import User
+from backend.api.schemas import AuditEntryResponse, AuditListResponse
+from backend.audit.logger import AuditEntryType
+from backend.audit.tool_results import protect_tool_result
+from backend.auth.roles import request_role
+from backend.db.models import AuditEntry, User
 from backend.db.repos import AuditEntryRepo
 
 router = APIRouter(prefix="/audit", tags=["audit"])
+
+_TOOL_RESULT_TYPES = {
+    AuditEntryType.TOOL_CALL_END.value,
+    AuditEntryType.WORKFLOW_STEP_COMPLETED.value,
+    AuditEntryType.WORKFLOW_STEP_BLOCKED.value,
+    AuditEntryType.WORKFLOW_STEP_FAILED.value,
+}
+
+
+def _visible_result(entry: AuditEntry, *, can_read: bool = True) -> dict | None:
+    if not can_read or entry.result is None:
+        return None
+    if entry.entry_type in _TOOL_RESULT_TYPES:
+        # Earlier versions could store raw tool results.
+        return protect_tool_result(entry.result)
+    return entry.result
 
 
 @router.get(
@@ -66,7 +85,16 @@ async def list_audit_entries(
         limit=10_000,
         offset=0,
     )
-    return AuditListResponse(items=list(items), total=len(all_items))
+    can_read = request_role(user) in {"admin", "operator"}
+    return AuditListResponse(
+        items=[
+            AuditEntryResponse.model_validate(entry).model_copy(
+                update={"result": _visible_result(entry, can_read=can_read)}
+            )
+            for entry in items
+        ],
+        total=len(all_items),
+    )
 
 
 _CSV_COLUMNS = [
@@ -103,10 +131,8 @@ async def export_audit_csv(
 
     Admins and operators only (O-07); Viewers still read the Activity page.
 
-    The on-disk audit stays JSONL (nested ``tool_parameters`` / ``result``
-    objects survive intact there); this export serializes those nested
-    fields into JSON-string cells so the rest of the row reads cleanly in a
-    spreadsheet. Honors the same filters as ``GET /audit``.
+    Tool parameters and protected results are serialized into JSON-string
+    cells. Honors the same filters as ``GET /audit``.
     """
     items = await AuditEntryRepo.query(
         db,
@@ -125,6 +151,7 @@ async def export_audit_csv(
     writer = csv.writer(buf)
     writer.writerow(_CSV_COLUMNS)
     for e in items:
+        result = _visible_result(e)
         writer.writerow(
             [
                 e.timestamp.isoformat() if e.timestamp else "",
@@ -136,7 +163,7 @@ async def export_audit_csv(
                 str(e.session_id),
                 e.block_reason or "",
                 json.dumps(e.tool_parameters) if e.tool_parameters else "",
-                json.dumps(e.result) if e.result else "",
+                json.dumps(result) if result else "",
             ]
         )
 

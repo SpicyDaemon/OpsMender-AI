@@ -322,6 +322,7 @@ async def test_viewer_api_reads_match_o07(client):
     assert team_id in {
         item["tool_parameters"]["entity_id"] for item in activity.json()["items"]
     }
+    assert all(item["result"] is None for item in activity.json()["items"])
 
     # The Viewer's own Inbox, with a notice addressed to them.
     from backend.api.deps import get_current_session_factory
@@ -406,7 +407,7 @@ async def test_viewer_session_content_matches_o07(client):
             tier=1,
             entry_type=AuditEntryType.TOOL_CALL_END.value,
             tool_name="kubectl_get_pods",
-            result={"pods": 3},
+            result={"pods": 3, "password": "fixture-legacy"},
             duration_ms=120,
         )
         approval = ApprovalRequest(
@@ -434,7 +435,42 @@ async def test_viewer_session_content_matches_o07(client):
     assert activity.status_code == 200, activity.text
     rows = {item["id"]: item for item in activity.json()["items"]}
     assert rows[str(started_id)]["tool_parameters"] == {"namespace": "checkout"}
-    assert rows[str(ended_id)]["result"] == {"pods": 3}
+    assert rows[str(ended_id)]["result"] is None
+    assert rows[str(ended_id)]["duration_ms"] == 120
+
+    viewer_token = await client.post(
+        "/api/v1/api-tokens",
+        headers=h["admin"],
+        json={"name": "audit-reader", "role": "viewer"},
+    )
+    assert viewer_token.status_code == 201
+    token_audit = await client.get(
+        "/audit",
+        headers={"Authorization": f"Bearer {viewer_token.json()['token']}"},
+        params={"session_id": str(session_id)},
+    )
+    assert token_audit.status_code == 200
+    assert all(item["result"] is None for item in token_audit.json()["items"])
+
+    for role in ("operator", "admin"):
+        details = await client.get(
+            "/audit", headers=h[role], params={"session_id": str(session_id)}
+        )
+        assert details.status_code == 200, details.text
+        rows = {item["id"]: item for item in details.json()["items"]}
+        assert rows[str(ended_id)]["result"] == {
+            "pods": 3,
+            "password": "[redacted secret]",
+        }
+
+    exported = await client.get(
+        "/audit/export.csv",
+        headers=h["operator"],
+        params={"session_id": str(session_id)},
+    )
+    assert exported.status_code == 200
+    assert "fixture-legacy" not in exported.text
+    assert "[redacted secret]" in exported.text
 
     approvals = await client.get("/approvals", headers=h["viewer"])
     assert approvals.status_code == 200, approvals.text

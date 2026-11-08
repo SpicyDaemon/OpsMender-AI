@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -10,6 +11,7 @@ import pytest
 
 from backend.audit.executor import AuditedToolResult, audited_tool_call
 from backend.audit.logger import AuditEntryType, AuditLogger
+from backend.audit.tool_results import TOOL_RESULT_MAX_BYTES, protect_tool_result
 from backend.skills.parser import SkillDefinition
 from tests.skill_policy_helpers import explicit_operation
 
@@ -65,6 +67,84 @@ def mock_session() -> AsyncMock:
     session = AsyncMock()
     session.call_tool = AsyncMock(return_value=_mock_mcp_result())
     return session
+
+
+@pytest.mark.parametrize("is_error", [False, True])
+async def test_tool_result_is_masked_before_audit(audit_log, is_error):
+    env = [{"name": "DB_PASSWORD", "value": "fixture-value"}]
+    payload = {
+        "content": [{"type": "text", "text": json.dumps({"env": env})}],
+        "structuredContent": {"apiKey": "fixture-key", "count": 2},
+        "isError": is_error,
+    }
+    outcome = await audited_tool_call(
+        session=None,
+        tool_name="get_pods",
+        session_id=SESSION_ID,
+        tier=TIER,
+        skill_def=_skill_def(),
+        logger=audit_log,
+        tool_caller=AsyncMock(return_value=payload),
+    )
+    saved = audit_log.read_all()[-1].result
+    assert saved == outcome.result
+    assert saved["structuredContent"] == {"apiKey": "[redacted secret]", "count": 2}
+    assert json.loads(saved["content"][0]["text"]) == {
+        "env": [{"name": "DB_PASSWORD", "value": "[redacted secret]"}]
+    }
+    assert (outcome.error is not None) == is_error
+    assert "fixture-value" not in (outcome.error or "")
+    assert env[0]["value"] == "fixture-value"
+
+
+@pytest.mark.parametrize("is_error", [False, True])
+async def test_five_megabyte_result_is_omitted_before_audit(audit_log, is_error):
+    payload = {
+        "content": [{"type": "text", "text": "x" * 5_000_000}],
+        "isError": is_error,
+    }
+    outcome = await audited_tool_call(
+        session=None,
+        tool_name="get_pods",
+        session_id=SESSION_ID,
+        tier=TIER,
+        skill_def=_skill_def(),
+        logger=audit_log,
+        tool_caller=AsyncMock(return_value=payload),
+    )
+    saved = audit_log.read_all()[-1].result
+    assert saved == outcome.result
+    assert saved["truncated"] is True
+    assert saved["original_size_bytes"] == len(json.dumps(payload).encode())
+    assert len(json.dumps(saved).encode()) < 1024
+    assert (outcome.error is not None) == is_error
+
+
+async def test_tool_exception_is_masked_before_audit(audit_log):
+    outcome = await audited_tool_call(
+        session=None,
+        tool_name="get_pods",
+        session_id=SESSION_ID,
+        tier=TIER,
+        skill_def=_skill_def(),
+        logger=audit_log,
+        tool_caller=AsyncMock(
+            side_effect=RuntimeError('provider refused {"password": "fixture value"}')
+        ),
+    )
+    assert outcome.result is None
+    assert "fixture value" not in outcome.error
+    assert audit_log.read_all()[-1].result == {"error": outcome.error}
+
+
+def test_masking_cannot_expand_a_result_past_the_size_limit():
+    payload = {"rows": [{"password": "x"}] * 2500}
+    original_size = len(json.dumps(payload).encode())
+    assert original_size < TOOL_RESULT_MAX_BYTES
+    protected = protect_tool_result(payload)
+    assert protected["truncated"] is True
+    assert protected["original_size_bytes"] == original_size
+    assert protect_tool_result(protected) == protected
 
 
 # ---------------------------------------------------------------------------

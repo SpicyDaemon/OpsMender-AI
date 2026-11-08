@@ -7,11 +7,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
 
 from backend.api.routes import ws
+from backend.api.session_runner import LiveAuditLogger
+from backend.audit.executor import audited_tool_call
 from backend.auth.api_tokens import API_TOKEN_PREFIX
 from backend.logging_config import (
     AccessSecretFilter,
@@ -19,7 +22,9 @@ from backend.logging_config import (
     redact_access_secrets,
     redact_query_tokens,
 )
+from tests.test_audit_executor import _skill_def
 from tests.test_ownership_lifecycle import (
+    TEST_ORG_ID,
     _headers,
     _user,
     app as _app_fixture,
@@ -92,6 +97,59 @@ async def test_the_handshake_token_opens_the_stream_without_a_query(
     # echoing the bearer one back.
     assert socket.subprotocol == ws.STREAM_SUBPROTOCOL
     assert {"type": "ping", "data": {}} in socket.sent
+
+
+async def test_protected_result_is_persisted_and_streamed_by_role(
+    app, client: AsyncClient, monkeypatch
+):
+    session_id = await _session(app)
+    logger = LiveAuditLogger(
+        app.state.session_factory, org_id=TEST_ORG_ID, session_id=session_id
+    )
+    capture = ws.get_channel(session_id)
+    try:
+        result = await audited_tool_call(
+            session=None,
+            tool_name="get_pods",
+            session_id=str(session_id),
+            tier=1,
+            skill_def=_skill_def(),
+            logger=logger,
+            tool_caller=AsyncMock(
+                return_value={"env": [{"name": "DB_PASSWORD", "value": "fixture"}]}
+            ),
+        )
+        start_event = capture.get_nowait()
+        end_event = capture.get_nowait()
+    finally:
+        ws.remove_channel(session_id, capture)
+
+    stored = (await logger.read_by_session(str(session_id)))[-1].result
+    assert (
+        end_event["data"]["result"]
+        == stored
+        == result.result
+        == {"env": [{"name": "DB_PASSWORD", "value": "[redacted secret]"}]}
+    )
+
+    for role in ("viewer", "operator"):
+        username = f"result-{role}"
+        await _user(app, username, role=role)
+        headers = await _headers(client, username)
+        token = headers["Authorization"].removeprefix("Bearer ")
+        socket = _Handshake(ws.STREAM_SUBPROTOCOL, ws.BEARER_SUBPROTOCOL_PREFIX + token)
+        queue = asyncio.Queue()
+        for event in (start_event, end_event, {"type": "session_end", "data": {}}):
+            queue.put_nowait(event)
+        monkeypatch.setattr(ws, "get_channel", lambda _: queue)
+        await asyncio.wait_for(ws.session_stream(socket, session_id), timeout=2)
+        assert socket.sent[0] == start_event
+        data = socket.sent[1]["data"]
+        assert data["phase"] == "end" and data["tool_name"] == "get_pods"
+        if role == "viewer":
+            assert "result" not in data
+        else:
+            assert data["result"] == stored
 
 
 @pytest.mark.parametrize("stream", ["session", "notifications"])

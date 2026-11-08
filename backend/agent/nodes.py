@@ -1067,18 +1067,14 @@ def _build_execute(
                 tool_caller=tool_caller,
             )
 
-            # Credential-shaped strings in tool output never reach the model,
-            # the session record or a ticket (M1-69).
-            tool_result, _ = redact_value(result.result)
-            tool_error, _ = redact_value(result.error)
             records.append(
                 {
                     "tool_name": tool_name,
                     "tool_parameters": tool_params,
                     "classification": result.enforcement.classification,
                     "permitted": result.permitted,
-                    "result": tool_result,
-                    "error": tool_error,
+                    "result": result.result,
+                    "error": result.error,
                     "duration_ms": result.duration_ms,
                     "block_reason": None,
                 }

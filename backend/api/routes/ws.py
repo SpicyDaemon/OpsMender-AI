@@ -32,6 +32,7 @@ from backend.api.auth import user_for_session_token
 from backend.api.deps import get_current_session_factory
 from backend.api.schemas import WSMessage
 from backend.auth.api_tokens import API_TOKEN_PREFIX
+from backend.auth.roles import request_role
 from backend.db.models import User
 from backend.db.repos import SessionRepo
 
@@ -176,7 +177,12 @@ async def _in_workspace(user: User, session_id: uuid.UUID) -> bool:
 
 
 async def _relay(
-    websocket: WebSocket, queue: asyncio.Queue, token: str, *, stop_on=None
+    websocket: WebSocket,
+    queue: asyncio.Queue,
+    token: str,
+    *,
+    stop_on=None,
+    session_role: str | None = None,
 ):
     """Send the queue's events (and keep-alive pings) until the client
     leaves, ``stop_on`` sees an ending event, or the account stops signing
@@ -190,10 +196,25 @@ async def _relay(
         except asyncio.TimeoutError:
             msg = {"type": "ping", "data": {}}
         if loop.time() - checked >= RECHECK_SECONDS:
-            if await _session_user(token) is None:
+            user = await _session_user(token)
+            if user is None:
                 await websocket.close(code=ACCOUNT_ENDED)
                 return
+            if session_role is not None:
+                session_role = request_role(user)
             checked = loop.time()
+        if (
+            session_role is not None
+            and session_role not in {"admin", "operator"}
+            and msg["type"] == "tool_call"
+            and "result" in msg["data"]
+        ):
+            msg = {
+                **msg,
+                "data": {
+                    key: value for key, value in msg["data"].items() if key != "result"
+                },
+            }
         await websocket.send_json(msg)
         if stop_on is not None and stop_on(msg):
             return
@@ -232,6 +253,7 @@ async def session_stream(
             queue,
             token,
             stop_on=lambda msg: msg.get("type") == "session_end",
+            session_role=request_role(user),
         )
     except WebSocketDisconnect:
         pass

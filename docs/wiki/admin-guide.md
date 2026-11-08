@@ -240,6 +240,16 @@ time in the time zone of the browser that saved it: a monthly report for the
 
 ## 8. Audit retention and archive
 
+Tool output is masked for recognized credential patterns and secret fields,
+including literal password values in Kubernetes environment entries. OpsMender
+checks the serialized result against a 64 KiB limit. Oversized output is
+replaced with a marker that records the original size. Operators and admins can
+read protected tool results in Activity, CSV exports, and live sessions.
+Viewers can follow audit and live tool activity with result bodies hidden.
+
+Activity and CSV exports also apply these protections when reading older tool
+results. Existing audit rows and archives are retained as written.
+
 Audit entries are retained in Postgres for 90 days by default. A dedicated job
 runs daily at 02:00 UTC. With archival disabled, expired rows are pruned
 directly. With archival enabled, OpsMender first writes gzip-compressed JSONL

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tool results mask recognized credentials before entering the audit log,
+  live session stream, or model context. Results over 64 KiB are replaced
+  with their original size. Viewers can follow activity and see when a
+  tool ran. Operators and admins can inspect its protected output.
+
 - Native connectors refuse HTTP redirects and show the destination origin.
   Use the provider's direct API address in connector settings. Jenkins
   build triggers and GitLab issue creation require confirmation from the

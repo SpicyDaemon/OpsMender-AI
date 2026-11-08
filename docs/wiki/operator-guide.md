@@ -95,6 +95,18 @@ itself, and the summary is held to it:
   result. The model is told to describe only that, to call an unknown cause
   unknown, and never to say the incident is resolved, closed or acknowledged
   unless the stored state says so.
+- What the completed calls returned is shown to the model too, for the
+  verification and the summary: an excerpt of each result, at most 4,000
+  characters per call and 12,000 per session, keeping the start and the end
+  of a longer result. The excerpt is taken from the protected copy that
+  Activity stores, so credentials are masked and nothing over 64 KiB appears.
+  It is marked as data: an instruction inside a log line or a ticket is
+  reported, never followed, and nothing runs after the reads. A call that
+  failed, was blocked or did not run shows no result, and a result past the
+  session's limit is listed as not shown, never as failed. When a result
+  contains text that addresses the assistant, the model is told which call
+  returned it and the phrases found, and to report them rather than follow
+  or recommend them.
 - When no action ran, nothing is verified and the summary says what is known,
   what is not known and what a person could check next, instead of a root
   cause and actions taken.

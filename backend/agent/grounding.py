@@ -18,13 +18,19 @@ M1-110 leaves two shapes of clause out of the no-actions check, each matched
 against the whole clause so that a clause which also claims something is
 read as before: a negated list of what is not configured, and a suggested
 command in a code span. See ``_negated_existence`` and ``_suggested_spans``.
+
+M1-148 shows the model what the completed calls returned. See
+``tool_results_block``.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from backend.agent.hygiene import addressed_to_assistant
 
 CLOSED_STATUSES = frozenset({"resolved", "closed"})
 
@@ -168,6 +174,22 @@ def state_line(facts: SessionFacts) -> str:
     )
 
 
+def outcome_lines(facts: SessionFacts) -> list[str]:
+    """One line per tool call with its outcome from the record: ran and
+    returned a result, failed, or blocked."""
+    lines: list[str] = []
+    for call in facts.tool_calls:
+        name = call.get("tool_name") or "?"
+        if not call.get("permitted", True):
+            outcome = "blocked by the tier policy, did not run"
+        elif call.get("error"):
+            outcome = f"failed, no result: {call['error']}"
+        else:
+            outcome = "ok"
+        lines.append(f"- {name}: {outcome}")
+    return lines
+
+
 def facts_block(facts: SessionFacts) -> str:
     """The facts as the summarize prompt sees them."""
     lines = [state_line(facts)]
@@ -175,21 +197,138 @@ def facts_block(facts: SessionFacts) -> str:
         lines.append(UNREADABLE_PLAN)
     if facts.tool_calls:
         lines.append("Tool calls in this session (the only actions that happened):")
-        for call in facts.tool_calls:
-            name = call.get("tool_name") or "?"
-            if not call.get("permitted", True):
-                outcome = "blocked by the tier policy, did not run"
-            elif call.get("error"):
-                outcome = f"failed, no result: {call['error']}"
-            else:
-                outcome = "ok"
-            lines.append(f"- {name}: {outcome}")
+        lines.extend(outcome_lines(facts))
     else:
         lines.append(
             "No tool calls happened in this session: no probe, check, monitor or "
             "change was run by it."
         )
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# What the completed calls returned (M1-148)
+# ---------------------------------------------------------------------------
+#
+# Finding FW-09 of the 2026-11-05 connector evaluation: a completed read
+# reached the verify and summarize prompts as the line "- get_pod_logs: ok"
+# and nothing of what it returned, so a cause that was only in a log line or
+# a ticket the session read could not inform the diagnosis or the summary.
+# ``tool_results_block`` renders an excerpt of each executed call's result
+# for those two prompts. The result is the protected copy the executor
+# recorded (M1-150: credentials masked, at most 64 KiB), so nothing is
+# unmasked here, and the caller wraps the block as untrusted text (M1-69), so
+# the model is told it is data and never instructions. Two limits bound the
+# prompt: at most EXCERPT_CHARS_PER_CALL characters of one result, and at
+# most EXCERPT_CHARS_PER_SESSION characters of results in one prompt. A
+# result longer than its limit keeps its head and its tail around a marker
+# that says how many characters were left out: a log's latest lines are at
+# its end and a document's identity at its start. A call past the session
+# limit is listed with its result withheld, in words that do not say it
+# failed. Failed and blocked calls have no entry; the outcome lines say they
+# returned nothing.
+
+EXCERPT_CHARS_PER_CALL = 4_000
+EXCERPT_CHARS_PER_SESSION = 12_000
+_PARAMETER_CHARS = 200
+
+
+def _compact_json(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def result_text(result: Any) -> str:
+    """The text of a tool result as the model should read it: the text items
+    of an MCP result joined by newlines, a string as it is, any other value
+    as compact JSON, and nothing for no result."""
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict) and isinstance(result.get("content"), list):
+        content = result["content"]
+        texts = [
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type", "text") == "text"
+        ]
+        joined = "\n".join(text for text in texts if text)
+        return joined or f"({len(content)} content items without text)"
+    return _compact_json(result)
+
+
+def excerpt(text: str, limit: int) -> str:
+    """At most ``limit`` characters of ``text``: all of it when it fits, else
+    its head and its tail around a marker that says how many characters were
+    left out."""
+    if len(text) <= limit:
+        return text
+    # The marker is longest with the whole length in it; the count it ends
+    # up holding has no more digits, so the result never exceeds the limit.
+    marker = f"\n[... {len(text)} characters left out ...]\n"
+    if limit <= len(marker):
+        return text[:limit]
+    head = (limit - len(marker)) // 2
+    tail = limit - len(marker) - head
+    marker = f"\n[... {len(text) - head - tail} characters left out ...]\n"
+    return text[:head] + marker + text[len(text) - tail :]
+
+
+def tool_results_block(
+    facts: SessionFacts,
+    *,
+    per_call: int = EXCERPT_CHARS_PER_CALL,
+    per_session: int = EXCERPT_CHARS_PER_SESSION,
+) -> str:
+    """What each executed call returned, in order, for the verify and
+    summarize prompts; empty when nothing executed."""
+    entries: list[str] = []
+    remaining = per_session
+    for call in facts.executed:
+        heading = f"[{call.get('tool_name') or '?'}"
+        parameters = call.get("tool_parameters")
+        if parameters:
+            shown = _compact_json(parameters)
+            if len(shown) > _PARAMETER_CHARS:
+                shown = shown[:_PARAMETER_CHARS] + "..."
+            heading += f" {shown}"
+        heading += "]"
+        text = result_text(call.get("result"))
+        if not text:
+            entries.append(f"{heading} returned no text.")
+            continue
+        if remaining <= 0:
+            entries.append(
+                f"{heading} returned {len(text)} characters, not shown: the "
+                f"session's limit of {per_session} characters of results is "
+                "reached."
+            )
+            continue
+        shown = excerpt(text, min(per_call, remaining))
+        remaining -= len(shown)
+        if len(shown) < len(text):
+            heading += f" returned {len(text)} characters; the start and the end:"
+        else:
+            heading += " returned:"
+        entries.append(f"{heading}\n{shown}")
+    return "\n\n".join(entries)
+
+
+def addressed_in_results(facts: SessionFacts) -> list[tuple[str, list[str]]]:
+    """The executed calls whose result talks to the assistant ("ignore your
+    instructions", "approved by the admin"), each with the phrases found, in
+    order. The first lab run of M1-148 showed why the prompt names them: the
+    model did not follow such a line, but repeated it as a follow-up
+    suggestion."""
+    found: list[tuple[str, list[str]]] = []
+    for call in facts.executed:
+        phrases = addressed_to_assistant(result_text(call.get("result")))
+        if phrases:
+            found.append((call.get("tool_name") or "?", phrases))
+    return found
 
 
 def _sentences(text: str) -> list[str]:

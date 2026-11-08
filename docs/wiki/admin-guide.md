@@ -289,10 +289,10 @@ To ingest incidents automatically from external tools (e.g., Datadog, CloudWatch
    URL**. The old URL stops working at once, so update every monitor that
    posts to it. A service without a URL gets one the same way (**Create
    URL**).
-5. The legacy `/dashboard/ingest-tokens` route remains available for existing installs while service-level webhook UX matures.
+5. Existing intake tokens are listed in the **Alert Intake** section of the Config page (`/dashboard/config`), where a token can be revoked.
 
 Deleting a service revokes its intake URL, and so does revoking the URL's
-token on the Ingest Tokens page (rotate to get a new one). A token that has
+token in the Alert Intake section of the Config page (rotate to get a new one). A token that has
 received alerts can be revoked but not deleted, because its delivery log is
 kept as an audit record. The access log shows only the first eight
 characters of an intake URL's secret.

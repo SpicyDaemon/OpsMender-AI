@@ -409,7 +409,7 @@ const marquee = [...platforms.filter((p) => !('rebuilding' in p && p.rebuilding)
         </div>
       </div>
       <div class="mx-auto mt-8 max-w-7xl px-5 sm:px-8">
-        <p class="rise mx-auto max-w-3xl text-center text-sm leading-relaxed text-ops-muted" style="--i:4">Twenty six built in connectors as well, including GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD and Terraform Cloud, with two way ticket sync for Jira and ServiceNow. Any MCP server you care to run.</p>
+        <p class="rise mx-auto max-w-3xl text-center text-sm leading-relaxed text-ops-muted" style="--i:4">Twenty six built in connector kinds as well (twenty two with typed actions, three that deliver alerts, one HTTP probe), including GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD and Terraform Cloud, with two way ticket sync for Jira and ServiceNow. Any MCP server you care to run.</p>
       </div>
     </section>
 
@@ -947,7 +947,7 @@ const marquee = [...platforms.filter((p) => !('rebuilding' in p && p.rebuilding)
           code: 'backend/mcp/' },
         { id: 'connectors', x: 790, y: 360, label: 'Native connectors', sub: '26 kinds', kind: 'Tools',
           summary: 'Built in integrations that need no MCP server at all.',
-          points: ['GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD, Terraform Cloud, and more. Twenty six kinds.', 'Credentials are encrypted at rest. Each service allowlists which connectors it may use.', 'Every capability carries an explicit tier policy and passes through the same gate as an MCP tool.', 'Two way ticket sync with Jira and ServiceNow.'],
+          points: ['GitHub, GitLab, Jira, ServiceNow, Kubernetes, Sentry, Argo CD, Terraform Cloud, and more. Twenty six kinds: twenty two with typed actions, three that deliver alerts, one HTTP probe.', 'Credentials are encrypted at rest. Each service allowlists which connectors it may use.', 'Every capability carries an explicit tier policy and passes through the same gate as an MCP tool.', 'Two way ticket sync with Jira and ServiceNow.'],
           code: 'backend/integrations/registry.py · backend/integrations/tools.py' },
         { id: 'skills', x: 330, y: 510, label: 'Skills', sub: 'SKILL.md, your policy', kind: 'Safety',
           summary: 'A file you own that says what each tool may do at each tier.',

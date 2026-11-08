@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The README, the Getting Started and Troubleshooting pages and the guide
+  index now describe the product as shipped. The README no longer says
+  every connector kind exposes typed tools (twenty two do; Sentry, New
+  Relic and Splunk deliver alerts and Custom HTTP probes an endpoint) or
+  that Teams receives nothing (the Microsoft Teams (Workflows) channel
+  posts cards; the older bot channel is the one being rebuilt). Getting
+  Started uses the compose file that exists, the single port 8000, the
+  seeded development sign-in or the bootstrap admin, and the Start Session
+  dialog as it opens today. Troubleshooting no longer names a proxy header
+  the backend does not read. The guide index, the admin guide's intake
+  section and the notification preferences note drop the removed outbound
+  hooks, ingest-tokens route and Viewer Notifications lane.
+
 - What a session reads now informs its verification and its summary. A
   completed tool call used to reach the model as the line `- get_pod_logs:
   ok` and nothing of what it returned, so a cause found only in a log line

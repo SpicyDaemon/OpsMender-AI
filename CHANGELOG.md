@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- What a session reads now informs its verification and its summary. A
+  completed tool call used to reach the model as the line `- get_pod_logs:
+  ok` and nothing of what it returned, so a cause found only in a log line
+  or a ticket the session read could not change the diagnosis or the
+  summary (finding FW-09 of the 2026-11-05 connector evaluation). The
+  verify and summarize prompts now carry an excerpt of each completed
+  call's result: the protected copy that Activity stores, with credentials
+  masked and nothing over 64 KiB, marked as data the model must not follow,
+  at most 4,000 characters per call and 12,000 per session, keeping the
+  start and the end of a longer result. A call that failed, was blocked or
+  did not run still shows no result, and the summary's record of what ran
+  is unchanged. When a result contains text that addresses the assistant,
+  the prompt names the call and the phrases after the data block and says
+  to report them, not to follow them or turn them into a recommendation.
+
 - Tool results mask recognized credentials before entering the audit log,
   live session stream, or model context. Results over 64 KiB are replaced
   with their original size. Viewers can follow activity and see when a

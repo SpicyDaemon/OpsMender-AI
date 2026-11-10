@@ -12,7 +12,7 @@ If you are a developer looking for architecture details or codebase references, 
 * [Getting Started](getting-started.md): Installation, your first login, and running your first AI-assisted incident session.
 
 ### 2. Administrator Guide
-* [Administrator Guide](admin-guide.md): Runtime configurations, LLM providers, setting up MCP servers, notification channels, outbound hooks, and alert intake.
+* [Administrator Guide](admin-guide.md): Runtime configuration, model providers, MCP servers and Skills, external integrations, Notification Channels and signed action links, email and reports, audit retention, and alert intake.
 * **Authentication**: start here, then branch:
   * [Auth Guide](auth-guide.md): **default model**: single workspace, email + password, admin-issued invites, three roles. What 95% of self-hosted installs use.
   * [People Guide](people-guide.md): day-to-day People-page operations: invites, password resets, auth-method badges, deactivation vs soft delete, bootstrap admins, SMTP.

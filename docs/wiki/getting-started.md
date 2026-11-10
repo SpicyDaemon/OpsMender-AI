@@ -1,13 +1,14 @@
 # Getting Started with OpsMender
 
-Welcome to the OpsMender AI (OpsMender). This guide will walk you through spinning up OpsMender locally, logging in for the first time, ingesting your first incident, and starting your first AI-assisted session.
+This guide walks you through running OpsMender locally, signing in for the
+first time, creating your first incident, and starting your first AI session.
+OpsMender is one self-hosted workspace per instance: a FastAPI backend that
+also serves the dashboard, and a PostgreSQL database.
 
-## 1. Installation & Running Locally
-
-OpsMender is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL database. The easiest way to run the entire stack locally is via Docker Compose.
+## 1. Run OpsMender locally
 
 **Prerequisites:**
-- Docker and Docker Compose installed
+- Docker with Compose
 - Git
 
 **Steps:**
@@ -16,54 +17,74 @@ OpsMender is composed of a FastAPI backend, a Next.js frontend, and a PostgreSQL
    git clone https://github.com/SpicyDaemon/OpsMender-AI.git
    cd OpsMender-AI
    ```
-2. Start the stack:
+2. Copy the development environment file; its defaults work as they are:
    ```bash
-   docker-compose up -d
+   cp .env.example .env
    ```
-3. Verify the services are running:
-   - Backend API: `http://localhost:8000/health`
-   - Interactive API docs: `http://localhost:8000/docs` (development only,
-     disabled in production unless `OPSMENDER_ENABLE_API_DOCS=true`)
-   - Frontend Dashboard: `http://localhost:3000`
+3. Start the stack:
+   ```bash
+   docker compose -f docker/docker-compose.yml up --build
+   ```
+4. Verify it is up:
+   - Readiness: `http://localhost:8000/health/ready` answers 200.
+   - Dashboard: `http://localhost:8000`.
+   - Interactive API docs: `http://localhost:8000/docs` (development only;
+     in production they stay off unless `OPSMENDER_ENABLE_API_DOCS=true`).
 
-## 2. Your First Login
+To stop, run `docker compose -f docker/docker-compose.yml down`; add `-v` to
+wipe the database as well.
 
-1. Open your browser and navigate to `http://localhost:3000`.
-2. You will be redirected to the login page.
-3. For first-run setup, click **Register** to create your admin account. The first registered user is automatically assigned the `admin` role and linked to a default "Main" organization.
-4. Upon successful login, you will land on the **Incidents Dashboard**, which will initially be empty and scoped to your organization.
+## 2. Your first sign-in
 
-## 3. Creating Your First Incident
+1. Open `http://localhost:8000`. You land on the login page.
+2. The development stack seeds an admin account, `admin` / `admin123`. It is
+   for development only. For a production install, set
+   `OPSMENDER_BOOTSTRAP_ADMIN_EMAIL` and `OPSMENDER_BOOTSTRAP_ADMIN_PASSWORD`
+   before the first start instead; the README's production setup shows the
+   full environment.
+3. Invite everyone else from **People**: Admin, Operator or Viewer. Open
+   self-registration closes once a user exists. The [Auth Guide](auth-guide.md)
+   covers the default model and the [Advanced Auth Guide](advanced-auth-guide.md)
+   covers OIDC and SAML.
+4. After signing in you land on the **Incidents** dashboard, empty at first.
 
-Incidents can be ingested automatically via service alert intake webhooks (e.g., Datadog, CloudWatch, or generic JSON senders), but you can also create them manually.
+## 3. Create your first incident
 
-1. On the Incidents dashboard, click **New Incident**.
-2. Fill out the core details:
-   - **Title:** "High Latency on API Gateway"
-   - **Description:** "The API gateway is experiencing elevated p99 latency spikes."
-   - **Severity:** Select `High`.
-3. Click **Save**. The incident will now appear in your active incidents list.
+Incidents arrive on their own through a service's alert intake URL, which
+monitors such as Datadog, CloudWatch or any JSON sender can POST to (see the
+[Administrator Guide](admin-guide.md), section 9). You can also create one by
+hand:
 
-## 4. Running Your First Session
+1. On **Incidents**, click **New Incident**.
+2. Fill in a title such as "High latency on API gateway", a description, and a
+   severity.
+3. Save. The incident appears in the active list.
 
-OpsMender's primary superpower is its AI-assisted incident response sessions.
+## 4. Run your first AI session
 
-1. Click on the incident you just created to open its details panel.
-2. Click **Start Session**. This spins up an autonomous AI agent dedicated to triaging, investigating, and resolving this specific incident.
-3. You will be taken to the **Session Chat** interface.
-4. The AI will introduce itself and may automatically begin investigating based on the incident description. You can guide the AI by sending messages in the chat:
-   - *"Check the recent logs for the API Gateway."*
-   - *"Do we have any active maintenance windows?"*
-5. The AI uses the tools assigned to the incident's Service. Those tools may
-   come from MCP (Model Context Protocol) servers, native integration
-   connectors, or both. If the Service has neither source, the session still
-   starts in advisory-only mode and explains that no executable tools are
-   available.
+A session needs a model. Before the first one, open **Models** and save a
+provider configuration (the [Administrator Guide](admin-guide.md), section 3,
+walks through it). Tools come from the MCP servers and native integration
+connectors allowlisted on the incident's Service; a session without either
+source still runs and says plainly that it cannot act.
 
-Congratulations! You've successfully deployed OpsMender and started your first AI-assisted incident response session.
+1. Open the incident and acknowledge it. A Tier 1 or Tier 2 session can only
+   start on an incident someone holds.
+2. Click **Start Session**. The dialog opens on **Tier 1 (Approval Required)**:
+   the session reads on its own and asks an operator before any write.
+   **Tier 2 (Advisory Only)** lets it read and advise without writing, and
+   **Tier 0 (Autonomous)** lets it act within the Skill's policy. Whatever the
+   model proposes, the tier gate in the backend decides what runs.
+3. Follow the session page: the event stream and tool activity show every
+   call and its outcome, the Co-pilot panel takes your messages, and the model
+   summary at the end is held to the stored record (the
+   [Operator Guide](operator-guide.md) explains the grounding).
 
-Next, check out the [Administrator Guide](admin-guide.md) to configure LLM
+You have deployed OpsMender and run your first AI-assisted session.
+
+Next, read the [Administrator Guide](admin-guide.md) to configure model
 providers and connect infrastructure through
 [MCP servers and Skills](mcp-skills.md), [native integrations](integrations-guide.md),
-or both. The setup checklist marks infrastructure complete when either source
-has an active connection.
+or both, and the [Paging Guide](paging-guide.md) to set up services, rosters
+and escalation. The setup checklist marks infrastructure complete when either
+tool source has an active connection.

@@ -87,8 +87,9 @@ reproduce all 13 images, including the Tier 1 approval view.
   owner's consent, with a reasoned force option for admins and teammates.
   A misrouted incident can be reassigned to the right team, whose Escalation
   Chain then pages, and up to three extra responders can be asked to help.
-  Microsoft Teams support is being rebuilt, so OpsMender sends nothing to
-  Teams for now.
+  A Microsoft Teams (Workflows) channel receives incident cards whose
+  buttons open OpsMender to confirm; the older Teams bot channel sends
+  nothing while it is rebuilt.
 - **Shared incident tracking**: update-in-place Slack, Discord, and Google
   Chat status, and versioned AWS EventBridge lifecycle events.
 - **Incident reporting**: on-demand CSV/PDF metrics plus scheduled
@@ -356,8 +357,8 @@ exposed by the dispatcher on port 8001; route those webhook paths there.
 4. **Services / Teams / Rosters / Escalation** (`/dashboard/paging/*`): define routing and on-call.
 5. **On Call Schedule** (`/dashboard/on-call-schedule`): see who's on call per level, replace coverage, and view shifts in any time zone.
 6. **Notification channels** (`/dashboard/paging/notifications`): Slack /
-   Discord / Email / SMS / Voice Call. Microsoft Teams support is being
-   rebuilt and sends nothing for now.
+   Discord / Microsoft Teams (Workflows) / Email / SMS / Voice Call. The
+   older Teams bot channel sends nothing while it is rebuilt.
 7. **Voice & SMS calling** (`/dashboard/config`): optional phone/SMS delivery settings; env variables can bootstrap, saved Settings values win.
 8. **People** (`/dashboard/people`): invite operators (Admin / Operator / Viewer).
 9. **Tier** (`/dashboard/config`): default is `2` (advisory); raise to `1`/`0` when ready.
@@ -400,11 +401,13 @@ changed without a restart.
 
 ## Native integration connectors
 
-Twenty six connector kinds ship with OpsMender. Each one exposes typed,
-capability-scoped tools rather than a raw API, stores its credentials
-encrypted, and is allowlisted per service. Every call passes the same tier
-gate, approval flow, and audit log as an MCP tool, so a connector is never a
-way around policy.
+Twenty six connector kinds ship with OpsMender. Twenty two of them expose
+typed, capability-scoped tools rather than a raw API; Sentry, New Relic and
+Splunk deliver their alerts into incidents and offer no tools; Custom HTTP
+probes an endpoint. Every connector stores its credentials encrypted and is
+allowlisted per service, and every tool call passes the same tier gate,
+approval flow, and audit log as an MCP tool, so a connector is never a way
+around policy.
 
 An MCP server is optional. If your connectors already cover what a service
 needs, sessions run on connectors alone.
@@ -456,7 +459,7 @@ connector, and the [Admin guide](docs/wiki/admin-guide.md) for credential setup.
 
 ## Documentation
 
-Start with **[Getting Started](docs/wiki/getting-started.md)**. Other guides: [Admin](docs/wiki/admin-guide.md) · [Auth](docs/wiki/auth-guide.md) / [Advanced auth](docs/wiki/advanced-auth-guide.md) · [Paging](docs/wiki/paging-guide.md) · [Skills & MCP](docs/wiki/skills-guide.md) · [Operator](docs/wiki/operator-guide.md) · [Memory](docs/wiki/memory-guide.md) · [Postmortems](docs/wiki/postmortem-guide.md) · [Reliability](docs/wiki/reliability-guide.md) · [Slack](docs/wiki/slack-paging-surface.md) surface · [Teams (being rebuilt)](docs/wiki/teams-paging-surface.md).
+Start with **[Getting Started](docs/wiki/getting-started.md)**. The [guide index](docs/wiki/README.md) lists every page. Other guides: [Admin](docs/wiki/admin-guide.md) · [Auth](docs/wiki/auth-guide.md) / [Advanced auth](docs/wiki/advanced-auth-guide.md) / [People](docs/wiki/people-guide.md) / [API tokens](docs/wiki/api-tokens.md) · [Integrations](docs/wiki/integrations-guide.md) · [Skills & MCP](docs/wiki/skills-guide.md) / [MCP Skills](docs/wiki/mcp-skills.md) · [Operator](docs/wiki/operator-guide.md) · [Paging](docs/wiki/paging-guide.md) / [Notification preferences](docs/wiki/notification-preferences.md) · [Slack](docs/wiki/slack-paging-surface.md) and [Teams](docs/wiki/teams-paging-surface.md) surfaces · [Phones](docs/wiki/mobile-incident-response.md) · [Memory](docs/wiki/memory-guide.md) · [Postmortems](docs/wiki/postmortem-guide.md) · [Reliability](docs/wiki/reliability-guide.md) · [Reports](docs/wiki/reports-guide.md) · [Troubleshooting](docs/wiki/troubleshooting.md).
 
 ## Contributing & security
 

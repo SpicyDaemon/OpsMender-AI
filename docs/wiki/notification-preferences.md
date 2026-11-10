@@ -276,7 +276,7 @@ person signs in and confirms.
 
 ## Future direction
 
-> The full long-term model spans Personal Operator Routing vs. Team Channels vs. Viewer Notifications, interactive incident cards, and the end-to-end incident communication flow.
+> The long-term model spans personal routing, team channels, interactive incident cards, and the end-to-end incident communication flow.
 
 The staged-routing architecture is intentionally channel-agnostic so the
 following can be layered on without changing routing:

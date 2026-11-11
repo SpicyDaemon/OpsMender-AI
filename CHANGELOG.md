@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A session now plans once more after its reads. The plan used to be made
+  once, before any tool had returned, so a session that read one service
+  and was told a dependency was failing never read that dependency, and its
+  summary could only name the read as a next step (finding F2 of the
+  2026-10-27 live rerun). When the calls of the first plan have run and at
+  least one returned a result, the model is shown what they returned, as
+  the same bounded and marked excerpts the verification gets, and is asked
+  what else to read. There is one later round by default;
+  `OPSMENDER_SESSION_FOLLOW_UP_ROUNDS` sets it from 0 (off) to 3, and the
+  model is told whether another round follows. A later round runs only
+  the reads the tier runs without a person: each passes the tier gate as
+  in a first plan, and anything else, a call that is not a read or a read
+  that needs an approval, is recorded as blocked in Tool Activity and the
+  audit log, with nobody asked and nothing run, at every tier, because
+  that plan is made from tool output. A call the session already proposed
+  is not repeated, and an empty or unreadable later plan ends the rounds
+  without an error. At Tier 0 a later round starts only while every call
+  that ran was a read, so a change that worked is never rolled back
+  because a later round outlasted the Tier 0 time limits. Sessions without
+  a model or a tool source, and Skills that define their own workflow,
+  plan as before. The first plan's prompt is unchanged and each later
+  round adds one model call. When the results exceed the 12,000 characters
+  a prompt shows, the latest round's are shown first. An alert or a tool
+  result that contains the "END UNTRUSTED" marker line can no longer end
+  the marked block it is shown in: the line is relabelled as data.
+
 - The README, the Getting Started and Troubleshooting pages and the guide
   index now describe the product as shipped. The README no longer says
   every connector kind exposes typed tools (twenty two do; Sentry, New

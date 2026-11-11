@@ -302,6 +302,9 @@ class SessionOrchestrationConfig:
     approval_hold_ttl_seconds: int = 900
     approval_warning_seconds: int = 60
     sweep_interval_seconds: int = 30
+    # How many times a session plans again after its calls returned
+    # (M1-111). The graph holds it within 0 and its own hard cap of 3.
+    follow_up_rounds: int = 1
 
 
 @dataclasses.dataclass
@@ -631,6 +634,7 @@ class AppConfig:
             sweep_interval_seconds=_env_int(
                 env, "OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS", 30
             ),
+            follow_up_rounds=_env_int(env, "OPSMENDER_SESSION_FOLLOW_UP_ROUNDS", 1),
         )
 
         ingest = IngestConfig(

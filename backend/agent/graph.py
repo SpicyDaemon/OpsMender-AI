@@ -4,6 +4,10 @@ Builds the default graph described in PROMPT_CONTEXT.md::
 
     observe → diagnose → plan → tier_gate → execute → verify → summarize
 
+After ``execute`` the graph goes back to ``plan`` when a call returned a
+result and a later planning round is left (M1-111), so the model can read
+what its first reads point to; a later round runs reads only.
+
 Usage (stub mode, no LLM / MCP)::
 
     from backend.agent.graph import build_graph
@@ -40,6 +44,9 @@ from backend.agent.state import IncidentState
 from backend.agent.timeouts import Tier0TimeConfig, wrap_node_with_timeout
 from backend.approvals import ApprovalService
 from backend.agent.nodes import (
+    FOLLOW_UP_ROUNDS,
+    follow_up_rounds as bounded_rounds,
+    wants_follow_up,
     # Stub versions (no LLM / no MCP)
     observe,
     diagnose,
@@ -56,6 +63,8 @@ from backend.agent.nodes import (
     _build_plan_with_tool_names,
     _build_workflow_plan,
     _build_tier_gate,
+    _gate_in_rounds,
+    _execute_in_rounds,
     _build_execute,
     _build_verify,
     _build_summarize,
@@ -131,6 +140,23 @@ def _make_redirect_router(*, next_node: str):
     return _route
 
 
+def _make_follow_up_router(*, next_node: str, rounds: int, reads_so_far: bool):
+    """Build the conditional router used on the ``execute`` edge (M1-111).
+
+    Returns ``"plan"`` when a call of the round that just ran returned a
+    result and one of the ``rounds`` later planning rounds is left, otherwise
+    ``next_node`` (normally ``verify``). With ``reads_so_far`` (Tier 0) it
+    goes back only while every call that ran was a read.
+    """
+
+    def _route(state) -> str:
+        if wants_follow_up(state, rounds, reads_so_far=reads_so_far):
+            return "plan"
+        return next_node
+
+    return _route
+
+
 def _wrap_node_with_events(fn, *, node_name: str, publisher):
     # The wrapper is async, so LangGraph runs it on the event loop. A
     # synchronous node (the model nodes call ``LLM.invoke``) therefore runs in
@@ -181,6 +207,7 @@ def build_graph(
     service_id=None,
     source_incident_id=None,
     workflow_enabled: bool = True,
+    follow_up_rounds: int = FOLLOW_UP_ROUNDS,
 ):
     """Construct and compile the incident response workflow graph.
 
@@ -199,6 +226,12 @@ def build_graph(
     audit_logger:
         ``AuditLogger`` instance for recording tool calls.
         Required when ``mcp_session`` is provided.
+    follow_up_rounds:
+        How many times the model may plan again after its calls returned
+        (M1-111): one by default, at most ``MAX_FOLLOW_UP_ROUNDS``, and none
+        without a model, without anything that can run, or when the plan
+        node runs a Skill-defined workflow. At Tier 0 a later round starts
+        only while every call that ran was a read.
 
     Returns
     -------
@@ -219,9 +252,18 @@ def build_graph(
         and "tier_gate" in node_order
         and node_order.index("plan") < node_order.index("tier_gate")
     )
+    # A later planning round needs a model that plans, calls that can run
+    # and a plan node that is not a Skill-defined workflow (M1-111).
+    runs_workflow = bool(workflow_enabled and skill_def.workflow and has_executor)
+    rounds = (
+        bounded_rounds(follow_up_rounds)
+        if llm is not None and can_run and not runs_workflow
+        else 0
+    )
     plan_flags = {
         "can_ask": approval_service is not None,
         "can_run": can_run,
+        "rounds": rounds,
         "wait_limit": (
             tier0_time_config.max_node_seconds
             if tier == 0 and tier0_time_config is not None
@@ -263,7 +305,7 @@ def build_graph(
     else:
         execute_fn = execute
 
-    if workflow_enabled and skill_def.workflow and has_executor:
+    if runs_workflow:
         plan_fn = _build_workflow_plan(
             WorkflowExecutor(
                 mcp_session=mcp_session,
@@ -298,6 +340,11 @@ def build_graph(
         audit_logger=audit_logger,
         can_run=can_run,
     )
+    if rounds:
+        tier_gate_fn = _gate_in_rounds(
+            tier_gate_fn, tier, skill_def, audit_logger=audit_logger
+        )
+        execute_fn = _execute_in_rounds(execute_fn)
 
     # -- Tier 0 per-node timeouts -------------------------------------------
     # When a Tier 0 time config is supplied, every node is wrapped with a
@@ -372,23 +419,32 @@ def build_graph(
         builder.add_node(node_name, node_impls[node_name])
 
     # -- wire edges ----------------------------------------------------------
-    # Mostly a linear pipeline. The one exception is ``tier_gate``: at Tier 1
+    # Mostly a linear pipeline. One exception is ``tier_gate``: at Tier 1
     # an operator can "redirect" a proposed action with free-text guidance, in
     # which case the gate sets ``redirect_requested`` and the conditional edge
     # routes back to the ``plan`` node so the agent re-plans with the steering
     # in context. Without a plan node there is nothing to loop back to, so the
-    # edge stays linear.
+    # edge stays linear. The other is ``execute`` when the graph holds later
+    # planning rounds (M1-111): its edge goes back to ``plan`` while a round
+    # is left and the round that ran returned a result.
     builder.add_edge(START, node_order[0])
     can_loop = "plan" in node_order
-    for current, nxt in zip(node_order, node_order[1:]):
+    for current, nxt in zip(node_order, [*node_order[1:], END]):
         if current == "tier_gate" and can_loop:
             builder.add_conditional_edges(
                 "tier_gate",
                 _make_redirect_router(next_node=nxt),
                 {"plan": "plan", nxt: nxt},
             )
+        elif current == "execute" and rounds:
+            builder.add_conditional_edges(
+                "execute",
+                _make_follow_up_router(
+                    next_node=nxt, rounds=rounds, reads_so_far=tier == 0
+                ),
+                {"plan": "plan", nxt: nxt},
+            )
         else:
             builder.add_edge(current, nxt)
-    builder.add_edge(node_order[-1], END)
 
     return builder.compile()

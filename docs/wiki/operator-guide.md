@@ -81,6 +81,49 @@ sessions stay in the queue, and a session waiting for an approval keeps its
 hold until the hold expires. Start a new session if the incident still needs
 one. This applies to the single-process (monolith) deployment.
 
+### The session plans again after its reads
+
+A session's first plan is made before anything has been read. When the calls
+of that plan have run and at least one returned a result, the model is shown
+what they returned and asked once more what else to read, so it can follow
+the evidence: a health check that names a failing dependency leads to that
+dependency's log.
+
+- There is one later round unless the administrator sets another number
+  with `OPSMENDER_SESSION_FOLLOW_UP_ROUNDS` (0 turns it off, 3 is the most).
+  One round follows the evidence one step; a cause two services away from
+  where the first plan looked needs two. A round starts only when a call of
+  the round before returned a result, and the rounds end when the model
+  returns an empty plan, an answer that cannot be read, or only calls it
+  already proposed. The model is told which round it is in and whether
+  another follows. A session without a model, without a tool source, or
+  whose Skill defines its own workflow has no later round.
+- A later round runs only the reads the tier runs without a person. Each
+  passes the tier gate exactly as in the first plan, so a read the Skill
+  blocks is blocked. Anything else, a call that is not a read or a read that
+  needs an approval, is recorded as blocked with its tool and parameters in
+  Tool Activity and the audit log; nobody is asked to approve it and it does
+  not run, at any tier. A later round therefore holds no approval request. A
+  change the session should make, and a read that needs your approval,
+  belong in its first plan, where the tier decides.
+- The later plan is made from tool output, which is data from outside the
+  conversation. That is why it cannot change anything or reach an operator:
+  an instruction inside a log line can at most cause another read that the
+  tier already runs on its own.
+- A call the session already proposed is not repeated, so a failed call is
+  not retried in a later round. The match is exact: the same tool with other
+  parameters is a new call.
+- At Tier 0 a later round starts only while every call the session ran was a
+  read. A step that outlasts the Tier 0 time limits times the session out,
+  and a timed-out Tier 0 session rolls its changes back; a round added after
+  a change would put a change that worked at that risk. A later round that
+  does start counts against the per-step and the session time limits like
+  every other step.
+- Each later round costs one more model call, whose prompt carries the same
+  bounded excerpts as the verification (at most 12,000 characters of
+  results). When the results exceed that limit, the latest round's are shown
+  first and earlier ones are listed as not shown.
+
 ### The model summary at the end of a session
 
 When a session ends, the model writes a short summary. It is a narrative, not
@@ -101,12 +144,15 @@ itself, and the summary is held to it:
   of a longer result. The excerpt is taken from the protected copy that
   Activity stores, so credentials are masked and nothing over 64 KiB appears.
   It is marked as data: an instruction inside a log line or a ticket is
-  reported, never followed, and nothing runs after the reads. A call that
+  reported, never followed, and after the reads nothing runs but further
+  reads the tier allows (see above). A call that
   failed, was blocked or did not run shows no result, and a result past the
   session's limit is listed as not shown, never as failed. When a result
   contains text that addresses the assistant, the model is told which call
   returned it and the phrases found, and to report them rather than follow
-  or recommend them.
+  or recommend them. A result or an alert that contains the marker line
+  itself cannot end the marked block: the line is relabelled as part of the
+  data.
 - When no action ran, nothing is verified and the summary says what is known,
   what is not known and what a person could check next, instead of a root
   cause and actions taken.

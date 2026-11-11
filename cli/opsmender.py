@@ -1769,6 +1769,7 @@ async def _run_incident(cfg: Config, args: argparse.Namespace) -> int:
             plan_tool_names=plan_tool_names,
             plan_tool_descriptions=plan_tool_descriptions,
             tool_caller=tool_caller,
+            follow_up_rounds=cfg.sessions.follow_up_rounds,
         )
 
         print(

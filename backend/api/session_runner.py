@@ -77,7 +77,9 @@ log = logging.getLogger(__name__)
 # Graph recursion limit for non-Tier-0 sessions. Tier 1 is interactive: each
 # operator redirect loops plan -> tier_gate once, so the limit must sit
 # comfortably above ``MAX_TIER1_REDIRECTS`` worth of loop steps plus the base
-# pipeline. Tier 0 uses its own wall-clock timeout instead.
+# pipeline and the later planning rounds (three steps each, at most
+# ``MAX_FOLLOW_UP_ROUNDS``, M1-111). Tier 0 uses its own wall-clock timeout
+# instead.
 _INTERACTIVE_RECURSION_LIMIT = 60
 
 
@@ -976,6 +978,9 @@ async def _run_session_workflow_inner(
             "node_event_publisher": lambda node_name, status, _payload=None: (
                 _publish_node_event(session_id, node_name, status)
             ),
+            # M1-111: how many times the session plans again after its calls
+            # returned; the graph holds the value within its hard cap.
+            "follow_up_rounds": config.sessions.follow_up_rounds,
             # Sprint 45 - feed memory into the graph so the recall node can
             # query org + service scope. service_id may be None for unbound
             # incidents; recall handles that case (global memories still

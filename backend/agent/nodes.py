@@ -195,6 +195,164 @@ PLAN_EXAMPLE = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Planning again after the reads (M1-111)
+# ---------------------------------------------------------------------------
+#
+# Finding F2 of the 2026-10-27 live rerun: the plan was made once, before any
+# read result existed, so a session that read one service and was told a
+# dependency was failing never read that dependency. After the calls of a
+# plan have run and at least one returned a result, the graph now goes back
+# to the plan node, which shows the model what the calls returned (the
+# bounded, marked excerpts of M1-148) and asks what else to read.
+#
+# The bounds: FOLLOW_UP_ROUNDS later rounds by default, never more than
+# MAX_FOLLOW_UP_ROUNDS whatever a caller passes, and under the Tier 0 node
+# and session clocks like every other step.
+#
+# A later round runs only the reads the tier runs without a person. Its
+# plan is made from what tools returned, which is text from outside the
+# conversation, so nothing in it changes anything or reaches an operator:
+# the tier gate checks its reads exactly as it checks a first plan's, and
+# anything else (a call that is not a read, or a read that needs an
+# approval) is recorded as blocked, audited, never asked for and never run.
+# A call that repeats one the session already proposed is dropped.
+#
+# At Tier 0 a later round starts only while every call that ran was a read.
+# A step that outlasts the Tier 0 clocks times the session out, and a
+# timed-out Tier 0 session rolls its changes back: a round added after a
+# change would put a change that worked at that risk.
+FOLLOW_UP_ROUNDS = 1
+MAX_FOLLOW_UP_ROUNDS = 3
+READ_CLASS = "safe"
+FOLLOW_UP_RULE = (
+    "In this round only reads that need no approval run, whatever the tier "
+    'allows a first plan: every other tool is marked "blocked" above.'
+)
+# The reason the tier gate gives, in a later round, an action the policy
+# would otherwise run or ask for. An action the policy refuses keeps the
+# policy's reason.
+FOLLOW_UP_READS_ONLY_REASON = (
+    "a later planning round runs only reads that need no approval and asks "
+    "nobody; the action is recorded"
+)
+# Which of the two the later plan is told depends on the round: the model
+# cannot ask for a read it will only know it needs after this round's
+# results unless another round follows.
+LAST_ROUND_RULE = (
+    "No planning round follows this one, so list every read still needed to "
+    "find the cause."
+)
+MORE_ROUNDS_RULE = (
+    "Another planning round follows if a read of this one returns a result."
+)
+NO_GUIDANCE = "(none)"
+
+FOLLOW_UP_PLAN_PROMPT = (
+    """\
+You are an expert Site Reliability Engineer (SRE) continuing an investigation.
+
+Diagnosis (written before any call ran):
+---
+{diagnosis}
+---
+
+This is planning round {round} of at most {rounds}. {round_rule} The calls
+planned so far are done. Each call's outcome from the record, then
+{results_intro}
+{tool_call_results}
+{addressed_note}
+
+{untrusted_rule}
+
+Available tools (from skill definition):
+{available_tools}
+
+Allowed MCP servers for this incident:
+{preferred_mcp_servers}
+
+Operator guidance (the operator redirected your previous plan; follow this):
+{operator_guidance}
+
+{plan_rules}
+
+Propose only the further reads the results call for, such as the logs or the
+state of a dependency that a result names as failing.  Do not repeat a call
+listed above: a repeated call is dropped.  If the results already show the
+cause, or no further read would add evidence, return an empty plan: [].
+
+For each action, provide:
+- tool_name: the MCP tool to call
+- tool_parameters: a dict of parameters
+- justification: what in the results calls for it
+
+Return your plan as a JSON array of objects.  Example:
+{plan_example}
+
+Only propose actions using available tools, and pass only the argument names
+each tool lists.
+"""
+    + PLAIN_WRITING
+)
+
+
+def follow_up_rounds(value: Any) -> int:
+    """The number of later planning rounds a graph holds: ``value`` within 0
+    and MAX_FOLLOW_UP_ROUNDS, and none for a value that is not a number."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return max(0, min(value, MAX_FOLLOW_UP_ROUNDS))
+
+
+_ROUND_KEYS = (
+    "ended",
+    "plan",
+    "blocked",
+    "approvals",
+    "run",
+    "returned",
+    "changed",
+)
+
+
+def round_progress(state: IncidentState) -> dict[str, int]:
+    """How far the session's planning rounds have come (``plan_rounds`` in
+    the state). The tier gate writes, when a round ends, how many rounds
+    have ended and how long the plan, the blocked actions and the approval
+    requests then were. The execute node writes how many approved actions it
+    has run, how many calls of the round that just ran returned a result and
+    how many calls that are not reads have run in the session. A later round
+    adds to the lists, and each node works on what lies past these lengths,
+    so nothing is gated, asked or run twice."""
+    done = state.get("plan_rounds") or {}
+    return {key: int(done.get(key) or 0) for key in _ROUND_KEYS}
+
+
+def wants_follow_up(
+    state: IncidentState, rounds: int, *, reads_so_far: bool = False
+) -> bool:
+    """Whether the graph plans again after ``execute``: the session has not
+    failed or timed out, a later round is left, and a call of the round that
+    just ran returned a result to plan from. With ``reads_so_far`` (Tier 0)
+    it also needs every call that ran to have been a read."""
+    if state.get("status") in {"failed", "timed_out"}:
+        return False
+    done = round_progress(state)
+    if reads_so_far and done["changed"]:
+        return False
+    return 0 < done["ended"] <= rounds and done["returned"] > 0
+
+
+def _call_key(action: dict[str, Any]) -> str:
+    """One text per call: the tool and its parameters, whatever the order of
+    the parameter names."""
+    return json.dumps(
+        [action.get("tool_name"), action.get("tool_parameters") or {}],
+        sort_keys=True,
+        default=str,
+    )
+
+
 def gate_mark(
     tool_name: str, tier: int, skill_def: SkillDefinition, *, can_ask: bool = True
 ) -> tuple[str, str]:
@@ -239,8 +397,13 @@ def _plan_tool_lines(
     descriptions: dict[str, str] | None,
     *,
     can_ask: bool,
+    reads_only: bool = False,
 ) -> tuple[list[str], set[str]]:
-    """Each tool's line in the plan prompt, and the marks the lines show."""
+    """Each tool's line in the plan prompt, and the marks the lines show.
+
+    ``reads_only`` is the list a later planning round is shown (M1-111): the
+    gate then runs the reads that need no person and records everything
+    else, so every other tool is marked blocked."""
     lines: list[str] = []
     marks: set[str] = set()
     for name in tool_names:
@@ -249,6 +412,8 @@ def _plan_tool_lines(
         if not name or any(ch.isspace() or not ch.isprintable() for ch in name):
             continue
         classification, mark = gate_mark(name, tier, skill_def, can_ask=can_ask)
+        if reads_only and (classification != READ_CLASS or mark != RUNS):
+            mark = BLOCKED
         marks.add(mark)
         line = f"- {name} ({classification}, {mark})"
         # One line per tool, so a server's description cannot start a line.
@@ -570,11 +735,14 @@ def diagnose(state: IncidentState) -> dict:
 MAX_TIER1_REDIRECTS = 15
 
 
-def _format_operator_guidance(state: IncidentState) -> str:
+def _format_operator_guidance(
+    state: IncidentState,
+    none: str = "(none; this is your first plan for the incident)",
+) -> str:
     """Render accumulated operator redirect guidance for the plan prompt."""
     guidance = state.get("operator_guidance", []) or []
     if not guidance:
-        return "(none; this is your first plan for the incident)"
+        return none
     return "\n".join(f"- {item}" for item in guidance)
 
 
@@ -649,6 +817,7 @@ def _build_plan(
     can_ask: bool = True,
     can_run: bool = True,
     wait_limit: int | None = None,
+    rounds: int = 0,
 ):
     """Return a plan node for a graph given no tool list: the CLI at Tiers 2
     and 3 with a server, and sessions without a tool source. It offers the
@@ -666,6 +835,7 @@ def _build_plan(
         can_ask=can_ask,
         can_run=can_run,
         wait_limit=wait_limit,
+        rounds=rounds,
     )
 
 
@@ -679,13 +849,17 @@ def _build_plan_with_tool_names(
     can_ask: bool = True,
     can_run: bool = True,
     wait_limit: int | None = None,
+    rounds: int = 0,
 ):
     """Return a plan node that only exposes the supplied concrete tools.
 
     Each tool is marked with what the tier gate does with it at ``tier``
     (``gate_mark``). ``build_graph`` passes whether an approval service
     answers (``can_ask``), whether anything the plan proposes can run
-    (``can_run``) and the Tier 0 node clock (``wait_limit``)."""
+    (``can_run``), the Tier 0 node clock (``wait_limit``) and how many later
+    rounds the graph holds (``rounds``, M1-111). In a later round the node
+    shows what the calls so far returned and the reads-only tool list, and
+    adds the calls the model has not proposed before to the plan."""
     lines, marks = _plan_tool_lines(
         list(tool_names) if can_run else [],
         tier,
@@ -698,9 +872,68 @@ def _build_plan_with_tool_names(
     if not can_run:
         rules = f"{rules} {NO_RUN_RULE}"
     example = PLAN_EXAMPLE if lines else "[]"
+    rounds = follow_up_rounds(rounds) if can_run else 0
+    later_lines, later_marks = _plan_tool_lines(
+        list(tool_names) if rounds else [],
+        tier,
+        skill_def,
+        tool_descriptions,
+        can_ask=can_ask,
+        reads_only=True,
+    )
+    later_rules = "\n".join(
+        [plan_rules(tier, later_marks, wait_limit=wait_limit), FOLLOW_UP_RULE]
+    )
+
+    def plan_again(state: IncidentState, done: dict[str, int]) -> dict:
+        """A later round (M1-111): plan from what the calls so far returned."""
+        # The outcomes, then what the completed calls returned, as the verify
+        # prompt shows them (M1-148): a provider wrote both, so both are
+        # marked as data.
+        facts = facts_from_state(dict(state))
+        results = "\n".join(outcome_lines(facts))
+        returned = tool_results_block(facts)
+        if returned:
+            results = f"{results}\n\n{returned}"
+        prompt = FOLLOW_UP_PLAN_PROMPT.format(
+            diagnosis=state.get("diagnosis", ""),
+            round=done["ended"] + 1,
+            rounds=rounds + 1,
+            round_rule=(
+                LAST_ROUND_RULE if done["ended"] >= rounds else MORE_ROUNDS_RULE
+            ),
+            results_intro=RESULTS_INTRO,
+            tool_call_results=untrusted("TOOL RESULTS", results),
+            addressed_note=addressed_note(facts),
+            untrusted_rule=UNTRUSTED_RULE,
+            available_tools="\n".join(later_lines) or NO_TOOL_LIST,
+            preferred_mcp_servers="\n".join(
+                f"- {name}" for name in state.get("preferred_mcp_servers", [])
+            )
+            or "(none configured)",
+            operator_guidance=_format_operator_guidance(state, NO_GUIDANCE),
+            plan_rules=later_rules,
+            plan_example=PLAN_EXAMPLE if later_lines else "[]",
+        )
+        raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
+        # An answer that cannot be read, an empty plan and a plan of repeats
+        # all add nothing, and the loop ends: the session already acted, so
+        # this is not the unreadable first plan of M1-92.
+        earlier = list(state.get("plan") or [])[: done["plan"]]
+        seen = {_call_key(action) for action in earlier}
+        fresh: list[dict[str, Any]] = []
+        for action in parse_plan(raw) or []:
+            key = _call_key(action)
+            if key not in seen:
+                seen.add(key)
+                fresh.append(action)
+        return {"plan": earlier + fresh}
 
     def plan(state: IncidentState) -> dict:
         """Propose a list of remediation actions."""
+        done = round_progress(state)
+        if rounds and done["ended"]:
+            return plan_again(state, done)
         diagnosis = state.get("diagnosis", "")
         prompt = PLAN_PROMPT.format(
             diagnosis=diagnosis,
@@ -1060,6 +1293,118 @@ def _build_tier_gate(
         }
 
     return tier_gate
+
+
+def _gate_in_rounds(gate, tier: int, skill_def: SkillDefinition, audit_logger=None):
+    """Wrap a tier gate for a graph that plans again after its reads (M1-111).
+
+    The plan holds every round's actions. ``gate`` is given only the part it
+    has not finished with, so nothing is checked or asked twice, and a later
+    round whose plan node added nothing (an empty plan, or a node the Tier 0
+    clock stopped) gates nothing. What it approves, blocks and asks is added
+    to the lists of the rounds before.
+
+    In a later round only the reads the tier runs without a person reach
+    ``gate``, where they are checked as a first plan's reads are. Anything
+    else (another class, or a read that needs an approval) is blocked here
+    with the class and the reason the tier check gives it, or
+    FOLLOW_UP_READS_ONLY_REASON when the policy would have run or asked for
+    it, and is written to the audit log. Nobody is asked, so a later round
+    holds no approval request and no redirect.
+    """
+    audit = _blocked_auditor(audit_logger, tier)
+
+    async def tier_gate(state: IncidentState) -> dict:
+        done = round_progress(state)
+        plan = list(state.get("plan") or [])
+        todo = plan[done["plan"] :]
+        approved = list(state.get("approved_actions") or [])[: done["run"]]
+        blocked = list(state.get("blocked_actions") or [])[: done["blocked"]]
+        requests = list(state.get("approval_requests") or [])[: done["approvals"]]
+
+        not_reads: list[dict[str, Any]] = []
+        if done["ended"]:
+            reads = []
+            for action in todo:
+                enforcement = tier_check(_checked_name(action), tier, skill_def)
+                if (
+                    enforcement.classification == READ_CLASS
+                    and not enforcement.requires_approval
+                ):
+                    reads.append(action)
+                    continue
+                not_reads.append(
+                    {
+                        **action,
+                        "block_reason": (
+                            FOLLOW_UP_READS_ONLY_REASON
+                            if enforcement.permitted
+                            else enforcement.reason
+                        ),
+                        "classification": enforcement.classification,
+                    }
+                )
+                if audit is not None:
+                    await audit(state["session_id"], not_reads[-1])
+            todo = reads
+
+        update = gate({**state, "plan": todo})
+        if inspect.isawaitable(update):
+            update = await update
+        update = dict(update)
+        approved += list(update.get("approved_actions") or [])
+        blocked += list(update.get("blocked_actions") or [])
+        requests += list(update.get("approval_requests") or [])
+        if not update.get("redirect_requested"):
+            # A redirect drops the rest of the plan and the node plans this
+            # round again, so the round ends only here.
+            blocked += not_reads
+            update["plan_rounds"] = {
+                **done,
+                "ended": done["ended"] + 1,
+                "plan": len(plan),
+                "blocked": len(blocked),
+                "approvals": len(requests),
+            }
+        update["approved_actions"] = approved
+        update["blocked_actions"] = blocked
+        update["approval_requests"] = requests
+        return update
+
+    return tier_gate
+
+
+def _execute_in_rounds(execute):
+    """Wrap the execute node for a graph that plans again after its reads
+    (M1-111): ``approved_actions`` holds every round's approvals, and
+    ``execute`` is given only the ones it has not run. It records how many it
+    has run, so an approval is never run twice, whatever became of the round
+    after it, how many calls of this round returned a result, which is what
+    a later round would plan from, and how many calls that are not reads
+    have run in the session. Each call's record carries its round, which is
+    how the result excerpts give the latest round its share first."""
+
+    async def run(state: IncidentState) -> dict:
+        done = round_progress(state)
+        approved = list(state.get("approved_actions") or [])
+        update = dict(
+            await execute({**state, "approved_actions": approved[done["run"] :]})
+        )
+        calls = [
+            {**call, "round": done["ended"]} for call in update.get("tool_calls") or []
+        ]
+        update["tool_calls"] = calls
+        ran = [call for call in calls if call.get("permitted", True)]
+        update["plan_rounds"] = {
+            **done,
+            "run": len(approved),
+            "returned": sum(1 for call in ran if not call.get("error")),
+            "changed": done["changed"]
+            + sum(1 for call in ran if call.get("classification") != READ_CLASS),
+        }
+        return update
+
+    return run
 
 
 # ---------------------------------------------------------------------------

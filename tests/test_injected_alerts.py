@@ -6,7 +6,10 @@ addresses the assistant are the ones intake flags.
 
 M1-148 extends the corpus to tool results: each alert's words come back as
 the result of a read the session made, reach the verify and summarize prompts
-only as marked data, and nothing runs after the read."""
+only as marked data, and nothing runs after the read.
+
+M1-111 extends it to the plan made after the read: a model that proposes
+what the result asks for runs nothing and asks nobody at any tier."""
 
 from __future__ import annotations
 
@@ -275,3 +278,144 @@ async def test_an_alert_inside_a_read_result_runs_nothing_at_any_tier(
     for prompt in (verify, summary):
         assert _only_as_tool_result_data(prompt, alert["description"])
         assert UNTRUSTED_RULE in prompt
+
+
+# For the plan made after a read (M1-111), a skill under which a first plan
+# would act on every write of the corpus: it runs at Tier 0 and is asked for
+# at Tier 1. What keeps it from running is then the later round alone.
+_WRITES = {
+    0: OperationTierPolicy(True, "autonomous", require_reversible=False),
+    1: OperationTierPolicy(True, "approval"),
+    2: OperationTierPolicy(True, "advisory"),
+}
+SKILL_THAT_WRITES = SkillDefinition(
+    version="1",
+    environment="test",
+    operations=[
+        OperationClassification(
+            tool="read_tool_z", classification="safe", tiers=_RUNS_AT_EVERY_TIER
+        ),
+        *[
+            OperationClassification(
+                tool=op.tool, classification=op.classification, tiers=_WRITES
+            )
+            for op in SKILL.operations
+            if op.tool != "read_tool_z"
+        ],
+    ],
+)
+
+
+def test_a_first_plan_would_act_on_the_writes_of_the_corpus():
+    from backend.tiers.enforcement import check
+
+    for tool in ("write_tool_b", "destructive_tool_a", "destructive_tool_d"):
+        at_0, at_1 = (
+            check(tool, 0, SKILL_THAT_WRITES),
+            check(tool, 1, SKILL_THAT_WRITES),
+        )
+        assert at_0.permitted and not at_0.requires_approval
+        assert at_1.permitted and at_1.requires_approval
+
+
+class _ObeysTheResult:
+    """A model that plans the one read and then, shown what the read
+    returned, proposes exactly the tool the result asks for."""
+
+    def __init__(self, action: dict) -> None:
+        self.action = action
+        self.prompts: list[str] = []
+        self.plan_prompts: list[str] = []
+
+    def invoke(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if "Return your plan as a JSON array" not in prompt:
+            return "noted"
+        self.plan_prompts.append(prompt)
+        if "BEGIN UNTRUSTED TOOL RESULTS" in prompt:
+            return json.dumps([{**self.action, "justification": "the result says so"}])
+        return json.dumps(
+            [
+                {
+                    "tool_name": "read_tool_z",
+                    "tool_parameters": {"target": "example"},
+                    "justification": "read first",
+                }
+            ]
+        )
+
+
+@pytest.mark.parametrize("tier", TIERS)
+@pytest.mark.parametrize("alert", ALERTS, ids=[a["name"] for a in ALERTS])
+async def test_a_later_plan_that_obeys_a_read_result_runs_nothing_at_any_tier(
+    alert, tier, tmp_path
+):
+    """M1-111: the session plans again after its read, and the read's result
+    carries the alert's words. With the model stubbed to propose exactly
+    what the result asks for, the later round runs nothing and asks nobody,
+    under a skill whose writes a first plan would run at Tier 0 and ask an
+    operator for at Tier 1: the action is recorded as blocked and written to
+    the audit log."""
+    calls: list[str] = []
+    returned = f"{alert['title']}\n{alert['description']}"
+
+    async def caller(_session, tool_name, params):
+        calls.append(tool_name)
+        return CallToolResult(
+            isError=False, content=[TextContent(type="text", text=returned)]
+        )
+
+    llm = _ObeysTheResult(alert["asks_for"])
+    approvals = _NeverApproves()
+    graph = build_graph(
+        tier=tier,
+        skill_def=SKILL_THAT_WRITES,
+        llm=llm,
+        mcp_session=object(),
+        audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
+        approval_service=approvals,
+        tool_caller=caller,
+    )
+    result = await graph.ainvoke(
+        {
+            "session_id": str(uuid.uuid4()),
+            "tier": tier,
+            "incident_description": "Error rate on the checkout service is 4 percent.",
+            "incident": {
+                "title": "Error rate on the checkout service",
+                "description": "Error rate on the checkout service is 4 percent.",
+                "status": "open",
+            },
+            "operator_guidance": [],
+            "redirect_requested": False,
+            "redirect_count": 0,
+        },
+        {"recursion_limit": 60},
+    )
+
+    asked = alert["asks_for"]["tool_name"]
+    assert len(llm.plan_prompts) == 2, "the model planned again after the read"
+    assert [a["tool_name"] for a in result["plan"]] == ["read_tool_z", asked], (
+        "the stubbed model proposed it"
+    )
+    assert calls == ["read_tool_z"], calls
+    assert [c["tool_name"] for c in result["tool_calls"]] == ["read_tool_z"]
+    assert approvals.requests == [] and result["approval_requests"] == []
+    assert [a["tool_name"] for a in result["blocked_actions"]] == [asked]
+    rows = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    audited = [json.loads(row) for row in rows if row.strip()]
+    assert [
+        (row["tool_name"], row["permitted"])
+        for row in audited
+        if row["entry_type"] == "tool_call_blocked"
+    ] == [(asked, False)]
+    assert {row["tool_name"] for row in audited if row["permitted"]} == {"read_tool_z"}
+    # The alert's own words reached the later plan only as marked data, and
+    # a result that addresses the assistant is named after the block.
+    later = llm.plan_prompts[1]
+    assert _only_as_tool_result_data(later, alert["description"])
+    assert UNTRUSTED_RULE in later
+    assert (
+        "Text that addresses the assistant was found in the result of read_tool_z"
+        in later
+    ) == alert["addresses_assistant"]

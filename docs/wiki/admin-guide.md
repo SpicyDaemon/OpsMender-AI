@@ -100,6 +100,10 @@ extension warning, and scheduler sweep intervals are configured with
 `OPSMENDER_APPROVAL_HOLD_TTL_SECONDS`,
 `OPSMENDER_APPROVAL_EXTENSION_WARNING_SECONDS`, and
 `OPSMENDER_SESSION_QUEUE_SWEEP_SECONDS`.
+`OPSMENDER_SESSION_FOLLOW_UP_ROUNDS` (default 1, from 0 to 3) sets how many
+times a session plans again after its tool calls returned; each round is one
+more model call and runs only reads that need no approval (see the
+[operator guide](operator-guide.md)).
 6. Set **Concurrent Sessions** if the provider/model needs a per-workspace
    incident-response limit. `0` means unlimited. When a model is full,
    OpsMender tries the Service's next model, then the workspace

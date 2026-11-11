@@ -33,6 +33,7 @@ class ToolCallRecord(TypedDict, total=False):
     block_reason: str | None
     workflow_step_id: str
     workflow_step_status: str
+    round: int  # the planning round that ran the call (M1-111)
 
 
 class IncidentContext(TypedDict, total=False):
@@ -104,6 +105,16 @@ class IncidentState(TypedDict, total=False):
     operator_guidance: Annotated[list[str], operator.add]
     redirect_requested: bool
     redirect_count: int
+
+    # -- planning again after the reads (M1-111) -----------------------------
+    # How far the session's planning rounds have come. The tier gate writes,
+    # when a round ends, the rounds ended and the lengths of ``plan``,
+    # ``blocked_actions`` and ``approval_requests``; the execute node writes
+    # how many of ``approved_actions`` it has run, how many calls of the
+    # round returned a result and how many calls that are not reads have run.
+    # A later round adds to those lists, and each node works on what lies
+    # past these lengths.
+    plan_rounds: dict[str, int]
 
     # -- execution -----------------------------------------------------------
     tool_calls: Annotated[list[ToolCallRecord], operator.add]

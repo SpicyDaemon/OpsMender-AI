@@ -227,6 +227,12 @@ def facts_block(facts: SessionFacts) -> str:
 # limit is listed with its result withheld, in words that do not say it
 # failed. Failed and blocked calls have no entry; the outcome lines say they
 # returned nothing.
+#
+# A session that plans again after its reads (M1-111) went back for the
+# results of its later rounds, so the session limit is spent on the latest
+# round's results first; within a round, and in a session with one round,
+# the calls come in their order. The entries are always listed in the order
+# the calls ran.
 
 EXCERPT_CHARS_PER_CALL = 4_000
 EXCERPT_CHARS_PER_SESSION = 12_000
@@ -285,9 +291,15 @@ def tool_results_block(
 ) -> str:
     """What each executed call returned, in order, for the verify and
     summarize prompts; empty when nothing executed."""
-    entries: list[str] = []
+    executed = facts.executed
+    entries: list[str] = [""] * len(executed)
     remaining = per_session
-    for call in facts.executed:
+    latest_round_first = sorted(
+        range(len(executed)),
+        key=lambda index: (-int(executed[index].get("round") or 0), index),
+    )
+    for index in latest_round_first:
+        call = executed[index]
         heading = f"[{call.get('tool_name') or '?'}"
         parameters = call.get("tool_parameters")
         if parameters:
@@ -298,10 +310,10 @@ def tool_results_block(
         heading += "]"
         text = result_text(call.get("result"))
         if not text:
-            entries.append(f"{heading} returned no text.")
+            entries[index] = f"{heading} returned no text."
             continue
         if remaining <= 0:
-            entries.append(
+            entries[index] = (
                 f"{heading} returned {len(text)} characters, not shown: the "
                 f"session's limit of {per_session} characters of results is "
                 "reached."
@@ -313,7 +325,7 @@ def tool_results_block(
             heading += f" returned {len(text)} characters; the start and the end:"
         else:
             heading += " returned:"
-        entries.append(f"{heading}\n{shown}")
+        entries[index] = f"{heading}\n{shown}"
     return "\n\n".join(entries)
 
 

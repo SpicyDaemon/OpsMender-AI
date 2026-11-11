@@ -67,6 +67,32 @@ describe("sidecar approval events", () => {
     expect(screen.queryByText(/undefined/)).toBeNull();
   });
 
+  it("shows where a later round's request came from beside its Approve button (M1-166)", async () => {
+    apiMocks.listApprovals.mockResolvedValueOnce({
+      items: [
+        {
+          id: "req-80",
+          session_id: "sess-1",
+          action: { tool_name: "restart_deployment" },
+          justification: "The log shows the pod is out of memory.",
+          status: "pending",
+          evidence: {
+            source: "tool_results",
+            round: 2,
+            calls: [{ tool_name: "get_pod_logs", outcome: "ok", round: 1 }],
+            calls_not_shown: 0,
+            addressed: [],
+          },
+        },
+      ],
+    });
+    await open();
+
+    const note = await screen.findByRole("note", { name: "Where this request came from" });
+    expect(note.textContent).toContain("Written after reading tool results");
+    expect(note.textContent).toContain("get_pod_logs: returned a result");
+  });
+
   it("still accepts a producer that names the field approval_id", async () => {
     await open();
 

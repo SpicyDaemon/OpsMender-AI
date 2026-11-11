@@ -56,6 +56,9 @@ def _action_summary(action: dict[str, Any]) -> str:
     return "Review the proposed action."
 
 
+WRITTEN_FROM_RESULTS = "Written after reading tool results. "
+
+
 def _as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
@@ -117,8 +120,12 @@ class ApprovalService:
         session_id: uuid.UUID,
         action: dict[str, Any],
         justification: str | None = None,
+        evidence: dict[str, Any] | None = None,
     ) -> ApprovalResolution:
-        """Create an approval request and wait until it resolves."""
+        """Create an approval request and wait until it resolves.
+
+        ``evidence`` is what a request of a later planning round was written
+        from (M1-166); it is stored with the request for the operator."""
         expires_at = self._now_fn() + timedelta(seconds=self._timeout_seconds)
 
         async with self._session_factory() as db:
@@ -128,6 +135,7 @@ class ApprovalService:
                 session_id=session_id,
                 action=action,
                 justification=justification,
+                evidence=evidence,
                 expires_at=expires_at,
             )
             # One conditional write, so a Stop that committed after the
@@ -156,7 +164,10 @@ class ApprovalService:
                 event_type="approval.requested",
                 category=CATEGORY_APPROVAL,
                 title="Approval needed for an AI action",
-                body=justification or _action_summary(action),
+                # A request of a later round was planned from tool output
+                # (M1-166): the notification says so before the model's words.
+                body=(WRITTEN_FROM_RESULTS if evidence else "")
+                + (justification or _action_summary(action)),
                 link=(f"/dashboard/incidents/{incident_id}" if incident_id else None),
                 incident_id=incident_id,
                 session_id=session_id,
@@ -345,6 +356,7 @@ class ApprovalService:
             "session_id": str(request.session_id),
             "action": request.action,
             "justification": request.justification,
+            "evidence": getattr(request, "evidence", None),
             "status": request.status,
             "resolution_note": request.resolution_note,
             "requested_at": request.requested_at.isoformat(),

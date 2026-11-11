@@ -689,6 +689,7 @@ def _approval_to_dict(request) -> dict[str, object]:
         "session_id": str(request.session_id),
         "action": request.action,
         "justification": request.justification,
+        "evidence": getattr(request, "evidence", None),
         "status": request.status,
         "requested_at": request.requested_at.isoformat(),
         "resolved_at": request.resolved_at.isoformat() if request.resolved_at else None,
@@ -699,11 +700,17 @@ def _approval_to_dict(request) -> dict[str, object]:
 
 def _format_approval(request) -> str:
     expires = _as_utc(request.expires_at).isoformat(timespec="seconds")
-    return (
+    line = (
         f"{str(request.id)[:12]}  status={request.status:<8s}  "
         f"session={str(request.session_id)[:12]}  expires={expires}  "
         f"tool={request.action.get('tool_name', '?')}"
     )
+    # A request of a later planning round was planned from what the session's
+    # tools returned (M1-166); --json shows the calls behind it.
+    evidence = getattr(request, "evidence", None) or {}
+    if evidence.get("source") == "tool_results":
+        line += f"  from=tool_results  calls={len(evidence.get('calls') or [])}"
+    return line
 
 
 def _model_config_to_dict(config) -> dict[str, object]:

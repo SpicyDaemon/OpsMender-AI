@@ -16,6 +16,12 @@ describe("session detail model picker", () => {
   });
 });
 
+describe("session detail approval requests", () => {
+  it("shows where a later round's request came from (M1-166)", () => {
+    expect(sessionDetailSource).toContain("<ApprovalEvidenceNote evidence={a.evidence} />");
+  });
+});
+
 describe("session detail model summary", () => {
   it("labels the closing text as the model's summary, not a record", () => {
     expect(sessionDetailSource).toContain("Model summary");

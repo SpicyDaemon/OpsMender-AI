@@ -46,6 +46,7 @@ def _to_ws_message(request) -> WSMessage:
             "session_id": str(request.session_id),
             "action": request.action,
             "justification": request.justification,
+            "evidence": getattr(request, "evidence", None),
             "status": request.status,
             "resolution_note": request.resolution_note,
             "requested_at": request.requested_at.isoformat(),

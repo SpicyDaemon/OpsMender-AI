@@ -458,12 +458,31 @@ export type ApprovalStatus =
   | "redirected"
   | "expired";
 
+// What an approval request of a later planning round was written from
+// (M1-166): the session's latest calls with their recorded outcome, and the
+// results found to address the assistant.
+export interface ApprovalEvidence {
+  source: string;
+  round: number;
+  calls: {
+    tool_name: string;
+    tool_parameters?: Record<string, unknown>;
+    outcome: string;
+    round: number;
+  }[];
+  calls_not_shown: number;
+  addressed: { tool_name: string; phrases: string[] }[];
+  // Requests an operator rejected earlier in the same session.
+  rejected?: { tool_name: string; tool_parameters?: Record<string, unknown> }[];
+}
+
 export interface ApprovalRequestResponse {
   id: string;
   session_id: string;
   session_tier: number | null;
   action: Record<string, unknown>;
   justification: string | null;
+  evidence?: ApprovalEvidence | null;
   status: ApprovalStatus;
   resolution_note: string | null;
   requested_at: string;

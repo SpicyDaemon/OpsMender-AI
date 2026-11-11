@@ -687,6 +687,12 @@ class ApprovalRequest(Base):
     )
     action: Mapped[dict] = mapped_column(JSONB_ON_POSTGRES, nullable=False)
     justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What a request of a later planning round was written from (M1-166): the
+    # calls the session had made when it asked, and the results found to
+    # address the assistant. SQL NULL for a request of a first plan.
+    evidence: Mapped[dict | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )  # pending | approved | rejected | redirected | expired

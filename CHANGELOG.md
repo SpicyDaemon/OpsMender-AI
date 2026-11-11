@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- At Tier 1 (Approval Required) a session's later planning round may now
+  ask an operator. A later round used to run only reads, so a session that
+  found the cause in what it read could not ask for the change that fixes
+  it and could only name it as a next step. Now a change, or a read that
+  needs an approval, proposed in a later round is put to an operator as in
+  a first plan and runs only if approved; rejecting, redirecting and expiry
+  work as in a first plan. Because that plan is written from tool output,
+  the request is marked "Written after reading tool results" on the
+  Approvals page, the session page and the incident's session panel, with
+  the calls the session had made and their recorded outcomes; it names any
+  call whose result or error text addresses the assistant, and any request
+  an operator already rejected in the session. The chat approval list, the
+  Inbox notification and `opsmender approvals list` (as `from=tool_results`)
+  say the same in a line, and the approvals API and the session stream
+  return the record as `evidence`. A change the Skill would
+  run at Tier 1 without asking is still not run in a later round. Tiers 0
+  and 2, and a Tier 1 session with no approval service, are unchanged: a
+  later round there runs only reads and asks nobody. Adds the nullable
+  `approval_requests.evidence` column (migration `b6c7d8e9f0a1`).
+
 ### Fixed
 
 - A failed call's error text that addresses the assistant is now named to
@@ -61,8 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the reads the tier runs without a person: each passes the tier gate as
   in a first plan, and anything else, a call that is not a read or a read
   that needs an approval, is recorded as blocked in Tool Activity and the
-  audit log, with nobody asked and nothing run, at every tier, because
-  that plan is made from tool output. A call the session already proposed
+  audit log, with nobody asked and nothing run, because that plan is made
+  from tool output (at Tier 1 a later round may ask an operator; see
+  Changed above). A call the session already proposed
   is not repeated, and an empty or unreadable later plan ends the rounds
   without an error. At Tier 0 a later round starts only while every call
   that ran was a read, so a change that worked is never rolled back

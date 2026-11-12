@@ -43,11 +43,17 @@ def _utcnow() -> datetime:
 
 
 def _action_summary(action: dict[str, Any]) -> str:
-    """Short human label for an approval action dict (notification body)."""
+    """Short human label for an approval action dict (notification body).
+    A session's action and a workflow step name the tool as ``tool_name``
+    (M1-169); the other keys are older shapes. The name is the model's
+    text: it is kept to one line of at most 200 characters."""
     if not isinstance(action, dict):
         return "Review the proposed action."
-    tool = action.get("tool") or action.get("name") or action.get("action")
-    return f"Tool: {tool}" if tool else "Review the proposed action."
+    for key in ("tool_name", "tool", "name", "action"):
+        tool = action.get(key)
+        if isinstance(tool, str) and tool.strip():
+            return f"Tool: {' '.join(tool.split())[:200]}"
+    return "Review the proposed action."
 
 
 def _as_utc(dt: datetime) -> datetime:

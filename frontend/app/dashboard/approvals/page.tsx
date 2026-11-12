@@ -62,6 +62,15 @@ function approvalActionLabel(action: Record<string, unknown>) {
 function approvalActionDetail(action: Record<string, unknown>) {
   const target = action.target ?? action.resource ?? action.service ?? action.kind;
   if (typeof target === "string" && target.trim()) return titleCaseIdentifier(target);
+  // A session's action and a workflow step name the tool as tool_name and
+  // hold the call's parameters under tool_parameters (M1-169): count those,
+  // not the keys of the record. Without that object the call has none.
+  const parameters = action.tool_parameters;
+  const held = Boolean(parameters) && typeof parameters === "object" && !Array.isArray(parameters);
+  if (held || typeof action.tool_name === "string") {
+    const count = held ? Object.keys(parameters as object).length : 0;
+    return count > 0 ? `${count} parameter${count === 1 ? "" : "s"}` : "No parameters";
+  }
   const keys = Object.keys(action).filter((key) => !["tool", "tool_name", "name", "action"].includes(key));
   return keys.length > 0 ? `${keys.length} parameter${keys.length === 1 ? "" : "s"}` : "Review required";
 }

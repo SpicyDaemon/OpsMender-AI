@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An approval request without a justification names its tool in the
+  Inbox. Its notification said "Review the proposed action." because it
+  looked for the tool under keys that neither a session's action nor a
+  workflow step uses; it now says "Tool: <name>", on one line of at most
+  200 characters. A request with a justification shows the justification,
+  as before. The Approvals page counted the keys of the stored action
+  record, so a session's request read "2 parameters" whatever the call
+  held; it now counts the parameters of the tool call, and says "No
+  parameters" when there are none. On the page a request in an older
+  shape, without `tool_name` or `tool_parameters`, reads as before.
+
 - A session record from the API no longer carries a `progress` field. The
   field was declared on the session response and never filled, so every
   record said `progress: null` although a finished session stores its

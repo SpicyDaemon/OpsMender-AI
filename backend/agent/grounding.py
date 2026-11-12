@@ -343,6 +343,19 @@ def addressed_in_results(facts: SessionFacts) -> list[tuple[str, list[str]]]:
     return found
 
 
+def addressed_in_errors(facts: SessionFacts) -> list[tuple[str, list[str]]]:
+    """The failed calls whose error text talks to the assistant, each with
+    the phrases found, in order (M1-168). A provider writes that text too,
+    and ``outcome_lines`` shows it to the model ("failed, no result: ..."),
+    so the prompts name it as they name such a result."""
+    found: list[tuple[str, list[str]]] = []
+    for call in facts.failed:
+        phrases = addressed_to_assistant(str(call.get("error") or ""))
+        if phrases:
+            found.append((call.get("tool_name") or "?", phrases))
+    return found
+
+
 def _sentences(text: str) -> list[str]:
     return [part.strip() for part in _SENTENCE.split(text) if part.strip()]
 

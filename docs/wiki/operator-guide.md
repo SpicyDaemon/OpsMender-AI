@@ -150,9 +150,10 @@ itself, and the summary is held to it:
   session's limit is listed as not shown, never as failed. When a result
   contains text that addresses the assistant, the model is told which call
   returned it and the phrases found, and to report them rather than follow
-  or recommend them. A result or an alert that contains the marker line
-  itself cannot end the marked block: the line is relabelled as part of the
-  data.
+  or recommend them. The same is done for the error text of a call that
+  failed, which the model is shown in that call's outcome line. A result or
+  an alert that contains the marker line itself cannot end the marked block:
+  the line is relabelled as part of the data.
 - When no action ran, nothing is verified and the summary says what is known,
   what is not known and what a person could check next, instead of a root
   cause and actions taken.

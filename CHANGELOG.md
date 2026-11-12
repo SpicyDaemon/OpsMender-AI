@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A session record from the API no longer carries a `progress` field. The
+  field was declared on the session response and never filled, so every
+  record said `progress: null` although a finished session stores its
+  plan, observations and diagnosis. Nothing in the product reads the
+  field, so it is removed from the response instead of being filled. The
+  stored record is unchanged and the postmortem draft still reads it.
+
 - A session now plans once more after its reads. The plan used to be made
   once, before any tool had returned, so a session that read one service
   and was told a dependency was failing never read that dependency, and its

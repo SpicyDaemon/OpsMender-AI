@@ -638,7 +638,6 @@ class SessionResponse(BaseModel):
     model_id: Optional[str]
     status: str
     summary: Optional[str]
-    progress: Optional[dict] = None
     queued_at: Optional[datetime]
     queue_expires_at: Optional[datetime]
     queue_reason: Optional[str]

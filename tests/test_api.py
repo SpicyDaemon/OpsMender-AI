@@ -3754,6 +3754,44 @@ class TestSessions:
         resp = await client.get(f"/sessions/{uuid.uuid4()}", headers=auth_headers)
         assert resp.status_code == 404
 
+    async def test_a_session_record_has_no_progress_field(
+        self, client: AsyncClient, auth_headers, app
+    ):
+        # A finished run stores its plan, observations and diagnosis for the
+        # postmortem draft. The API declared a `progress` field and never
+        # filled it, so every record said null; the field is gone and the
+        # stored record is untouched.
+        stored = {"plan": [{"description": "flush the cache"}]}
+        async with app.state.session_factory() as db:
+            session = await SessionRepo.create(db, TEST_ORG_ID, tier=2)
+            await SessionRepo.set_status(
+                db,
+                TEST_ORG_ID,
+                session.id,
+                status="completed",
+                summary="done",
+                progress=stored,
+            )
+            await db.commit()
+
+        detail = await client.get(f"/sessions/{session.id}", headers=auth_headers)
+        assert detail.status_code == 200, detail.text
+        assert "progress" not in detail.json()
+
+        listed = await client.get("/sessions", headers=auth_headers)
+        assert listed.status_code == 200, listed.text
+        row = next(
+            item for item in listed.json()["items"] if item["id"] == str(session.id)
+        )
+        assert "progress" not in row
+
+        declared = app.openapi()["components"]["schemas"]["SessionResponse"]
+        assert "progress" not in declared["properties"]
+
+        async with app.state.session_factory() as db:
+            kept = await SessionRepo.get_by_id(db, TEST_ORG_ID, session.id)
+        assert kept.progress == stored
+
     # Sprint 59 Step 1 - GET /sessions powers the Operations Dashboard's
     # Active sessions + Recent failures Attention Queue cards. Coverage
     # for the new route lives here.

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Approvals page and the dashboard head an approval request by the
+  tool that will run. They read a request's heading from the key `tool`
+  before `tool_name`. The tier check gates `tool_name` and the session runs
+  it, and the model writes the record of a session's action, so a record
+  that held both could be headed by another tool than the one waiting
+  behind Approve. Both pages now read `tool_name` whenever the record has
+  it, and the Approvals page no longer shows a `target`, `resource`,
+  `service` or `kind` key of such a record as its second line. On the
+  Approvals page a record in an older shape, without `tool_name`, reads as
+  before; the dashboard now reads an older record's `name` and `action`
+  keys as that page does.
 - An approval request without a justification names its tool in the
   Inbox. Its notification said "Review the proposed action." because it
   looked for the tool under keys that neither a session's action nor a

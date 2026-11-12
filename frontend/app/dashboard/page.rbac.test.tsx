@@ -79,4 +79,43 @@ describe("Dashboard role-aware loading", () => {
     expect(screen.getByText("Recent failures")).toBeTruthy();
     expect(screen.queryByText("Setup checklist")).toBeNull();
   });
+
+  it("names a pending approval by the tool that runs", async () => {
+    // M1-173: the model writes the record and can add "tool" beside tool_name.
+    authState.role = "operator";
+    const approval = (id: string, action: Record<string, unknown>) => ({
+      id,
+      session_id: `session-${id}`,
+      session_tier: 1,
+      action,
+      justification: null,
+      status: "pending",
+      resolution_note: null,
+      requested_at: "2026-07-06T12:00:00Z",
+      resolved_at: null,
+      resolved_by: null,
+      expires_at: "2026-07-06T12:10:00Z",
+      extension_count: 0,
+      extension_notified_at: null,
+    });
+    apiMocks.listApprovals.mockResolvedValue({
+      items: [
+        approval("both", { tool_name: "delete_pod", tool: "get_pods" }),
+        approval("legacy", { tool: "restart_pod" }),
+        approval("blank", { tool_name: " ", tool: "list_nodes" }),
+        // The dashboard reads an older record as the Approvals page does.
+        approval("named", { name: "legacy_tool" }),
+      ],
+      total: 4,
+    });
+
+    render(<DashboardIndex />);
+
+    expect(await screen.findByText("delete_pod")).toBeTruthy();
+    expect(screen.queryByText("get_pods")).toBeNull();
+    expect(screen.getByText("restart_pod")).toBeTruthy();
+    expect(screen.getByText("legacy_tool")).toBeTruthy();
+    expect(screen.queryByText("list_nodes")).toBeNull();
+    expect(screen.getByText("Pending approval")).toBeTruthy();
+  });
 });

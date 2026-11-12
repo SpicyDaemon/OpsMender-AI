@@ -117,4 +117,60 @@ describe("Approvals page", () => {
       ),
     );
   });
+
+  it("counts the parameters of the tool call, not the keys of the action record", async () => {
+    // M1-169: a session's action holds tool_name, tool_parameters and often a
+    // justification, so the page said "2 parameters" whatever the call held.
+    const request = (id: string, action: Record<string, unknown>) => ({
+      id,
+      session_id: `session-${id}`,
+      session_tier: 1,
+      action,
+      justification: null,
+      status: "pending",
+      resolution_note: null,
+      requested_at: "2026-07-06T12:00:00Z",
+      resolved_at: null,
+      resolved_by: null,
+      expires_at: "2026-07-06T12:10:00Z",
+      extension_count: 0,
+      extension_notified_at: null,
+    });
+    const items = [
+      request("three", {
+        tool_name: "restart_deployment",
+        tool_parameters: { namespace: "bookinfo", deployment: "ratings-v1", wait: true },
+        justification: "The pod is wedged.",
+      }),
+      request("one", {
+        workflow_step: true,
+        step_id: "s1",
+        description: "",
+        tool_name: "get_config",
+        tool_parameters: { service: "ratings" },
+        inputs: { service: "ratings" },
+        safety_class: "safe",
+        tier_override: null,
+      }),
+      request("none", { tool_name: "list_nodes", tool_parameters: {} }),
+      // A session action the model wrote without a parameters object runs
+      // with none, whatever else the record holds.
+      request("null", { tool_name: "list_nodes", tool_parameters: null, justification: "why" }),
+      request("absent", { tool_name: "list_nodes", justification: "why" }),
+      request("list", { tool_name: "list_nodes", tool_parameters: ["a", "b"] }),
+      // An older shape without tool_parameters keeps the count of its keys.
+      request("legacy", { tool: "restart_pod", namespace: "prod", pod: "ratings-v1-7d9c" }),
+    ];
+    apiMocks.listApprovals.mockResolvedValue({ items, total: items.length });
+
+    render(<ApprovalsPage />);
+
+    // Each request is drawn twice: the phone card and the desktop row.
+    expect(await screen.findAllByText("3 parameters")).toHaveLength(2);
+    expect(screen.getAllByText("1 parameter")).toHaveLength(2);
+    expect(screen.getAllByText("No parameters")).toHaveLength(8);
+    expect(screen.getAllByText("2 parameters")).toHaveLength(2);
+    expect(screen.queryByText("7 parameters")).toBeNull();
+    expect(screen.queryByText("Review required")).toBeNull();
+  });
 });

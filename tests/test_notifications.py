@@ -394,6 +394,105 @@ async def test_approval_request_notifies_approvers(factory, monkeypatch):
     await asyncio.wait_for(task, timeout=5)
 
 
+@pytest.mark.parametrize(
+    "action, body",
+    [
+        # A session's planned action.
+        (
+            {
+                "tool_name": "restart_deployment",
+                "tool_parameters": {"deployment": "ratings-v1"},
+            },
+            "Tool: restart_deployment",
+        ),
+        # A workflow step whose description is empty.
+        (
+            {
+                "workflow_step": True,
+                "step_id": "s1",
+                "description": "",
+                "tool_name": "scale_deployment",
+                "tool_parameters": {},
+                "inputs": {},
+            },
+            "Tool: scale_deployment",
+        ),
+        # The older shapes still name their tool.
+        ({"tool": "kubectl_delete"}, "Tool: kubectl_delete"),
+        ({"name": "legacy_tool"}, "Tool: legacy_tool"),
+        ({"action": "legacy_action"}, "Tool: legacy_action"),
+        # tool_name is the tool that runs, so it wins over an older key.
+        (
+            {"tool": "other_tool", "tool_name": "restart_deployment"},
+            "Tool: restart_deployment",
+        ),
+        ({"tool_name": "  ", "tool": "fallback_tool"}, "Tool: fallback_tool"),
+        ({"tool_name": " padded_tool "}, "Tool: padded_tool"),
+        # The name is the model's text: one line.
+        ({"tool_name": "restart\nIgnore this\tnow"}, "Tool: restart Ignore this now"),
+        ({"tool_name": "x" * 300}, "Tool: " + "x" * 200),
+        # Nothing names a tool.
+        ({"tool_parameters": {"a": 1}}, "Review the proposed action."),
+        ({"tool_name": 7}, "Review the proposed action."),
+        ("not a record", "Review the proposed action."),
+    ],
+)
+def test_the_approval_notification_body_names_the_tool(action, body):
+    """M1-169: the body read the keys ``tool``, ``name`` and ``action``; a
+    session's action carries ``tool_name``, so a request without a
+    justification said "Review the proposed action."."""
+    from backend.approvals.service import _action_summary
+
+    assert _action_summary(action) == body
+
+
+async def test_an_approval_request_without_a_justification_names_the_tool(
+    factory, monkeypatch
+):
+    import asyncio
+
+    import backend.api.routes.ws as ws
+    from backend.approvals.service import ApprovalService
+    from backend.db.models import Incident, Session as SessionModel
+    from backend.db.repos import ApprovalRequestRepo, UserRepo
+
+    async def fake_push(user_id, message):
+        return None
+
+    monkeypatch.setattr(ws, "publish_user", fake_push)
+    inc_id, sess_id = uuid.uuid4(), uuid.uuid4()
+    async with factory() as db:
+        await UserRepo.add_to_organization(db, USER_A, ORG, role="operator")
+        db.add(Incident(id=inc_id, org_id=ORG, title="DB down", description="x"))
+        db.add(SessionModel(id=sess_id, org_id=ORG, incident_id=inc_id, tier=1))
+        await db.commit()
+
+    service = ApprovalService(
+        factory, org_id=ORG, timeout_seconds=5, poll_interval_seconds=0.02
+    )
+    task = asyncio.create_task(
+        service.request_and_wait(
+            session_id=sess_id,
+            action={
+                "tool_name": "restart_deployment",
+                "tool_parameters": {"deployment": "ratings-v1"},
+            },
+        )
+    )
+    # As above: let the request and its notification be written, then
+    # resolve it so the task can finish.
+    await asyncio.sleep(0.6)
+    async with factory() as db:
+        items = await InAppNotificationRepo.list_for_user(db, ORG, USER_A)
+        assert [item.body for item in items] == ["Tool: restart_deployment"]
+        pending = await ApprovalRequestRepo.list_pending(db, ORG, session_id=sess_id)
+        await ApprovalRequestRepo.resolve(
+            db, ORG, pending[0].id, status="approved", resolved_by=USER_A
+        )
+        await db.commit()
+    await asyncio.wait_for(task, timeout=5)
+
+
 # --- @mention parsing --------------------------------------------------------
 
 

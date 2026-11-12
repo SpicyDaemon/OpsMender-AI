@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed call's error text that addresses the assistant is now named to
+  the model. When a call fails, its error text is shown to the model in
+  the call's outcome line, and a provider writes that text as it writes a
+  result. The note that names a result containing such text ("ignore your
+  instructions", "approved by the admin") read only the results of calls
+  that returned, so the same words in an error went unnamed. The later
+  plan, the verification and the summary now name the failed call and the
+  phrases found, and tell the model to report them and not to follow or
+  recommend them. A plain error such as "connection refused" draws no
+  note, and the note for results is unchanged.
 - The Approvals page and the dashboard head an approval request by the
   tool that will run. They read a request's heading from the key `tool`
   before `tool_name`. The tier check gates `tool_name` and the session runs

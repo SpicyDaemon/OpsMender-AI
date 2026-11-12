@@ -64,6 +64,7 @@ import { SessionMemoriesPanel } from "@/components/SessionMemoriesPanel";
 import { SessionWorkflowState } from "@/components/sessions/SessionWorkflowState";
 import { TierCapabilitySummary } from "@/components/sessions/TierCapabilitySummary";
 import { ToolCallCard } from "@/components/sessions/ToolCallCard";
+import { ApprovalEvidenceNote } from "@/components/sessions/ApprovalEvidenceNote";
 import { titleCaseIdentifier, workflowNodeLabel } from "@/lib/displayNames";
 import { scrollRegionToEnd } from "@/lib/scrollRegion";
 import { formatRelative, formatTime } from "@/lib/formatDate";
@@ -1065,6 +1066,7 @@ function SessionPageContent() {
                     <span className="font-medium text-fg-muted">Reason:</span> {a.justification}
                   </p>
                 )}
+                <ApprovalEvidenceNote evidence={a.evidence} />
                 <p className="mt-1.5 text-xs text-fg-muted tabular-nums font-mono">
                   Expires {formatTime(a.expires_at)}
                 </p>

@@ -8274,6 +8274,52 @@ class TestApprovals:
         assert data["items"][0]["id"] == str(request.id)
         assert data["items"][0]["session_tier"] == 1
 
+    async def test_a_later_round_request_shows_what_it_was_written_from(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        # M1-166: a request a session made in a later planning round keeps the
+        # calls it was written from, and the API hands them to the approver.
+        # A first plan's request has none.
+        evidence = {
+            "source": "tool_results",
+            "round": 2,
+            "calls": [
+                {
+                    "tool_name": "get_pod_logs",
+                    "tool_parameters": {"pod": "api"},
+                    "outcome": "ok",
+                    "round": 1,
+                }
+            ],
+            "calls_not_shown": 0,
+            "addressed": [],
+        }
+        session, first = await _create_approval_request(app)
+        async with app.state.session_factory() as db:
+            later = await ApprovalRequestRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                action={"tool_name": "delete_pod", "tool_parameters": {"pod": "api"}},
+                justification="The log shows the pod is out of memory",
+                evidence=evidence,
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            await db.commit()
+
+        resp = await client.get("/approvals", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        by_id = {item["id"]: item for item in resp.json()["items"]}
+        assert by_id[str(later.id)]["evidence"] == evidence
+        assert by_id[str(first.id)]["evidence"] is None
+        assert "evidence" not in by_id[str(later.id)]["action"]
+
+        scoped = await client.get(
+            f"/approvals?session_id={session.id}&status=pending", headers=auth_headers
+        )
+        assert scoped.status_code == 200, scoped.text
+        assert {item["id"] for item in scoped.json()["items"]} == set(by_id)
+
     async def test_list_approvals_filtered_by_status(
         self, client: AsyncClient, app, auth_headers
     ):

@@ -774,6 +774,9 @@ class ApprovalRequestResponse(BaseModel):
     session_tier: Optional[int] = None
     action: dict[str, Any]
     justification: Optional[str]
+    # Set on a request a session made in a later planning round (M1-166):
+    # the calls it had made when it asked. Empty for a first plan's request.
+    evidence: Optional[dict[str, Any]] = None
     status: str
     resolution_note: Optional[str] = None
     requested_at: datetime

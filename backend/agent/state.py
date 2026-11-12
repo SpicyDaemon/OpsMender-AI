@@ -105,6 +105,12 @@ class IncidentState(TypedDict, total=False):
     operator_guidance: Annotated[list[str], operator.add]
     redirect_requested: bool
     redirect_count: int
+    # The requests of this session an operator rejected, oldest first, each
+    # as its tool and its bounded parameters (M1-166). It adds up across
+    # plan passes: a redirect drops a pass's ``approval_requests``, and a
+    # rejection of that pass must still reach the later prompt and the
+    # next approver.
+    rejected_requests: Annotated[list[dict[str, Any]], operator.add]
 
     # -- planning again after the reads (M1-111) -----------------------------
     # How far the session's planning rounds have come. The tier gate writes,

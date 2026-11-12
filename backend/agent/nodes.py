@@ -41,9 +41,15 @@ from backend.agent.grounding import (
     facts_block,
     facts_from_state,
     outcome_lines,
+    result_text,
     tool_results_block,
 )
-from backend.agent.hygiene import UNTRUSTED_RULE, redact_value, untrusted
+from backend.agent.hygiene import (
+    UNTRUSTED_RULE,
+    addressed_to_assistant,
+    redact_value,
+    untrusted,
+)
 from backend.skills.parser import SkillDefinition
 from backend.tiers.enforcement import check as tier_check
 from backend.tiers.enforcement import normalize_tier
@@ -211,18 +217,29 @@ PLAN_EXAMPLE = (
 # MAX_FOLLOW_UP_ROUNDS whatever a caller passes, and under the Tier 0 node
 # and session clocks like every other step.
 #
-# A later round runs only the reads the tier runs without a person. Its
-# plan is made from what tools returned, which is text from outside the
-# conversation, so nothing in it changes anything or reaches an operator:
-# the tier gate checks its reads exactly as it checks a first plan's, and
-# anything else (a call that is not a read, or a read that needs an
-# approval) is recorded as blocked, audited, never asked for and never run.
+# Except where it may ask (Tier 1, below), a later round runs only the
+# reads the tier runs without a person. Its plan is made from what tools
+# returned, which is text from outside the conversation, so nothing in it
+# changes anything or reaches an operator: the tier gate checks its reads
+# exactly as it checks a first plan's, and anything else (a call that is
+# not a read, or a read that needs an approval) is recorded as blocked,
+# audited, never asked for and never run.
 # A call that repeats one the session already proposed is dropped.
 #
 # At Tier 0 a later round starts only while every call that ran was a read.
 # A step that outlasts the Tier 0 clocks times the session out, and a
 # timed-out Tier 0 session rolls its changes back: a round added after a
 # change would put a change that worked at that risk.
+#
+# At Tier 1 with an approval service a later round may also ask (M1-166,
+# the owner's decision O-42): an action the tier asks an approval for goes
+# to the tier gate as in a first plan, and runs only if an operator
+# approves it. The request keeps what it was written from (see
+# ``approval_evidence``), so the operator is told the plan came from tool
+# output and sees the calls behind it. An action the tier would run without
+# a person and that is not a read stays blocked: in a later round nothing
+# but a read runs unless an operator approved it. Tiers 0 and 2, and a
+# Tier 1 session nobody can answer, keep the reads-only round.
 FOLLOW_UP_ROUNDS = 1
 MAX_FOLLOW_UP_ROUNDS = 3
 READ_CLASS = "safe"
@@ -237,6 +254,34 @@ FOLLOW_UP_READS_ONLY_REASON = (
     "a later planning round runs only reads that need no approval and asks "
     "nobody; the action is recorded"
 )
+# What a later round that may ask an operator is told in place of
+# FOLLOW_UP_RULE (M1-166), and the reason the gate gives there for a change
+# the tier would run without asking.
+FOLLOW_UP_ASK_RULE = (
+    "In this round a read that needs no approval runs, and a tool marked "
+    '"waits for operator approval" is asked for as in a first plan. The '
+    "operator is told that the request was written after reading tool results "
+    "and is shown the calls made so far. Every other tool is marked "
+    '"blocked" above.'
+)
+FOLLOW_UP_UNAPPROVED_REASON = (
+    "a later planning round runs only reads that need no approval and what an "
+    "operator approves; the tier asks no approval for this action, so it is "
+    "recorded"
+)
+# How many of the session's latest calls an approval request of a later
+# round keeps for the operator, and how much of one call's parameters.
+EVIDENCE_CALLS = 20
+EVIDENCE_PARAMETER_CHARS = 500
+# Added to the later prompt of an asking round once an operator rejected a
+# request of this session. Only names of the tool list are written into it:
+# the model writes a request's tool name, and the tier asks for any name the
+# generic-execution guard catches, whatever else the name says.
+REJECTED_RULE = (
+    "An operator already rejected a request for these tools in this session: "
+    "{tools}.  Do not ask for the same change again; ask for one of these "
+    "tools only when a result shows a cause the rejected request did not cover."
+)
 # Which of the two the later plan is told depends on the round: the model
 # cannot ask for a read it will only know it needs after this round's
 # results unless another round follows.
@@ -248,6 +293,20 @@ MORE_ROUNDS_RULE = (
     "Another planning round follows if a read of this one returns a result."
 )
 NO_GUIDANCE = "(none)"
+FOLLOW_UP_READS_PROPOSAL = (
+    "Propose only the further reads the results call for, such as the logs or the\n"
+    "state of a dependency that a result names as failing.  Do not repeat a call\n"
+    "listed above: a repeated call is dropped.  If the results already show the\n"
+    "cause, or no further read would add evidence, return an empty plan: []."
+)
+FOLLOW_UP_ASK_PROPOSAL = (
+    "Propose the further reads the results call for, such as the logs or the\n"
+    "state of a dependency that a result names as failing.  Ask for a change only\n"
+    "when a result shows the cause it would fix, and name that call in the\n"
+    "justification.  Do not repeat a call listed above: a repeated call is\n"
+    "dropped.  If no further read would add evidence and the results call for no\n"
+    "change, return an empty plan: []."
+)
 
 FOLLOW_UP_PLAN_PROMPT = (
     """\
@@ -277,10 +336,7 @@ Operator guidance (the operator redirected your previous plan; follow this):
 
 {plan_rules}
 
-Propose only the further reads the results call for, such as the logs or the
-state of a dependency that a result names as failing.  Do not repeat a call
-listed above: a repeated call is dropped.  If the results already show the
-cause, or no further read would add evidence, return an empty plan: [].
+{proposal_rule}
 
 For each action, provide:
 - tool_name: the MCP tool to call
@@ -344,6 +400,98 @@ def wants_follow_up(
     return 0 < done["ended"] <= rounds and done["returned"] > 0
 
 
+def later_round_asks(tier: int, can_ask: bool) -> bool:
+    """Whether a later planning round may ask an operator (M1-166): only at
+    Tier 1, and only when an approval service answers."""
+    return normalize_tier(tier) == 1 and can_ask
+
+
+def approval_evidence(state: IncidentState, round_number: int) -> dict[str, Any]:
+    """What an approval request of a later round was written from (M1-166).
+
+    The request and its justification are planned from what the session's
+    tools returned, which is text from outside the conversation. The operator
+    is shown this beside the request: the round, the session's latest calls
+    with their outcome from the record (not the model's account of them),
+    the calls whose result or error text addresses the assistant (the later
+    prompt shows the model both), and the requests an operator already
+    rejected in this session."""
+    facts = facts_from_state(dict(state))
+    calls = []
+    addressed = []
+    for done in facts.tool_calls:
+        name = _storable(str(done.get("tool_name") or "unknown"))[:200]
+        if not done.get("permitted", True):
+            outcome, shown = "blocked", ""
+        elif done.get("error"):
+            outcome, shown = "failed", str(done["error"])
+        else:
+            outcome, shown = "ok", result_text(done.get("result"))
+        calls.append(
+            {
+                "tool_name": name,
+                "tool_parameters": _evidence_parameters(done.get("tool_parameters")),
+                "outcome": outcome,
+                "round": int(done.get("round") or 0),
+            }
+        )
+        phrases = addressed_to_assistant(shown)
+        if phrases:
+            addressed.append({"tool_name": name, "phrases": phrases[:5]})
+    return {
+        "source": "tool_results",
+        "round": round_number,
+        "calls": calls[-EVIDENCE_CALLS:],
+        "calls_not_shown": max(0, len(calls) - EVIDENCE_CALLS),
+        "addressed": addressed[-EVIDENCE_CALLS:],
+        "rejected": rejected_requests(state)[-EVIDENCE_CALLS:],
+    }
+
+
+def _evidence_parameters(parameters: Any) -> dict[str, Any]:
+    """A call's parameters as the evidence keeps them: as they are while
+    short, else the start of their JSON text under one key."""
+    kept = _storable(parameters if isinstance(parameters, dict) else {})
+    shown = json.dumps(kept, ensure_ascii=False, separators=(",", ":"), default=str)
+    if len(shown) <= EVIDENCE_PARAMETER_CHARS:
+        return kept
+    return {"shortened": shown[:EVIDENCE_PARAMETER_CHARS] + "..."}
+
+
+def rejected_requests(state: IncidentState) -> list[dict[str, Any]]:
+    """The approval requests of this session an operator rejected, oldest
+    first. A later round can ask again with other parameters, so the next
+    approver is shown what was already refused. The gate adds each one to
+    the state as it is answered, so a redirect later in the same plan pass
+    does not drop it."""
+    return list(state.get("rejected_requests") or [])
+
+
+def rejected_record(action: Any) -> dict[str, Any]:
+    """A rejected request as the state and the evidence keep it. The model
+    wrote the tool name: it is kept as one line of at most 200 characters."""
+    action = action if isinstance(action, dict) else {}
+    name = " ".join(str(action.get("tool_name") or "unknown").split())
+    return {
+        "tool_name": _storable(name)[:200],
+        "tool_parameters": _evidence_parameters(action.get("tool_parameters")),
+    }
+
+
+def _asked_with(
+    evidence: dict[str, Any] | None, rejected_now: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """What a request of a later round is asked with (M1-166): the evidence
+    of the round and, added to it, the requests an operator rejected
+    earlier in this same plan pass, which the state does not hold yet."""
+    if not evidence:
+        return {}
+    if not rejected_now:
+        return {"evidence": evidence}
+    rejected = [*(evidence.get("rejected") or []), *rejected_now]
+    return {"evidence": {**evidence, "rejected": rejected[-EVIDENCE_CALLS:]}}
+
+
 def _call_key(action: dict[str, Any]) -> str:
     """One text per call: the tool and its parameters, whatever the order of
     the parameter names."""
@@ -391,6 +539,13 @@ def plan_rules(tier: int, marks: set[str], *, wait_limit: int | None = None) -> 
     return "\n".join(lines)
 
 
+def _is_offered(name: str) -> bool:
+    """Whether the plan prompt offers a listed tool. A name with whitespace
+    or a control character is not a valid MCP tool name and could start a
+    line of its own, so it is not offered."""
+    return bool(name) and not any(ch.isspace() or not ch.isprintable() for ch in name)
+
+
 def _plan_tool_lines(
     tool_names: list[str],
     tier: int,
@@ -404,17 +559,19 @@ def _plan_tool_lines(
 
     ``reads_only`` is the list a later planning round is shown (M1-111): the
     gate then runs the reads that need no person and records everything
-    else, so every other tool is marked blocked."""
+    else, so every other tool is marked blocked. Where a later round may ask
+    (``later_round_asks``, M1-166) a tool that waits for an approval keeps
+    that mark."""
+    asks = reads_only and later_round_asks(tier, can_ask)
     lines: list[str] = []
     marks: set[str] = set()
     for name in tool_names:
-        # A name with whitespace or a control character is not a valid MCP tool
-        # name and could start a line of its own, so it is not offered.
-        if not name or any(ch.isspace() or not ch.isprintable() for ch in name):
+        if not _is_offered(name):
             continue
         classification, mark = gate_mark(name, tier, skill_def, can_ask=can_ask)
         if reads_only and (classification != READ_CLASS or mark != RUNS):
-            mark = BLOCKED
+            if not (asks and mark == NEEDS_APPROVAL):
+                mark = BLOCKED
         marks.add(mark)
         line = f"- {name} ({classification}, {mark})"
         # One line per tool, so a server's description cannot start a line.
@@ -893,9 +1050,29 @@ def _build_plan_with_tool_names(
         can_ask=can_ask,
         reads_only=True,
     )
+    later_asks = later_round_asks(tier, can_ask)
     later_rules = "\n".join(
-        [plan_rules(tier, later_marks, wait_limit=wait_limit), FOLLOW_UP_RULE]
+        [
+            plan_rules(tier, later_marks, wait_limit=wait_limit),
+            FOLLOW_UP_ASK_RULE if later_asks else FOLLOW_UP_RULE,
+        ]
     )
+
+    def proposal_rule(state: IncidentState) -> str:
+        if not later_asks:
+            return FOLLOW_UP_READS_PROPOSAL
+        offered = {name for name in tool_names if _is_offered(name)}
+        refused = [
+            name
+            for name in dict.fromkeys(r["tool_name"] for r in rejected_requests(state))
+            if name in offered
+        ]
+        if not refused:
+            return FOLLOW_UP_ASK_PROPOSAL
+        return (
+            f"{FOLLOW_UP_ASK_PROPOSAL}\n\n"
+            f"{REJECTED_RULE.format(tools=', '.join(refused))}"
+        )
 
     def plan_again(state: IncidentState, done: dict[str, int]) -> dict:
         """A later round (M1-111): plan from what the calls so far returned."""
@@ -925,6 +1102,7 @@ def _build_plan_with_tool_names(
             or "(none configured)",
             operator_guidance=_format_operator_guidance(state, NO_GUIDANCE),
             plan_rules=later_rules,
+            proposal_rule=proposal_rule(state),
             plan_example=PLAN_EXAMPLE if later_lines else "[]",
         )
         raw = llm.invoke(_with_skill_instructions(prompt, skill_def, tier))
@@ -1193,6 +1371,9 @@ def _build_tier_gate(
         error = state.get("error")
         session_id = uuid.UUID(state["session_id"])
         redirect_count = int(state.get("redirect_count", 0) or 0)
+        # Set by ``_gate_in_rounds`` for a later round that may ask (M1-166).
+        evidence = state.get("approval_evidence")
+        rejected_now: list[dict[str, Any]] = []
 
         for action in proposed:
             tool_name = _checked_name(action)
@@ -1204,6 +1385,7 @@ def _build_tier_gate(
                         session_id=session_id,
                         action=action,
                         justification=action.get("justification"),
+                        **_asked_with(evidence, rejected_now),
                     )
                 except ApprovalNotAsked as exc:
                     # The session ended, so nobody was asked: the action is
@@ -1227,6 +1409,8 @@ def _build_tier_gate(
                         "expires_at": resolution.request.expires_at.isoformat(),
                     }
                 )
+                if req_status == "rejected":
+                    rejected_now.append(rejected_record(resolution.request.action))
                 if req_status == "approved":
                     approved.append(
                         {
@@ -1248,6 +1432,7 @@ def _build_tier_gate(
                         "approved_actions": [],
                         "blocked_actions": [],
                         "approval_requests": approval_requests,
+                        "rejected_requests": rejected_now,
                         "redirect_requested": True,
                         "redirect_count": redirect_count + 1,
                         "status": status,
@@ -1298,6 +1483,7 @@ def _build_tier_gate(
             "approved_actions": approved,
             "blocked_actions": blocked,
             "approval_requests": approval_requests,
+            "rejected_requests": rejected_now,
             "redirect_requested": False,
             "redirect_count": redirect_count,
             "status": status,
@@ -1307,7 +1493,14 @@ def _build_tier_gate(
     return tier_gate
 
 
-def _gate_in_rounds(gate, tier: int, skill_def: SkillDefinition, audit_logger=None):
+def _gate_in_rounds(
+    gate,
+    tier: int,
+    skill_def: SkillDefinition,
+    audit_logger=None,
+    *,
+    can_ask: bool = False,
+):
     """Wrap a tier gate for a graph that plans again after its reads (M1-111).
 
     The plan holds every round's actions. ``gate`` is given only the part it
@@ -1321,10 +1514,18 @@ def _gate_in_rounds(gate, tier: int, skill_def: SkillDefinition, audit_logger=No
     else (another class, or a read that needs an approval) is blocked here
     with the class and the reason the tier check gives it, or
     FOLLOW_UP_READS_ONLY_REASON when the policy would have run or asked for
-    it, and is written to the audit log. Nobody is asked, so a later round
-    holds no approval request and no redirect.
+    it, and is written to the audit log. Nobody is asked there, so such a
+    round holds no approval request and no redirect.
+
+    Where a later round may ask (``later_round_asks``: Tier 1 with an
+    approval service, M1-166) an action the tier asks an approval for also
+    reaches ``gate``, which asks, waits and handles a redirect as it does
+    for a first plan; the request carries ``approval_evidence``. An action
+    that is not a read and that the tier would run without a person is still
+    blocked, with FOLLOW_UP_UNAPPROVED_REASON.
     """
     audit = _blocked_auditor(audit_logger, tier)
+    asks = later_round_asks(tier, can_ask)
 
     async def tier_gate(state: IncidentState) -> dict:
         done = round_progress(state)
@@ -1336,20 +1537,28 @@ def _gate_in_rounds(gate, tier: int, skill_def: SkillDefinition, audit_logger=No
 
         not_reads: list[dict[str, Any]] = []
         if done["ended"]:
-            reads = []
+            kept = []
             for action in todo:
                 enforcement = tier_check(_checked_name(action), tier, skill_def)
                 if (
                     enforcement.classification == READ_CLASS
                     and not enforcement.requires_approval
                 ):
-                    reads.append(action)
+                    kept.append(action)
+                    continue
+                if asks and enforcement.permitted and enforcement.requires_approval:
+                    # The gate asks an operator, as for a first plan.
+                    kept.append(action)
                     continue
                 not_reads.append(
                     {
                         **action,
                         "block_reason": (
-                            FOLLOW_UP_READS_ONLY_REASON
+                            (
+                                FOLLOW_UP_UNAPPROVED_REASON
+                                if asks
+                                else FOLLOW_UP_READS_ONLY_REASON
+                            )
                             if enforcement.permitted
                             else enforcement.reason
                         ),
@@ -1358,9 +1567,12 @@ def _gate_in_rounds(gate, tier: int, skill_def: SkillDefinition, audit_logger=No
                 )
                 if audit is not None:
                     await audit(state["session_id"], not_reads[-1])
-            todo = reads
+            todo = kept
 
-        update = gate({**state, "plan": todo})
+        gated = {**state, "plan": todo}
+        if done["ended"] and asks:
+            gated["approval_evidence"] = approval_evidence(state, done["ended"] + 1)
+        update = gate(gated)
         if inspect.isawaitable(update):
             update = await update
         update = dict(update)

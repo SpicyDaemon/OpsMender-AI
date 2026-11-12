@@ -30,6 +30,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { ApprovalEvidenceNote } from "@/components/sessions/ApprovalEvidenceNote";
 import { useLiveEvents } from "@/context/liveEvents";
 import { autonomyTierDisplay, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatDateTime } from "@/lib/formatDate";
@@ -401,6 +402,7 @@ export default function ApprovalsPage() {
                       {a.justification}
                     </p>
                   )}
+                  <ApprovalEvidenceNote evidence={a.evidence} />
 
                   <div className="mt-3 grid gap-1.5 text-xs text-fg-muted">
                     <Link
@@ -544,6 +546,11 @@ export default function ApprovalsPage() {
                           {a.justification}
                         </p>
                       )}
+                      {a.evidence?.source === "tool_results" && (
+                        <p className="mt-0.5 text-xs font-medium text-status-medium">
+                          Written after reading tool results
+                        </p>
+                      )}
                     </td>
                     <td className="overflow-hidden px-3 py-3">
                       <Link
@@ -645,6 +652,7 @@ export default function ApprovalsPage() {
                 <p className="text-sm text-fg-primary">{selected.justification}</p>
               </div>
             )}
+            <ApprovalEvidenceNote evidence={selected.evidence} />
 
             <div className="grid grid-cols-2 gap-4 text-sm rounded-lg border border-border-subtle bg-bg-elevated p-4">
               <div>

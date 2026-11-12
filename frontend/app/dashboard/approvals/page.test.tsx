@@ -26,7 +26,63 @@ beforeEach(() => {
   apiMocks.redirectRequest.mockResolvedValue({});
 });
 
+const LATER_ROUND_APPROVAL = {
+  id: "approval-2",
+  session_id: "session-12345678",
+  session_tier: 1,
+  action: { tool_name: "restart_deployment", tool_parameters: { deployment: "ratings-v1" } },
+  justification: "The ratings log shows the pod is out of memory.",
+  evidence: {
+    source: "tool_results",
+    round: 2,
+    calls: [
+      {
+        tool_name: "get_pod_logs",
+        tool_parameters: { service: "ratings" },
+        outcome: "ok",
+        round: 1,
+      },
+    ],
+    calls_not_shown: 0,
+    addressed: [],
+    rejected: [],
+  },
+  status: "pending",
+  resolution_note: null,
+  requested_at: "2026-11-11T12:00:00Z",
+  resolved_at: null,
+  resolved_by: null,
+  expires_at: "2026-11-11T12:10:00Z",
+  extension_count: 0,
+  extension_notified_at: null,
+};
+
 describe("Approvals page", () => {
+  it("marks a request written after reading tool results wherever it can be approved (M1-166)", async () => {
+    apiMocks.listApprovals.mockResolvedValue({ items: [LATER_ROUND_APPROVAL], total: 1 });
+
+    render(<ApprovalsPage />);
+
+    // The mobile card holds the note with the calls; the desktop row a hint.
+    const note = await screen.findByRole("note", { name: "Where this request came from" });
+    expect(note.textContent).toContain("get_pod_logs (service=ratings): returned a result");
+    const marks = screen.getAllByText("Written after reading tool results");
+    expect(marks).toHaveLength(2);
+    const inTable = marks.filter((mark) => mark.closest("table"));
+    expect(inTable).toHaveLength(1);
+
+    // Opening the request from the desktop row (the action's name, not the
+    // row's Approve button) shows the note in the dialog.
+    const row = inTable[0].closest("tr") as HTMLElement;
+    fireEvent.click(row.querySelector("button.text-left") as HTMLButtonElement);
+    expect(apiMocks.approveRequest).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("note", { name: "Where this request came from" }),
+      ).toHaveLength(2),
+    );
+  });
+
   it("uses a pending-specific empty state before the onboarding all-status branch", async () => {
     render(<ApprovalsPage />);
 
@@ -67,6 +123,8 @@ describe("Approvals page", () => {
 
     expect(await screen.findAllByText("T1")).toHaveLength(2);
     expect(screen.getAllByText("Approval").length).toBeGreaterThan(0);
+    // A first plan's request carries no mark.
+    expect(screen.queryByText("Written after reading tool results")).toBeNull();
 
     const disclosure = await screen.findByRole("button", {
       name: /show action details/i,

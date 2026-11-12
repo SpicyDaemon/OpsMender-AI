@@ -6,7 +6,8 @@ Builds the default graph described in PROMPT_CONTEXT.md::
 
 After ``execute`` the graph goes back to ``plan`` when a call returned a
 result and a later planning round is left (M1-111), so the model can read
-what its first reads point to; a later round runs reads only.
+what its first reads point to; a later round runs reads only, except
+that a Tier 1 session may ask an operator there (M1-166).
 
 Usage (stub mode, no LLM / MCP)::
 
@@ -342,7 +343,11 @@ def build_graph(
     )
     if rounds:
         tier_gate_fn = _gate_in_rounds(
-            tier_gate_fn, tier, skill_def, audit_logger=audit_logger
+            tier_gate_fn,
+            tier,
+            skill_def,
+            audit_logger=audit_logger,
+            can_ask=approval_service is not None,
         )
         execute_fn = _execute_in_rounds(execute_fn)
 

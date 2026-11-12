@@ -139,9 +139,12 @@ def _format_approval_list(requests) -> str:
         tool_name = (
             request.action.get("tool_name") or request.action.get("name") or "action"
         )
-        lines.append(
-            f"- `{request.id}` session `{request.session_id}` action `{tool_name}`"
-        )
+        line = f"- `{request.id}` session `{request.session_id}` action `{tool_name}`"
+        # A request of a later planning round was planned from what the
+        # session's tools returned (M1-166): say so where it can be approved.
+        if (getattr(request, "evidence", None) or {}).get("source") == "tool_results":
+            line += " (written after reading tool results; see the calls in OpsMender)"
+        lines.append(line)
     return "\n".join(lines)
 
 

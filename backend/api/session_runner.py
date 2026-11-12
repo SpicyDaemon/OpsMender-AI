@@ -965,6 +965,7 @@ async def _run_session_workflow_inner(
             "operator_guidance": [],
             "redirect_requested": False,
             "redirect_count": 0,
+            "rejected_requests": [],
         }
 
         graph_kwargs: dict[str, Any] = {

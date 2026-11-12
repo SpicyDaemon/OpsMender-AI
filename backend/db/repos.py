@@ -1784,6 +1784,7 @@ class ApprovalRequestRepo:
         session_id: uuid.UUID,
         action: dict[str, Any],
         justification: str | None = None,
+        evidence: dict[str, Any] | None = None,
         expires_at: datetime,
     ) -> ApprovalRequest:
         req = ApprovalRequest(
@@ -1791,6 +1792,7 @@ class ApprovalRequestRepo:
             session_id=session_id,
             action=action,
             justification=justification,
+            evidence=evidence,
             expires_at=expires_at,
         )
         db.add(req)

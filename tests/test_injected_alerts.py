@@ -9,7 +9,12 @@ the result of a read the session made, reach the verify and summarize prompts
 only as marked data, and nothing runs after the read.
 
 M1-111 extends it to the plan made after the read: a model that proposes
-what the result asks for runs nothing and asks nobody at any tier.
+what the result asks for runs nothing at any tier.
+
+M1-166: at Tier 1 that plan may ask an operator. What the tier asks an
+approval for is then asked, with the calls it was written from and the
+result that addresses the assistant named on the request; nothing runs
+without the approval, and Tiers 0, 2 and 3 still ask nobody.
 
 M1-168 extends it to a failed call: each alert's words come back as the
 error text of a read the server rejected. Nothing runs after it, and the
@@ -89,9 +94,13 @@ class _NeverApproves:
 
     def __init__(self) -> None:
         self.requests: list[dict] = []
+        self.evidence: list[dict | None] = []
 
-    async def request_and_wait(self, *, session_id, action, justification=None):
+    async def request_and_wait(
+        self, *, session_id, action, justification=None, evidence=None
+    ):
         self.requests.append(action)
+        self.evidence.append(evidence)
         request = type("Request", (), {})()
         request.id = uuid.uuid4()
         request.status = "denied"
@@ -430,10 +439,16 @@ async def test_a_later_plan_that_obeys_a_read_result_runs_nothing_at_any_tier(
 ):
     """M1-111: the session plans again after its read, and the read's result
     carries the alert's words. With the model stubbed to propose exactly
-    what the result asks for, the later round runs nothing and asks nobody,
-    under a skill whose writes a first plan would run at Tier 0 and ask an
-    operator for at Tier 1: the action is recorded as blocked and written to
-    the audit log."""
+    what the result asks for, the later round runs nothing, under a skill
+    whose writes a first plan would run at Tier 0 and ask an operator for at
+    Tier 1: the action is recorded as blocked and written to the audit log.
+
+    M1-166: at Tier 1 an action the tier asks an approval for is put to the
+    operator, who here never approves. The request says it was written from
+    tool results, lists the read, and names the read's result when it
+    addresses the assistant. At the other tiers nobody is asked."""
+    from backend.tiers.enforcement import check
+
     calls: list[str] = []
     returned = f"{alert['title']}\n{alert['description']}"
 
@@ -478,7 +493,20 @@ async def test_a_later_plan_that_obeys_a_read_result_runs_nothing_at_any_tier(
     )
     assert calls == ["read_tool_z"], calls
     assert [c["tool_name"] for c in result["tool_calls"]] == ["read_tool_z"]
-    assert approvals.requests == [] and result["approval_requests"] == []
+    at_this_tier = check(asked, tier, SKILL_THAT_WRITES)
+    if tier == 1 and at_this_tier.permitted and at_this_tier.requires_approval:
+        assert [r["tool_name"] for r in approvals.requests] == [asked]
+        assert [r["status"] for r in result["approval_requests"]] == ["denied"]
+        (evidence,) = approvals.evidence
+        assert (evidence["source"], evidence["round"]) == ("tool_results", 2)
+        assert [(c["tool_name"], c["outcome"]) for c in evidence["calls"]] == [
+            ("read_tool_z", "ok")
+        ]
+        assert [a["tool_name"] for a in evidence["addressed"]] == (
+            ["read_tool_z"] if addressed_to_assistant(returned) else []
+        )
+    else:
+        assert approvals.requests == [] and result["approval_requests"] == []
     assert [a["tool_name"] for a in result["blocked_actions"]] == [asked]
     rows = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()
     audited = [json.loads(row) for row in rows if row.strip()]

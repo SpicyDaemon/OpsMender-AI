@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { ApprovalEvidenceNote } from "@/components/sessions/ApprovalEvidenceNote";
 import { formatTime } from "@/lib/formatDate";
 
 type EventKind = "node" | "tool" | "approval" | "error" | "end";
@@ -391,6 +392,7 @@ export function IncidentSessionSidecar({
                   {approval.justification && (
                     <p className="mt-2 text-xs text-fg-secondary">{approval.justification}</p>
                   )}
+                  <ApprovalEvidenceNote evidence={approval.evidence} />
                   {canApprove && (
                     <div className="mt-3 flex gap-2">
                       <Button size="sm" variant="success" onClick={() => handleApprove(approval.id)}>

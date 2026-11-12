@@ -98,18 +98,37 @@ dependency's log.
   already proposed. The model is told which round it is in and whether
   another follows. A session without a model, without a tool source, or
   whose Skill defines its own workflow has no later round.
-- A later round runs only the reads the tier runs without a person. Each
+- A later round runs the reads the tier runs without a person. Each
   passes the tier gate exactly as in the first plan, so a read the Skill
-  blocks is blocked. Anything else, a call that is not a read or a read that
-  needs an approval, is recorded as blocked with its tool and parameters in
-  Tool Activity and the audit log; nobody is asked to approve it and it does
-  not run, at any tier. A later round therefore holds no approval request. A
-  change the session should make, and a read that needs your approval,
-  belong in its first plan, where the tier decides.
+  blocks is blocked.
+- At Tier 1 (Approval Required) a later round may also ask you. A change,
+  or a read that needs an approval, is put to you as in a first plan and
+  runs only if you approve it; you can reject or redirect it, and a request
+  nobody answers expires and ends the session as timed out, as in a first
+  plan. Nothing an earlier round did is undone. A change the Skill would
+  run at Tier 1 without asking is not run in a later round: it is recorded
+  as blocked.
 - The later plan is made from tool output, which is data from outside the
-  conversation. That is why it cannot change anything or reach an operator:
-  an instruction inside a log line can at most cause another read that the
-  tier already runs on its own.
+  conversation, so a request of a later round is marked **Written after
+  reading tool results** in every list of pending requests. On the
+  Approvals page, the session page and the incident's session panel the
+  note lists the calls the session had made when it asked (the latest
+  twenty), each with its recorded outcome. It names any call whose result
+  or error text addresses the assistant, and any request an operator
+  already rejected in this session, because a later round can ask for a
+  rejected change again with other parameters. Check the request against
+  those calls before you approve: an instruction hidden in a log line can
+  lead the model to ask for a change, and your approval is what stands
+  between that request and the change. The chat approval list and the
+  Inbox notification say "written after reading tool results" in a line;
+  `opsmender approvals list` shows `from=tool_results` and `--json` shows
+  the record. Approving by id in chat or the CLI does not show the mark
+  again, so read the list first.
+- At Tiers 0 and 2, and at Tier 1 when no approval service answers, a later
+  round asks nobody. Anything that is not a read the tier runs on its own
+  is recorded as blocked with its tool and parameters in Tool Activity and
+  the audit log, and does not run. There an instruction inside a log line
+  can at most cause another read that the tier already runs on its own.
 - A call the session already proposed is not repeated, so a failed call is
   not retried in a later round. The match is exact: the same tool with other
   parameters is a new call.

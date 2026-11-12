@@ -20,6 +20,7 @@ import {
   rejectRequest,
   redirectRequest,
 } from "@/lib/api";
+import { approvalToolName, namesItsTool } from "@/lib/approvalAction";
 import type { ApprovalListResponse, ApprovalRequestResponse, ApprovalStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -54,13 +55,19 @@ const STATUS_OPTIONS: { value: ApprovalStatus | ""; label: string }[] = [
 ];
 
 function approvalActionLabel(action: Record<string, unknown>) {
-  const tool = action.tool ?? action.tool_name ?? action.name ?? action.action;
-  if (typeof tool === "string" && tool.trim()) return titleCaseIdentifier(tool);
-  return "Requested action";
+  // The tool that runs (M1-173): see approvalToolName.
+  const tool = approvalToolName(action);
+  // A name of separators only title-cases to nothing.
+  return (tool ? titleCaseIdentifier(tool).trim() : "") || "Requested action";
 }
 
 function approvalActionDetail(action: Record<string, unknown>) {
-  const target = action.target ?? action.resource ?? action.service ?? action.kind;
+  // target, resource, service and kind are keys of older records. The model
+  // writes a session's record, so a key it adds to a record that names its
+  // tool as tool_name is not shown as the request's second line (M1-173).
+  const target = namesItsTool(action)
+    ? undefined
+    : (action.target ?? action.resource ?? action.service ?? action.kind);
   if (typeof target === "string" && target.trim()) return titleCaseIdentifier(target);
   // A session's action and a workflow step name the tool as tool_name and
   // hold the call's parameters under tool_parameters (M1-169): count those,

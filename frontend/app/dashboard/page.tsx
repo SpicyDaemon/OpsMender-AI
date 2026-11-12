@@ -64,6 +64,7 @@ import { SetupChecklist } from "@/components/SetupChecklist";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/context/auth";
 import { useLiveEvents } from "@/context/liveEvents";
+import { approvalToolName } from "@/lib/approvalAction";
 import { sessionPrimaryLabel, titleCaseIdentifier } from "@/lib/displayNames";
 import { formatRelative } from "@/lib/formatDate";
 import { isStaleActiveSession } from "@/lib/sessionFreshness";
@@ -1228,10 +1229,7 @@ function QuickStat({
 }
 
 // Approval rows from the backend don't carry the tool name directly;
-// it sits inside the `action` JSON. Best-effort extraction.
+// it sits inside the `action` JSON: the tool that runs (M1-173).
 function extractToolName(appr: ApprovalRequestResponse): string | null {
-  if (!appr.action || typeof appr.action !== "object") return null;
-  const action = appr.action as Record<string, unknown>;
-  const tool = action.tool ?? action.tool_name;
-  return typeof tool === "string" ? tool : null;
+  return approvalToolName(appr.action);
 }

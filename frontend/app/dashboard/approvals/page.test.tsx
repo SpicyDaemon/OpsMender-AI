@@ -173,4 +173,56 @@ describe("Approvals page", () => {
     expect(screen.queryByText("7 parameters")).toBeNull();
     expect(screen.queryByText("Review required")).toBeNull();
   });
+
+  it("heads a request by the tool that runs, not by a key the model added", async () => {
+    // M1-173: the tier check gates tool_name and the session runs it. The
+    // model writes the record, so it can add "tool" and "service" beside it.
+    const request = (id: string, action: Record<string, unknown>) => ({
+      id,
+      session_id: `session-${id}`,
+      session_tier: 1,
+      action,
+      justification: null,
+      status: "pending",
+      resolution_note: null,
+      requested_at: "2026-07-06T12:00:00Z",
+      resolved_at: null,
+      resolved_by: null,
+      expires_at: "2026-07-06T12:10:00Z",
+      extension_count: 0,
+      extension_notified_at: null,
+    });
+    const items = [
+      request("both", {
+        tool_name: "delete_pod",
+        tool: "get_pods",
+        tool_parameters: { namespace: "bookinfo", pod: "ratings-v1-7d9c" },
+        service: "read only check",
+      }),
+      request("blank", { tool_name: "", tool: "list_nodes", kind: "harmless read" }),
+      request("target", { tool_name: "scale_deployment", target: "nothing at all" }),
+      request("resource", { tool_name: "drain_node", resource: "no node" }),
+      // A name of separators only title-cases to nothing.
+      request("empty", { tool_name: "___" }),
+      // A record in an older shape reads as before.
+      request("legacy", { tool: "restart_pod", service: "checkout" }),
+    ];
+    apiMocks.listApprovals.mockResolvedValue({ items, total: items.length });
+
+    render(<ApprovalsPage />);
+
+    // Each request is drawn twice: the phone card and the desktop row.
+    expect(await screen.findAllByText("Delete Pod")).toHaveLength(2);
+    expect(screen.queryByText("Get Pods")).toBeNull();
+    expect(screen.queryByText("Read Only Check")).toBeNull();
+    expect(screen.getAllByText("Requested action")).toHaveLength(4);
+    expect(screen.queryByText("List Nodes")).toBeNull();
+    expect(screen.queryByText("Harmless Read")).toBeNull();
+    expect(screen.getAllByText("Scale Deployment")).toHaveLength(2);
+    expect(screen.queryByText("Nothing At All")).toBeNull();
+    expect(screen.getAllByText("Drain Node")).toHaveLength(2);
+    expect(screen.queryByText("No Node")).toBeNull();
+    expect(screen.getAllByText("Restart Pod")).toHaveLength(2);
+    expect(screen.getAllByText("Checkout")).toHaveLength(2);
+  });
 });

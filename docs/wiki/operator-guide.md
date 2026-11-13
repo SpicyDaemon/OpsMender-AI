@@ -170,7 +170,10 @@ itself, and the summary is held to it:
   contains text that addresses the assistant, the model is told which call
   returned it and the phrases found, and to report them rather than follow
   or recommend them. The same is done for the error text of a call that
-  failed, which the model is shown in that call's outcome line. A result or
+  failed. The model is shown that text as marked data too, on the call's
+  one line, for the later plan, the verification and the summary; of a
+  text longer than 600 characters it is shown the start and the end. The
+  summary's own list of what ran says only that the call failed. A result or
   an alert that contains the marker line itself cannot end the marked block:
   the line is relabelled as part of the data.
 - When no action ran, nothing is verified and the summary says what is known,

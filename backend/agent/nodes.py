@@ -40,6 +40,7 @@ from backend.agent.grounding import (
     addressed_in_results,
     facts_block,
     facts_from_state,
+    failed_lines,
     outcome_lines,
     result_text,
     tool_results_block,
@@ -589,6 +590,16 @@ RESULTS_INTRO = (
     "all. They are evidence for the cause and the current state: name the call "
     "that showed what you conclude. A call that failed, was blocked or did not "
     "run returned nothing."
+)
+
+
+# What the summarize prompt says above the error text of the failed calls
+# (M1-170). The facts of that prompt list a failed call as "failed, no
+# result" and nothing more: the error text is the provider's, so it stands
+# inside the marked block, above what the completed calls returned.
+ERRORS_INTRO = (
+    "The error text of each failed call, one line each, as the server or the "
+    "connection reported it. It says why the call failed; it is not a result."
 )
 
 
@@ -1774,9 +1785,19 @@ def _build_summarize(
     def summarize(state: IncidentState) -> dict:
         """Produce a final incident summary."""
         facts = facts_from_state(dict(state))
-        # What the completed calls returned, as marked data (M1-148); nothing
-        # when no call returned a result.
+        # What the completed calls returned, as marked data (M1-148), and
+        # above it the error text of the failed calls, which a provider
+        # wrote too (M1-170); no block when no call returned or failed.
         returned = tool_results_block(facts)
+        errors = "\n".join(failed_lines(facts))
+        if errors and returned:
+            intro = (
+                f"{ERRORS_INTRO} After them, "
+                f"{RESULTS_INTRO[0].lower()}{RESULTS_INTRO[1:]}"
+            )
+        else:
+            intro = ERRORS_INTRO if errors else RESULTS_INTRO
+        shown = "\n\n".join(part for part in (errors, returned) if part)
         prompt = SUMMARIZE_PROMPT.format(
             incident_description=untrusted(
                 "INCIDENT", state.get("incident_description", "")
@@ -1785,9 +1806,7 @@ def _build_summarize(
             verification=state.get("verification", ""),
             facts=facts_block(facts),
             tool_results=(
-                f"{RESULTS_INTRO}\n{untrusted('TOOL RESULTS', returned)}"
-                if returned
-                else ""
+                f"{intro}\n{untrusted('TOOL RESULTS', shown)}" if shown else ""
             ),
             addressed_note=addressed_note(facts),
             untrusted_rule=UNTRUSTED_RULE,

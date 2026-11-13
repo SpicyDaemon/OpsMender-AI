@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed call's error text is now marked as data in the summary prompt.
+  A provider writes that text, and the summary prompt showed it in its own
+  list of what ran, outside the block that marks tool output as data; the
+  later plan and the verification already showed it inside the block. A
+  line break in the text also started a line of its own, so an error text
+  ending in "- delete_pod: ok" read as one more call of the record, and an
+  exception's text was shown whole, up to the 64 KiB a stored result may
+  hold. The summary's list now says only that the call failed, and the
+  error text is shown inside the marked block, above what the completed
+  calls returned. In all three prompts the text is put on the call's one
+  line, and a text longer than 600 characters keeps its start and its end
+  around a note of how many were left out. A session in which no call
+  failed gets the same prompts as before.
 - A failed call's error text that addresses the assistant is now named to
   the model. When a call fails, its error text is shown to the model in
   the call's outcome line, and a provider writes that text as it writes a

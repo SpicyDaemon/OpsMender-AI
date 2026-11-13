@@ -119,9 +119,10 @@ def test_the_facts_count_a_rejected_call_as_failed_not_executed():
         facts
     )
     block = facts_block(facts)
-    assert (
-        "- get_logs: failed, no result: the tool reported an error: no service" in block
-    )
+    # The error text is the provider's and stands in the marked block of
+    # the prompt, not among the facts (M1-170).
+    assert "- get_logs: failed, no result" in block.splitlines()
+    assert "no service" not in block
     assert "- get_metrics: ok" in block
 
 

@@ -174,30 +174,81 @@ def state_line(facts: SessionFacts) -> str:
     )
 
 
-def outcome_lines(facts: SessionFacts) -> list[str]:
+# A failed call's error text as a prompt shows it (M1-170). The provider
+# writes that text: it is the text of an ``isError`` answer or of the
+# exception the call raised (``backend/audit/executor.py``), and neither is
+# one line. A line break inside it started a line of its own among the
+# outcome lines, where "- delete_pod: ok" reads as a call of the record, so
+# the text is put on the call's one line. At most ERROR_TEXT_CHARS
+# characters of it are shown: the executor bounds an ``isError`` text below
+# that (528 characters with its lead), and an exception's text only at the
+# 64 KiB a stored result may hold (``backend/audit/tool_results.py``).
+ERROR_TEXT_CHARS = 600
+
+
+def error_text(call: dict[str, Any]) -> str:
+    """A failed call's error text on one line. A text longer than
+    ERROR_TEXT_CHARS keeps its start and its end around a note of how many
+    characters were left out: one text has its status at the start, another
+    its cause at the end."""
+    text = " ".join(str(call.get("error") or "").split())
+    if len(text) > ERROR_TEXT_CHARS:
+        head = ERROR_TEXT_CHARS // 2
+        tail = ERROR_TEXT_CHARS - head
+        left_out = len(text) - ERROR_TEXT_CHARS
+        text = (
+            f"{text[:head]} [... {left_out} characters left out ...] "
+            f"{text[len(text) - tail :]}"
+        )
+    return text
+
+
+def _failed_outcome(call: dict[str, Any], *, with_text: bool) -> str:
+    shown = error_text(call) if with_text else ""
+    return f"failed, no result: {shown}" if shown else "failed, no result"
+
+
+def outcome_lines(facts: SessionFacts, *, error_texts: bool = True) -> list[str]:
     """One line per tool call with its outcome from the record: ran and
-    returned a result, failed, or blocked."""
+    returned a result, failed, or blocked. A failed call's line ends with its
+    error text unless ``error_texts`` is false; the text is the provider's,
+    so a caller that asks for it marks the lines as data."""
     lines: list[str] = []
     for call in facts.tool_calls:
         name = call.get("tool_name") or "?"
         if not call.get("permitted", True):
             outcome = "blocked by the tier policy, did not run"
         elif call.get("error"):
-            outcome = f"failed, no result: {call['error']}"
+            outcome = _failed_outcome(call, with_text=error_texts)
         else:
             outcome = "ok"
         lines.append(f"- {name}: {outcome}")
     return lines
 
 
+def failed_lines(facts: SessionFacts) -> list[str]:
+    """One line per failed call that has an error text, as ``outcome_lines``
+    writes it, for the marked block of the summarize prompt (M1-170). A
+    failed call whose error text is blank has no line here: the facts say
+    that it failed, and there is nothing of the provider's to show."""
+    return [
+        f"- {call.get('tool_name') or '?'}: failed, no result: {shown}"
+        for call in facts.failed
+        if (shown := error_text(call))
+    ]
+
+
 def facts_block(facts: SessionFacts) -> str:
-    """The facts as the summarize prompt sees them."""
+    """The facts as the summarize prompt sees them, outside any marked
+    block: the product's own words and the tool names of the plan, nothing
+    a provider wrote. A failed call is listed as failed; its error text is
+    the provider's and is shown as data (M1-170)."""
     lines = [state_line(facts)]
     if facts.plan_unreadable:
         lines.append(UNREADABLE_PLAN)
     if facts.tool_calls:
         lines.append("Tool calls in this session (the only actions that happened):")
-        lines.extend(outcome_lines(facts))
+        lines.extend(outcome_lines(facts, error_texts=False))
     else:
         lines.append(
             "No tool calls happened in this session: no probe, check, monitor or "
@@ -226,7 +277,8 @@ def facts_block(facts: SessionFacts) -> str:
 # its end and a document's identity at its start. A call past the session
 # limit is listed with its result withheld, in words that do not say it
 # failed. Failed and blocked calls have no entry; the outcome lines say they
-# returned nothing.
+# returned nothing. A failed call's error text is shown beside the results,
+# in the same marked block (``outcome_lines``, ``failed_lines``).
 #
 # A session that plans again after its reads (M1-111) went back for the
 # results of its later rounds, so the session limit is spent on the latest
@@ -346,8 +398,10 @@ def addressed_in_results(facts: SessionFacts) -> list[tuple[str, list[str]]]:
 def addressed_in_errors(facts: SessionFacts) -> list[tuple[str, list[str]]]:
     """The failed calls whose error text talks to the assistant, each with
     the phrases found, in order (M1-168). A provider writes that text too,
-    and ``outcome_lines`` shows it to the model ("failed, no result: ..."),
-    so the prompts name it as they name such a result."""
+    and ``outcome_lines`` and ``failed_lines`` show it to the model
+    ("failed, no result: ..."), so the prompts name it as they name such a
+    result. The whole text is read, also what ``error_text`` leaves out of a
+    long one."""
     found: list[tuple[str, list[str]]] = []
     for call in facts.failed:
         phrases = addressed_to_assistant(str(call.get("error") or ""))

@@ -31,12 +31,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tool name the AI writes with a line break in it is no longer matched
+  or called, whatever the tool source: an MCP server of any provider or an
+  integration connector. A Skill operation given as a pattern such as
+  `list_*` matched any text that began that way, a line break included, so
+  a planned action named "list_x: ok", a line break, "- delete_volume: ok"
+  passed the tier check, was sent to the tool source, and then stood in
+  the session's record of what ran as lines of its own, where the summary
+  read "- delete_volume: ok" as a call that had run. The tier gate now
+  refuses a planned action whose tool name is not a tool's name (empty,
+  with white space or a character that does not print, or longer than
+  200 characters) before it is compared with the Skill, records it as blocked
+  with that reason, and gates the rest of the plan as before. The record
+  (the plan, the blocked action, the audit log, and so Tool Activity, the
+  CLI and a postmortem draft) keeps such a name on one line behind "not a
+  tool's name:", with line breaks and control characters written as their
+  escapes. At Tier 1 an operator is no longer asked to approve a call
+  whose name has white space; before, a name the generic-execution guard
+  caught was asked for whatever else it said. The plan prompt already
+  left out a listed tool with such a name; it now also leaves out one
+  whose name is longer than 200 characters. The AI can therefore not plan
+  a tool that a server lists under a name with a space in it; a step of a
+  Skill's own workflow is not affected.
 - A failed call's error text is now marked as data in the summary prompt.
   A provider writes that text, and the summary prompt showed it in its own
   list of what ran, outside the block that marks tool output as data; the
   later plan and the verification already showed it inside the block. A
   line break in the text also started a line of its own, so an error text
-  ending in "- delete_pod: ok" read as one more call of the record, and an
+  ending in "- delete_volume: ok" read as one more call of the record, and an
   exception's text was shown whole, up to the 64 KiB a stored result may
   hold. The summary's list now says only that the call failed, and the
   error text is shown inside the marked block, above what the completed

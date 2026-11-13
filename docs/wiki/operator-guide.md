@@ -219,6 +219,22 @@ alongside an entry recording the deletion.
   parameters the AI proposed, the tier and the reason: a write blocked at
   Tier 2, an action that needed an approval nobody gave, a rejected approval.
   The session's Tool Activity and the incident timeline show these as blocked.
+- The AI writes the tool name of each action it proposes. A name that is
+  not a tool's name (it is empty, has white space or a character that does
+  not print, or is longer than 200 characters) is refused before it is
+  compared with the Skill, so a pattern such as `list_*` cannot match it,
+  whatever server or connector the tools come from: the action is recorded
+  as blocked with that reason and nothing is called, and at Tier 1 nobody
+  is asked to approve it. The record keeps the name on one
+  line behind "not a tool's name:", with a line break or a control
+  character written as its escape (`\n`), so the name cannot add lines to
+  Tool Activity, the CLI or a postmortem draft. The rest of the plan is
+  gated as usual. The plan prompt does not offer a listed tool with such a
+  name either, so the AI cannot plan a tool that a server lists under a
+  name with a space in it, even when the Skill names it; a step of the
+  Skill's own workflow names its tool itself and is not affected. The
+  check is of the name's form only: a made-up name of one plain word is
+  still compared with the Skill like any other.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - Workspace activity also shows configuration changes, approval decisions, and
   session tier overrides. Configuration entries identify the actor, route,

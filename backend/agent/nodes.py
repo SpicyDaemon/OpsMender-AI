@@ -52,6 +52,7 @@ from backend.agent.hygiene import (
     untrusted,
 )
 from backend.skills.parser import SkillDefinition
+from backend.tiers.enforcement import EnforcementResult
 from backend.tiers.enforcement import check as tier_check
 from backend.tiers.enforcement import normalize_tier
 
@@ -540,11 +541,58 @@ def plan_rules(tier: int, marks: set[str], *, wait_limit: int | None = None) -> 
     return "\n".join(lines)
 
 
+# The longest tool name the product takes: the audit log and an approval's
+# evidence keep that much of a name.
+TOOL_NAME_CHARS = 200
+# Why the gate refuses a planned action whose tool name is not a tool's name
+# (M1-175). The words are the product's: nothing of the name is in them.
+NOT_A_TOOL_NAME_REASON = (
+    "the tool name is not a tool's name (it is empty, has white space or a "
+    f"character that does not print, or is longer than {TOOL_NAME_CHARS} "
+    "characters): not matched against the skill and not called"
+)
+
+
+def plain_tool_name(name: Any) -> bool:
+    """Whether ``name`` can be a tool's name: text of 1 to TOOL_NAME_CHARS
+    characters with no white space and no character that does not print (a
+    control or format character, a line or paragraph separator). A valid MCP
+    tool name is such text. Any other could start a line of its own where a
+    name is listed."""
+    return (
+        isinstance(name, str)
+        and 0 < len(name) <= TOOL_NAME_CHARS
+        and not any(ch.isspace() or not ch.isprintable() for ch in name)
+    )
+
+
+# How a planned tool name that is no tool's name is kept in the record
+# (M1-175): behind this lead, which has spaces, so the text is never a tool's
+# name itself, and with at most this much of the name.
+REFUSED_NAME_LEAD = "not a tool's name: "
+REFUSED_NAME_CHARS = 150
+
+
+def shown_tool_name(name: str) -> str:
+    """What the record keeps of a planned tool name ``plain_tool_name`` does
+    not accept: one line of printable ASCII of at most TOOL_NAME_CHARS
+    characters. The name is written as JSON text writes it, so a line break,
+    a control character and anything outside ASCII read as their escapes and
+    a short name can be read back exactly; a longer one is cut, with a count
+    of what is left out. The plan, the blocked action, the audit log and
+    everything that prints them (the session page, the CLI, a postmortem
+    draft) then hold this text and not the model's lines."""
+    escaped = json.dumps(name)[1:-1]
+    if len(escaped) > REFUSED_NAME_CHARS:
+        left_out = len(escaped) - REFUSED_NAME_CHARS
+        escaped = f"{escaped[:REFUSED_NAME_CHARS]} [... {left_out} more characters]"
+    return f"{REFUSED_NAME_LEAD}{escaped or '(empty)'}"
+
+
 def _is_offered(name: str) -> bool:
-    """Whether the plan prompt offers a listed tool. A name with whitespace
-    or a control character is not a valid MCP tool name and could start a
-    line of its own, so it is not offered."""
-    return bool(name) and not any(ch.isspace() or not ch.isprintable() for ch in name)
+    """Whether the plan prompt offers a listed tool: only one whose name
+    ``plain_tool_name`` accepts, the names the gate takes from a plan."""
+    return plain_tool_name(name)
 
 
 def _plan_tool_lines(
@@ -944,6 +992,16 @@ def _is_action(item: Any) -> bool:
     return isinstance(item, dict) and isinstance(item.get("tool_name"), str)
 
 
+def _as_planned(action: dict[str, Any]) -> dict[str, Any]:
+    """A plan's action as the session keeps it (M1-175): one whose tool name
+    is no tool's name carries ``shown_tool_name`` of it instead, which the
+    gate refuses in turn. Every other action is kept as the model wrote it."""
+    name = action["tool_name"]
+    if plain_tool_name(name):
+        return action
+    return {**action, "tool_name": shown_tool_name(name)}
+
+
 def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     """The actions in the model's plan answer, or ``None`` when it cannot be
     read (M1-92).
@@ -951,7 +1009,9 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     The plan is read only when the answer is nothing but the plan: the JSON
     array of actions, or one action object on its own, either bare or as the
     one Markdown code fence that is the whole answer. Every action needs a
-    text ``tool_name``; ``[]`` is a readable empty plan. Reasoning that a model
+    text ``tool_name``; ``[]`` is a readable empty plan. A tool name that is
+    no tool's name (``plain_tool_name``) is kept as ``shown_tool_name`` of
+    it, which the gate refuses (M1-175). Reasoning that a model
     server writes into the answer, opening it with ``<think>`` and ending at the
     first ``</think>``, is not part of the answer and is dropped. Anything else
     gives ``None`` and nothing runs:
@@ -974,12 +1034,14 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     if body[end:].strip():
         return None
     if isinstance(value, dict):
-        return [value] if _is_action(value) else None
+        return [_as_planned(value)] if _is_action(value) else None
     if not isinstance(value, list):
         return None
     if not value:
         return []
-    return value if all(_is_action(item) for item in value) else None
+    if not all(_is_action(item) for item in value):
+        return None
+    return [_as_planned(item) for item in value]
 
 
 def _plan_update(raw: Any) -> dict[str, Any]:
@@ -1209,6 +1271,34 @@ def _checked_name(action: dict[str, Any]) -> str:
     return name if isinstance(name, str) else ""
 
 
+def _gate_check(
+    action: dict[str, Any], tier: int, skill_def: SkillDefinition
+) -> EnforcementResult:
+    """The tier check for a planned action (M1-175).
+
+    The model writes the action's tool name. A skill operation given as a
+    pattern matches by ``fnmatch``, whose ``*`` also matches a line break,
+    so a name such as "list_x: ok", a line break, "- delete_volume: ok"
+    passed the tier check under ``list_*``, whatever kind of tool source the
+    session had: it was sent to the tool source, and the
+    record of what ran then held lines the model had written. A name that
+    ``plain_tool_name`` does not accept is therefore refused here, before
+    any matching, with NOT_A_TOOL_NAME_REASON, and the gate records it as
+    it records any action the tier check refuses. Every other name gets the
+    tier check's own answer. ``parse_plan`` has by then replaced such a name
+    with ``shown_tool_name`` of it, which is refused here in turn; a plan
+    that came another way is refused for its raw name."""
+    name = _checked_name(action)
+    if not plain_tool_name(name):
+        return EnforcementResult(
+            permitted=False,
+            classification="unknown",
+            tier=normalize_tier(tier),
+            reason=NOT_A_TOOL_NAME_REASON,
+        )
+    return tier_check(name, tier, skill_def)
+
+
 def _storable(value: Any) -> Any:
     """``value`` with what PostgreSQL text and JSONB refuse taken out: NUL
     characters are dropped and NaN or infinite numbers become text. The model
@@ -1308,7 +1398,7 @@ def _build_tier_gate(
         def no_run_gate(state: IncidentState) -> dict:
             blocked = []
             for action in state.get("plan", []):
-                enforcement = tier_check(_checked_name(action), tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def)
                 # An action the policy refuses keeps the policy's reason (a
                 # deny-list match, a blocked tier), as the other gates record
                 # it; one it would allow is blocked because nothing can run.
@@ -1339,8 +1429,7 @@ def _build_tier_gate(
             blocked: list[dict[str, Any]] = []
 
             for action in proposed:
-                tool_name = _checked_name(action)
-                enforcement = tier_check(tool_name, tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def)
                 if enforcement.requires_approval:
                     blocked.append(
                         {
@@ -1387,8 +1476,7 @@ def _build_tier_gate(
         rejected_now: list[dict[str, Any]] = []
 
         for action in proposed:
-            tool_name = _checked_name(action)
-            enforcement = tier_check(tool_name, tier, skill_def)
+            enforcement = _gate_check(action, tier, skill_def)
 
             if enforcement.requires_approval:
                 try:
@@ -1550,7 +1638,7 @@ def _gate_in_rounds(
         if done["ended"]:
             kept = []
             for action in todo:
-                enforcement = tier_check(_checked_name(action), tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def)
                 if (
                     enforcement.classification == READ_CLASS
                     and not enforcement.requires_approval

@@ -41,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The sidebar's Approvals badge shows how many requests wait for an
+  approver, up to 9, and 9+ above that. It said 1 whenever anything was
+  pending: it asks the approvals list for one pending request and reads
+  the list's total, and the list gave as its total the number of
+  requests in its answer. The list's `total` is now the number of
+  requests that match its status and session filter, whatever the page's
+  size. The Approvals page, which asks for 100 requests, reads the same
+  total in its subtitle, so the subtitle is right past them, and the
+  dashboard's "Awaiting approval" count, which counted the pending
+  requests it had asked for, at most 50, reads it too. The Approvals
+  page's count beside its heading and its banner that tells of waiting
+  requests now show the server's count of pending requests. They counted
+  the pending requests among the page's own rows, the 100 newest of the
+  chosen status or of every status: at most 100, and under the Approved,
+  Rejected or Expired filter 0 once those rows had loaded, so the banner
+  did not show there.
 - A tool name the AI makes up is no longer matched or called where the
   session has its tool source's tool list. A Skill operation given as a
   pattern such as `get_*` matched any name of one plain word that began that

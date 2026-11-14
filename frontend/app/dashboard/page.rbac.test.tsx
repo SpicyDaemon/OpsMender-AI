@@ -118,4 +118,39 @@ describe("Dashboard role-aware loading", () => {
     expect(screen.queryByText("list_nodes")).toBeNull();
     expect(screen.getByText("Pending approval")).toBeTruthy();
   });
+
+  it("counts every pending approval, not the rows it asked for", async () => {
+    // M1-172: the dashboard asks for 50 pending requests; its count is the
+    // list's total.
+    authState.role = "operator";
+    const approval = (n: number) => ({
+      id: `approval-${n}`,
+      session_id: `session-${n}`,
+      session_tier: 1,
+      action: { tool_name: "restart_service", tool_parameters: {} },
+      justification: null,
+      status: "pending",
+      resolution_note: null,
+      requested_at: "2026-07-06T12:00:00Z",
+      resolved_at: null,
+      resolved_by: null,
+      expires_at: "2026-07-06T12:10:00Z",
+      extension_count: 0,
+      extension_notified_at: null,
+    });
+    apiMocks.listApprovals.mockResolvedValue({
+      items: Array.from({ length: 50 }, (_, n) => approval(n)),
+      total: 60,
+      status_counts: { pending: 60 },
+    });
+
+    render(<DashboardIndex />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Awaiting approval").parentElement?.parentElement?.textContent).toBe(
+        "Awaiting approval60",
+      ),
+    );
+    expect(apiMocks.listApprovals).toHaveBeenCalledWith({ status: "pending", limit: 50 });
+  });
 });

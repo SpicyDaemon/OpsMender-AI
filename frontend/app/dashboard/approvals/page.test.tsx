@@ -283,4 +283,53 @@ describe("Approvals page", () => {
     expect(screen.getAllByText("Restart Pod")).toHaveLength(2);
     expect(screen.getAllByText("Checkout")).toHaveLength(2);
   });
+
+  // M1-172: the page asks for 100 requests of the chosen status, or of every
+  // status under All statuses. What it counts as waiting is the server's
+  // count of pending requests, not its own rows.
+  const pendingRequest = (n: number, status = "pending") => ({
+    ...LATER_ROUND_APPROVAL,
+    id: `approval-${status}-${n}`,
+    session_id: `session-${status}-${n}`,
+    evidence: null,
+    status,
+  });
+
+  it("counts every pending request in its heading, past the page", async () => {
+    const items = Array.from({ length: 100 }, (_, n) => pendingRequest(n));
+    apiMocks.listApprovals.mockResolvedValue({
+      items,
+      total: 130,
+      status_counts: { pending: 130, approved: 4 },
+    });
+
+    render(<ApprovalsPage />);
+
+    expect(await screen.findByText("130 total requests")).toBeTruthy();
+    expect(screen.getByText("100 shown")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Approvals130");
+  });
+
+  it("says how many requests wait under another status filter", async () => {
+    const counts = { pending: 3, approved: 2 };
+    apiMocks.listApprovals.mockImplementation(async (params?: { status?: string }) => {
+      const status = params?.status ?? "pending";
+      const items = Array.from({ length: counts[status as keyof typeof counts] ?? 0 }, (_, n) =>
+        pendingRequest(n, status),
+      );
+      return { items, total: items.length, status_counts: counts };
+    });
+
+    render(<ApprovalsPage />);
+    expect(await screen.findByText("3 total requests")).toBeTruthy();
+    expect(screen.queryByText(/waiting for review/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Approved/ }));
+
+    // Wait for the approved rows: until they come, the page still holds
+    // the pending ones it had.
+    expect(await screen.findByText("2 total requests")).toBeTruthy();
+    expect(screen.getByText("3 approvals waiting for review. Click to view.")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Approvals3");
+  });
 });

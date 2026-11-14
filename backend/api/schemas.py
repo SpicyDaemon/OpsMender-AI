@@ -797,9 +797,12 @@ class ApprovalRedirectRequest(BaseModel):
 
 class ApprovalListResponse(BaseModel):
     items: list[ApprovalRequestResponse]
+    # How many requests match the status and session filters, whatever the
+    # page's limit and offset.
     total: int
-    # {status: count} across all requests for the org (unfiltered), for the
-    # status filter's per-status counts. Empty when scoped to one session.
+    # {status: count} across the org's requests, or one session's when the
+    # list is scoped to it, whatever the status filter: the status filter's
+    # per-status counts.
     status_counts: dict[str, int] = Field(default_factory=dict)
 
 

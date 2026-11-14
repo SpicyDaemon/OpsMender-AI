@@ -274,7 +274,9 @@ export default function ApprovalsPage() {
     }
   }
 
-  const pendingCount = data?.items.filter((a) => a.status === "pending").length ?? 0;
+  // The server's count of pending requests, whatever the status filter and
+  // past the 100 rows the page asks for.
+  const pendingCount = data?.status_counts?.pending ?? 0;
   const emptyStateCopy = approvalEmptyStateCopy(statusFilter);
 
   return (

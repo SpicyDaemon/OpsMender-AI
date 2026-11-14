@@ -206,6 +206,8 @@ export default function DashboardIndex() {
   const canReadSessionWidgets = role === "admin" || role === "operator";
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequestResponse[]>([]);
+  // How many requests wait, past the 50 the dashboard asks for.
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [activeSessions, setActiveSessions] = useState<SessionResponse[]>([]);
   const [failedSessions, setFailedSessions] = useState<SessionResponse[]>([]);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
@@ -280,6 +282,7 @@ export default function DashboardIndex() {
       ]);
       setIncidents(incRes.items);
       setApprovals(apprRes.items);
+      setPendingApprovals(apprRes.total);
       setActiveSessions(
         [...activeRes.items, ...awaitingRes.items].sort((a, b) =>
           b.started_at.localeCompare(a.started_at),
@@ -582,7 +585,7 @@ export default function DashboardIndex() {
               tone="high"
               icon={Clock}
               label="Awaiting approval"
-              count={approvals.length}
+              count={pendingApprovals}
               loading={loading}
               loadingHint="Checking approval inbox…"
               emptyMessage="No pending approvals."

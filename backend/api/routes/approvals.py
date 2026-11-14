@@ -169,6 +169,13 @@ async def list_approvals(
     status_counts = await ApprovalRequestRepo.count_by_status(
         db, org_id, session_id=session_id
     )
+    # The total is every request the filters match, not the ones in this
+    # page: the sidebar asks for one pending request and reads the total.
+    # The per-status counts are of the same organization and session.
+    if status_filter is None:
+        total = sum(status_counts.values())
+    else:
+        total = status_counts.get(status_filter, 0)
     return ApprovalListResponse(
         items=[
             _approval_response(
@@ -177,7 +184,7 @@ async def list_approvals(
             )
             for item in items
         ],
-        total=len(items),
+        total=total,
         status_counts=status_counts,
     )
 

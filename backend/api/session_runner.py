@@ -32,7 +32,7 @@ from backend.agent.timeouts import Tier0TimeConfig, ainvoke_with_session_timeout
 from backend.api.routes.ws import publish
 from backend.api.schemas import WSMessage
 from backend.approvals import ApprovalService
-from backend.audit.logger import AuditEntryType
+from backend.audit.logger import AuditEntryType, blocked_result
 from backend.config_loader import AppConfig, MCPServerConfig
 from backend.db.models import Session as SessionModel
 from backend.db.repos import (
@@ -208,6 +208,7 @@ class LiveAuditLogger:
                 entry_type=AuditEntryType.TOOL_CALL_BLOCKED.value,
                 tool_name=tool_name,
                 tool_parameters=tool_parameters,
+                result=blocked_result(classification),
                 permitted=False,
                 block_reason=block_reason,
             )

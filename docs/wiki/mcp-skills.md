@@ -289,6 +289,15 @@ the strictest tier mode (blocked or disabled, advisory, approval, autonomous),
 then irreversibility. An entry with the tool's exact name still decides for
 that tool.
 
+For an action the AI plans, a glob applies only to tools the session was
+offered. Where the session has its tool source's tool list (an MCP server's
+tools, an integration connector's actions; at Tier 0 the sandbox's
+allowlist and the connector actions Tier 0 permits), the tier gate refuses a
+planned name that is not in the list
+before the Skill is consulted, so `get_*` cannot match a name the AI made
+up. A step of the Skill's own workflow names its tool itself and is matched
+as written, and so is a plan in a session with no tool source.
+
 Conservative defaults: if **no skill** resolves for a server (no server-specific
 and no global), unclassified write/remediation actions are treated as unknown
 and **denied**.

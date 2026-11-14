@@ -216,9 +216,12 @@ alongside an entry recording the deletion.
 
 - The Audit Log provides a chronological trace of all tool executions, approvals, and system state changes.
 - Every action the tier gate refuses is recorded too, with the tool, the
-  parameters the AI proposed, the tier and the reason: a write blocked at
-  Tier 2, an action that needed an approval nobody gave, a rejected approval.
-  The session's Tool Activity and the incident timeline show these as blocked.
+  parameters the AI proposed, the tier, the reason and the class the gate
+  gave it (kept as the entry's Result): a write blocked at Tier 2, an action
+  that needed an approval nobody gave, a rejected approval. The session's
+  Tool Activity and the incident timeline show these as blocked, with that
+  class; on the timeline an entry recorded before the class was kept shows
+  the Skill's class instead.
 - The AI writes the tool name of each action it proposes. A name that is
   not a tool's name (it is empty, has white space or a character that does
   not print, or is longer than 200 characters) is refused before it is
@@ -232,14 +235,30 @@ alongside an entry recording the deletion.
   gated as usual. The plan prompt does not offer a listed tool with such a
   name either, so the AI cannot plan a tool that a server lists under a
   name with a space in it, even when the Skill names it; a step of the
-  Skill's own workflow names its tool itself and is not affected. The
-  check is of the name's form only: a made-up name of one plain word is
-  still compared with the Skill like any other. The example of a plan's
+  Skill's own workflow names its tool itself and is not affected. A name
+  of that form that is not one of the tools the session was offered (the
+  tools its MCP server or integration connector lists, up to 100 pages of
+  them, or at Tier 0 those of them Tier 0 allows) is refused the same
+  way, with a reason of its own, so a pattern such as `get_*` cannot match a
+  name the AI made up, such as `get_x:ok,-resize_volume:ok,-get_y`, or one
+  with a character that reads as a blank or as a colon: it is not called
+  and nobody is asked to approve it. A tool the server does not list is
+  refused even where the server would accept it. A session without a tool
+  source has no list, and the Skill is matched as written. The example of a plan's
   shape that the plan prompt shows names no tool and no argument either:
   its parts are in angle brackets, for the model to fill in from the tools
   listed, so it holds nothing a session's tools do not have. An example
   the AI copies as it is is refused as not a tool's name and recorded
   here like any refused action.
+- The AI writes each action's justification too. The record keeps it, and
+  any description the AI adds as text, as one line, cut after 500
+  characters with a count of what is left out, so a line break in it
+  cannot add a line to an approval request, an Inbox notification or a
+  postmortem draft. A value the database cannot store (a
+  NUL character, a lone surrogate, a number JSON does not allow) is cleaned
+  where the plan is read: a NUL is dropped, a lone surrogate becomes U+FFFD
+  and such a number becomes text, so the session goes on and the tool is
+  called with what the record shows.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - Workspace activity also shows configuration changes, approval decisions, and
   session tier overrides. Configuration entries identify the actor, route,

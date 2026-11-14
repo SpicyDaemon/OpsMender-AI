@@ -227,6 +227,12 @@ def build_graph(
     audit_logger:
         ``AuditLogger`` instance for recording tool calls.
         Required when ``mcp_session`` is provided.
+    plan_tool_names:
+        The tools the plan prompt offers: those the tool source lists, or at
+        Tier 0 the sandbox's allowlist and the connector actions Tier 0
+        permits. The tier gate refuses a planned name that is not one of them
+        (M1-176). Without a list, a graph that can run offers the skill's
+        named operations and the gate keeps the skill's matching.
     follow_up_rounds:
         How many times the model may plan again after its calls returned
         (M1-111): one by default, at most ``MAX_FOLLOW_UP_ROUNDS``, and none
@@ -334,12 +340,16 @@ def build_graph(
     else:
         remember_fn = remember
 
+    # The tools the session was offered, where it has a tool list (M1-176):
+    # the gate refuses a planned name that is not one of them.
+    offered = None if plan_tool_names is None else frozenset(plan_tool_names)
     tier_gate_fn = _build_tier_gate(
         tier,
         skill_def,
         approval_service,
         audit_logger=audit_logger,
         can_run=can_run,
+        offered=offered,
     )
     if rounds:
         tier_gate_fn = _gate_in_rounds(
@@ -348,6 +358,7 @@ def build_graph(
             skill_def,
             audit_logger=audit_logger,
             can_ask=approval_service is not None,
+            offered=offered,
         )
         execute_fn = _execute_in_rounds(execute_fn)
 

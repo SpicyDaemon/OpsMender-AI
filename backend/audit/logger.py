@@ -48,6 +48,13 @@ class AuditEntryType(str, enum.Enum):
 # ---------------------------------------------------------------------------
 
 
+def blocked_result(classification: str | None) -> dict[str, str] | None:
+    """What a ``tool_call_blocked`` entry keeps as its result (M1-176): the
+    class the check that refused the call gave it, which the session page
+    and the incident timeline show. A refused call returned nothing."""
+    return {"classification": classification} if classification else None
+
+
 @dataclasses.dataclass
 class AuditEntry:
     """A single audit log entry.
@@ -193,6 +200,7 @@ class AuditLogger:
                 entry_type=AuditEntryType.TOOL_CALL_BLOCKED,
                 tool_name=tool_name,
                 tool_parameters=tool_parameters,
+                result=blocked_result(classification),
                 permitted=False,
                 block_reason=block_reason,
             )

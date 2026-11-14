@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.audit.logger import AuditEntry as AuditEntryDC, AuditEntryType
+from backend.audit.logger import (
+    AuditEntry as AuditEntryDC,
+    AuditEntryType,
+    blocked_result,
+)
 from backend.db.models import AuditEntry as AuditEntryORM
 from backend.db.repos import AuditEntryRepo
 
@@ -108,6 +112,7 @@ class PgAuditLogger:
             entry_type=AuditEntryType.TOOL_CALL_BLOCKED.value,
             tool_name=tool_name,
             tool_parameters=tool_parameters,
+            result=blocked_result(classification),
             permitted=False,
             block_reason=block_reason,
         )

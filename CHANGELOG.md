@@ -41,6 +41,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tool name the AI makes up is no longer matched or called where the
+  session has its tool source's tool list. A Skill operation given as a
+  pattern such as `get_*` matched any name of one plain word that began that
+  way, so a planned action named `get_x:ok,-resize_volume:ok,-get_y`, or a
+  name with a character that reads as a blank or as a colon, passed the tier
+  gate. Under a pattern the tier permits, an MCP server of any provider was
+  sent it at Tiers 1 to 3, and at Tier 1 a pattern that asks put it to an
+  operator first, whatever the tool source; an integration connector
+  answered that it has no such tool, and at Tier 0 the sandbox refused a
+  name off its allowlist. The tier gate now refuses a planned action whose
+  tool is not one of the tools the session was offered, before the Skill is
+  consulted, at every tier and in later planning rounds: nothing is called,
+  nobody is asked, and the audit log records it as blocked with that reason.
+  A tool the server does not list is refused even where the server would
+  accept it. A step of the Skill's own workflow is not checked against the
+  list. A session without a tool source has no list and keeps the Skill's
+  matching. At Tier 0 the session is offered only the sandbox's allowlist
+  and the connector actions Tier 0 permits, so a tool the server lists
+  outside them is refused this way too, where the Tier 0 policy refused it
+  before; nothing ran either way. A session now reads a server's tool list
+  page by page, up to 100 pages, so a tool on a later page is offered like
+  any other; a later page that fails ends the reading and keeps the tools
+  already read.
+- A value the AI writes into a plan no longer fails the session when
+  PostgreSQL stores it. A lone surrogate (a JSON escape for U+D800 to
+  U+DFFF), a NUL character or `NaN` in an action's parameters, or a
+  justification that is not text, made PostgreSQL refuse the audit log entry
+  or the approval request, and the session failed. The plan is now read into
+  values the record can store: a NUL character is dropped, a lone surrogate
+  becomes U+FFFD, a number JSON does not allow becomes text and a
+  justification that is not text becomes its JSON text, so the tool is
+  called with what the audit log records. An action's justification, and any
+  description it carries as text, is one line, cut after 500 characters with
+  a count of what is left out, so a line break in it no longer adds a line
+  to a postmortem draft, where it read as an action of its own, or to an
+  approval request and its Inbox notification. A plan whose values nest
+  deeper than they can be cleaned is read as no plan, as one too deep to
+  decode already was.
+- The incident timeline shows the class the tier gate gave a refused call.
+  It worked the class out again from the workspace's Skill, so under a
+  pattern such as `*` a call the gate refused before any matching (a name
+  that is not a tool's name, or a tool the session was not offered) showed
+  the pattern's class. The audit entry the tier gate or the executor writes
+  for a refused call now keeps the class the check gave it as its result.
+  The timeline shows it, and the session's Tool Activity and the Activity
+  page show it to admins and operators, who may read results. On the
+  timeline an entry recorded before, and a rollback's blocked entry, which
+  records no class, keep the Skill's class.
 - A tool name the AI writes with a line break in it is no longer matched
   or called, whatever the tool source: an MCP server of any provider or an
   integration connector. A Skill operation given as a pattern such as

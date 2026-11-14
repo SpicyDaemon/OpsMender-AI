@@ -2637,6 +2637,67 @@ class TestIncidents:
         assert tool_row["tier_decision"] == "permitted"
         assert tool_row["metadata"] == {"namespace": "prod"}
 
+    async def test_the_timeline_shows_the_class_the_gate_gave_a_refused_call(
+        self, client: AsyncClient, app, auth_headers
+    ):
+        """M1-176. The timeline worked a refused call's class out again from
+        the Skill, so a ``*`` pattern showed its class beside a refusal the
+        gate had recorded as of no class. A blocked entry now keeps the
+        gate's class; an entry written before keeps the Skill's."""
+        star_skill = convert_legacy_skill_content(
+            '---\nversion: "1"\nenvironment: api-test\noperations:\n'
+            '  - tool: "*"\n    classification: safe\n---\n'
+        ).content
+        async with app.state.session_factory() as db:
+            incident = await IncidentRepo.create(
+                db, TEST_ORG_ID, title="Refused call", description="disk"
+            )
+            session = await SessionRepo.create(
+                db, TEST_ORG_ID, tier=2, incident_id=incident.id
+            )
+            await AuditEntryRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                tier=2,
+                entry_type="tool_call_blocked",
+                tool_name="get_x:ok,-resize_volume:ok,-get_y",
+                tool_parameters={"volume_id": "reports"},
+                result={"classification": "unknown"},
+                permitted=False,
+                block_reason="not one of the tools this session was offered",
+            )
+            await AuditEntryRepo.create(
+                db,
+                TEST_ORG_ID,
+                session_id=session.id,
+                tier=2,
+                entry_type="tool_call_blocked",
+                tool_name="get_volume_usage",
+                tool_parameters={},
+                permitted=False,
+                block_reason="written before the gate kept its class",
+            )
+            await SkillRepo.create(
+                db, TEST_ORG_ID, name="refused-skill", content_md=star_skill
+            )
+            await db.commit()
+            incident_id = incident.id
+
+        resp = await client.get(
+            f"/incidents/{incident_id}/timeline", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        blocked = sorted(
+            (item["tool_name"], item["safety_class"], item["json_payload"])
+            for item in resp.json()["items"]
+            if item["event_type"] == "tool_blocked"
+        )
+        assert blocked == [
+            ("get_volume_usage", "safe", {}),
+            ("get_x:ok,-resize_volume:ok,-get_y", "unknown", {"volume_id": "reports"}),
+        ]
+
     async def test_get_incident_not_found(self, client: AsyncClient, auth_headers):
         fake_id = uuid.uuid4()
         resp = await client.get(f"/incidents/{fake_id}", headers=auth_headers)

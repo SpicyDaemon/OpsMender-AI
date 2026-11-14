@@ -1686,6 +1686,16 @@ async def get_incident_timeline(
                 pending_starts[entry.tool_name].append(entry)
                 continue
             if entry.entry_type == "tool_call_blocked" and entry.tool_name:
+                # The class the check that refused the call gave it, as the
+                # entry keeps it (M1-176). The skill's class of the name could
+                # differ: a name refused before any matching is of no class,
+                # while a pattern such as `*` matches it. An entry written
+                # before keeps the skill's class.
+                recorded = (
+                    entry.result.get("classification")
+                    if isinstance(entry.result, dict)
+                    else None
+                )
                 items.append(
                     IncidentTimelineItemResponse(
                         id=f"audit:{entry.id}",
@@ -1699,14 +1709,16 @@ async def get_incident_timeline(
                         session_tier=entry.tier,
                         tool_name=entry.tool_name,
                         safety_class=(
-                            skill_def.classify(entry.tool_name)
+                            recorded
+                            if isinstance(recorded, str)
+                            else skill_def.classify(entry.tool_name)
                             if skill_def
                             else "unknown"
                         ),
                         tier_decision="blocked",
                         status="blocked",
                         metadata=entry.tool_parameters or {},
-                        json_payload=entry.result or entry.tool_parameters or {},
+                        json_payload=entry.tool_parameters or {},
                     )
                 )
                 continue

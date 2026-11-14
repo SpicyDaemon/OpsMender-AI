@@ -65,4 +65,21 @@ describe("persisted session audit events", () => {
     expect(approval.kind).toBe("approval");
     expect(approval.detail).toBe("Waiting for operator approval");
   });
+
+  it("hydrates the class the gate gave a blocked call", () => {
+    const event = auditEntryToSessionEvent(
+      entry({
+        entry_type: "tool_call_blocked",
+        permitted: false,
+        result: { classification: "unknown" },
+        block_reason:
+          "the tool name is not one of the tools this session was offered",
+      }),
+      5,
+    );
+    expect(event.raw).toMatchObject({
+      phase: "blocked",
+      classification: "unknown",
+    });
+  });
 });

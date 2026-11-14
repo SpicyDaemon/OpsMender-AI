@@ -562,6 +562,12 @@ NOT_A_TOOL_NAME_REASON = (
     f"character that does not print, or is longer than {TOOL_NAME_CHARS} "
     "characters): not matched against the skill and not called"
 )
+# Why the gate refuses a planned action whose tool is not one of the tools
+# the session was offered (M1-176). The words are the product's.
+NOT_OFFERED_REASON = (
+    "the tool name is not one of the tools this session was offered: not "
+    "matched against the skill and not called"
+)
 
 
 def plain_tool_name(name: Any) -> bool:
@@ -1003,14 +1009,66 @@ def _is_action(item: Any) -> bool:
     return isinstance(item, dict) and isinstance(item.get("tool_name"), str)
 
 
+# The text fields of a planned action that the record prints (M1-176): an
+# approval request, its Inbox notification, the session page and a
+# postmortem draft show them. The model writes them, so each one that is text
+# is kept as one line, cut after this many characters with a count of what
+# is left out. A justification that is not text is kept as its JSON text, as
+# an approval request stores it as text; a description or action that is not
+# text is kept as a value, which nothing prints as a line of text.
+ACTION_TEXT_KEYS = ("justification", "description", "action")
+ACTION_TEXT_CHARS = 500
+
+
+def one_line(value: Any, limit: int) -> str:
+    """``value`` as one line: at most ``limit`` characters of it, then a
+    count of what is left out. A value that is not text (a number, a list)
+    is written as its JSON text. A character that does not print (a line
+    break, a control or format character, a lone surrogate) counts as white
+    space, and each run of white space is one space."""
+    text = (
+        value
+        if isinstance(value, str)
+        else json.dumps(value, ensure_ascii=False, default=str)
+    )
+    line = " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())
+    if len(line) > limit:
+        line = f"{line[:limit]} [... {len(line) - limit} more characters]"
+    return line
+
+
 def _as_planned(action: dict[str, Any]) -> dict[str, Any]:
-    """A plan's action as the session keeps it (M1-175): one whose tool name
-    is no tool's name carries ``shown_tool_name`` of it instead, which the
-    gate refuses in turn. Every other action is kept as the model wrote it."""
+    """A plan's action as the session keeps it.
+
+    A tool name that is no tool's name is replaced by ``shown_tool_name`` of
+    it, which the gate refuses in turn (M1-175). Every key and value loses
+    what PostgreSQL text and JSONB refuse (``_storable``), and each text
+    field the record prints (ACTION_TEXT_KEYS) is one line (``one_line``),
+    M1-176. The model writes them: a NUL character, a lone surrogate or NaN
+    in a value failed the session when the audit log, an approval request
+    or the session's progress was written, and a line break in a
+    justification added a line of the model's to a postmortem draft. What
+    the gate checks, what is called and what the record holds are now the
+    same values."""
     name = action["tool_name"]
-    if plain_tool_name(name):
-        return action
-    return {**action, "tool_name": shown_tool_name(name)}
+    kept = _storable(action)
+    kept["tool_name"] = name if plain_tool_name(name) else shown_tool_name(name)
+    for key in ACTION_TEXT_KEYS:
+        value = kept.get(key)
+        if isinstance(value, str) or (key == "justification" and value is not None):
+            kept[key] = one_line(value, ACTION_TEXT_CHARS)
+    return kept
+
+
+def _planned(actions: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    """Each action as ``_as_planned`` keeps it, or ``None`` when a value
+    nests deeper than its cleaning can follow (M1-176): such a plan is read
+    as no plan, like one nested deeper than the decoder can read, and the
+    session goes on."""
+    try:
+        return [_as_planned(action) for action in actions]
+    except RecursionError:
+        return None
 
 
 def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
@@ -1020,9 +1078,10 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     The plan is read only when the answer is nothing but the plan: the JSON
     array of actions, or one action object on its own, either bare or as the
     one Markdown code fence that is the whole answer. Every action needs a
-    text ``tool_name``; ``[]`` is a readable empty plan. A tool name that is
-    no tool's name (``plain_tool_name``) is kept as ``shown_tool_name`` of
-    it, which the gate refuses (M1-175). Reasoning that a model
+    text ``tool_name``; ``[]`` is a readable empty plan. Each action is kept
+    as ``_as_planned`` makes it: a tool name that is no tool's name as
+    ``shown_tool_name`` of it, which the gate refuses (M1-175), its values
+    storable and its printed text fields one line (M1-176). Reasoning that a model
     server writes into the answer, opening it with ``<think>`` and ending at the
     first ``</think>``, is not part of the answer and is dropped. Anything else
     gives ``None`` and nothing runs:
@@ -1045,14 +1104,14 @@ def parse_plan(raw: Any) -> list[dict[str, Any]] | None:
     if body[end:].strip():
         return None
     if isinstance(value, dict):
-        return [_as_planned(value)] if _is_action(value) else None
+        return _planned([value]) if _is_action(value) else None
     if not isinstance(value, list):
         return None
     if not value:
         return []
     if not all(_is_action(item) for item in value):
         return None
-    return [_as_planned(item) for item in value]
+    return _planned(value)
 
 
 def _plan_update(raw: Any) -> dict[str, Any]:
@@ -1072,10 +1131,12 @@ def _build_plan(
     wait_limit: int | None = None,
     rounds: int = 0,
 ):
-    """Return a plan node for a graph given no tool list: the CLI at Tiers 2
-    and 3 with a server, and sessions without a tool source. It offers the
-    skill's operations; a glob entry is not a tool name, and a tool it matches
-    may get another mark, so it is left out, as the Tier 0 sandbox does."""
+    """Return a plan node for a graph given no tool list. The session runner
+    and the CLI give a list wherever something can be called, so in the
+    product such a graph has nothing to call and its plan offers no tool.
+    A graph that can run offers the skill's operations; a glob entry is not
+    a tool name, and a tool it matches may get another mark, so it is left
+    out, as the Tier 0 sandbox does."""
     return _build_plan_with_tool_names(
         llm,
         tier,
@@ -1283,9 +1344,12 @@ def _checked_name(action: dict[str, Any]) -> str:
 
 
 def _gate_check(
-    action: dict[str, Any], tier: int, skill_def: SkillDefinition
+    action: dict[str, Any],
+    tier: int,
+    skill_def: SkillDefinition,
+    offered: frozenset[str] | None = None,
 ) -> EnforcementResult:
-    """The tier check for a planned action (M1-175).
+    """The tier check for a planned action (M1-175, M1-176).
 
     The model writes the action's tool name. A skill operation given as a
     pattern matches by ``fnmatch``, whose ``*`` also matches a line break,
@@ -1298,7 +1362,18 @@ def _gate_check(
     it records any action the tier check refuses. Every other name gets the
     tier check's own answer. ``parse_plan`` has by then replaced such a name
     with ``shown_tool_name`` of it, which is refused here in turn; a plan
-    that came another way is refused for its raw name."""
+    that came another way is refused for its raw name.
+
+    ``offered`` is the session's tool list where it has one (M1-176): the
+    tools the plan prompt offers, which are the names the tool source lists,
+    or at Tier 0 those of them Tier 0 allows. A name of that form that is
+    not one of them is refused here too, before any matching, with
+    NOT_OFFERED_REASON. A pattern operation matched any name of one plain
+    word, so a made-up name such as "get_x:ok,-resize_volume:ok,-get_y"
+    passed under ``get_*``: at Tiers 1 to 3 an MCP server was sent it, or
+    it was put to an operator under a pattern that asks. The session runner
+    and the CLI give a list wherever something can be called; a graph built
+    without one keeps the skill's matching."""
     name = _checked_name(action)
     if not plain_tool_name(name):
         return EnforcementResult(
@@ -1307,15 +1382,28 @@ def _gate_check(
             tier=normalize_tier(tier),
             reason=NOT_A_TOOL_NAME_REASON,
         )
+    if offered is not None and name not in offered:
+        return EnforcementResult(
+            permitted=False,
+            classification="unknown",
+            tier=normalize_tier(tier),
+            reason=NOT_OFFERED_REASON,
+        )
     return tier_check(name, tier, skill_def)
+
+
+# A lone surrogate (U+D800 to U+DFFF): a JSON text can hold one as an
+# escape, and PostgreSQL text and JSONB refuse it (M1-176).
+_LONE_SURROGATE = re.compile(f"[{chr(0xD800)}-{chr(0xDFFF)}]")
 
 
 def _storable(value: Any) -> Any:
     """``value`` with what PostgreSQL text and JSONB refuse taken out: NUL
-    characters are dropped and NaN or infinite numbers become text. The model
+    characters are dropped, a lone surrogate becomes U+FFFD (the replacement
+    character, M1-176) and NaN or infinite numbers become text. The model
     writes these values, and a refused insert would fail the session."""
     if isinstance(value, str):
-        return value.replace("\x00", "")
+        return _LONE_SURROGATE.sub(chr(0xFFFD), value.replace("\x00", ""))
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
     if isinstance(value, dict):
@@ -1383,6 +1471,7 @@ def _build_tier_gate(
     audit_logger=None,
     *,
     can_run: bool = True,
+    offered: frozenset[str] | None = None,
 ):
     """Return a tier_gate node function closed over *tier* and *skill_def*.
 
@@ -1400,6 +1489,9 @@ def _build_tier_gate(
     while nothing could run, and the actions the gate permitted were dropped
     without a record.
 
+    ``offered`` is the session's tool list, where it has one: every check
+    refuses a planned name that is not in it (``_gate_check``, M1-176).
+
     This function is **never** delegated to an LLM.
     """
     audit = _blocked_auditor(audit_logger, tier)
@@ -1409,7 +1501,7 @@ def _build_tier_gate(
         def no_run_gate(state: IncidentState) -> dict:
             blocked = []
             for action in state.get("plan", []):
-                enforcement = _gate_check(action, tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def, offered)
                 # An action the policy refuses keeps the policy's reason (a
                 # deny-list match, a blocked tier), as the other gates record
                 # it; one it would allow is blocked because nothing can run.
@@ -1440,7 +1532,7 @@ def _build_tier_gate(
             blocked: list[dict[str, Any]] = []
 
             for action in proposed:
-                enforcement = _gate_check(action, tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def, offered)
                 if enforcement.requires_approval:
                     blocked.append(
                         {
@@ -1487,7 +1579,7 @@ def _build_tier_gate(
         rejected_now: list[dict[str, Any]] = []
 
         for action in proposed:
-            enforcement = _gate_check(action, tier, skill_def)
+            enforcement = _gate_check(action, tier, skill_def, offered)
 
             if enforcement.requires_approval:
                 try:
@@ -1610,6 +1702,7 @@ def _gate_in_rounds(
     audit_logger=None,
     *,
     can_ask: bool = False,
+    offered: frozenset[str] | None = None,
 ):
     """Wrap a tier gate for a graph that plans again after its reads (M1-111).
 
@@ -1632,7 +1725,8 @@ def _gate_in_rounds(
     reaches ``gate``, which asks, waits and handles a redirect as it does
     for a first plan; the request carries ``approval_evidence``. An action
     that is not a read and that the tier would run without a person is still
-    blocked, with FOLLOW_UP_UNAPPROVED_REASON.
+    blocked, with FOLLOW_UP_UNAPPROVED_REASON. ``offered`` is the session's
+    tool list, as for the gate (M1-176).
     """
     audit = _blocked_auditor(audit_logger, tier)
     asks = later_round_asks(tier, can_ask)
@@ -1649,7 +1743,7 @@ def _gate_in_rounds(
         if done["ended"]:
             kept = []
             for action in todo:
-                enforcement = _gate_check(action, tier, skill_def)
+                enforcement = _gate_check(action, tier, skill_def, offered)
                 if (
                     enforcement.classification == READ_CLASS
                     and not enforcement.requires_approval

@@ -52,6 +52,7 @@ from backend.agent.nodes import (
     MAX_FOLLOW_UP_ROUNDS,
     MORE_ROUNDS_RULE,
     NOT_A_TOOL_NAME_REASON,
+    NOT_OFFERED_REASON,
     REJECTED_RULE,
     RESULTS_INTRO,
     approval_evidence,
@@ -249,6 +250,9 @@ def blocked_rows(tmp_path) -> list[dict]:
 
 
 def graph_for(tmp_path, llm, *, tier: int = 2, lab: Lab | None = None, **kwargs):
+    # The server's tool list, unless a test gives another (M1-176: the gate
+    # refuses a planned name that is not in it) or none.
+    kwargs.setdefault("plan_tool_names", TOOLS)
     return build_graph(
         tier=tier,
         skill_def=SKILL,
@@ -256,7 +260,6 @@ def graph_for(tmp_path, llm, *, tier: int = 2, lab: Lab | None = None, **kwargs)
         mcp_session=object(),
         audit_logger=AuditLogger(tmp_path / "audit.jsonl"),
         tool_caller=lab if lab is not None else Lab(),
-        plan_tool_names=TOOLS,
         **kwargs,
     )
 
@@ -703,14 +706,27 @@ async def test_the_same_guarded_read_is_asked_for_in_a_first_plan(tmp_path):
 
 
 async def test_a_later_tool_the_skill_does_not_know_is_blocked(tmp_path):
+    # A tool the session was not offered is refused before the skill is
+    # asked (M1-176); a graph without a tool list gets the skill's answer.
     llm = FollowsTheEvidence([call("delete_namespace", namespace="bookinfo")])
     result, lab = await run(tmp_path, llm, tier=0, approval_service=Approver())
 
     assert lab.names == ["get_service_health"]
     (blocked,) = result["blocked_actions"]
     assert blocked["classification"] == "unknown"
-    assert blocked["block_reason"] == "operation has no explicit T0 policy: denied"
+    assert blocked["block_reason"] == NOT_OFFERED_REASON
     assert [row["tool_name"] for row in blocked_rows(tmp_path)] == ["delete_namespace"]
+
+    llm = FollowsTheEvidence([call("delete_namespace", namespace="bookinfo")])
+    result, _ = await run(
+        tmp_path / "unlisted",
+        llm,
+        tier=0,
+        approval_service=Approver(),
+        plan_tool_names=None,
+    )
+    (blocked,) = result["blocked_actions"]
+    assert blocked["block_reason"] == "operation has no explicit T0 policy: denied"
 
 
 async def test_a_first_plan_the_operator_redirected_is_followed_by_a_later_round(
@@ -1463,11 +1479,13 @@ async def test_a_rejected_name_the_model_made_up_stays_out_of_the_rule(tmp_path)
     """The model writes a request's tool name, and the tier asks for any
     name the generic-execution guard catches, whatever else the name says.
     Such a name is no tool of the list: once an operator rejects it, it is
-    not written into the later prompt as the product's own words."""
+    not written into the later prompt as the product's own words. Only a
+    graph built without a tool list still asks for it: with the server's
+    list the gate refuses it before anybody is asked (M1-176)."""
     assert tier_check(MADE_UP_NAME, 1, SKILL).requires_approval
     llm = FollowsTheEvidence([RESTART_CALL], first=[HEALTH_CALL, call(MADE_UP_NAME)])
     approver = Approver("rejected", "approved")
-    await run(tmp_path, llm, tier=1, approval_service=approver)
+    await run(tmp_path, llm, tier=1, approval_service=approver, plan_tool_names=None)
 
     assert approver.asked == [MADE_UP_NAME, "restart_deployment"]
     later = llm.plan_prompts[1]
@@ -1475,6 +1493,15 @@ async def test_a_rejected_name_the_model_made_up_stays_out_of_the_rule(tmp_path)
     assert only_between_markers(later, "pre_approved") or "pre_approved" not in later
     (rejected,) = approver.evidence[1]["rejected"]
     assert rejected["tool_name"] == MADE_UP_NAME
+
+    # With the server's tool list nobody is asked about the name at all.
+    listed = FollowsTheEvidence([RESTART_CALL], first=[HEALTH_CALL, call(MADE_UP_NAME)])
+    asked = Approver("approved")
+    result, _ = await run(tmp_path, listed, tier=1, approval_service=asked)
+    assert asked.asked == ["restart_deployment"]
+    assert [b["block_reason"] for b in result["blocked_actions"]] == [
+        NOT_OFFERED_REASON
+    ]
 
     # A rejected tool of the list is still named, alone.
     both = FollowsTheEvidence(

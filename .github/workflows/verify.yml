@@ -132,6 +132,7 @@ jobs:
           tests/test_scheduler_claims_postgres.py
           tests/test_card_event_order_postgres.py
           tests/test_teams_workflows_postgres.py
+          tests/test_plan_values_postgres.py
           tests/test_sla_api.py
           tests/test_voice_settings.py
           -q --timeout=180 --timeout-method=thread

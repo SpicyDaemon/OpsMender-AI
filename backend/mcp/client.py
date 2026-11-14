@@ -20,7 +20,7 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamablehttp_client
-from mcp.types import CallToolResult, Tool
+from mcp.types import CallToolResult, PaginatedRequestParams, Tool
 
 from backend.config_loader import MCPServerConfig
 
@@ -375,10 +375,54 @@ def tool_plan_description(tool: Tool, *, max_arguments: int = 20) -> str:
     return f"{description} {arguments}".strip()
 
 
+# The most pages of a server's tool list the product reads (M1-176). The
+# tier gate refuses a planned tool the list does not hold, so every page
+# counts; a server that keeps answering with a new cursor is cut off here.
+MAX_TOOL_PAGES = 100
+
+
+def _next_cursor(result: Any) -> str | None:
+    cursor = getattr(result, "nextCursor", None)
+    return cursor if isinstance(cursor, str) and cursor else None
+
+
 async def list_tools(session: ClientSession) -> list[Tool]:
-    """Return the list of tools exposed by the connected MCP server."""
+    """Return the tools the connected MCP server lists, page by page up to
+    MAX_TOOL_PAGES (M1-176). A server may answer ``tools/list`` in pages: a
+    tool on a later page was left out of the plan prompt, and the tier gate
+    now refuses a planned tool that is not in the list. A cursor the server
+    gave before ends the reading, and so does a later page that fails: the
+    tools read so far are kept, so only the ones not read are refused. A
+    tool a later page lists again is kept once. A first page that fails
+    fails the listing, as before."""
     result = await session.list_tools()
-    return result.tools
+    cursor = _next_cursor(result)
+    if cursor is None:
+        return result.tools
+    tools = list(result.tools)
+    names = {tool.name for tool in tools}
+    seen: set[str] = set()
+    while cursor is not None and cursor not in seen and len(seen) < MAX_TOOL_PAGES - 1:
+        seen.add(cursor)
+        try:
+            result = await session.list_tools(
+                params=PaginatedRequestParams(cursor=cursor)
+            )
+        except Exception as exc:
+            logger.warning(
+                "tools/list page %d failed (%s); keeping the %d tools of the "
+                "pages before it",
+                len(seen) + 1,
+                type(exc).__name__,
+                len(tools),
+            )
+            break
+        for tool in result.tools:
+            if tool.name not in names:
+                names.add(tool.name)
+                tools.append(tool)
+        cursor = _next_cursor(result)
+    return tools
 
 
 async def call_tool(

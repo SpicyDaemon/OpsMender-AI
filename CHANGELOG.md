@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The example plan the plan prompt shows names no tool. It was one action
+  of a cluster's tools, `get_pods` with a `namespace`, whatever tools the
+  session had, so a session whose tools come from a compute, storage or
+  database server, or from an integration connector, was shown a tool and
+  an argument it does not have. The example now shows a plan's shape with
+  each part in angle brackets (`<one of the available tools>`, `<an
+  argument that tool lists>`), as JSON and nothing else. A model that
+  copies it as it is plans a name the tier gate refuses as not a tool's
+  name, so nothing is called. A session without a tool is still shown an
+  empty plan.
 - At Tier 1 (Approval Required) a session's later planning round may now
   ask an operator. A later round used to run only reads, so a session that
   found the cause in what it read could not ask for the change that fixes

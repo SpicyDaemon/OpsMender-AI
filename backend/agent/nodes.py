@@ -196,10 +196,21 @@ BLOCKED_RULE = (
     "person to see, so to recommend a change that cannot run here, list it with "
     "the parameters you recommend."
 )
+# The example plan both plan prompts show when tools are offered (M1-177).
+# It shows a plan's shape with each part in angle brackets and names no
+# tool. It used to be one action of a cluster's tools, `get_pods` with a
+# `namespace`, so a session whose tools come from another kind of server or
+# from an integration connector was shown a tool and an argument it does not
+# have. It is JSON and nothing else: text after it would be text a model may
+# repeat after its own plan, and an answer with text around the plan cannot
+# be read (M1-92). A model that copies it as it is plans a name with white
+# space, which the gate refuses as not a tool's name before it is matched
+# (M1-175), so nothing is called.
 PLAN_EXAMPLE = (
     "[\n"
-    '  {"tool_name": "get_pods", "tool_parameters": {"namespace": "default"}, '
-    '"justification": "Check pod status"}\n'
+    '  {"tool_name": "<one of the available tools>", '
+    '"tool_parameters": {"<an argument that tool lists>": "<its value>"}, '
+    '"justification": "<why this action is needed>"}\n'
     "]"
 )
 

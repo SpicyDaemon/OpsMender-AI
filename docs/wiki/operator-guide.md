@@ -234,7 +234,12 @@ alongside an entry recording the deletion.
   name with a space in it, even when the Skill names it; a step of the
   Skill's own workflow names its tool itself and is not affected. The
   check is of the name's form only: a made-up name of one plain word is
-  still compared with the Skill like any other.
+  still compared with the Skill like any other. The example of a plan's
+  shape that the plan prompt shows names no tool and no argument either:
+  its parts are in angle brackets, for the model to fill in from the tools
+  listed, so it holds nothing a session's tools do not have. An example
+  the AI copies as it is is refused as not a tool's name and recorded
+  here like any refused action.
 - The Activity page lets you search, sort, filter by type/tier/status, narrow by timestamp range, hide/show columns, and expand rows to inspect the exact Parameters and Result JSON for a tool call.
 - Workspace activity also shows configuration changes, approval decisions, and
   session tier overrides. Configuration entries identify the actor, route,

@@ -32,6 +32,7 @@ from backend.agent.nodes import (
     NEEDS_APPROVAL,
     NO_TOOL_LIST,
     NO_TOOL_RULE,
+    PLAN_EXAMPLE,
     PLAN_PROMPT,
     RUNS,
     _build_plan,
@@ -183,7 +184,8 @@ def test_tool_lines_show_class_mark_and_a_one_line_description():
         "restart_service",
         "scale_unknown",
     ]
-    assert 'Example:\n[\n  {"tool_name": "get_pods"' in prompt
+    # The example names no tool of its own (M1-177).
+    assert f"Example:\n{PLAN_EXAMPLE}\n\nOnly propose actions" in prompt
 
 
 def _head(prompt: str) -> str:
